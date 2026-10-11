@@ -428,11 +428,11 @@ function main() i64 {
     EXPECT_EQ(rangeText(readFile(def->filePath), *def), name)
         << "at offset " << def->range.offset << " line " << def->range.line;
   };
-  expectStdlib("push(1)", "stdlib/vec.sun", "push");
-  expectStdlib("Vec<i64>(", "stdlib/vec.sun", "Vec");
-  expectStdlib("make_heap_allocator()", "stdlib/allocator.sun",
+  expectStdlib("push(1)", "stdlib/std/vec.sun", "push");
+  expectStdlib("Vec<i64>(", "stdlib/std/vec.sun", "Vec");
+  expectStdlib("make_heap_allocator()", "stdlib/std/allocator.sun",
                "make_heap_allocator");
-  expectStdlib("HeapAllocator)", "stdlib/allocator.sun", "HeapAllocator");
+  expectStdlib("HeapAllocator)", "stdlib/std/allocator.sun", "HeapAllocator");
   // The loop variable is declared in the document itself
   auto item = definition("item;");
   ASSERT_TRUE(item);

@@ -1,0 +1,141 @@
+/** Owned, coalescing cross-thread notifications for Poller and EventLoop. */
+public module std.io {
+  /** Configure a new pipe endpoint before publishing it to another thread. */
+  function configure_wakeup_fd(fd: i32) SystemResult<void> {
+    try set_fd_nonblocking(fd, true);
+    try set_fd_close_on_exec(fd, true);
+    return SystemResult.Ok;
+  }
+
+  /** Shared pipe ownership; the Shared mutex serializes notification and draining. */
+  class WakeupState {
+    var reader: i64 = 0;
+    var writer: i64 = 0;
+    var pending: bool = false;
+
+    /** Create nonblocking, close-on-exec endpoints, cleaning up partial setup on failure. */
+    init() SystemResult<void> {
+      var fds: array<i32, 2> = [0, 0];
+      if (unsafe { c_pipe(_address_of<i32>(fds[0])); } < 0) {
+        return SystemResult.Error(Error(errno(), "failed to create wakeup pipe"));
+      }
+      this.reader = _convert<i64>(fds[0]) + 1;
+      this.writer = _convert<i64>(fds[1]) + 1;
+      for (var i: i64 = 0; i < 2; i = i + 1) {
+        match configure_wakeup_fd(fds[i]) {
+          SystemResult.Ok => {},
+          SystemResult.Error(error) => {
+            this.close();
+            return SystemResult.Error(error);
+          }
+        };
+      }
+    }
+
+    /** Close both endpoints when the last shared owner disappears. */
+    deinit() {
+      this.close();
+    }
+
+    /** Release any endpoints acquired during a partial or complete construction. */
+    method close() void {
+      if (this.writer != 0) {
+        unsafe { c_close(_convert<i32>(this.writer - 1)); };
+        this.writer = 0;
+      }
+      if (this.reader != 0) {
+        unsafe { c_close(_convert<i32>(this.reader - 1)); };
+        this.reader = 0;
+      }
+    }
+  }
+
+  /**
+   * Share a coalescing wakeup source by explicitly calling clone(). Construction
+   * allocates through the caller's allocator; successful notify/drain do not allocate.
+   * Each clone keeps both pipe endpoints alive. Register fd() for read readiness
+   * and remove it before dropping the last clone. Never close or read fd() directly.
+   * Operations on separate clones may run concurrently; they briefly take a mutex
+   * and are not signal-handler-safe. No notification counts or ordering are promised.
+   */
+  public class Wakeup {
+    var shared: Shared<WakeupState>;
+
+    /** Allocate shared ownership after acquiring both endpoints. */
+    init(alloc: const ref HeapAllocator) SystemResult<void> {
+      var state = try WakeupState();
+      this.shared = Shared<WakeupState>(alloc, state);
+    }
+
+    /** Reuse existing ownership; only library code can name the payload type. */
+    init(shared: Shared<WakeupState>) {
+      this.shared = shared;
+    }
+
+    /** Add an owner without allocating or duplicating descriptors. */
+    public const method clone() Wakeup {
+      return Wakeup(this.shared.clone());
+    }
+
+    /** Borrow the stable read descriptor for readiness registration. */
+    public const method fd() i32 {
+      var guard = this.shared.lock();
+      return _convert<i32>(guard.get().reader - 1);
+    }
+
+    /**
+     * Ensure read readiness. Repeated notifications coalesce until drain.
+     * A full pipe already guarantees readiness and counts as success.
+     */
+    public const method notify() SystemResult<void> {
+      var guard = this.shared.lock();
+      var state = guard.get();
+      if (state.pending) {
+        return SystemResult.Ok;
+      }
+      var byte: u8 = 1;
+      while (true) {
+        var count = unsafe { c_write(_convert<i32>(state.writer - 1), _address_of<u8>(byte), 1); };
+        if (count == 1) {
+          state.pending = true;
+          return SystemResult.Ok;
+        }
+        var code = errno();
+        if (count < 0 and code == WOULD_BLOCK_ERRNO) {
+          state.pending = true;
+          return SystemResult.Ok;
+        }
+        if (count >= 0 or code != INTERRUPTED_ERRNO) {
+          return SystemResult.Error(Error(code, "failed to notify wakeup"));
+        }
+      }
+      return SystemResult.Ok;
+    }
+
+    /**
+     * Consume pending notifications. A concurrent notify either precedes this
+     * drain or leaves readiness for the next wait; resetting cannot erase it.
+     * Check the application's synchronized work queue after draining.
+     */
+    public const method drain() SystemResult<void> {
+      var guard = this.shared.lock();
+      var state = guard.get();
+      var byte: u8 = 0;
+      while (true) {
+        var count = unsafe { c_read(_convert<i32>(state.reader - 1), _address_of<u8>(byte), 1); };
+        if (count > 0) {
+          continue;
+        }
+        var code = errno();
+        if (count < 0 and code == WOULD_BLOCK_ERRNO) {
+          state.pending = false;
+          return SystemResult.Ok;
+        }
+        if (count >= 0 or code != INTERRUPTED_ERRNO) {
+          return SystemResult.Error(Error(code, "failed to drain wakeup"));
+        }
+      }
+      return SystemResult.Ok;
+    }
+  }
+}

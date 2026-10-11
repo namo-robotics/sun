@@ -91,7 +91,7 @@ manifest {
   does, at compile time — the block just says which entries belong to builds
   for that OS. A block's `source_files` are placed **before** the shared list, since
   per-OS files typically define the primitives shared code consumes; this is
-  how the standard library carries `target_linux.sun` and `target_darwin.sun`
+  how the standard library carries `std/target_linux.sun` and `std/target_darwin.sun`
   in one manifest.
 
 All fields are optional (entries are newline-separated; a trailing `,` or `;`
@@ -426,56 +426,74 @@ spelled under it, so two bundles that differ in any input never collide.
 
 ### The Standard Library
 
-Sun's standard library is built from `stdlib/stdlib.sun`:
+Sun's standard library is built from `stdlib/stdlib.sun`. Its manifest lists
+sources and tests relative to that entrypoint, including the files selected for
+each target OS.
 
-```sun filename="stdlib/stdlib.sun"
-manifest {
-    source_files: [
-        "allocator.sun", "unique.sun", "sys.sun", "option.sun", "math.sun",
-        "byte_order.sun", "iterator.sun", "slice.sun",
-        "contiguous_buffer.sun", "vec.sun", "matrix.sun", "string.sun",
-        "errors.sun", "print.sun", "map.sun", "linked_list.sun", "queue.sun",
-        "thread.sun", "test.sun", "shared.sun", "io.sun", "env.sun",
-        "time.sun", "process.sun", "networking.sun", "http.sun",
-        "proto_wire.sun", "json.sun", "bigint.sun"
-    ],
-    target: {
-        macos: { source_files: [ "target_darwin.sun" ] }
-        linux: { source_files: [ "target_linux.sun" ] }
-    }
-}
+The source directories follow module names: `std` definitions live in
+`stdlib/std/`, and `std.io` definitions live in `stdlib/std/io/`. Tests sit beside
+the module they exercise; integration tests spanning modules stay in `std/`.
+Platform-specific definitions live in each module's `target_linux.sun` and
+`target_darwin.sun`. Generated process bindings and their input header live in
+`std/process/bindings/`.
+
+```text
+stdlib/
+  stdlib.sun
+  std/
+    allocator.sun
+    networking.sun
+    map.sun
+    map_tests.sun
+    byte_order/
+    env/
+    io/
+    process/
+    signal/
+    terminal/
+    test/
+    thread/
+    time/
 ```
+
+Paths below are relative to `stdlib/`:
 
 | Module | Contents |
 |--------|----------|
-| `allocator.sun` | Memory allocators (`HeapAllocator`, `IAllocator` interface) |
-| `bigint.sun` | Arbitrary-precision `BigUint` |
-| `byte_order.sun` | `std.byte_order` — endianness conversions |
-| `env.sun` | `std.env` — environment variables, working directory, `args` |
-| `event_loop.sun` | `std.io` — epoll/kqueue readiness with `EventLoop` |
-| `errors.sun` | Standard error types (`EmptyError`, `NotFoundError`, etc.) |
-| `http.sun` | HTTP/1.1 server (`HttpServer`); the client is in `tls.moon` |
-| `io.sun` | `std.io` — files, directories, `Poller` |
-| `iterator.sun` | Iteration protocol (`IIterator<T, Container>`, `IIterable<T, Self>`) |
-| `json.sun` | `Json` parsing and serialization |
-| `linked_list.sun` | Doubly-linked list `LinkedList<T>` |
-| `map.sun` | Generic hash map `Map<K, V>` |
-| `matrix.sun` | `Matrix<T>` and `MatrixView<T>` N-dimensional arrays |
-| `networking.sun` | TCP sockets (`TcpStream`, `TcpListener`) and DNS |
-| `option.sun` | `Option<T>` and `_Result<T, E>` payload enums |
-| `print.sun` | Overloaded `print`/`println`/`eprint`/`eprintln` |
-| `process.sun`, `process_inspection.sun` | `std.process` — `Command`, signals, raw fork/exec, process snapshots and owned handles |
-| `proto_wire.sun` | Protobuf wire format |
-| `queue.sun` | FIFO `Queue<T>` built on `LinkedList<T>` |
-| `shared.sun` | `Shared<T>` reference-counted handle with `Mutex`-guarded access |
-| `string.sun` | `String` and `StringView` classes |
-| `sys.sun` | The stdlib's private `extern "C"` declarations |
-| `target_linux.sun` / `target_darwin.sun` | Per-OS constants (errno, socket options) |
-| `test.sun` | `std.test` — assertions and the `test_function` runner |
-| `thread.sun` | `std.thread` — `spawn`, `Thread<T>`, `Mutex` |
-| `time.sun` | `std.time` — `Duration`, `Instant`, `DateTime` |
-| `unique.sun` | `Unique<T>` smart pointer with automatic cleanup |
-| `vec.sun` | Generic growable array `Vec<T>` |
+| `std/allocator.sun` | Memory allocators (`HeapAllocator`, `IAllocator` interface) |
+| `std/bigint.sun` | Arbitrary-precision `BigUint` |
+| `std/byte_order/byte_order.sun` | `std.byte_order` — endianness conversions |
+| `std/env/env.sun` | `std.env` — environment variables, working directory, `args` |
+| `std/io/event_loop.sun` | `std.io` — epoll/kqueue readiness with `EventLoop` |
+| `std/errors.sun` | Standard error types (`EmptyError`, `NotFoundError`, etc.) |
+| `std/http.sun` | HTTP/1.1 server (`HttpServer`); the client is in `tls.moon` |
+| `std/io/io.sun` | `std.io` — files, directories, `Poller` |
+| `std/iterator.sun` | Iteration protocol (`IIterator<T, Container>`, `IIterable<T, Self>`) |
+| `std/json.sun` | `Json` parsing and serialization |
+| `std/linked_list.sun` | Doubly-linked list `LinkedList<T>` |
+| `std/map.sun` | Generic hash map `Map<K, V>` |
+| `std/matrix.sun` | `Matrix<T>` and `MatrixView<T>` N-dimensional arrays |
+| `std/networking.sun` | TCP sockets (`TcpStream`, `TcpListener`) and DNS |
+| `std/option.sun` | `Option<T>` and `_Result<T, E>` payload enums |
+| `std/print.sun` | Overloaded `print`/`println`/`eprint`/`eprintln` |
+| `std/process/process.sun`, `std/process/process_inspection.sun` | `std.process` — `Command`, signals, raw fork/exec, process snapshots and owned handles |
+| `std/proto_wire.sun` | Protobuf wire format |
+| `std/queue.sun` | FIFO `Queue<T>` built on `LinkedList<T>` |
+| `std/socket_config.sun` | Checked descriptor and socket configuration |
+| `std/io/metadata.sun` | Typed metadata for open files |
+| `std/thread/cpu.sun` | Online logical CPU count |
+| `std/io/wakeup.sun` | `std.io.Wakeup` — owned cross-thread readiness notifications |
+| `std/shared.sun` | `Shared<T>` reference-counted handle with `Mutex`-guarded access |
+| `std/string.sun` | `String` and `StringView` classes |
+| `std/sys.sun` | The stdlib's private `extern "C"` declarations |
+| `std/target_linux.sun` / `std/target_darwin.sun` | Per-OS constants (errno, socket options) |
+| `std/signal/signal.sun` | `std.signal` — scoped termination notifications and explicit SIGPIPE policy |
+| `std/terminal/terminal.sun` | `std.terminal` — terminal modes, size queries, and key reads |
+| `std/test/test.sun` | `std.test` — assertions and the `test_function` runner |
+| `std/thread/thread.sun` | `std.thread` — `spawn`, `Thread<T>`, `Mutex` |
+| `std/time/time.sun` | `std.time` — `Duration`, `Instant`, `DateTime` |
+| `std/unique.sun` | `Unique<T>` smart pointer with automatic cleanup |
+| `std/vec.sun` | Generic growable array `Vec<T>` |
 
 When building from source, the stdlib is automatically compiled:
 

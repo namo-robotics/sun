@@ -1,73 +1,93 @@
 {
-    "root": true,
-    "sun_path": {
+  "root": true,
+  "sun_path": {
+    "target": {
+      "x86_64-linux-gnu": ["build"],
+      "x86_64-linux-musl": ["build/x86_64-linux-musl"],
+      "arm64-apple-darwin": ["build"],
+      "x86_64-apple-darwin": ["build/x86_64-apple-darwin"],
+      "aarch64-linux-gnu": ["build/aarch64-linux-gnu"],
+      "aarch64-linux-musl": ["build/aarch64-linux-musl"]
+    }
+  },
+  "path_variables": {
+    "SUN_DARWIN_PROCESS_BINDINGS": {
+      "default": "stdlib/std/process/bindings/process_darwin_arm64.sun",
+      "target": {
+        "arm64-apple-darwin": "stdlib/std/process/bindings/process_darwin_arm64.sun",
+        "x86_64-apple-darwin": "stdlib/std/process/bindings/process_darwin_x86_64.sun"
+      }
+    },
+    "SUN_BUILD_DIR": {
+      "target": {
+        "x86_64-linux-gnu": "build",
+        "x86_64-linux-musl": "build/x86_64-linux-musl",
+        "arm64-apple-darwin": "build",
+        "x86_64-apple-darwin": "build/x86_64-apple-darwin",
+        "aarch64-linux-gnu": "build/aarch64-linux-gnu",
+        "aarch64-linux-musl": "build/aarch64-linux-musl"
+      }
+    },
+    "SUN_CUDA_NATIVE": "build/cuda",
+    "OPENSSL_LIBS_LINUX": {
+      "default": "third_party/openssl/x86_64-linux-musl",
+      "target": {
+        "aarch64-linux-gnu": "third_party/openssl/aarch64-linux-musl",
+        "aarch64-linux-musl": "third_party/openssl/aarch64-linux-musl"
+      }
+    },
+    "OPENSSL_LIBS_MACOS": "third_party/openssl/arm64-apple-darwin",
+    "SUN_CUDA_STDLIB": {
+      "default": "build",
+      "target": {
+        "aarch64-linux-gnu": "build/aarch64-linux-gnu"
+      }
+    }
+  },
+  "entrypoints": [
+    {
+      "path": "stdlib/stdlib.sun",
+      "type": "library",
+      "output_name": "$SUN_BUILD_DIR/stdlib",
+      "test_binary_name": "$SUN_BUILD_DIR/stdlib_tests_test"
+    },
+    {
+      "path": "tls/tls.sun",
+      "type": "library",
+      "output_name": "$SUN_BUILD_DIR/tls",
+      "test_binary_name": "$SUN_BUILD_DIR/tls_tests_test"
+    },
+    {
+      "path": "cuda/cuda.sun",
+      "type": "library",
+      "output_name": "$SUN_BUILD_DIR/cuda",
+      "enabled": {
+        "default": false,
         "target": {
-            "x86_64-linux-gnu": ["build"],
-            "x86_64-linux-musl": ["build/x86_64-linux-musl"],
-            "arm64-apple-darwin": ["build"],
-            "x86_64-apple-darwin": ["build/x86_64-apple-darwin"],
-            "aarch64-linux-gnu": ["build/aarch64-linux-gnu"],
-            "aarch64-linux-musl": ["build/aarch64-linux-musl"]
+          "x86_64-linux-gnu": false,
+          "aarch64-linux-gnu": false
         }
-    },
-    "path_variables": {
-        "SUN_DARWIN_PROCESS_BINDINGS": {
-            "default": "stdlib/bindings/process_darwin_arm64.sun",
-            "target": {
-                "arm64-apple-darwin": "stdlib/bindings/process_darwin_arm64.sun",
-                "x86_64-apple-darwin": "stdlib/bindings/process_darwin_x86_64.sun"
-            }
+      }
+    }
+  ],
+  "c_bindings": {
+    "darwin_process_abi": {
+      "target": {
+        "arm64-apple-darwin": {
+          "header": "$SDKROOT/usr/include/sys/proc_info.h",
+          "output": "$SUN_DARWIN_PROCESS_BINDINGS",
+          "allow": ["proc_bsdinfo", "proc_taskinfo"],
+          "clang_args": ["-isysroot", "$SDKROOT"],
+          "skip_if_unavailable": true
         },
-        "SUN_BUILD_DIR": {
-            "target": {
-                "x86_64-linux-gnu": "build",
-                "x86_64-linux-musl": "build/x86_64-linux-musl",
-                "arm64-apple-darwin": "build",
-                "x86_64-apple-darwin": "build/x86_64-apple-darwin",
-                "aarch64-linux-gnu": "build/aarch64-linux-gnu",
-                "aarch64-linux-musl": "build/aarch64-linux-musl"
-            }
-        },
-        "SUN_CUDA_NATIVE": "build/cuda",
-        "OPENSSL_LIBS_LINUX": {
-            "default": "third_party/openssl/x86_64-linux-musl",
-            "target": {
-                "aarch64-linux-gnu": "third_party/openssl/aarch64-linux-musl",
-                "aarch64-linux-musl": "third_party/openssl/aarch64-linux-musl"
-            }
-        },
-        "OPENSSL_LIBS_MACOS": "third_party/openssl/arm64-apple-darwin",
-        "SUN_CUDA_STDLIB": {
-            "default": "build",
-            "target": {
-                "aarch64-linux-gnu": "build/aarch64-linux-gnu"
-            }
+        "x86_64-apple-darwin": {
+          "header": "$SDKROOT/usr/include/sys/proc_info.h",
+          "output": "$SUN_DARWIN_PROCESS_BINDINGS",
+          "allow": ["proc_bsdinfo", "proc_taskinfo"],
+          "clang_args": ["-isysroot", "$SDKROOT"],
+          "skip_if_unavailable": true
         }
-    },
-    "entrypoints": [
-        {
-            "path": "stdlib/stdlib.sun",
-            "type": "library",
-            "output_name": "$SUN_BUILD_DIR/stdlib",
-            "test_binary_name": "$SUN_BUILD_DIR/stdlib_tests_test"
-        },
-        {
-            "path": "tls/tls.sun",
-            "type": "library",
-            "output_name": "$SUN_BUILD_DIR/tls",
-            "test_binary_name": "$SUN_BUILD_DIR/tls_tests_test"
-        },
-        {
-            "path": "cuda/cuda.sun",
-            "type": "library",
-            "output_name": "$SUN_BUILD_DIR/cuda",
-            "enabled": {
-                "default": false,
-                "target": {
-                    "x86_64-linux-gnu": false,
-                    "aarch64-linux-gnu": false
-                }
-            }
-        }
-    ]
+      }
+    }
+  }
 }

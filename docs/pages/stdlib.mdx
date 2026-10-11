@@ -406,7 +406,7 @@ See [Matrices](/matrices) for detailed documentation.
 
 ## Threads
 
-`stdlib/thread.sun` (module `std.thread`). `spawn` starts an OS thread and
+`stdlib/std/thread/thread.sun` (module `std.thread`). `spawn` starts an OS thread and
 hands back a handle that joins when it is dropped, so a thread never outlives
 the scope that started it.
 
@@ -424,6 +424,13 @@ var answer = t.join();   // 42
 | `Thread<T>` method | Signature | Description |
 |--------|-----------|-------------|
 | `join()` | `() T` | Block until the thread finishes, and take its result |
+
+### Online CPU count
+
+`std.thread.online_cpu_count()` returns `SystemResult<i64>` with the number of
+online logical CPUs on each call. It does not report process affinity, container
+quotas, or a recommended worker count. Failure is explicit; callers choose their
+own fallback if needed.
 
 ### Atomic Boolean
 
@@ -465,7 +472,7 @@ See [Threads](/threads) for the whole picture.
 
 ## File I/O
 
-`stdlib/io.sun` (module `std.io`). Every path is taken two ways: as a
+`stdlib/std/io/io.sun` (module `std.io`). Every path is taken two ways: as a
 `static_ptr<u8>` — what a string literal is — and as a `ref String` for a path
 put together at runtime. Fallible calls return `SystemResult<T>` with an owned
 `Error`. The examples use `try` inside a function returning a compatible result.
@@ -579,10 +586,23 @@ all four combinations.
 buffered reader would swallow bytes a child process spawned later expects to
 find on the descriptor.
 
-There is no `stat`. `struct stat` has a different field order and padding on
-x86-64 and aarch64, and the stdlib is compiled from one source for both, so the
-questions people actually ask are answered with `access`, `opendir` and `lseek`
-instead.
+### Open-file metadata
+
+`File.metadata()` returns `SystemResult<FileMetadata>` for the same open object
+that subsequent reads use, including after rename or unlink. It does not resolve
+the path again or change the seek position. A closed file returns an error.
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `kind` | `FileKind` | Regular file, directory, symlink, or another native file kind |
+| `size` | `i64` | Byte size; interpretation for nonregular files is OS-specific |
+| `modified.seconds` | `i64` | Unix seconds, including negative values before the epoch |
+| `modified.nanoseconds` | `i64` | Subsecond remainder, from zero through 999,999,999 |
+
+Metadata is a snapshot, not a lock against concurrent writes. Filesystem timestamp
+precision varies. Normally opened symlinks describe their targets. The private
+stdlib boundary handles Linux x86-64/AArch64 and macOS Intel/Apple Silicon stat
+layouts; applications need neither raw pointers nor native declarations.
 
 ### Bounded file lines
 
@@ -679,11 +699,18 @@ roll back a partial filter change, the loop closes and reports that failure.
 Readiness is level-triggered: data remains ready until consumed. An integer
 wait timeout of zero polls, `-1` waits indefinitely, and other negative values
 are rejected. Duration waits round up fractional milliseconds. Signals return
-an interrupted system error. Each wait replaces the previous batch, including
-on failure. `event_at()` checks bounds and returns an independent snapshot without
-allocating. macOS may return separate read and write events for one descriptor;
+an interrupted system error recognized by `is_interrupted(error.code())` rather
+than an OS-specific constant. A timeout returns zero. Each wait replaces the
+previous batch, including on failure. `event_at()` checks bounds and returns an
+independent snapshot without allocating. macOS may return separate read and write events for one descriptor;
 event order is unspecified. A full batch does not discard remaining readiness.
-Use a loop from one thread at a time.
+Use a loop from one thread at a time. Read interest reports peer write-half-close
+through `is_hup()` on both backends; drain buffered input before acting on EOF.
+
+Modifying or removing a registration invalidates only its cached events, even if
+its descriptor and application token are reused. `event_at()` returns
+`AccessResult.OutOfBounds` for these stale slots; skip them and continue dispatch.
+Already returned snapshots remain historical values after registration changes.
 
 `Poller` wraps portable `poll(2)`. Removal preserves the remaining registration
 order and readiness flags in linear time. Its integer timeout overload keeps descriptors
@@ -738,6 +765,27 @@ An `Event` exposes `fd()` and the raw mask through `events()`. Its
 `is_invalid()` helpers test the corresponding bit without exposing platform
 details.
 
+### Cross-thread wakeups
+
+`std.io.Wakeup(allocator)` returns `SystemResult<Wakeup>` owning a nonblocking,
+close-on-exec pipe on either OS. Explicit `clone()` calls share ownership without
+duplicating descriptors. Every clone keeps both endpoints alive. Register `fd()`
+for read readiness with `Poller` or `EventLoop`, then call `drain()` before
+inspecting the application's synchronized work queue.
+
+`notify()` and `drain()` return `SystemResult<void>`. Repeated notifications
+coalesce, including saturation; notification counts and ordering are not
+preserved. A mutex orders notification against draining, so a concurrent notify
+is either consumed by that drain or leaves readiness for a future wait. Operations
+on separate clones may run concurrently. They never wait for pipe capacity, but
+may briefly wait for the mutex, and are not signal-handler-safe.
+
+Construction uses the supplied allocator; cloning and successful notify/drain
+operations do not allocate. Errors own diagnostic messages. Remove the
+registration before dropping the last clone. Do not close, read, or change flags
+on the borrowed descriptor. Pipe flag setup is not atomic with a concurrent
+fork/exec; coordinate process spawning during creation.
+
 ## Signal events
 
 `std.signal.SignalSubscription` explicitly installs handlers for `SIGINT` and
@@ -764,7 +812,7 @@ function wait_for_shutdown() SystemResult<void> {
         match loop.wait(-1) {
             SystemResult.Ok(count) => {},
             SystemResult.Error(error) => {
-                if (error.code() != 4) { return SystemResult.Error(error); }
+                if (not is_interrupted(error.code())) { return SystemResult.Error(error); }
                 // EINTR: the signal may have interrupted the waiting thread.
             }
         };
@@ -797,7 +845,7 @@ unblocks them. No work is scheduled implicitly, and no thread is created.
 
 ## Terminal
 
-`stdlib/terminal.sun` (module `std.terminal`). Scoped raw and cbreak modes,
+`stdlib/std/terminal/terminal.sun` (module `std.terminal`). Scoped raw and cbreak modes,
 terminal size queries and single-key reads with a timeout, on Linux and macOS.
 Nothing here needs `termios` or `ioctl` bound by hand: the struct mirror and
 the per-OS flag values live in `target_linux.sun` / `target_darwin.sun`.
@@ -942,7 +990,7 @@ function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
 
 ## Processes
 
-`stdlib/process.sun` (module `std.process`). `Command` covers running a program;
+`stdlib/std/process/process.sun` (module `std.process`). `Command` covers running a program;
 the raw POSIX calls are there for programs that drive the fork themselves.
 Fallible operations return `SystemResult<T>` with an owned `Error`; `try`
 propagates its code and message to a compatible caller result.
@@ -1084,7 +1132,7 @@ written to that rule; hand-rolled forks have to be too.
 
 ## Time
 
-`stdlib/time.sun` (module `std.time`).
+`stdlib/std/time/time.sun` (module `std.time`).
 
 ```sun
 using std.time;
@@ -1163,14 +1211,56 @@ Resolution returns `SystemResult.Error` when the name does not resolve or has
 no IPv4 address. Socket failures carry the positive libc `errno` value in `Error.code()`;
 they do not use `-1` as an error code.
 
-For a single-threaded event loop, connect a stream or bind a listener first,
-then call `set_nonblocking(true)` and register `get_fd()` with a `Poller`. Wait
-with a `Duration`, handle each returned `Event`, and keep reading, writing, or
-accepting until an operation returns `SystemResult.Error(e)` for which
-`is_would_block(e.code())` is true. An accepted `TcpStream` has its own
-descriptor, so configure and register it separately. Calling
-`set_nonblocking(false)` restores blocking behavior without changing unrelated
-descriptor flags.
+### Nonblocking TCP operations
+
+Connect a stream or bind a listener, then call `set_nonblocking(true)` and
+register `get_fd()` with `Poller` or `EventLoop`. Socket operations and
+configuration require external synchronization when sharing a socket across
+threads. `set_nonblocking(false)` restores blocking behavior without changing
+unrelated descriptor flags.
+
+| Operation | Result |
+|-----------|--------|
+| `TcpListener.try_accept()` | `AcceptResult.Accepted(TcpStream)`, `WouldBlock`, or `Error(Error)` |
+| `TcpStream.try_read(MutableByteSlice)` | `std.io.ReadResult.Data(count)`, `WouldBlock`, `Eof`, or `Error(Error)` |
+| `TcpStream.try_write(ByteSlice)` | `std.io.WriteResult.Complete(count)`, `WouldBlock(count)`, or `Error(count, error)` |
+
+Set the listener nonblocking before calling `try_accept()` to avoid waiting.
+Accepted streams are always nonblocking and close-on-exec, regardless of native
+inheritance rules. Configuration failure closes the accepted descriptor. Flag
+setup uses checked calls and is not atomic with concurrent fork/exec on either
+platform; coordinate process spawning during descriptor creation.
+
+An empty read slice returns `Data(0)`, not EOF. Writes continue until complete,
+blocked, or failed; resume after the reported prefix instead of resending it.
+All three operations retry interruptions. Successful operations allocate no
+storage; errors own diagnostic messages. The older `accept`, `recv`, and `send`
+methods still report would-block through `SystemResult.Error`, recognized by
+`is_would_block(error.code())`.
+
+### Socket configuration and broken pipes
+
+`TcpListener.bind(address, port, reuse_address, reuse_port)` applies checked
+options before binding. The listener must be unopened. Configuration or bind
+failure closes the new descriptor. Address and port reuse do not promise the
+same binding rules or connection distribution on Linux and macOS. Unsupported
+options retain the native error. `enable_reuse_addr()` now returns a checked
+`SystemResult<void>` and must be handled.
+
+`TcpStream.set_nodelay(bool)` configures TCP_NODELAY. Streams and listeners expose
+`set_close_on_exec(bool)`. For native integrations, `set_fd_close_on_exec`,
+`set_tcp_nodelay`, `set_socket_reuse_address`, and `set_socket_reuse_port` accept
+borrowed descriptors and return checked results without taking ownership.
+
+Sun TCP sends use Linux `MSG_NOSIGNAL`; macOS TCP sockets use checked
+`SO_NOSIGPIPE`, which also protects native-library writes on those sockets.
+An arbitrary native TLS library may use plain writes on Linux. Servers can
+explicitly call `std.signal.ignore_broken_pipe()` during startup before creating
+threads to ignore SIGPIPE process-wide, including native writes. This checked
+operation replaces the previous disposition permanently and persists across
+exec; it is never installed implicitly. Always handle the resulting I/O errors.
+SIGINT/SIGTERM subscriptions remain independent. The bundled TLS server's custom
+socket BIO already uses per-send protection on Linux.
 
 ### IPv4 addresses
 
@@ -1456,7 +1546,7 @@ check (see [Intrinsics](/intrinsics#_convertt)).
 ## Byte order
 
 A binary wire format fixes the order the bytes of a number appear in, and that
-order is often not the one the machine uses. `stdlib/byte_order.sun` (module
+order is often not the one the machine uses. `stdlib/std/byte_order/byte_order.sun` (module
 `std.byte_order`) converts between the two, for 16-, 32- and 64-bit unsigned
 integers.
 

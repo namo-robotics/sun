@@ -1,0 +1,319 @@
+// stdlib/std/http.sun - Minimal HTTP/1.1 server built on TcpListener/TcpStream
+//
+// The server owns the accept loop and all HTTP framing; user code supplies
+// a handler lambda that inspects the request and fills in the response.
+//
+// Usage:
+//   using std;
+//
+//   function main() i32 {
+//       var alloc = make_heap_allocator();
+//       var server = HttpServer(alloc);
+//       server.bind(8080);
+//       server.serve((req: ref HttpRequest, resp: ref HttpResponse) => void {
+//           if (req.path.equals_literal("/")) {
+//               resp.set_body("<h1>Hello from Sun!</h1>");
+//           } else {
+//               resp.set_status(404);
+//               resp.set_body("<h1>Not Found</h1>");
+//           }
+//       });
+//       return 0;
+//   }
+
+/** Provides the standard-library declarations implemented in this source file. */
+public module std {
+  // Cap on total request header size
+  public const HTTP_MAX_REQUEST: i64 = 65536;
+
+  // -------------------------------------------------------------------
+  // HttpRequest - parsed request handed to the handler
+  // -------------------------------------------------------------------
+
+  /** Owns the method, path, and headers parsed from an HTTP request. */
+  public class HttpRequest {
+    public var method: String;  // "GET", "POST", ...
+    public var path: String;  // "/index.html"
+    public var headers: String;  // raw header block after the request line
+
+    /**
+     * Build an empty request. The parser fills in the fields.
+     */
+    init(alloc: ref HeapAllocator) {
+      this.method = String(alloc, "");
+      this.path = String(alloc, "");
+      this.headers = String(alloc, "");
+    }
+  }
+
+  // -------------------------------------------------------------------
+  // HttpResponse - filled in by the handler, serialized by the server
+  // -------------------------------------------------------------------
+
+  /** Owns the status, content type, and body to send in an HTTP response. */
+  public class HttpResponse {
+    public var status: i32 = 200;
+    public var content_type: String;
+    public var body: String;
+
+    /**
+     * Build a 200 response with an empty HTML body.
+     */
+    init(alloc: ref HeapAllocator) {
+      this.content_type = String(alloc, "text/html");
+      this.body = String(alloc, "");
+    }
+
+    /**
+     * Set the status code sent on the response line.
+     */
+    public method set_status(code: i32) void {
+      this.status = code;
+    }
+
+    /**
+     * Replace the Content-Type header value.
+     */
+    public method set_content_type(ct: static_ptr<u8>) void {
+      this.content_type.clear();
+      this.content_type.append(ct);
+    }
+
+    /**
+     * Replace the body with a literal.
+     */
+    public method set_body(content: static_ptr<u8>) void {
+      this.body.clear();
+      this.body.append(content);
+    }
+
+    /**
+     * Replace the body with text built at runtime. The String is copied in.
+     */
+    public method set_body_string(content: const ref String) void {
+      this.body.clear();
+      this.body.append(content);
+    }
+  }
+
+  // -------------------------------------------------------------------
+  // Framing helpers
+  // -------------------------------------------------------------------
+
+  /** Appends the line ending used by HTTP headers to a string. */
+  public function append_crlf(out: ref String) void {
+    out.append("\r\n");
+  }
+
+  /**
+   * Index of the CRLFCRLF header terminator, or -1 if not yet received
+   */
+  public function find_header_end(s: const ref String) i64 {
+    return match s.find("\r\n\r\n") {
+      Option.Some(i) => i,
+      Option.None => -1
+    };
+  }
+
+  /**
+   * Parse "METHOD path HTTP/1.1" request line and raw header block
+   */
+  public function parse_http_request(raw: const ref String, req: ref HttpRequest) void {
+    var n: i64 = raw.length();
+    var i: i64 = 0;
+
+    while (i < n) {
+      var c: u8 = unsafe { raw.unsafe_at(i); };
+      if (c == b' ' or c == b'\r') {
+        break;
+      }
+      req.method.append_char(c);
+      i = i + 1;
+    }
+    if (i < n and unsafe { raw.unsafe_at(i); } == b' ') {
+      i = i + 1;
+    }
+    while (i < n) {
+      var c: u8 = unsafe { raw.unsafe_at(i); };
+      if (c == b' ' or c == b'\r') {
+        break;
+      }
+      req.path.append_char(c);
+      i = i + 1;
+    }
+    while (i < n) {
+      if (unsafe { raw.unsafe_at(i); } == b'\n') {
+        break;
+      }
+      i = i + 1;
+    }
+    i = i + 1;
+
+    var end: i64 = find_header_end(raw);
+    if (end < 0) {
+      end = n;
+    }
+    while (i < end) {
+      req.headers.append_char(unsafe { raw.unsafe_at(i); });
+      i = i + 1;
+    }
+  }
+
+  /**
+   * Append the standard reason phrase for a status code, e.g. "OK" for 200.
+   * Unknown codes get a generic phrase for their class.
+   */
+  public function append_reason_phrase(out: ref String, code: i32) void {
+    out.append(
+      match code {
+        200 => "OK",
+        201 => "Created",
+        204 => "No Content",
+        301 => "Moved Permanently",
+        302 => "Found",
+        400 => "Bad Request",
+        403 => "Forbidden",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        500 => "Internal Server Error",
+        _ => "Status"
+      }
+    );
+  }
+
+  // -------------------------------------------------------------------
+  // HttpServer - sequential accept loop with a handler lambda
+  // -------------------------------------------------------------------
+
+  /** Accepts TCP connections and serves HTTP requests using a caller-provided handler. */
+  public class HttpServer {
+    var listener: TcpListener = TcpListener();
+    var alloc: HeapAllocator;
+    var running: bool = false;
+
+    /**
+     * Build a server with no socket bound yet.
+     */
+    init(allocator: ref HeapAllocator) {
+      this.alloc = allocator.copy();
+    }
+
+    /**
+     * Close the listening socket.
+     */
+    deinit() {
+      this.listener.close();
+    }
+
+    /**
+     * Bind to port on all interfaces (0.0.0.0) and start listening
+     */
+    public method bind(port: i32) SystemResult<void> {
+      try this.listener.bind_port(port);
+      try this.listener.listen(128);
+      return SystemResult.Ok;
+    }
+
+    /**
+     * Bind to 127.0.0.1 only
+     */
+    public method bind_loopback(port: i32) SystemResult<void> {
+      try this.listener.bind_loopback(port);
+      try this.listener.listen(128);
+      return SystemResult.Ok;
+    }
+
+    /**
+     * Ask the serve loop to finish and close the listening socket. Safe to call
+     * from a request handler.
+     */
+    public method stop() void {
+      this.running = false;
+      this.listener.close();
+    }
+
+    /**
+     * Accept and handle connections one at a time until stop() is called
+     * or the listener fails. A failed connection is dropped; the server
+     * keeps running.
+     */
+    public method serve(handler: (ref HttpRequest, ref HttpResponse) => void) void {
+      this.running = true;
+      while (this.running) {
+        match this.listener.accept() {
+          SystemResult.Ok(client) => {
+            ignore_error(this.handle_connection(client, handler));
+            client.close();
+          },
+          SystemResult.Error(_) => {
+            this.running = false;
+          }
+        };
+      }
+    }
+
+    /**
+     * Read, parse, dispatch to the handler, and send the response
+     */
+    method handle_connection(client: ref TcpStream, handler: (ref HttpRequest, ref HttpResponse) => void) SystemResult<void> {
+      var req = HttpRequest(this.alloc);
+      try this.read_request(client, req);
+
+      var resp = HttpResponse(this.alloc);
+      handler(req, resp);
+
+      try this.send_response(client, resp);
+      return SystemResult.Ok;
+    }
+
+    /**
+     * Read from the socket until the header terminator (or size cap)
+     */
+    method read_request(client: ref TcpStream, req: ref HttpRequest) SystemResult<void> {
+      var chunk = ContiguousBuffer<u8>(this.alloc, 2048);
+      var raw = String(this.alloc, "");
+      var done: bool = false;
+      while (done == false) {
+        var n: i64 = try client.recv(chunk);
+        if (n <= 0) {
+          done = true;
+        } else {
+          for (var i: i64 = 0; i < n; i = i + 1) {
+            raw.append_char(unsafe { chunk.get_unchecked(i); });
+          }
+          if (find_header_end(raw) >= 0) {
+            done = true;
+          }
+          if (raw.length() > HTTP_MAX_REQUEST) {
+            done = true;
+          }
+        }
+      }
+      parse_http_request(raw, req);
+      return SystemResult.Ok;
+    }
+
+    /**
+     * Serialize status line, headers, and body
+     */
+    public method send_response(client: ref TcpStream, resp: ref HttpResponse) SystemResult<void> {
+      var out = String(this.alloc, "HTTP/1.1 ");
+      out.append(resp.status);
+      out.append_char(b' ');
+      append_reason_phrase(out, resp.status);
+      append_crlf(out);
+      out.append("Content-Type: ");
+      out.append(resp.content_type);
+      append_crlf(out);
+      out.append("Content-Length: ");
+      out.append(resp.body.length());
+      append_crlf(out);
+      out.append("Connection: close");
+      append_crlf(out);
+      append_crlf(out);
+      out.append(resp.body);
+      try client.send_string(out);
+      return SystemResult.Ok;
+    }
+  }
+}  // module std

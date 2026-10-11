@@ -1,0 +1,328 @@
+// stdlib/std/vec.sun - Dynamic growable array
+//
+// Vec<T> is a generic growable array backed by contiguous memory.
+// Automatically resizes when capacity is exceeded.
+// Uses HeapAllocator for memory management.
+//
+// Usage:
+//   import "stdlib/std/vec.sun";
+//   using std;
+//   
+//   var allocator = make_heap_allocator();
+//   var v = Vec<i32>(allocator);
+//   v.push(10);
+//   v.push(20);
+//   v.push(30);
+//   var val = v.get(0);      // borrows element 0 (10)
+//   v.set(1, 25);            // Update index 1 to 25
+//   var last = v.pop();      // Option.Some(30), size decreases
+//   var len = v.size();      // 2
+//
+// get()/first()/last()/v[i] and iteration borrow: the Vec keeps ownership of
+// the element. remove()/swap_remove()/pop() move an element out and shrink
+// the Vec. take() moves an element out but leaves a zeroed slot in place.
+
+// ============================================================================
+// Vec<T> - Dynamic Growable Array
+// ============================================================================
+
+/** Provides the standard-library declarations implemented in this source file. */
+public module std {
+  /** Owns a growable contiguous sequence and explicitly moves values into and out of storage. */
+  public class Vec<T> implements IIterable<ref T, Vec<T>> {
+    var data: ContiguousBuffer<T>;  // Element storage (bounds-checked, auto-freed)
+    var capacity_: i64;  // Allocated capacity
+    var size_: i64 = 0;  // Current number of elements
+
+    /**
+     * Constructor with allocator and capacity
+     */
+    init(allocator: const ref HeapAllocator, capacity: i64) {
+      this.data = ContiguousBuffer<T>(allocator, capacity);
+      this.capacity_ = capacity;
+    }
+
+    /**
+     * Destructor - drop live elements (the buffer memory itself is freed by
+     * the ContiguousBuffer/Unique field recursion)
+     */
+    deinit() {
+      this.drop_range(0, this.size_);
+    }
+
+    /**
+     * Drop elements in [from, to) in place (no-op for element types without
+     * deinit). Internal helper for deinit/clear/set.
+     */
+    method drop_range(from: i64, to: i64) void {
+      for (var i: i64 = from; i < to; i = i + 1) {
+        unsafe { _deinit<T>(_ptr_offset(this.data.raw_data(), i * _sizeof<T>())); };
+      }
+    }
+
+    // ========================================================================
+    // Core Operations
+    // ========================================================================
+
+    /**
+     * Append element to end, grows if needed
+     */
+    public method push(value: T) void {
+      if (this.size_ >= this.capacity_) {
+        this.grow();
+      }
+      unsafe { this.data.set_unchecked(this.size_, value); };
+      this.size_ = this.size_ + 1;
+    }
+
+    /**
+     * Remove and return the last element; None when empty. Ownership moves
+     * to the caller.
+     */
+    public method pop() Option<T> {
+      if (this.size_ == 0) {
+        return Option.None;
+      }
+      this.size_ = this.size_ - 1;
+      return Option.Some(unsafe { this.data.take_unchecked(this.size_); });
+    }
+
+    /**
+     * Borrow the element at index (bounds-checked against size). The Vec keeps
+     * ownership, so this hands back a reference: a copy of an element that owns
+     * heap memory would be released twice. Use remove()/swap_remove()/pop()
+     * to move one out and shrink the Vec.
+     */
+    public const method get(index: i64) AccessResult<ref T> {
+      if (index < 0) {
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
+      }
+      if (index >= this.size_) {
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
+      }
+      return AccessResult.Ok(unsafe { this.data.get_unchecked(index); });
+    }
+
+    /** Borrow an element. The caller must provide an initialized index below size(). */
+    public const unsafe method get_unchecked(index: i64) ref T {
+      return unsafe { this.data.get_unchecked(index); };
+    }
+
+    /**
+     * Set element at index (bounds-checked against size).
+     * The previous element is dropped before being overwritten.
+     */
+    public method set(index: i64, value: T) AccessResult<void> {
+      if (index < 0) {
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
+      }
+      if (index >= this.size_) {
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
+      }
+      this.drop_range(index, index + 1);
+      unsafe { this.data.set_unchecked(index, value); };
+      return AccessResult.Ok;
+    }
+
+    /** Store an element. The caller must provide a nonnegative index below size(). */
+    public unsafe method set_unchecked(index: i64, value: T) void {
+      unsafe { this.data.set_unchecked(index, value); };
+    }
+
+    /**
+     * Get current size
+     */
+    public const method size() i64 {
+      return this.size_;
+    }
+
+    /**
+     * Get current capacity
+     */
+    public const method capacity() i64 {
+      return this.capacity_;
+    }
+
+    /**
+     * Check if empty
+     */
+    public const method is_empty() bool {
+      return this.size_ == 0;
+    }
+
+    /**
+     * Reserve capacity for at least n elements (doesn't change size)
+     */
+    public method reserve(n: i64) void {
+      if (n > this.capacity_) {
+        this.data.resize_to(n);
+        this.capacity_ = n;
+      }
+    }
+
+    /**
+     * Clear all elements (doesn't deallocate). Live elements are dropped.
+     */
+    public method clear() void {
+      this.drop_range(0, this.size_);
+      this.size_ = 0;
+    }
+
+    /**
+     * Remove and return the element at index, preserving the remaining order.
+     * Throws IndexOutOfBoundsError for an invalid index. Moves the tail down
+     * and shrinks the Vec without allocating or changing its capacity.
+     */
+    public method remove(index: i64) AccessResult<T> {
+      var value = try this.extract_for_removal(index);
+      for (var i: i64 = index; i < this.size_ - 1; i = i + 1) {
+        unsafe { this.data.set_unchecked(i, unsafe { this.data.take_unchecked(i + 1); }); };
+      }
+      this.size_ = this.size_ - 1;
+      return AccessResult.Ok(value);
+    }
+
+    /**
+     * Remove and return the element at index, replacing it with the last element.
+     * Throws IndexOutOfBoundsError for an invalid index. Shrinks the Vec in
+     * constant time without allocating; the remaining order may change.
+     */
+    public method swap_remove(index: i64) AccessResult<T> {
+      var value = try this.extract_for_removal(index);
+      this.size_ = this.size_ - 1;
+      if (index < this.size_) {
+        unsafe { this.data.set_unchecked(index, unsafe { this.data.take_unchecked(this.size_); }); };
+      }
+      return AccessResult.Ok(value);
+    }
+
+    /** Replace an element and return its previous value without changing size. */
+    public method replace(index: i64, value: T) AccessResult<T> {
+      var previous = try this.extract_for_removal(index);
+      unsafe { this.data.set_unchecked(index, value); };
+      return AccessResult.Ok(previous);
+    }
+
+    /** Extract a slot that the caller must immediately replace or remove. */
+    method extract_for_removal(index: i64) AccessResult<T> {
+      if (index < 0) {
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
+      }
+      if (index >= this.size_) {
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
+      }
+      return AccessResult.Ok(unsafe { this.data.take_unchecked(index); });
+    }
+
+    /**
+     * Get raw data pointer (for interop)
+     */
+    public const method raw_data() raw_ptr<u8> {
+      return this.data.raw_data();
+    }
+
+    /**
+     * Borrow the last element; None when empty
+     */
+    public const method last() Option<ref T> {
+      if (this.size_ == 0) {
+        return Option.None;
+      }
+      return Option.Some(unsafe { this.data.get_unchecked(this.size_ - 1); });
+    }
+
+    /**
+     * Borrow the first element; None when empty
+     */
+    public const method first() Option<ref T> {
+      if (this.size_ == 0) {
+        return Option.None;
+      }
+      return Option.Some(unsafe { this.data.get_unchecked(0); });
+    }
+
+    // ========================================================================
+    // Internal Methods
+    // ========================================================================
+
+    /**
+     * Double capacity and copy elements
+     */
+    method grow() void {
+      var new_capacity: i64 = this.capacity_ * 2;
+      this.data.resize_to(new_capacity);
+      this.capacity_ = new_capacity;
+    }
+
+    // ========================================================================
+    // Indexing Support
+    // ========================================================================
+
+    /**
+     * Operator overload for indexing: v[i] calls __index__([i])
+     * Uses unchecked access for performance; use get() for bounds checking
+     */
+    public const method __index__(indices: const ref array<i64>) ref T {
+      return unsafe { this.data.get_unchecked(indices[0]); };
+    }
+
+    /**
+     * Operator overload for indexed assignment: v[i] = val calls __setindex__([i], val)
+     * Uses unchecked access for performance; use set() for bounds checking
+     */
+    public method __setindex__(indices: const ref array<i64>, value: T) void {
+      unsafe { this.data.set_unchecked(indices[0], value); };
+    }
+
+    // ========================================================================
+    // Iteration Support
+    // ========================================================================
+
+    /**
+     * Return iterator over elements
+     */
+    public const method iter() VecIterator<T> {
+      return VecIterator<T>();
+    }
+  }
+
+  // ============================================================================
+  // VecIterator<T> - Iterator over Vec elements
+  // ============================================================================
+
+  /** Iterates over borrowed vector elements from the beginning. */
+  public class VecIterator<T> implements IIterator<ref T, Vec<T>> {
+    var current: i64 = 0;
+
+    /**
+     * Next element, or None once the Vec is exhausted. Elements are borrowed:
+     * the Vec still owns them.
+     */
+    public method next(vec: ref Vec<T>) Option<ref T> {
+      if (this.current >= vec.size()) {
+        return Option.None;
+      }
+      var index: i64 = this.current;
+      this.current = this.current + 1;
+      return Option.Some(unsafe { vec.get_unchecked(index); });
+    }
+  }
+
+  // ============================================================================
+  // Precompiled Specializations
+  // ============================================================================
+
+  // Vec specializations (must be declared before VecIterator since VecIterator<T> references Vec<T>)
+  public declare Vec_i8 = Vec<i8>;
+  public declare Vec_i32 = Vec<i32>;
+  public declare Vec_i64 = Vec<i64>;
+  public declare Vec_f32 = Vec<f32>;
+  public declare Vec_f64 = Vec<f64>;
+
+  // VecIterator specializations
+  public declare VecIterator_i8 = VecIterator<i8>;
+  public declare VecIterator_i32 = VecIterator<i32>;
+  public declare VecIterator_i64 = VecIterator<i64>;
+  public declare VecIterator_f32 = VecIterator<f32>;
+  public declare VecIterator_f64 = VecIterator<f64>;
+}  // module std

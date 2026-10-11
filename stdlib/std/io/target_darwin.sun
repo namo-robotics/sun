@@ -1,0 +1,26 @@
+/** File and directory constants for macOS. */
+public module std.io {
+  // open(2) composables: O_CREAT=0x200, O_TRUNC=0x400, O_APPEND=0x8, over
+  // O_WRONLY=1.
+  const O_WRONLY_CREAT_TRUNC: i32 = 1537;  // 0x601
+  const O_WRONLY_CREAT_APPEND: i32 = 521;  // 0x209
+
+  // struct dirent's fixed head: u64 d_ino, u64 d_seekoff, u16 d_reclen,
+  // u16 d_namlen, u8 d_type at byte 20, then the d_name characters.
+  const DIRENT_TYPE_OFFSET: i64 = 20;
+  const DIRENT_NAME_OFFSET: i64 = 21;
+}
+
+/** macOS open-file metadata boundary. */
+public module std.io {
+  /** Select the modern inode layout on Intel macOS. */
+  extern "C" function c_fstat_inode64(fd: i32, data: raw_ptr<u8>) i32 as "fstat$INODE64";
+
+  /** Apple Silicon uses the modern inode layout without a symbol suffix. */
+  function native_file_stat(fd: i32, data: raw_ptr<u8>) i32 {
+    if (_target_is("x86_64")) {
+      return unsafe { c_fstat_inode64(fd, data); };
+    }
+    return unsafe { c_fstat(fd, data); };
+  }
+}

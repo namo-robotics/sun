@@ -1,0 +1,25 @@
+/** Test acquire/release communication through the public atomic Boolean. */
+public module std.atomic_bool_tests {
+  var published: std.thread.AtomicBool = std.thread.AtomicBool();
+  var payload: i32 = 0;
+
+  /** Publish ordinary data before setting a release flag. */
+  function publish() void {
+    payload = 42;
+    published.store(true);
+  }
+
+  /** Verify flag operations and their use for cross-thread publication. */
+  test_function atomic_bool_publication() {
+    var flag = std.thread.AtomicBool(true);
+    try std.test.assert(flag.load());
+    try std.test.assert(not flag.compare_exchange(false, true));
+    try std.test.assert(flag.compare_exchange(true, false));
+    try std.test.assert(not flag.load());
+    published.store(false);
+    var worker = std.thread.spawn(publish);
+    while (not published.load()) {}
+    try std.test.assert_eq(payload, 42);
+    worker.join();
+  }
+}

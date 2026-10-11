@@ -124,7 +124,7 @@ def main():
                 "sun_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
                 "sun_source_sha256": hashlib.sha256((SOURCE / "bench.sun").read_bytes()).hexdigest(),
                 "implementation_sha256": {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
-                                          for name in ["stdlib/string.sun", "include/codegen/codegen.h",
+                                          for name in ["stdlib/std/string.sun", "include/codegen/codegen.h",
                                                        "src/driver/driver.cpp"]},
                 "worktree_modified": bool(subprocess.check_output(["git", "diff", "--name-only"], text=True).strip()),
                 "platform": platform.platform(), "cpu": args.cpu, "versions": versions,

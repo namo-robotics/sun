@@ -26,7 +26,7 @@ class BindgenTests(unittest.TestCase):
         """Allow macOS version aliases while rejecting a different target ABI."""
         for arch in ("arm64", "x86_64"):
             source = self.path / "binding.sun"
-            source.write_text((ROOT / f"stdlib/bindings/process_darwin_{arch}.sun").read_text())
+            source.write_text((ROOT / f"stdlib/std/process/bindings/process_darwin_{arch}.sun").read_text())
             for target in (f"{arch}-apple-darwin25.0.0", f"{arch}-apple-macosx14.0"):
                 result = self.compile(source, target)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -284,6 +284,89 @@ class BindgenTests(unittest.TestCase):
             result = self.run_sun("--emit-obj", "-o", self.path / "bad.o", source)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("sun-config.json", result.stdout + result.stderr)
+
+    def test_optional_config_binding_availability(self):
+        """Reuse bindings without headers, but regenerate and report errors when available."""
+        header = self.path / "native.h"
+        header.write_text("struct Reading { int value; };\n")
+        binding = {"header": "native.h", "allow": ["Reading"],
+                   "skip_if_unavailable": True}
+        self.configure_binding(binding)
+        source = self.path / "main.sun"
+        source.write_text('manifest { source_files: ["generated/native.sun"] }\n'
+                          "/** Uses the generated record. */\n"
+                          "function main() i32 { return _convert<i32>(_sizeof<native.Reading>()); }\n")
+        obj = self.path / "main.o"
+        result = self.run_sun("--emit-obj", "-o", obj, source)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        generated = self.path / "generated/native.sun"
+        original = generated.read_bytes()
+        stamp = generated.stat().st_mtime_ns
+        header.unlink()
+        result = self.run_sun("--emit-obj", "--force-rebuild", "-o", obj, source)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(generated.read_bytes(), original)
+        self.assertEqual(generated.stat().st_mtime_ns, stamp)
+        binding["skip_if_unavailable"] = False
+        self.configure_binding(binding)
+        result = self.run_sun("--emit-obj", "-o", obj, source)
+        self.assertNotEqual(result.returncode, 0)
+        binding["skip_if_unavailable"] = True
+        self.configure_binding(binding)
+        for contents in ("union Reading { int x; float y; };\n",
+                         '#include "missing_dependency.h"\n'):
+            header.write_text(contents)
+            result = self.run_sun("--emit-obj", "-o", obj, source)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(generated.read_bytes(), original)
+        header.unlink()
+        generated.unlink()
+        result = self.run_sun("--emit-obj", "--force-rebuild", "-o", obj, source)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(generated.exists())
+
+    def test_optional_config_binding_sdk_variable(self):
+        """Skip undefined SDK paths, honor explicit overrides, and validate the option."""
+        variable = "SUN_BINDGEN_TEST_OPTIONAL_SDK"
+        previous = os.environ.pop(variable, None)
+        if previous is not None:
+            self.addCleanup(os.environ.__setitem__, variable, previous)
+        binding = {"header": f"${variable}/native.h", "allow": ["Reading"],
+                   "skip_if_unavailable": True}
+        self.configure_binding(binding)
+        source = self.path / "main.sun"
+        source.write_text("/** Exits successfully. */\nfunction main() i32 { return 0; }\n")
+        obj = self.path / "main.o"
+        generated = self.path / "generated/native.sun"
+        result = self.run_sun("--emit-obj", "-o", obj, source)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse(generated.exists())
+        (self.path / "native.h").write_text("struct Reading { int value; };\n")
+        result = self.run_sun("--emit-obj", "--path-var", f"{variable}={self.path}",
+                              "-o", obj, source)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(generated.exists())
+        binding["output"] = "$SUN_BINDGEN_TEST_OUTPUT"
+        self.configure_binding(binding)
+        for output, succeeds in (("other.sun", True), ("other.txt", False)):
+            result = self.run_sun(
+                "--emit-obj", "--path-var", f"{variable}={self.path}",
+                "--path-var", f"SUN_BINDGEN_TEST_OUTPUT={self.path / output}",
+                "-o", obj, source)
+            self.assertEqual(result.returncode == 0, succeeds, result.stdout + result.stderr)
+            if not succeeds:
+                self.assertIn("output must name a .sun file", result.stdout + result.stderr)
+        binding["output"] = "generated/native.sun"
+        binding["skip_if_unavailable"] = False
+        self.configure_binding(binding)
+        result = self.run_sun("--emit-obj", "-o", obj, source)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("undefined path variable", result.stdout + result.stderr)
+        binding["skip_if_unavailable"] = "true"
+        self.configure_binding(binding)
+        result = self.run_sun("--emit-obj", "-o", obj, source)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("expected a boolean", result.stdout + result.stderr)
 
     def test_config_inheritance_and_test_command(self):
         """Resolve config paths at their origin and use bindings in Sun tests."""

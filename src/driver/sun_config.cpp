@@ -76,18 +76,20 @@ void stringsValue(const llvm::json::Value& value) {
 /** Checks the declarations and compiler options for a generated C module. */
 void cBindingValue(const llvm::json::Value& value) {
   const auto& obj = object(value);
-  keys(obj, {"header", "output", "allow", "clang_args"});
+  keys(obj, {"header", "output", "allow", "clang_args", "skip_if_unavailable"});
   if (!obj.get("header") || !obj.get("output") || !obj.get("allow"))
     invalid("c_bindings entries require header, output and allow");
   stringValue(*obj.get("header"));
   stringValue(*obj.get("output"));
-  if (std::filesystem::path(obj.getString("output")->str()).extension() !=
-      ".sun")
+  if (obj.getString("output")->find('$') == llvm::StringRef::npos &&
+      std::filesystem::path(obj.getString("output")->str()).extension() !=
+          ".sun")
     invalid("c_bindings output must name a .sun file");
   stringsValue(*obj.get("allow"));
   if (obj.getArray("allow")->empty())
     invalid("c_bindings allow must not be empty");
   if (auto* args = obj.get("clang_args")) stringsValue(*args);
+  if (auto* skip = obj.get("skip_if_unavailable")) boolValue(*skip);
 }
 
 /** Returns whether a setting uses the default/target wrapper. */
@@ -319,6 +321,8 @@ SunConfig parse(const Object& root, const std::filesystem::path& file,
       binding.enabled = selected != nullptr;
       if (selected) {
         const auto& obj = object(*selected);
+        binding.skipIfUnavailable =
+            obj.getBoolean("skip_if_unavailable").value_or(false);
         binding.header =
             anchor(obj.getString("header")->str(), config.configDir);
         binding.output =

@@ -1,0 +1,7 @@
+/** Process signal constants for macOS. */
+public module std.process {
+  // The job-control signals above 15, where Linux and macOS disagree.
+  public const SIGCHLD: i32 = 20;
+  public const SIGCONT: i32 = 19;
+  public const SIGSTOP: i32 = 17;
+}

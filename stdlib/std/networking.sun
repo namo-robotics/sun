@@ -1,0 +1,1075 @@
+// stdlib/std/networking.sun - Network socket wrapper over __socket* intrinsics
+//
+// Provides TCP and UDP abstractions using high-level IPv4 intrinsics.
+//
+// Usage:
+//   using std;
+//
+//   // TCP Server (for HTTP, prefer HttpServer from http.sun)
+//   var listener = TcpListener();
+//   listener.bind_port(8080);
+//   listener.listen(128);
+//   while (true) {
+//       var client = listener.accept();
+//       client.send_str("Hello!");
+//       client.close();
+//   }
+//
+//   // TCP Client
+//   var stream = TcpStream();
+//   stream.connect_local(8080);
+//   stream.send_str("ping");
+//   stream.close();
+//
+//   // UDP
+//   var socket = UdpSocket();
+//   socket.bind(ipv4_any(), 0);            // port 0: the OS picks one
+//   var port: i32 = socket.local_port();   // read the picked port back
+//   socket.send_str_to("ping", ipv4_loopback(), 9000);
+//   var buf = ContiguousBuffer<u8>(alloc, 1024);
+//   var datagram = socket.recv_from(buf);  // who sent what
+//   socket.close();
+
+/** Provides the standard-library declarations implemented in this source file. */
+public module std {
+  /** A newly owned connection, routine would-block, or an actual accept failure. */
+  public enum AcceptResult { Accepted(TcpStream), WouldBlock, Error(Error) }
+
+  /** Configure a newly accepted socket before handing it to application code. */
+  function configure_accepted_socket(fd: i32) SystemResult<void> {
+    try set_fd_nonblocking(fd, true);
+    try set_fd_close_on_exec(fd, true);
+    try configure_socket_sigpipe(fd);
+    return SystemResult.Ok;
+  }
+
+  /** Apply listener options before binding; the caller owns cleanup on failure. */
+  function configure_listener(fd: i32, ip: i32, port: i32, reuse_address: bool, reuse_port: bool) SystemResult<void> {
+    try set_fd_close_on_exec(fd, true);
+    try set_socket_reuse_address(fd, reuse_address);
+    if (reuse_port) {
+      try set_socket_reuse_port(fd, true);
+    }
+    if (unsafe { __bind_ipv4(fd, ip, port); } < 0) {
+      return SystemResult.Error(Error(errno(), "failed to bind listener"));
+    }
+    return SystemResult.Ok;
+  }
+
+  // -------------------------------------------------------------------
+  // Socket constants
+  // -------------------------------------------------------------------
+  // These agree between Linux and macOS. The ones that differ — the
+  // setsockopt family and MSG_NOSIGNAL — live in target_<os>.sun, as does
+  // suppress_sigpipe (how each OS keeps a broken-pipe send from raising
+  // SIGPIPE).
+
+  public const AF_INET: i32 = 2;
+  public const SOCK_STREAM: i32 = 1;
+  public const SOCK_DGRAM: i32 = 2;
+  public const SHUT_RDWR: i32 = 2;
+  public const INADDR_ANY: i32 = 0;
+  public const INADDR_LOOPBACK: i32 = 16777343;  // 127.0.0.1 in network byte order
+  public const IPPROTO_IP: i32 = 0;
+  const F_GETFL: i32 = 3;
+  const F_SETFL: i32 = 4;
+
+  /**
+   * Report whether an errno value means a non-blocking operation would block.
+   */
+  public function is_would_block(code: i32) bool {
+    return code == WOULD_BLOCK_ERRNO;
+  }
+
+  /**
+   * Enable or disable non-blocking I/O while preserving other descriptor flags.
+   * Borrows fd without closing it. Returns a system error if reading or updating
+   * the flags fails. Descriptors sharing the same open file description are affected.
+   */
+  public function set_fd_nonblocking(fd: i32, enabled: bool) SystemResult<void> {
+    var flags: i32 = unsafe { c_fcntl(fd, F_GETFL); };
+    if (flags < 0) {
+      var err_code: i32 = errno();
+      return SystemResult.Error(Error(err_code, "failed to read descriptor flags"));
+    }
+
+    var next_flags: i32 = flags;
+    if (enabled) {
+      next_flags = flags | O_NONBLOCK;
+    } else {
+      next_flags = flags & ~O_NONBLOCK;
+    }
+
+    var result: i32 = unsafe { c_fcntl(fd, F_SETFL, next_flags); };
+    if (result < 0) {
+      var err_code: i32 = errno();
+      return SystemResult.Error(Error(err_code, "failed to set descriptor flags"));
+    }
+    return SystemResult.Ok;
+  }
+
+  // -------------------------------------------------------------------
+  // DNS resolution
+  // -------------------------------------------------------------------
+
+  /**
+   * Resolve a hostname to its first IPv4 address, returned in network byte
+   * order (the shape connect_ip takes). Throws when the name does not resolve
+   * or has no IPv4 address. Field offsets are documented at the getaddrinfo
+   * declaration in sys.sun.
+   */
+  public function resolve_host_ipv4(host: ref String) SystemResult<i32> {
+    var list: raw_ptr<u8> = null;
+    var rc: i32 = unsafe { c_getaddrinfo(host.c_str(), null, null, _address_of<raw_ptr<u8>>(list)); };
+    if (rc != 0) {
+      var alloc: HeapAllocator = HeapAllocator();
+      var msg: String = from_c_str(alloc, unsafe { c_gai_strerror(rc); });
+      return SystemResult.Error(Error(rc, msg));
+    }
+    var entry: raw_ptr<u8> = list;
+    while (entry != null) {
+      var family: i32 = unsafe { _load<i32>(entry, 1); };  // ai_family @4
+      var socktype: i32 = unsafe { _load<i32>(entry, 2); };  // ai_socktype @8
+      if (family == AF_INET and socktype == SOCK_STREAM) {
+        // ai_addr sits at a per-OS slot (target_<os>.sun)
+        var sa: raw_ptr<u8> = unsafe { _load<raw_ptr<u8>>(entry, ADDRINFO_ADDR_INDEX); };
+        var ip: i32 = unsafe { _load<i32>(sa, 1); };  // sin_addr @4, network order
+        unsafe { c_freeaddrinfo(list); };
+        return SystemResult.Ok(ip);
+      }
+      entry = unsafe { _load<raw_ptr<u8>>(entry, 5); };  // ai_next @40
+    }
+    unsafe { c_freeaddrinfo(list); };
+    return SystemResult.Error(Error(-1, "host has no IPv4 address"));
+  }
+
+  // -------------------------------------------------------------------
+  // Ipv4Addr - readable IPv4 addresses
+  // -------------------------------------------------------------------
+
+  /**
+   * An IPv4 address, held in the network byte order the socket intrinsics
+   * take, so nobody has to remember that 127.0.0.1 is 16777343.
+   */
+  public class Ipv4Addr {
+    var net: i32;  // the four octets, network byte order
+
+    /**
+     * Build an address from its four dotted-quad octets, first octet first:
+     * Ipv4Addr(192, 168, 1, 10) is 192.168.1.10.
+     */
+    init(a: i32, b: i32, c: i32, d: i32) {
+      // On our little-endian targets, network byte order keeps the first
+      // octet in the lowest byte (byte_order.sun documents this assumption).
+      this.net = (a & 255) | ((b & 255) << 8) | ((c & 255) << 16) | ((d & 255) << 24);
+    }
+
+    /**
+     * The address as the network-byte-order integer the intrinsics take.
+     */
+    public const method to_network_i32() i32 {
+      return this.net;
+    }
+
+    /**
+     * One octet of the dotted-quad form; index 0 is the first octet.
+     */
+    public const method octet(index: i64) i32 {
+      var shift: i32 = _convert<i32>(index) * 8;
+      return (this.net >> shift) & 255;
+    }
+
+    /**
+     * An independent copy of this address.
+     */
+    public const method clone() Ipv4Addr {
+      return ipv4_from_network(this.net);
+    }
+
+    /**
+     * Format as dotted-quad text, e.g. "192.168.1.10".
+     */
+    public const method to_string(alloc: const ref HeapAllocator) String {
+      var text: String = String(alloc, "");
+      text.append(this.octet(0));
+      text.append_char(46);  // '.'
+      text.append(this.octet(1));
+      text.append_char(46);
+      text.append(this.octet(2));
+      text.append_char(46);
+      text.append(this.octet(3));
+      return text;
+    }
+  }
+
+  /**
+   * The wildcard address 0.0.0.0, for binding on every interface.
+   */
+  public function ipv4_any() Ipv4Addr {
+    return Ipv4Addr(0, 0, 0, 0);
+  }
+
+  /**
+   * The loopback address 127.0.0.1.
+   */
+  public function ipv4_loopback() Ipv4Addr {
+    return Ipv4Addr(127, 0, 0, 1);
+  }
+
+  /**
+   * Wrap an address already in network byte order — the shape resolve_host_ipv4
+   * returns and the intrinsics take.
+   */
+  public function ipv4_from_network(net: i32) Ipv4Addr {
+    var addr = Ipv4Addr(0, 0, 0, 0);
+    addr.net = net;
+    return addr;
+  }
+
+  /**
+   * Parse dotted-quad text like "239.255.0.1". Throws unless the text is
+   * exactly four octets in the range 0-255, separated by dots.
+   */
+  public function parse_ipv4(text: const ref String) SystemResult<Ipv4Addr> {
+    var net: i32 = 0;
+    var octet_value: i32 = 0;
+    var digits: i32 = 0;
+    var parts: i32 = 0;
+    var i: i64 = 0;
+    var n: i64 = text.length();
+    while (i < n) {
+      var ch: i32 = _convert<i32>(unsafe { text.unsafe_at(i); });
+      if (ch >= 48 and ch <= 57) {
+        // '0'..'9'
+        octet_value = octet_value * 10 + (ch - 48);
+        digits = digits + 1;
+        if (digits > 3 or octet_value > 255) {
+          return SystemResult.Error(Error(-1, "malformed IPv4 address"));
+        }
+      } else if (ch == 46) {
+        // '.'
+        if (digits == 0 or parts == 3) {
+          return SystemResult.Error(Error(-1, "malformed IPv4 address"));
+        }
+        net = net | (octet_value << (parts * 8));
+        parts = parts + 1;
+        octet_value = 0;
+        digits = 0;
+      } else {
+        return SystemResult.Error(Error(-1, "malformed IPv4 address"));
+      }
+      i = i + 1;
+    }
+    if (digits == 0 or parts != 3) {
+      return SystemResult.Error(Error(-1, "malformed IPv4 address"));
+    }
+    net = net | (octet_value << 24);
+    return SystemResult.Ok(ipv4_from_network(net));
+  }
+
+  // -------------------------------------------------------------------
+  // TcpStream - TCP connection (client or accepted)
+  // -------------------------------------------------------------------
+
+  /** A TCP connection that starts without an open socket. */
+  public class TcpStream {
+    /** Read bounded storage, retrying interruptions and distinguishing EOF and would-block. */
+    public method try_read(buffer: ref MutableByteSlice) std.io.ReadResult {
+      if (buffer.size() == 0) {
+        return std.io.ReadResult.Data(0);
+      }
+      while (true) {
+        var count = unsafe { __recv(this.fd, buffer.raw_data(), buffer.size(), 0); };
+        if (count > 0) {
+          return std.io.ReadResult.Data(count);
+        }
+        if (count == 0) {
+          return std.io.ReadResult.Eof;
+        }
+        var code = errno();
+        if (code == WOULD_BLOCK_ERRNO) {
+          return std.io.ReadResult.WouldBlock;
+        }
+        if (code != INTERRUPTED_ERRNO) {
+          return std.io.ReadResult.Error(Error(code, "failed to receive bytes"));
+        }
+      }
+      return std.io.ReadResult.Data(0);
+    }
+
+    /**
+     * Send until complete, blocked, or failed, reporting the transferred prefix.
+     * Sun sends suppress SIGPIPE. Native TLS writes need the caller's Linux
+     * signal policy; on macOS the socket's SO_NOSIGPIPE also protects native writes.
+     */
+    public method try_write(buffer: const ref ByteSlice) std.io.WriteResult {
+      var written: i64 = 0;
+      while (written < buffer.size()) {
+        var count = unsafe { __send(this.fd, _ptr_offset(buffer.raw_data(), written), buffer.size() - written, MSG_NOSIGNAL); };
+        if (count > 0) {
+          written = written + count;
+        } else {
+          var code = count == 0 ? 0 : errno();
+          if (count < 0 and code == WOULD_BLOCK_ERRNO) {
+            return std.io.WriteResult.WouldBlock(written);
+          }
+          if (count == 0 or code != INTERRUPTED_ERRNO) {
+            return std.io.WriteResult.Error(written, Error(code, "failed to send bytes"));
+          }
+        }
+      }
+      return std.io.WriteResult.Complete(written);
+    }
+
+    /** Configure TCP_NODELAY, returning configuration failures. */
+    public method set_nodelay(enabled: bool) SystemResult<void> {
+      return set_tcp_nodelay(this.fd, enabled);
+    }
+
+    /** Set descriptor inheritance across exec. */
+    public method set_close_on_exec(enabled: bool) SystemResult<void> {
+      return set_fd_close_on_exec(this.fd, enabled);
+    }
+
+    var fd: i32 = -1;
+    // Moves clear this flag, while an owned descriptor may be zero.
+    var owns_fd: bool = false;
+
+    /**
+     * Close the socket if it is still open.
+     */
+    deinit() {
+      this.close();
+    }
+
+    /**
+     * Connect to loopback (127.0.0.1) on port
+     */
+    public method connect_local(port: i32) SystemResult<void> {
+      var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
+      if (sock_fd < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "failed to create socket"));
+      }
+      this.fd = sock_fd;
+      this.owns_fd = true;
+      match configure_socket_sigpipe(this.fd) {
+        SystemResult.Ok => {},
+        SystemResult.Error(error) => {
+          this.close();
+          return SystemResult.Error(error);
+        }
+      };
+
+      var result: i32 = unsafe { __connect_ipv4(this.fd, INADDR_LOOPBACK, port); };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "failed to connect"));
+      }
+      return SystemResult.Ok;
+    }
+
+    /**
+     * Connect to specific IP (in network byte order) and port
+     */
+    public method connect_ip(ip: i32, port: i32) SystemResult<void> {
+      var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
+      if (sock_fd < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "failed to create socket"));
+      }
+      this.fd = sock_fd;
+      this.owns_fd = true;
+      match configure_socket_sigpipe(this.fd) {
+        SystemResult.Ok => {},
+        SystemResult.Error(error) => {
+          this.close();
+          return SystemResult.Error(error);
+        }
+      };
+
+      var result: i32 = unsafe { __connect_ipv4(this.fd, ip, port); };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "failed to connect"));
+      }
+      return SystemResult.Ok;
+    }
+
+    /**
+     * Resolve a hostname and connect to its first IPv4 address
+     */
+    public method connect_host(host: ref String, port: i32) SystemResult<void> {
+      var ip: i32 = try resolve_host_ipv4(host);
+      try this.connect_ip(ip, port);
+      return SystemResult.Ok;
+    }
+
+    /**
+     * Connect to an Ipv4Addr and port
+     */
+    public method connect_addr(addr: const ref Ipv4Addr, port: i32) SystemResult<void> {
+      try this.connect_ip(addr.to_network_i32(), port);
+      return SystemResult.Ok;
+    }
+
+    /**
+     * Send string data
+     */
+    public method send_str(data: static_ptr<u8>) SystemResult<i64> {
+      var str_ptr: raw_ptr<u8> = data.raw();
+      var len: i64 = data.length();
+      var result: i64 = unsafe { __send(this.fd, str_ptr, len, MSG_NOSIGNAL); };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "send failed"));
+      }
+      return SystemResult.Ok(result);
+    }
+
+    /**
+     * Send raw bytes
+     */
+    public method send_bytes(data: raw_ptr<u8>, len: i64) SystemResult<i64> {
+      var result: i64 = unsafe { __send(this.fd, data, len, MSG_NOSIGNAL); };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "send failed"));
+      }
+      return SystemResult.Ok(result);
+    }
+
+    /**
+     * Send a String's contents
+     */
+    public method send_string(data: const ref String) SystemResult<i64> {
+      return SystemResult.Ok((try this.send_bytes(data.data.raw_data(), data.length())));
+    }
+
+    /**
+     * Receive into ContiguousBuffer, returns bytes read
+     */
+    public method recv(buf: ref ContiguousBuffer<u8>) SystemResult<i64> {
+      var result: i64 = unsafe { __recv(this.fd, buf.raw_data(), buf.size(), 0); };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "recv failed"));
+      }
+      return SystemResult.Ok(result);
+    }
+
+    /**
+     * Change whether operations on this socket wait for readiness.
+     */
+    public method set_nonblocking(enabled: bool) SystemResult<void> {
+      try set_fd_nonblocking(this.fd, enabled);
+      return SystemResult.Ok;
+    }
+
+    /**
+     * Close the connection
+     */
+    public method close() void {
+      if (this.owns_fd) {
+        unsafe { __shutdown(this.fd, SHUT_RDWR); };
+        unsafe { c_close(this.fd); };
+        this.fd = -1;
+        this.owns_fd = false;
+      }
+    }
+
+    /**
+     * Report whether the socket still holds a live file descriptor.
+     */
+    public method is_open() bool {
+      return this.owns_fd;
+    }
+
+    /**
+     * The underlying file descriptor, for code that needs to poll or hand it to
+     * a C call.
+     */
+    public method get_fd() i32 {
+      return this.fd;
+    }
+  }
+
+  // -------------------------------------------------------------------
+  // TcpListener - TCP server socket
+  // -------------------------------------------------------------------
+
+  /** A TCP listener that starts without a bound socket. */
+  public class TcpListener {
+    /**
+     * Accept without treating would-block as failure. Set the listener nonblocking
+     * first. Accepted streams are always nonblocking and close-on-exec; setup
+     * failure closes the new descriptor. Flag setup is not atomic with fork/exec.
+     */
+    public method try_accept() AcceptResult {
+      while (true) {
+        var fd = unsafe { __accept_fd(this.fd); };
+        if (fd < 0) {
+          var code = errno();
+          if (code == WOULD_BLOCK_ERRNO) {
+            return AcceptResult.WouldBlock;
+          }
+          if (code == INTERRUPTED_ERRNO) {
+            continue;
+          }
+          return AcceptResult.Error(Error(code, "failed to accept connection"));
+        }
+        var stream = TcpStream();
+        stream.fd = fd;
+        stream.owns_fd = true;
+        match configure_accepted_socket(fd) {
+          SystemResult.Ok => {
+            return AcceptResult.Accepted(stream);
+          },
+          SystemResult.Error(error) => {
+            return AcceptResult.Error(error);
+          }
+        };
+      }
+      return AcceptResult.WouldBlock;
+    }
+
+    /** Set descriptor inheritance across exec. */
+    public method set_close_on_exec(enabled: bool) SystemResult<void> {
+      return set_fd_close_on_exec(this.fd, enabled);
+    }
+
+    /**
+     * Create and bind with explicit address/port reuse choices. Port reuse must
+     * be requested by every participating listener; distribution differs by OS.
+     * Configuration or bind failure closes the new socket.
+     */
+    public method bind(addr: const ref Ipv4Addr, port: i32, reuse_address: bool, reuse_port: bool) SystemResult<void> {
+      if (this.owns_fd) {
+        return SystemResult.Error(Error(22, "listener is already open"));
+      }
+      var fd = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
+      if (fd < 0) {
+        return SystemResult.Error(Error(errno(), "failed to create listener"));
+      }
+      this.fd = fd;
+      this.owns_fd = true;
+      match configure_listener(fd, addr.to_network_i32(), port, reuse_address, reuse_port) {
+        SystemResult.Ok => {
+          return SystemResult.Ok;
+        },
+        SystemResult.Error(error) => {
+          this.close();
+          return SystemResult.Error(error);
+        }
+      };
+      return SystemResult.Ok;
+    }
+
+    var fd: i32 = -1;
+    // Moves clear this flag, while an owned descriptor may be zero.
+    var owns_fd: bool = false;
+
+    /**
+     * Close the listening socket if it is still open.
+     */
+    deinit() {
+      this.close();
+    }
+
+    /**
+     * Allow rebinding the port immediately after a restart
+     */
+    public method enable_reuse_addr() SystemResult<void> {
+      return set_socket_reuse_address(this.fd, true);
+    }
+
+    /**
+     * Create and bind to port on all interfaces (0.0.0.0)
+     */
+    public method bind_port(port: i32) SystemResult<void> {
+      var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
+      if (sock_fd < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "failed to create socket"));
+      }
+      this.fd = sock_fd;
+      this.owns_fd = true;
+      try this.enable_reuse_addr();
+
+      var result: i32 = unsafe { __bind_ipv4(this.fd, INADDR_ANY, port); };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "failed to bind socket"));
+      }
+      return SystemResult.Ok;
+    }
+
+    /**
+     * Create and bind to loopback (127.0.0.1) on port
+     */
+    public method bind_loopback(port: i32) SystemResult<void> {
+      var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
+      if (sock_fd < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "failed to create socket"));
+      }
+      this.fd = sock_fd;
+      this.owns_fd = true;
+      try this.enable_reuse_addr();
+
+      var result: i32 = unsafe { __bind_ipv4(this.fd, INADDR_LOOPBACK, port); };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "failed to bind socket"));
+      }
+      return SystemResult.Ok;
+    }
+
+    /**
+     * Create and bind to an Ipv4Addr and port
+     */
+    public method bind_addr(addr: const ref Ipv4Addr, port: i32) SystemResult<void> {
+      var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
+      if (sock_fd < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "failed to create socket"));
+      }
+      this.fd = sock_fd;
+      this.owns_fd = true;
+      try this.enable_reuse_addr();
+
+      var result: i32 = unsafe { __bind_ipv4(this.fd, addr.to_network_i32(), port); };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "failed to bind socket"));
+      }
+      return SystemResult.Ok;
+    }
+
+    /**
+     * Start listening for connections
+     */
+    public method listen(backlog: i32) SystemResult<void> {
+      var result: i32 = unsafe { __listen(this.fd, backlog); };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "failed to listen"));
+      }
+      return SystemResult.Ok;
+    }
+
+    /**
+     * Accept a new connection, returns TcpStream
+     */
+    public method accept() SystemResult<TcpStream> {
+      var client_fd: i32 = unsafe { __accept_fd(this.fd); };
+      if (client_fd < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "failed to accept connection"));
+      }
+      var stream = TcpStream();
+      stream.fd = client_fd;
+      stream.owns_fd = true;
+      try configure_socket_sigpipe(client_fd);
+      return SystemResult.Ok(stream);
+    }
+
+    /**
+     * Change whether operations on this socket wait for readiness.
+     */
+    public method set_nonblocking(enabled: bool) SystemResult<void> {
+      try set_fd_nonblocking(this.fd, enabled);
+      return SystemResult.Ok;
+    }
+
+    /**
+     * The port the listener is actually bound to — the answer after binding
+     * port 0 and letting the OS pick.
+     */
+    public method local_port() SystemResult<i32> {
+      var ip: i32 = 0;
+      var port: i32 = 0;
+      var result: i32 = unsafe {
+        __getsockname_ipv4(this.fd, _address_of<i32>(ip), _address_of<i32>(port));
+      };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "failed to read socket address"));
+      }
+      return SystemResult.Ok(port);
+    }
+
+    /**
+     * Close the listener
+     */
+    public method close() void {
+      if (this.owns_fd) {
+        unsafe { __shutdown(this.fd, SHUT_RDWR); };
+        unsafe { c_close(this.fd); };
+        this.fd = -1;
+        this.owns_fd = false;
+      }
+    }
+
+    /**
+     * Report whether the listener still holds a live file descriptor.
+     */
+    public method is_open() bool {
+      return this.owns_fd;
+    }
+
+    /**
+     * The underlying file descriptor, for polling or C calls.
+     */
+    public method get_fd() i32 {
+      return this.fd;
+    }
+  }
+
+  // -------------------------------------------------------------------
+  // UdpSocket - connectionless datagram socket
+  // -------------------------------------------------------------------
+
+  /**
+   * struct timeval as setsockopt(SO_RCVTIMEO) reads it. Linux is {i64, i64};
+   * Darwin is {i64 sec, i32 usec, 4 bytes pad} — the same 16 bytes, and on a
+   * little-endian target (all of ours; see byte_order.sun) an i64 store of a
+   * usec value below one million puts the right bytes in Darwin's i32 slot
+   * and zeros in its padding.
+   */
+  class CTimeval {
+    var sec: i64;
+    var usec: i64;
+
+    /**
+     * Build a timeval from whole seconds and leftover microseconds.
+     */
+    init(sec: i64, usec: i64) {
+      this.sec = sec;
+      this.usec = usec;
+    }
+  }
+
+  /**
+   * struct ip_mreq: the multicast group to join and the local interface to
+   * join it on, both network byte order. Identical layout on Linux and macOS.
+   */
+  class IpMreq {
+    var group: i32;
+    var iface: i32;
+
+    /**
+     * Build a membership request from two network-byte-order addresses.
+     */
+    init(group: i32, iface: i32) {
+      this.group = group;
+      this.iface = iface;
+    }
+  }
+
+  /**
+   * One received datagram: how many bytes landed in the caller's buffer, and
+   * who sent them.
+   */
+  public class UdpDatagram {
+    var len_: i64;
+    var ip_: i32;  // sender address, network byte order
+    var port_: i32;  // sender port, host order
+
+    /**
+     * Build a datagram record from recv_from's results.
+     */
+    init(len: i64, ip: i32, port: i32) {
+      this.len_ = len;
+      this.ip_ = ip;
+      this.port_ = port;
+    }
+
+    /**
+     * How many bytes the datagram carried into the buffer.
+     */
+    public const method length() i64 {
+      return this.len_;
+    }
+
+    /**
+     * The sender's port.
+     */
+    public const method port() i32 {
+      return this.port_;
+    }
+
+    /**
+     * The sender's address.
+     */
+    public const method addr() Ipv4Addr {
+      return ipv4_from_network(this.ip_);
+    }
+  }
+
+  // A UDP socket: connectionless send and receive, with multicast and
+  // receive-timeout support. bind() creates the descriptor, so it always
+  // comes first; a send-only socket binds port 0 and lets the OS pick.
+  /** A UDP socket that starts closed. */
+  public class UdpSocket {
+    var fd: i32 = -1;
+    // Moves clear this flag, while an owned descriptor may be zero.
+    var owns_fd: bool = false;
+
+    /**
+     * Close the socket if it is still open.
+     */
+    deinit() {
+      this.close();
+    }
+
+    /** Allow this socket to share its address with other reuse-enabled sockets. */
+    public method enable_reuse_addr() SystemResult<void> {
+      var optval: i32 = 1;
+      var result: i32 = unsafe {
+        __setsockopt(this.fd, SOL_SOCKET, SO_REUSEADDR, _address_of<i32>(optval), 4);
+      };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "failed to enable address reuse"));
+      }
+      return SystemResult.Ok;
+    }
+
+    /** Bind exclusively to addr:port. Port zero asks the OS for a free port. */
+    public method bind(addr: const ref Ipv4Addr, port: i32) SystemResult<void> {
+      try this.bind(addr, port, false);
+      return SystemResult.Ok;
+    }
+
+    /** Bind to addr:port, enabling SO_REUSEADDR only when reuse is true.
+     * Failed binds close the socket and return an Error with the native errno.
+     */
+    public method bind(addr: const ref Ipv4Addr, port: i32, reuse: bool) SystemResult<void> {
+      this.close();
+      var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_DGRAM, 0); };
+      if (sock_fd < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "failed to create socket"));
+      }
+      this.fd = sock_fd;
+      this.owns_fd = true;
+      suppress_sigpipe(this.fd);
+      if (reuse) {
+        match this.enable_reuse_addr() {
+          SystemResult.Ok => {},
+          SystemResult.Error(error) => {
+            this.close();
+            return SystemResult.Error(error);
+          }
+        };
+      }
+
+      var result: i32 = unsafe { __bind_ipv4(this.fd, addr.to_network_i32(), port); };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        this.close();
+        return SystemResult.Error(Error(err_code, "failed to bind socket"));
+      }
+      return SystemResult.Ok;
+    }
+
+    /**
+     * Send one datagram of len bytes to addr:port. Returns bytes sent.
+     */
+    public method send_to(data: raw_ptr<u8>, len: i64, addr: const ref Ipv4Addr, port: i32) SystemResult<i64> {
+      var result: i64 = unsafe { __sendto_ipv4(this.fd, data, len, MSG_NOSIGNAL, addr.to_network_i32(), port); };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "send failed"));
+      }
+      return SystemResult.Ok(result);
+    }
+
+    /**
+     * Send string data as one datagram
+     */
+    public method send_str_to(data: static_ptr<u8>, addr: const ref Ipv4Addr, port: i32) SystemResult<i64> {
+      return SystemResult.Ok((try this.send_to(data.raw(), data.length(), addr, port)));
+    }
+
+    /**
+     * Receive one datagram into the buffer, reporting its size and sender.
+     * A datagram longer than the buffer is cut to fit; the rest is dropped.
+     */
+    public method recv_from(buf: ref ContiguousBuffer<u8>) SystemResult<UdpDatagram> {
+      var sender_ip: i32 = 0;
+      var sender_port: i32 = 0;
+      var result: i64 = unsafe {
+        __recvfrom_ipv4(
+          this.fd,
+          buf.raw_data(),
+          buf.size(),
+          0,
+          _address_of<i32>(sender_ip),
+          _address_of<i32>(sender_port)
+        );
+      };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "recv failed"));
+      }
+      return SystemResult.Ok(UdpDatagram(result, sender_ip, sender_port));
+    }
+
+    /**
+     * Join a multicast group on the interface with the given address; use
+     * ipv4_any() to let the OS pick the interface. The socket then receives
+     * datagrams sent to the group on its bound port.
+     */
+    public method join_multicast(group: const ref Ipv4Addr, iface: const ref Ipv4Addr) SystemResult<void> {
+      var request = IpMreq(group.to_network_i32(), iface.to_network_i32());
+      var result: i32 = unsafe {
+        __setsockopt(this.fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, _address_of<IpMreq>(request), 8);
+      };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "failed to join multicast group"));
+      }
+      return SystemResult.Ok;
+    }
+
+    /**
+     * Leave a multicast group joined with the same group and interface.
+     */
+    public method leave_multicast(group: const ref Ipv4Addr, iface: const ref Ipv4Addr) SystemResult<void> {
+      var request = IpMreq(group.to_network_i32(), iface.to_network_i32());
+      var result: i32 = unsafe {
+        __setsockopt(this.fd, IPPROTO_IP, IP_DROP_MEMBERSHIP, _address_of<IpMreq>(request), 8);
+      };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "failed to leave multicast group"));
+      }
+      return SystemResult.Ok;
+    }
+
+    /**
+     * How many router hops outgoing multicast datagrams may cross. The
+     * default of 1 keeps them on the local network.
+     */
+    public method set_multicast_ttl(ttl: i32) SystemResult<void> {
+      // Both OSes accept a one-byte value; macOS insists on it.
+      var value: u8 = _convert<u8>(ttl & 255);
+      var result: i32 = unsafe {
+        __setsockopt(this.fd, IPPROTO_IP, IP_MULTICAST_TTL, _address_of<u8>(value), 1);
+      };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "failed to set multicast TTL"));
+      }
+      return SystemResult.Ok;
+    }
+
+    /**
+     * Whether this host's own multicast sends loop back to local listeners.
+     */
+    public method set_multicast_loop(enabled: bool) SystemResult<void> {
+      var value: u8 = 0;
+      if (enabled) {
+        value = 1;
+      }
+      var result: i32 = unsafe {
+        __setsockopt(this.fd, IPPROTO_IP, IP_MULTICAST_LOOP, _address_of<u8>(value), 1);
+      };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "failed to set multicast loopback"));
+      }
+      return SystemResult.Ok;
+    }
+
+    /**
+     * Make a blocking recv_from give up after the timeout, returning an error
+     * for which is_would_block(e.code()) is true.
+     */
+    public method set_recv_timeout(timeout: const ref std.time.Duration) SystemResult<void> {
+      var micros: i64 = timeout.as_micros();
+      if (micros == 0 and timeout.as_nanos() > 0) {
+        micros = 1;  // a zero timeval would mean "wait forever"
+      }
+      var secs: i64 = micros / 1000000;
+      var tv = CTimeval(secs, micros - secs * 1000000);
+      var result: i32 = unsafe {
+        __setsockopt(this.fd, SOL_SOCKET, SO_RCVTIMEO, _address_of<CTimeval>(tv), 16);
+      };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "failed to set receive timeout"));
+      }
+      return SystemResult.Ok;
+    }
+
+    /**
+     * The port the socket is actually bound to — the answer after binding
+     * port 0.
+     */
+    public method local_port() SystemResult<i32> {
+      var ip: i32 = 0;
+      var port: i32 = 0;
+      var result: i32 = unsafe {
+        __getsockname_ipv4(this.fd, _address_of<i32>(ip), _address_of<i32>(port));
+      };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "failed to read socket address"));
+      }
+      return SystemResult.Ok(port);
+    }
+
+    /**
+     * The address the socket is bound to.
+     */
+    public method local_addr() SystemResult<Ipv4Addr> {
+      var ip: i32 = 0;
+      var port: i32 = 0;
+      var result: i32 = unsafe {
+        __getsockname_ipv4(this.fd, _address_of<i32>(ip), _address_of<i32>(port));
+      };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        return SystemResult.Error(Error(err_code, "failed to read socket address"));
+      }
+      return SystemResult.Ok(ipv4_from_network(ip));
+    }
+
+    /**
+     * Change whether operations on this socket wait for readiness.
+     */
+    public method set_nonblocking(enabled: bool) SystemResult<void> {
+      try set_fd_nonblocking(this.fd, enabled);
+      return SystemResult.Ok;
+    }
+
+    /**
+     * Close the socket. UDP has no connection to shut down, so this just
+     * releases the descriptor.
+     */
+    public method close() void {
+      if (this.owns_fd) {
+        unsafe { c_close(this.fd); };
+        this.fd = -1;
+        this.owns_fd = false;
+      }
+    }
+
+    /**
+     * Report whether the socket still holds a live file descriptor.
+     */
+    public method is_open() bool {
+      return this.owns_fd;
+    }
+
+    /**
+     * The underlying file descriptor, for polling or C calls.
+     */
+    public method get_fd() i32 {
+      return this.fd;
+    }
+  }
+}  // module std

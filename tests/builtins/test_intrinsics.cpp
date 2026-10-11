@@ -1352,7 +1352,7 @@ TEST(Builtins_NoImplicitReturns, conditional_exit_inside_bound_block_is_fine) {
 
 // The high half of a 64x64 multiply and the leading/trailing zero counts,
 // which std.BigUint is built on (its behavior tests are in
-// stdlib/bigint_tests.sun).
+// stdlib/std/bigint_tests.sun).
 TEST(Builtins_BitIntrinsics, mul_hi_ctlz_cttz) {
   auto value = executeString(R"(
     function main() i32 {
@@ -1378,7 +1378,7 @@ TEST(Builtins_BitIntrinsics, mul_hi_ctlz_cttz) {
 }
 
 // Byte swaps at each width, which std.byte_order is built on (its helper
-// tests are in stdlib/byte_order_tests.sun).
+// tests are in stdlib/std/byte_order/byte_order_tests.sun).
 TEST(Builtins_BitIntrinsics, bswap_u16_u32_u64) {
   auto value = executeString(R"(
     function main() i32 {

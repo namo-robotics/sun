@@ -58,7 +58,7 @@ override_dh_auto_install:
 	ln -sfn aarch64-linux-gnu debian/sun/usr/lib/sun/aarch64-linux-musl
 	# Install stdlib source files (for reference/debugging)
 	install -d debian/sun/usr/share/sun/stdlib
-	install -m 644 stdlib/*.sun debian/sun/usr/share/sun/stdlib/
+	cp -R stdlib/stdlib.sun stdlib/std debian/sun/usr/share/sun/stdlib/
 	# Install tls source files (for reference/debugging)
 	install -d debian/sun/usr/share/sun/tls
 	install -m 644 tls/*.sun debian/sun/usr/share/sun/tls/

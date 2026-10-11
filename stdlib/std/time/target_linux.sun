@@ -1,0 +1,5 @@
+/** Clock constants for Linux. */
+public module std.time {
+  // clockid_t from asm-generic, the same on every Linux target.
+  const CLOCK_MONOTONIC: i32 = 1;
+}

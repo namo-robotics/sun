@@ -22,7 +22,7 @@ class ScopeManager;
 //
 // `for … in` is not a builtin. It calls iter() if the iterable has one, then
 // next(ref Container) until it answers None, against the IIterator/IIterable
-// interfaces in stdlib/iterator.sun.
+// interfaces in stdlib/std/iterator.sun.
 
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Value.h>

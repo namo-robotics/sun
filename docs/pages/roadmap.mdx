@@ -10,12 +10,12 @@ into "a user can do it themselves". Table stakes before novelty.
 
 ## Optionals — Remaining Work
 
-`Option<T>` ships in the stdlib (`stdlib/option.sun`); `_Result<T, E>` is builtin
+`Option<T>` ships in the stdlib (`stdlib/std/option.sun`); `_Result<T, E>` is builtin
 and usable without the standard library. Both use generic payload enums with owning
 payloads and drop glue. The absence APIs
 (`Map.find`, `String.find_char`/`rfind_char`, `Vec.first`/`last`/`pop`,
 `LinkedList.first`/`last`) return `Option<T>`, and the iteration protocol
-(`stdlib/iterator.sun`) is `next(ref Container) Option<T>`. What remains:
+(`stdlib/std/iterator.sun`) is `next(ref Container) Option<T>`. What remains:
 
 - [ ] Niche-optimised representation where possible (e.g. `Option<raw_ptr<T>>`
       as a nullable pointer)
@@ -90,8 +90,6 @@ community-supplyable now that FFI has landed.
 
 - [ ] Regex (expose the existing parser)
 - [x] `extern` declarations for C globals and iterable `std.env.Env`
-- [ ] File metadata beyond exists/size, via `statx` (the one stat-family call
-      whose struct has the same layout on every architecture)
 - [ ] Buffered stdin; `std.io.read_line` reads a byte at a time so it cannot
       swallow input a child process is about to read
 - [ ] `String.c_str()` as a `const method`: it writes the terminating NUL on

@@ -76,8 +76,9 @@ void ManifestProcessor::clearPathVariables() {
   dependencyPathVariables().clear();
 }
 
-std::string ManifestProcessor::expandPathVariables(const std::string& input,
-                                                   const SunConfig* config) {
+/** Expands configured paths, optionally tolerating undefined variables. */
+static std::optional<std::string> expandVariables(
+    const std::string& input, const SunConfig* config, bool required) {
   std::string out;
   size_t i = 0;
   while (i < input.size()) {
@@ -134,6 +135,7 @@ std::string ManifestProcessor::expandPathVariables(const std::string& input,
     } else if (const char* env = std::getenv(name.c_str())) {
       out += env;
     } else {
+      if (!required) return std::nullopt;
       sun::support::logAndThrowError(
           "undefined path variable '$" + name + "' in manifest entry '" +
           input + "'; define it in sun-config.json, with --path-var " + name +
@@ -143,6 +145,16 @@ std::string ManifestProcessor::expandPathVariables(const std::string& input,
     i = nameEnd;
   }
   return out;
+}
+
+std::string ManifestProcessor::expandPathVariables(const std::string& input,
+                                                   const SunConfig* config) {
+  return *expandVariables(input, config, true);
+}
+
+std::optional<std::string> ManifestProcessor::tryExpandPathVariables(
+    const std::string& input, const SunConfig* config) {
+  return expandVariables(input, config, false);
 }
 
 const ManifestAST* ManifestProcessor::findManifest(

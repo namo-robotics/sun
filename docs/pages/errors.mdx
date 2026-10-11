@@ -6,7 +6,7 @@ Prefer standard-library result enums when using the standard library.
 `std.AccessResult<T>` is the precise result of checked vector, buffer, and string access operations: its
 variants are `Ok(T)` and `OutOfBounds(IndexOutOfBoundsError)`. `std.Result<T>`
 combines standard error categories for functions that call several APIs.
-Both are defined in `stdlib/result.sun`; the compiler does not identify them by name.
+Both are defined in `stdlib/std/result.sun`; the compiler does not identify them by name.
 
 `_Result<T, E>` remains builtin and needs no import. Its `Ok` payload contains
 the successful value, and its `Err` payload contains the concrete error.

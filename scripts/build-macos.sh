@@ -71,7 +71,7 @@ install -m 644 "$BUILD_DIR/stdlib.moon" "$STAGE/lib/sun/stdlib.moon"
 # Fails loudly if the bundle was not built — a release without TLS support
 # must never ship silently.
 install -m 644 "$BUILD_DIR/tls.moon" "$STAGE/lib/sun/tls.moon"
-install -m 644 stdlib/*.sun "$STAGE/share/sun/stdlib/"
+cp -R stdlib/stdlib.sun stdlib/std "$STAGE/share/sun/stdlib/"
 
 # ---- Pack ------------------------------------------------------------------
 mkdir -p dist

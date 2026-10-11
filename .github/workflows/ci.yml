@@ -422,7 +422,7 @@ jobs:
           python3 tests/tooling/bindgen/test_bindgen.py
 
       - name: Run stdlib Sun tests
-        # The stdlib's own suite (stdlib/*_tests.sun), AOT-compiled to
+        # The stdlib's own suite (stdlib/std/**/*_tests.sun), AOT-compiled to
         # build/stdlib_tests_test by the CMake build. ctest above already runs
         # it as one entry and hides its output on success; this step runs it
         # again so every test's PASS/FAIL line is in the log, and fails
@@ -534,18 +534,25 @@ jobs:
       - name: Test C binding generation
         run: |
           python3 tests/tooling/bindgen/test_bindgen.py
+          export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
+          test -f "$SDKROOT/usr/include/sys/proc_info.h"
+          mkdir -p tmp
+          cat > tmp/process-bindings.sun <<'SUN'
+          /** Triggers configured C binding generation without linking. */
+          function main() i32 { return 0; }
+          SUN
           for arch in arm64 x86_64; do
-            build/sun bindgen stdlib/bindings/process_darwin.h \
-              --target "$arch-apple-darwin" --module darwin_process_abi \
-              --allow proc_bsdinfo --allow proc_taskinfo \
-              --output "tmp/process_darwin_$arch.sun" \
-              -- -isysroot "$(xcrun --sdk macosx --show-sdk-path)"
+            rm -f "tmp/process_darwin_$arch.sun"
+            build/sun --emit-obj tmp/process-bindings.sun \
+              --target "$arch-apple-darwin" \
+              --path-var "SUN_DARWIN_PROCESS_BINDINGS=$PWD/tmp/process_darwin_$arch.sun" \
+              -o "tmp/process-bindings-$arch.o"
             build/sun fmt "tmp/process_darwin_$arch.sun"
-            diff -u "stdlib/bindings/process_darwin_$arch.sun" "tmp/process_darwin_$arch.sun"
+            diff -u "stdlib/std/process/bindings/process_darwin_$arch.sun" "tmp/process_darwin_$arch.sun"
           done
 
       - name: Run stdlib Sun tests
-        # Same as the Linux job: a visible run of stdlib/*_tests.sun on real
+        # Same as the Linux job: a visible run of stdlib/std/**/*_tests.sun on real
         # macOS hardware, sequential because the env and cwd tests change
         # process-wide state.
         run: |

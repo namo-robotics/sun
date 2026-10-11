@@ -15,7 +15,7 @@ endif()
 # below; nothing is listed here. Suite names mirror the directory path
 # (e.g. tests/functions/generic/test_constraints.cpp ->
 # Functions_Generic_Constraints), so --gtest_filter="Functions_*" selects a
-# whole group. The stdlib's own tests are Sun code (stdlib/*_tests.sun) and
+# whole group. The stdlib's own tests are Sun code (stdlib/std/**/*_tests.sun) and
 # run as the stdlib_sun_tests entry below, not through this binary.
 add_executable(sun_tests)
 
@@ -57,7 +57,7 @@ endif()
 if(NOT SKIP_STDLIB)
     add_dependencies(sun_tests stdlib_moon)
 
-    # The stdlib's own Sun test suite (stdlib/*_tests.sun), AOT-compiled to
+    # The stdlib's own Sun test suite (stdlib/std/**/*_tests.sun), AOT-compiled to
     # build/stdlib_tests_test by the root CMakeLists. One ctest entry runs the
     # whole suite sequentially; individual failures print as FAIL lines, and
     # `build/stdlib_tests_test --test-filter <name>` reruns one test.
