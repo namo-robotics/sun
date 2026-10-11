@@ -182,7 +182,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential cmake ninja-build python3 \
-            libllvm20 libarchive13t64
+            libllvm20 libclang1-20 libarchive13t64
 
       - name: Install CUDA toolkit without GPU drivers
         run: |

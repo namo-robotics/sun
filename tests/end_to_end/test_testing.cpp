@@ -374,7 +374,8 @@ TEST(EndToEnd_Testing, default_assertion_result) {
             1);
 }
 
-/** Check the public descriptor helpers from a module outside the standard library. */
+/** Check the public descriptor helpers from a module outside the standard
+ * library. */
 TEST(EndToEnd_Testing, public_errno_and_nonblocking_helpers) {
   EXPECT_EQ(executeTestsWithStdlib(R"(
     using std;

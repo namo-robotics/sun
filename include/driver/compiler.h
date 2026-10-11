@@ -385,8 +385,7 @@ inline bool linkExecutable(const std::string& objectPath,
   for (const auto& lib : linkOpts.libraries) {
     cmd += " -l" + shellQuote(lib);
   }
-  if (!linkOpts.archives.empty() && !isDarwin)
-    cmd += " -Wl,--end-group";
+  if (!linkOpts.archives.empty() && !isDarwin) cmd += " -Wl,--end-group";
 
   cmd += isDarwin ? " -lc++" : " -lstdc++";
 

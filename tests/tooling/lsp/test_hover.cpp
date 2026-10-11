@@ -15,12 +15,12 @@
 
 #include "ast.h"
 #include "codegen/intrinsics/declarations.h"
-#include "semantic_analysis/semantic_context.h"
 #include "driver/driver.h"
 #include "driver/execution_utils.h"
 #include "lsp/hover.h"
 #include "parsing/doc_comments.h"
 #include "parsing/parser.h"
+#include "semantic_analysis/semantic_context.h"
 
 using sun::driver::Driver;
 using sun::driver::getStdlibMoonImports;
@@ -733,15 +733,18 @@ TEST(Tooling_Lsp_Hover, FallibleConstructorResult) {
   EXPECT_EQ(hoverAt(source, "init()"), "init() _Result<void, i32>");
 }
 
-/** Fixed intrinsic hover includes its declared types and source documentation. */
+/** Fixed intrinsic hover includes its declared types and source documentation.
+ */
 TEST(Tooling_Lsp_Hover, IntrinsicDeclaration) {
   auto hover = fullHoverAt("var value = _bswap_u32(1u32);", "_bswap_u32");
   ASSERT_TRUE(hover);
   EXPECT_EQ(hover->code, "function _bswap_u32(value: u32) u32");
-  EXPECT_NE(hover->documentation.find("Reverse the byte order"), std::string::npos);
+  EXPECT_NE(hover->documentation.find("Reverse the byte order"),
+            std::string::npos);
 }
 
-/** Generic intrinsic documentation is available without the standard library. */
+/** Generic intrinsic documentation is available without the standard library.
+ */
 TEST(Tooling_Lsp_Hover, GenericIntrinsicDeclaration) {
   auto hover = fullHoverAt("var size = _sizeof<i64>();", "_sizeof");
   ASSERT_TRUE(hover);
@@ -768,15 +771,18 @@ TEST(Tooling_Lsp_Hover, IntrinsicsInErroneousCode) {
   }
 }
 
-/** Hovering an argument must not display the enclosing intrinsic's declaration. */
+/** Hovering an argument must not display the enclosing intrinsic's declaration.
+ */
 TEST(Tooling_Lsp_Hover, IntrinsicHoverOnlyOnName) {
-  const std::string source = "var input: u32 = 1u32; var output = _bswap_u32(input);";
+  const std::string source =
+      "var input: u32 = 1u32; var output = _bswap_u32(input);";
   auto hover = fullHoverAt(source, "input);", false);
   ASSERT_TRUE(hover);
   EXPECT_EQ(hover->code.find("function _bswap"), std::string::npos);
 }
 
-/** The prelude keeps docs and locations, without resolving stdlib generic types. */
+/** The prelude keeps docs and locations, without resolving stdlib generic
+ * types. */
 TEST(Tooling_Lsp_Hover, IntrinsicPreludeMetadata) {
   using namespace sun::codegen::intrinsics;
   bool foundInit = false;
@@ -801,7 +807,8 @@ TEST(Tooling_Lsp_Hover, IntrinsicPreludeMetadata) {
   EXPECT_TRUE(foundSpawn);
 }
 
-/** Fixed builtins retain their types and do not become unresolved declarations. */
+/** Fixed builtins retain their types and do not become unresolved declarations.
+ */
 TEST(Tooling_Lsp_Hover, IntrinsicPreludeRegistration) {
   using sun::semantic_analysis::AnalysisResults;
   using sun::semantic_analysis::SemanticContext;
@@ -822,18 +829,19 @@ TEST(Tooling_Lsp_Hover, IntrinsicPreludeRegistration) {
   EXPECT_EQ(atomic[0].paramTypes[2]->toString(), "u64");
   EXPECT_TRUE(context.getAllFunctions("_spawn").empty());
 
-  auto valid = analyze("var bytes = _sizeof<i64>(); var swapped = _bswap_u32(1u32);");
+  auto valid =
+      analyze("var bytes = _sizeof<i64>(); var swapped = _bswap_u32(1u32);");
   EXPECT_FALSE(valid.program.error.has_value());
   auto invalid = analyze("var swapped = _bswap_u32(true);");
   EXPECT_TRUE(invalid.program.error.has_value());
 }
 
-/** Dependent intrinsic signatures retain value packs and omit inferred results. */
+/** Dependent intrinsic signatures retain value packs and omit inferred results.
+ */
 TEST(Tooling_Lsp_Hover, DependentIntrinsicHover) {
   auto init = fullHoverAt("unsafe { _init<i64>(missing); };", "_init");
   ASSERT_TRUE(init);
-  EXPECT_EQ(init->code,
-            "function _init<T, P>(pointer: raw_ptr<P>, args...)");
+  EXPECT_EQ(init->code, "function _init<T, P>(pointer: raw_ptr<P>, args...)");
   auto spawn = fullHoverAt("unsafe { _spawn<i64>(missing); };", "_spawn");
   ASSERT_TRUE(spawn);
   EXPECT_NE(spawn->code.find("args...: _params_of<F>"), std::string::npos);

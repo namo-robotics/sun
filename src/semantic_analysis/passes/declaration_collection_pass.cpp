@@ -186,23 +186,24 @@ void DeclarationCollectionPass::registerNativeFunction(
     TypePtr returnType) {
   auto type = Types::Function(returnType, params);
   auto [entry, inserted] = nativeFunctions_.try_emplace(
-      proto.getLinkName(), NativeFunctionSignature{
-                               type, proto.getName(), proto.getLocation(),
-                               proto.isCVariadic()});
+      proto.getLinkName(),
+      NativeFunctionSignature{type, proto.getName(), proto.getLocation(),
+                              proto.isCVariadic()});
   if (inserted) return;
   const auto& previous = entry->second;
   if (compatibleNativeFunctionTypes(previous.type, type) &&
       previous.variadic == proto.isCVariadic())
     return;
 
-  logAndThrowError(
-      "Conflicting signatures for native symbol '" + proto.getLinkName() +
-          "': declaration '" + proto.getName() + "' (" + type->toDisplayString() +
-          (proto.isCVariadic() ? ", variadic" : "") +
-          ") conflicts with declaration '" + previous.name + "' at " +
-          previous.location.toString() + " (" + previous.type->toDisplayString() +
-          (previous.variadic ? ", variadic" : "") + ")",
-      proto.getLocation());
+  logAndThrowError("Conflicting signatures for native symbol '" +
+                       proto.getLinkName() + "': declaration '" +
+                       proto.getName() + "' (" + type->toDisplayString() +
+                       (proto.isCVariadic() ? ", variadic" : "") +
+                       ") conflicts with declaration '" + previous.name +
+                       "' at " + previous.location.toString() + " (" +
+                       previous.type->toDisplayString() +
+                       (previous.variadic ? ", variadic" : "") + ")",
+                   proto.getLocation());
 }
 
 void DeclarationCollectionPass::collectExternVariable(

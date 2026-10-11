@@ -514,7 +514,8 @@ std::optional<Hover> hoverAnnotation(const ExprAST& decl,
   return hover;
 }
 
-/** Shows compiler declarations only while the cursor is on an intrinsic name. */
+/** Shows compiler declarations only while the cursor is on an intrinsic name.
+ */
 std::optional<Hover> hoverIntrinsic(const Target& target, int byteOffset,
                                     const std::string& source) {
   using namespace sun::codegen::intrinsics;
@@ -523,15 +524,15 @@ std::optional<Hover> hoverIntrinsic(const Target& target, int byteOffset,
     std::string name;
     Position location = node->getLocation();
     if (node->getType() == ASTNodeType::GENERIC_CALL) {
-      name = static_cast<const sun::ast::GenericCallAST&>(*node)
-                 .getFunctionName();
+      name =
+          static_cast<const sun::ast::GenericCallAST&>(*node).getFunctionName();
     } else if (node->getType() == ASTNodeType::CALL) {
       const auto* callee =
           static_cast<const sun::ast::CallExprAST&>(*node).getCallee();
       if (!callee || callee->getType() != ASTNodeType::VARIABLE_REFERENCE)
         continue;
-      name = static_cast<const sun::ast::VariableReferenceAST&>(*callee)
-                 .getName();
+      name =
+          static_cast<const sun::ast::VariableReferenceAST&>(*callee).getName();
       location = callee->getLocation();
     } else {
       continue;

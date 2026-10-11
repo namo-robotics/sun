@@ -143,11 +143,11 @@ llvm::Function* ExternCEmitter::declare(
       existing->getFunctionType()->print(stream);
       stream << " versus ";
       funcType->print(stream);
-      logAndThrowError(
-          "Conflicting signatures for native symbol '" + symbol +
-              "': declaration '" + proto.getName() + "' conflicts with " +
-              previous + " (" + signatures + ")",
-          proto.getLocation());
+      logAndThrowError("Conflicting signatures for native symbol '" + symbol +
+                           "': declaration '" + proto.getName() +
+                           "' conflicts with " + previous + " (" + signatures +
+                           ")",
+                       proto.getLocation());
     }
     if (!lowerings_.count(symbol)) {
       lowerings_[symbol] = lowering;
@@ -157,9 +157,11 @@ llvm::Function* ExternCEmitter::declare(
     if (!existing->getMetadata("sun.cabi.declaration")) {
       existing->setMetadata(
           "sun.cabi.declaration",
-          llvm::MDNode::get(ctx_.getContext(), llvm::MDString::get(
-              ctx_.getContext(), "declaration '" + proto.getName() + "' at " +
-                                     proto.getLocation().toString())));
+          llvm::MDNode::get(
+              ctx_.getContext(),
+              llvm::MDString::get(ctx_.getContext(),
+                                  "declaration '" + proto.getName() + "' at " +
+                                      proto.getLocation().toString())));
     }
     return existing;
   }
@@ -175,9 +177,11 @@ llvm::Function* ExternCEmitter::declare(
   // Keep the source identity when this declaration travels in moon bitcode.
   func->setMetadata(
       "sun.cabi.declaration",
-      llvm::MDNode::get(ctx_.getContext(), llvm::MDString::get(
-          ctx_.getContext(), "declaration '" + proto.getName() + "' at " +
-                                 proto.getLocation().toString())));
+      llvm::MDNode::get(
+          ctx_.getContext(),
+          llvm::MDString::get(ctx_.getContext(),
+                              "declaration '" + proto.getName() + "' at " +
+                                  proto.getLocation().toString())));
 
   // Parameter names are only meaningful where a parameter survived one-to-one;
   // coerced and indirect ones no longer correspond to a single source name.

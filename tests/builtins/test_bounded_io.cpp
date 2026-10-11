@@ -3,22 +3,25 @@
 
 #include "driver/execution_utils.h"
 
-/** Raw pointer I/O must always require the caller's explicit unsafe contract. */
+/** Raw pointer I/O must always require the caller's explicit unsafe contract.
+ */
 TEST(BoundedIo, raw_file_io_requires_unsafe) {
   for (const auto* method : {"read_into", "write_bytes"}) {
-    EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeStringWithStdlib(
-      std::string(R"(
+    EXPECT_SUN_ERROR_WITH_MESSAGE(
+        sun::driver::executeStringWithStdlib(std::string(R"(
         /** Attempts to use a raw buffer without an unsafe block. */
         function main() i32 {
           var file = std.io.File();
           file.)") + method + R"((null, 1);
           return 0;
         }
-      )"), "requires an unsafe block");
+      )"),
+        "requires an unsafe block");
   }
 }
 
-/** A bounded view keeps its backing allocation borrowed until the view's last use. */
+/** A bounded view keeps its backing allocation borrowed until the view's last
+ * use. */
 TEST(BoundedIo, slice_prevents_moving_storage) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeStringWithStdlib(R"(
     using std;
@@ -30,7 +33,8 @@ TEST(BoundedIo, slice_prevents_moving_storage) {
       var moved = buffer;
       return _convert<i32>(bytes.size());
     }
-  )"), "Borrow check failed");
+  )"),
+                                "Borrow check failed");
 }
 
 /** Read-only storage cannot be passed to the mutable slice constructor. */
@@ -44,7 +48,8 @@ TEST(BoundedIo, mutable_slice_rejects_const_storage) {
       var bytes = MutableByteSlice(buffer);
       return _convert<i32>(bytes.size());
     }
-  )"), "const");
+  )"),
+                                "const");
 }
 
 /** Resizing cannot invalidate storage while a bounded view is still in use. */
@@ -59,7 +64,8 @@ TEST(BoundedIo, slice_prevents_resizing_storage) {
       buffer.resize_to(1);
       return _convert<i32>(bytes.size());
     }
-  )"), "Borrow check failed");
+  )"),
+                                "Borrow check failed");
 }
 
 /** Read-only methods remain usable while a slice borrows the buffer. */
@@ -73,7 +79,8 @@ TEST(BoundedIo, slice_allows_reading_storage_size) {
       var bytes = ByteSlice(buffer);
       return _convert<i32>(buffer.size() + bytes.size());
     }
-  )"), 8);
+  )"),
+            8);
 }
 
 /** Releasing a slice's scope permits replacing the buffer allocation. */
@@ -91,7 +98,8 @@ TEST(BoundedIo, storage_can_resize_after_slice_scope) {
       buffer.resize_to(1);
       return _convert<i32>(buffer.size());
     }
-  )"), 1);
+  )"),
+            1);
 }
 
 /** Mutable views cannot outlive the local allocation they reference. */
@@ -109,10 +117,12 @@ TEST(BoundedIo, slice_cannot_escape_local_storage) {
       var bytes = escape();
       return _convert<i32>(bytes.size());
     }
-  )"), "cannot return a value that stores references");
+  )"),
+                                "cannot return a value that stores references");
 }
 
-/** Imported bundles retain the private operations used by the public stream API. */
+/** Imported bundles retain the private operations used by the public stream
+ * API. */
 TEST(BoundedIo, imported_bounded_read) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
     using std;
@@ -131,5 +141,6 @@ TEST(BoundedIo, imported_bounded_read) {
         _ => -2
       };
     }
-  )"), 4);
+  )"),
+            4);
 }

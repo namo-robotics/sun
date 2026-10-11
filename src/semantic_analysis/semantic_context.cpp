@@ -718,13 +718,13 @@ void SemanticContext::registerBuiltinFunctions() {
     if (!proto->getTypeParameters().empty()) continue;
     std::vector<TypePtr> parameters;
     for (const auto& [name, annotation] : proto->getArgs()) {
-      parameters.push_back(
-          sun::codegen::intrinsics::intrinsicType(annotation));
+      parameters.push_back(sun::codegen::intrinsics::intrinsicType(annotation));
     }
     currentScope().declareFunction(
         proto->getName(),
         {sun::codegen::intrinsics::intrinsicType(*proto->getReturnType()),
-         std::move(parameters), {}});
+         std::move(parameters),
+         {}});
   }
 }
 

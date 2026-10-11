@@ -1,5 +1,6 @@
 /** Exercises class arithmetic through the ordinary method-call machinery. */
 #include <gtest/gtest.h>
+
 #include "driver/execution_utils.h"
 
 using sun::driver::executeString;
@@ -26,7 +27,8 @@ TEST(Operators_ClassArithmetic, overloads_and_precedence) {
       var b = Number(4);
       return (a + b) + (a * b) + (a * 5) + 2 * 4;
     }
-  )"), 42);
+  )"),
+            42);
 }
 
 /** Checks generic dispatch with owning results and temporary receivers. */
@@ -47,7 +49,8 @@ TEST(Operators_ClassArithmetic, generics_and_temporaries) {
       var result = Box<i32>(10) + Box<i32>(12) + Box<i32>(20);
       return result.value;
     }
-  )"), 42);
+  )"),
+            42);
 }
 
 /** Checks explicit result propagation from an arithmetic hook. */
@@ -72,7 +75,8 @@ TEST(Operators_ClassArithmetic, fallible_operator) {
     function calculate() Outcome<i32> { var n = Number(); return Outcome.Ok(try (n * 42)); }
     /** Handles the explicitly propagated result. */
     function main() i32 { return match calculate() { Outcome.Ok(value) => value, _ => 0 }; }
-  )"), 42);
+  )"),
+            42);
 }
 
 /** Checks ordinary visibility rules for arithmetic methods. */
@@ -88,7 +92,8 @@ TEST(Operators_ClassArithmetic, private_hook_is_rejected) {
     }
     /** Attempts an inaccessible call through operator syntax. */
     function main() i32 { var n = hidden.Number(); return n + 42; }
-  )"), SunError);
+  )"),
+               SunError);
 }
 
 /** Checks const receiver restrictions on mutating hooks. */
@@ -103,7 +108,8 @@ TEST(Operators_ClassArithmetic, mutable_hook_requires_mutable_receiver) {
     function use(n: const ref Number) i32 { return n + 42; }
     /** Calls the failing helper. */
     function main() i32 { var n = Number(); return use(n); }
-  )"), SunError);
+  )"),
+               SunError);
 }
 
 /** Checks that each operand executes once, with the receiver first. */
@@ -121,7 +127,8 @@ TEST(Operators_ClassArithmetic, evaluation_order) {
     function right() i32 { order = order * 10 + 2; return 0; }
     /** Evaluates the operands exactly once. */
     function main() i32 { return left() + right(); }
-  )"), 12);
+  )"),
+            12);
 }
 
 /** Checks that a reference returned by an operator remains a borrow. */
@@ -135,7 +142,8 @@ TEST(Operators_ClassArithmetic, reference_result) {
     }
     /** Reads the operator's borrowed result. */
     function main() i32 { var n = Number(); var value: ref i32 = n + 0; return value; }
-  )"), 42);
+  )"),
+            42);
 }
 
 /** Checks that missing and unsupported operator hooks fail normally. */
@@ -145,13 +153,15 @@ TEST(Operators_ClassArithmetic, missing_and_unsupported_hooks) {
     class Number { var value: i32 = 0; }
     /** Attempts an unsupported addition. */
     function main() i32 { var n = Number(); return n + 1; }
-  )"), SunError);
+  )"),
+               SunError);
   EXPECT_THROW(executeString(R"(
     /** Has no subtraction support. */
     class Number { var value: i32 = 0; }
     /** Attempts an unsupported subtraction. */
     function main() i32 { var n = Number(); return n - 1; }
-  )"), SunError);
+  )"),
+               SunError);
 }
 
 /** Checks that value parameters move rather than implicitly copying owners. */
@@ -168,7 +178,8 @@ TEST(Operators_ClassArithmetic, value_operand_moves) {
       var a = Number(); var b = Number(); var total = a + b;
       return total + b.value;
     }
-  )"), SunError);
+  )"),
+               SunError);
 }
 
 /** Checks that operator syntax cannot bypass an unsafe method boundary. */
@@ -181,5 +192,6 @@ TEST(Operators_ClassArithmetic, unsafe_hook_requires_unsafe_block) {
     }
     /** Attempts an unsafe operator in safe code. */
     function main() i32 { var n = Number(); return n + 42; }
-  )"), SunError);
+  )"),
+               SunError);
 }

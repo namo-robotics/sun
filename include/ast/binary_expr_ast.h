@@ -26,7 +26,10 @@ class BinaryExprAST : public CallExprAST {
    * expressions. */
   BinaryExprAST(Token Op, std::unique_ptr<ExprAST> LHS,
                 std::unique_ptr<ExprAST> RHS)
-      : CallExprAST(nullptr, {}), op(Op), LHS(std::move(LHS)), RHS(std::move(RHS)) {
+      : CallExprAST(nullptr, {}),
+        op(Op),
+        LHS(std::move(LHS)),
+        RHS(std::move(RHS)) {
     setLocation(Op.start);
   }
   /** Returns the syntax-node kind used to dispatch tree visitors. */

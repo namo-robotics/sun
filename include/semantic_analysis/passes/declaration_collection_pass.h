@@ -89,7 +89,8 @@ class DeclarationCollectionPass {
     bool variadic;
   };
 
-  /** Reject incompatible declarations of one native symbol across all scopes. */
+  /** Reject incompatible declarations of one native symbol across all scopes.
+   */
   void registerNativeFunction(const sun::ast::PrototypeAST &proto,
                               const std::vector<sun::types::TypePtr> &params,
                               sun::types::TypePtr returnType);
