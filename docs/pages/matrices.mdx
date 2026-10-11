@@ -394,7 +394,10 @@ and columns are scaled separately. For zero alpha or an empty inner dimension,
 GEMM only scales output and does not read inputs.
 
 Remaining four-column groups use the smaller tile kernel. Leftover rows use
-four-lane SIMD, and leftover columns use scalar arithmetic. Noncontiguous
+four-lane SIMD, and leftover columns use scalar arithmetic. Remainder sums
+stay in registers across the inner dimension: output is loaded once after
+scaling and stored once per sum. The final one to three columns share each
+scaled A value, and fully tiled output skips remainder processing. Noncontiguous
 transposed `B` and all `f64` products use the scalar path. Matrix storage does
 not need padding or additional alignment.
 

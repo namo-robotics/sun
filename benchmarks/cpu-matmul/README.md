@@ -100,3 +100,18 @@ Tests also exercise emulated CPUs missing these features. The portable fallback
 retains 4×8 tiles; the selected path uses 4×16 tiles and larger cache panels.
 The work threshold avoids dispatch overhead on small products. Panel and tile
 choices remain internal implementation details, not configuration options.
+
+## Packing and remainder measurements
+
+Coarse phase timers in temporary instrumented sources separated A packing,
+B packing, and packed-tile execution. On the measured machine, packing accounted
+for roughly 9–12% of square-product time. Remainder work and dispatch accounted
+for about 47% of the 127×129×131 case before remainder sums were kept in registers.
+These diagnostic timings include instrumentation overhead; the normal benchmark
+and chart use uninstrumented code.
+
+The remainder kernels now load and store each output sum once, preserve
+increasing inner-dimension order, and share A loads across the last one to three
+columns. An alternative loop order that reused packed A across column panels
+showed mixed gains while increasing B packing, so the existing packing order
+was retained. Performance measurements remain specific to CPU and shape.

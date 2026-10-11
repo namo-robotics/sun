@@ -322,6 +322,62 @@ public module std.linalg {
     }
   }
 
+  /** Accumulates remaining f32 rows and columns with one output load/store.
+   * Inputs and initialized output must be disjoint and caller-validated. A uses
+   * ar/ac strides, B has contiguous columns and stride br, and C has stride n.
+   * tiled_rows/cols bound the completed rectangle. Each sum follows increasing k. */
+  function multiply_remainders(alpha: f32, a: raw_ptr<u8>, ar: i64, ac: i64, b: raw_ptr<u8>, br: i64, c: raw_ptr<u8>, m: i64, n: i64, k: i64, tiled_rows: i64, tiled_cols: i64) void {
+    for (var i: i64 = 0; i < m; i = i + 1) {
+      var arow = i * ar;
+      var crow = i * n;
+      var j: i64 = 0;
+      if (i < tiled_rows) {
+        j = tiled_cols;
+      }
+      while (j <= n - 4) {
+        var sum = std.simd.F32x4();
+        var bv = std.simd.F32x4();
+        unsafe { sum.load_unchecked(c, crow + j); };
+        for (var p: i64 = 0; p < k; p = p + 1) {
+          var factor = std.simd.splat(unsafe { alpha * _load<f32>(a, arow + p * ac); });
+          unsafe { bv.load_unchecked(b, p * br + j); };
+          sum = factor.mul_add(bv, sum);
+        }
+        unsafe { sum.store_unchecked(c, crow + j); };
+        j = j + 4;
+      }
+      if (j < n) {
+        var sum0: f32 = unsafe { _load<f32>(c, crow + j); };
+        var sum1: f32 = 0.0f32;
+        var sum2: f32 = 0.0f32;
+        if (j + 1 < n) {
+          sum1 = unsafe { _load<f32>(c, crow + j + 1); };
+        }
+        if (j + 2 < n) {
+          sum2 = unsafe { _load<f32>(c, crow + j + 2); };
+        }
+        for (var p: i64 = 0; p < k; p = p + 1) {
+          var scaled: f32 = unsafe { alpha * _load<f32>(a, arow + p * ac); };
+          var brow = p * br + j;
+          sum0 = sum0 + scaled * unsafe { _load<f32>(b, brow); };
+          if (j + 1 < n) {
+            sum1 = sum1 + scaled * unsafe { _load<f32>(b, brow + 1); };
+          }
+          if (j + 2 < n) {
+            sum2 = sum2 + scaled * unsafe { _load<f32>(b, brow + 2); };
+          }
+        }
+        unsafe { _store<f32>(c, crow + j, sum0); };
+        if (j + 1 < n) {
+          unsafe { _store<f32>(c, crow + j + 1, sum1); };
+        }
+        if (j + 2 < n) {
+          unsafe { _store<f32>(c, crow + j + 2, sum2); };
+        }
+      }
+    }
+  }
+
   /** Scales output and accumulates validated inputs, skipping output reads for zero beta.
    * Dimensions and strides must keep every element offset within its allocation. */
   function multiply<T: _Float>(alpha: T, left: const ref std.Matrix<T>, ar: i64, ac: i64, right: const ref std.Matrix<T>, br: i64, bc: i64, output: ref std.Matrix<T>, k: i64, beta: T) void {
@@ -352,6 +408,11 @@ public module std.linalg {
         multiply_packed(_convert<f32>(alpha), a, ar, ac, b, br, c, n, k, tiled_rows, packed_cols, _convert<f32>(beta));
       }
       multiply_tiles(_convert<f32>(alpha), a, ar, ac, b, br, c, n, k, tiled_rows, tiled_cols, packed_cols);
+      if (tiled_rows == m and tiled_cols == n) {
+        return;
+      }
+      multiply_remainders(_convert<f32>(alpha), a, ar, ac, b, br, c, m, n, k, tiled_rows, tiled_cols);
+      return;
     }
     for (var i: i64 = 0; i < m; i = i + 1) {
       var arow = i * ar;
@@ -367,17 +428,6 @@ public module std.linalg {
         var scaled: T = unsafe { alpha * _load<T>(a, arow + p * ac); };
         var brow = p * br;
         var j = first_column;
-        if (vector_enabled) {
-          var factor = std.simd.splat(_convert<f32>(scaled));
-          var bv = std.simd.F32x4();
-          var cv = std.simd.F32x4();
-          while (j <= n - 4) {
-            unsafe { bv.load_unchecked(b, brow + j); cv.load_unchecked(c, crow + j); };
-            var sum = factor.mul_add(bv, cv);
-            unsafe { sum.store_unchecked(c, crow + j); };
-            j = j + 4;
-          }
-        }
         while (j < n) {
           unsafe {
             _store<T>(c, crow + j, _load<T>(c, crow + j) + scaled * _load<T>(b, brow + j * bc));
