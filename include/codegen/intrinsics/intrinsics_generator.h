@@ -135,6 +135,19 @@ class IntrinsicsGenerator {
   /** Emits LLVM code that advances a pointer by a byte offset. */
   llvm::Value* codegenPtrOffsetIntrinsic(const CallExprAST& expr);
 
+  /** Reserves bounded, constant-size stack storage for unsafe scratch use. */
+  llvm::Value* codegenStackAlloc(const CallExprAST& expr);
+
+  /** Emits fixed-width float operations on caller-provided storage aligned to
+   * f32. */
+  llvm::Value* codegenSimdF32(const CallExprAST& expr, unsigned lanes,
+                             const std::string& operation);
+
+  /** Checks CPU and OS support for an isolated AVX2/FMA kernel at runtime. */
+  llvm::Value* codegenCpuAvx2Fma(const CallExprAST& expr);
+  /** Emits an isolated packed GEMM tile or block kernel with a scalar ABI. */
+  llvm::Value* codegenGemmAvx2Fma(const CallExprAST& expr, bool block = false);
+
   /**
    * Bit intrinsics (in intrinsics/bits.cpp)
    */

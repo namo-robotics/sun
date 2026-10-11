@@ -56,6 +56,24 @@ Value* IntrinsicsGenerator::codegenStoreI64Intrinsic(const CallExprAST& expr) {
   return value;
 }
 
+llvm::Value* IntrinsicsGenerator::codegenStackAlloc(const CallExprAST& expr) {
+  constexpr uint64_t maxScratchBytes = 64 * 1024;
+  if (expr.getArgs().size() != 1)
+    logAndThrowError("_stack_alloc expects one constant byte count");
+  auto* bytes = llvm::dyn_cast_or_null<llvm::ConstantInt>(codegen(*expr.getArgs()[0]));
+  if (!bytes || bytes->isNegative() || bytes->isZero() ||
+      bytes->getValue().ugt(maxScratchBytes))
+    logAndThrowError("_stack_alloc requires a constant byte count in 1..65536");
+  auto* function = ctx.builder->GetInsertBlock()->getParent();
+  llvm::IRBuilder<> entry(&function->getEntryBlock(),
+                          function->getEntryBlock().begin());
+  auto* type = llvm::ArrayType::get(llvm::Type::getInt8Ty(ctx.getContext()),
+                                   bytes->getZExtValue());
+  auto* storage = entry.CreateAlloca(type, nullptr, "stack.scratch");
+  storage->setAlignment(llvm::Align(32));
+  return storage;
+}
+
 Value* IntrinsicsGenerator::codegenMallocIntrinsic(const CallExprAST& expr) {
   // _malloc(size) - allocate size bytes, returns raw_ptr<i8>
   const auto& args = expr.getArgs();

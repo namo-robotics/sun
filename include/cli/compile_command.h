@@ -34,6 +34,7 @@ struct CompileJob {
   sun::driver::LinkOptions baseLinkOpts;
   std::vector<sun::moon_bundling::MoonImport> moonImports;
   bool emitObjOnly = false;
+  bool emitLLVMOnly = false;
   bool emitIR = false;
   bool debugMode = false;
   bool debugInfo = false;

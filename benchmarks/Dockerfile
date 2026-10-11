@@ -5,7 +5,7 @@ FROM ${SUN_DEV_IMAGE} AS cpu
 
 USER root
 RUN apt-get update --error-on=any && apt-get install -y --no-install-recommends \
-    rustc cargo golang-go nodejs python3-matplotlib libicu78 \
+    rustc cargo golang-go nodejs python3-matplotlib libicu78 libopenblas-dev pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 # The string benchmark targets .NET 8, which is installed only in this image.

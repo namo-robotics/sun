@@ -824,3 +824,81 @@ class Vec<T> {
 | `_target_is` | `name: string literal` | `bool` | Compile-time check of the target OS or architecture |
 
 The `__`-prefixed file and socket intrinsics have tables of their own above.
+
+## Four-lane float SIMD
+
+Prefer the checked [`std.simd` API](/simd). Its compiler primitives are:
+
+| Intrinsic | Arguments | Operation |
+| --- | --- | --- |
+| `_simd_f32x4_copy` | output, input | Copy four lanes |
+| `_simd_f32x4_splat` | output, value: f32 | Broadcast a scalar |
+| `_simd_f32x4_add` | output, a, b | Lane-wise addition |
+| `_simd_f32x4_sub` | output, a, b | Lane-wise subtraction |
+| `_simd_f32x4_mul` | output, a, b | Lane-wise multiplication |
+| `_simd_f32x4_fma` | output, a, b, c | Fused `a * b + c`, one rounding per lane |
+| `_simd_f32x4_mul_add` | output, a, b, c | `a * b + c`, allowing hardware fusion |
+
+All pointers are `raw_ptr<f32>`, all results are written into output, and the
+return type is `void`. These operations require an `unsafe` block. Each pointer
+must address four accessible lanes with ordinary `f32` alignment. Input lanes
+must be initialized and output must be writable. Inputs are loaded before any
+output write, so overlapping ranges are supported. Arithmetic lowers to LLVM
+`<4 x float>` operations without fast-math flags. Only `_fma` requests fused
+multiply-add, using LLVM `llvm.fma`; targets without hardware support use a
+fused software fallback. `_mul_add` instead lowers to `llvm.fmuladd`, permitting
+fused or separate rounding without requiring software FMA.
+
+### Eight-lane floating-point intrinsics
+
+`_simd_f32x8_copy`, `_simd_f32x8_splat`, `_simd_f32x8_add`,
+`_simd_f32x8_sub`, `_simd_f32x8_mul`, `_simd_f32x8_fma`, and `_simd_f32x8_mul_add` have the same signatures and unsafe
+requirements as the four-lane forms above, but access eight floats. They lower
+to `<8 x float>` operations with four-byte memory alignment and no fast-math.
+The target may split these operations into narrower instructions. Prefer the
+checked `std.simd.F32x8` APIs outside validated kernels.
+
+### `_stack_alloc(bytes)`
+
+Reserves a 32-byte-aligned, uninitialized stack buffer and returns `raw_ptr<u8>`.
+The byte count must be a compile-time constant from 1 through 65536. Each call
+site reserves one buffer per invocation of the containing function; repeated
+loop iterations reuse that call site's buffer. Separate recursive invocations
+have separate storage. Multiple call sites can still consume substantial stack.
+
+This intrinsic requires `unsafe`. Initialize every byte before reading it,
+remain within bounds, do not free the pointer, and never retain it beyond the
+containing function's lifetime. It is intended for small, bounded kernel scratch
+buffers, not general allocation. The allocation-free packed GEMM kernel uses it
+to avoid hidden heap allocations.
+
+### Runtime matrix-kernel dispatch
+
+`_cpu_avx2_fma()` safely reports whether the running x86-64 CPU supports AVX2
+and FMA and the OS enables XMM/YMM register state. Other architectures return
+false. The check does not allocate and does not depend on the build host.
+
+`_gemm_tile_avx2_fma(a, b, c, n, k, beta)` is an unsafe packed 4×16 kernel.
+Call it only after a successful capability check. The pointers are `raw_ptr<u8>`
+with `f32` alignment: `a` contains `k` groups of four scaled floats, and `b`
+contains two consecutive panels, each holding `k` groups of eight floats.
+`c` addresses four writable rows of sixteen floats with row stride `n`.
+All ranges must fit their allocations, `k` must be nonnegative, and `n` must
+be at least sixteen. Inputs must be initialized and disjoint from output;
+output needs initialization only when `beta != 0`.
+
+The kernel applies beta, then accumulates in increasing inner-dimension order
+with vector FMA. It uses a scalar calling convention and a separate, non-inlined
+function with AVX2/FMA target attributes, keeping these instructions out of
+baseline callers. Prefer the validated `std.linalg.gemm` API.
+
+`_gemm_block_avx2_fma(a, b, c, n, k, beta, rows, cols)` uses the same isolated
+arithmetic for an entire packed block. `rows` and `cols` must be positive
+multiples of four and sixteen, and `n >= cols`. A contains successive four-row
+micro-panels, each holding `k` groups of four scaled floats; B contains successive
+eight-column micro-panels, each holding `k` groups of eight floats. C holds
+`rows` writable rows of `cols` floats with stride `n`. The same capability,
+alignment, initialization, bounds, and disjoint-output requirements apply.
+The kernel applies beta once per output and preserves increasing-k accumulation.
+Keeping the tile loops inside the targeted function avoids a separate call and
+AVX-to-baseline transition for every tile. It does not allocate scratch storage.

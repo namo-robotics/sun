@@ -55,8 +55,9 @@ struct BuildRunOptions {
   std::string outputFile;                // -o <file>
   std::string targetTriple;              // --target <triple>
   sun::driver::LinkOptions linkOptions;  // -l, -L, --sysroot, static or dynamic
-  bool compileMode = false;              // -c, implied by --emit-obj
-  bool emitObjOnly = false;              // --emit-obj
+  bool compileMode = false;              // -c, --emit-obj, or --emit-llvm
+  bool emitObjOnly = false;              // --emit-obj or --emit-llvm
+  bool emitLLVMOnly = false;             // --emit-llvm (full textual IR)
   bool staticRequested = false;          // --static
   bool dynamicRequested = false;         // --dynamic
   bool emitMoon = false;                 // --emit-moon

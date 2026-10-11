@@ -368,3 +368,93 @@ declare function __recvfrom_ipv4(fd: i32, buffer: raw_ptr<u8>, len: i64, flags: 
 /** Write a socket's local IPv4 address and port through the output pointers.
  * Return the native status code. */
 declare function __getsockname_ipv4(fd: i32, out_ip: raw_ptr<i32>, out_port: raw_ptr<i32>) i32;
+
+/** Copies four initialized f32 lanes into writable storage. Both pointers need
+ * f32 alignment and four accessible lanes. Overlap is allowed. Requires unsafe. */
+declare function _simd_f32x4_copy(output: raw_ptr<f32>, input: raw_ptr<f32>) void;
+
+/** Writes value into four writable f32 lanes. Requires f32 alignment and unsafe. */
+declare function _simd_f32x4_splat(output: raw_ptr<f32>, value: f32) void;
+
+/** Adds four initialized lanes from each input into writable output. All
+ * pointers need f32 alignment and four accessible lanes. Overlap is allowed. */
+declare function _simd_f32x4_add(output: raw_ptr<f32>, a: raw_ptr<f32>, b: raw_ptr<f32>) void;
+
+/** Subtracts four initialized lanes from each input into writable output. All
+ * pointers need f32 alignment and four accessible lanes. Overlap is allowed. */
+declare function _simd_f32x4_sub(output: raw_ptr<f32>, a: raw_ptr<f32>, b: raw_ptr<f32>) void;
+
+/** Multiplies four initialized lanes from each input into writable output. All
+ * pointers need f32 alignment and four accessible lanes. Overlap is allowed. */
+declare function _simd_f32x4_mul(output: raw_ptr<f32>, a: raw_ptr<f32>, b: raw_ptr<f32>) void;
+
+/** Copies eight initialized f32 lanes into writable storage. Both pointers need
+ * f32 alignment and eight accessible lanes. Overlap is allowed. Requires unsafe. */
+declare function _simd_f32x8_copy(output: raw_ptr<f32>, input: raw_ptr<f32>) void;
+
+/** Writes value into eight writable f32 lanes. Requires f32 alignment and unsafe. */
+declare function _simd_f32x8_splat(output: raw_ptr<f32>, value: f32) void;
+
+/** Adds eight initialized lanes from each input into writable output. All
+ * pointers need f32 alignment and eight accessible lanes. Overlap is allowed. */
+declare function _simd_f32x8_add(output: raw_ptr<f32>, a: raw_ptr<f32>, b: raw_ptr<f32>) void;
+
+/** Subtracts eight initialized lanes from each input into writable output. All
+ * pointers need f32 alignment and eight accessible lanes. Overlap is allowed. */
+declare function _simd_f32x8_sub(output: raw_ptr<f32>, a: raw_ptr<f32>, b: raw_ptr<f32>) void;
+
+/** Multiplies eight initialized lanes from each input into writable output. All
+ * pointers need f32 alignment and eight accessible lanes. Overlap is allowed. */
+declare function _simd_f32x8_mul(output: raw_ptr<f32>, a: raw_ptr<f32>, b: raw_ptr<f32>) void;
+
+/** Reserves uninitialized, aligned scratch memory until the containing function returns.
+ * The byte count must be a positive compile-time constant within the compiler limit.
+ * Each call site owns one buffer per function invocation; loop iterations reuse it.
+ * Requires unsafe: initialize bytes before reads, stay in bounds, never free the
+ * pointer, and never let it escape the containing function's lifetime. */
+declare function _stack_alloc(bytes: i64) raw_ptr<u8>;
+
+/** Computes a * b + c with one rounding per lane. All pointers require f32
+ * alignment and four accessible lanes; inputs must be initialized. Output
+ * may overlap any input. Requires unsafe. */
+declare function _simd_f32x4_fma(output: raw_ptr<f32>, a: raw_ptr<f32>, b: raw_ptr<f32>, c: raw_ptr<f32>) void;
+
+/** Computes a * b + c with one rounding per lane. All pointers require f32
+ * alignment and eight accessible lanes; inputs must be initialized. Output
+ * may overlap any input. Requires unsafe. */
+declare function _simd_f32x8_fma(output: raw_ptr<f32>, a: raw_ptr<f32>, b: raw_ptr<f32>, c: raw_ptr<f32>) void;
+
+/** Computes a * b + c, allowing hardware fusion or separate rounding per lane.
+ * All pointers require f32 alignment and four accessible lanes; initialize
+ * inputs before use. Output may overlap any input. Requires unsafe. */
+declare function _simd_f32x4_mul_add(output: raw_ptr<f32>, a: raw_ptr<f32>, b: raw_ptr<f32>, c: raw_ptr<f32>) void;
+
+/** Computes a * b + c, allowing hardware fusion or separate rounding per lane.
+ * All pointers require f32 alignment and eight accessible lanes; initialize
+ * inputs before use. Output may overlap any input. Requires unsafe. */
+declare function _simd_f32x8_mul_add(output: raw_ptr<f32>, a: raw_ptr<f32>, b: raw_ptr<f32>, c: raw_ptr<f32>) void;
+
+/** Reports runtime AVX2/FMA support, including OS support for XMM/YMM state.
+ * Returns false on other architectures. Does not allocate or change CPU state. */
+declare function _cpu_avx2_fma() bool;
+
+/** Accumulates a packed 4-by-16 tile on a CPU accepted by _cpu_avx2_fma.
+ * Requires unsafe and a successful runtime capability check before calling.
+ * A contains k groups of four scaled floats; B contains two consecutive panels
+ * of k groups of eight floats. C addresses four rows of sixteen writable floats
+ * with stride n. k is nonnegative, n is at least sixteen, and all pointer ranges
+ * must fit their allocations with f32 alignment. Inputs are initialized and
+ * disjoint from output. C is initialized only if beta is nonzero. Computes
+ * beta*C followed by increasing-k fused accumulation, without allocation. */
+declare function _gemm_tile_avx2_fma(a: raw_ptr<u8>, b: raw_ptr<u8>, c: raw_ptr<u8>, n: i64, k: i64, beta: f32) void;
+
+/** Accumulates a packed block on a CPU accepted by _cpu_avx2_fma.
+ * Requires unsafe and a successful runtime capability check. rows and cols are
+ * positive multiples of four and sixteen, k is nonnegative, and n >= cols.
+ * A contains successive four-row micro-panels, each with k groups of four
+ * scaled floats. B contains successive eight-column micro-panels, each with
+ * k groups of eight floats. C holds rows writable rows of cols floats, stride n.
+ * All ranges fit their allocations with f32 alignment; inputs are initialized
+ * and disjoint from C. C needs initialization only for nonzero beta. Applies
+ * beta once per output then accumulates in increasing k, without allocation. */
+declare function _gemm_block_avx2_fma(a: raw_ptr<u8>, b: raw_ptr<u8>, c: raw_ptr<u8>, n: i64, k: i64, beta: f32, rows: i64, cols: i64) void;

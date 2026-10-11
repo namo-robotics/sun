@@ -129,7 +129,19 @@ std::optional<EarlyExit> parseBuildRunArguments(
       options.compileMode = true;
     } else if (cursor.takeValueOf("-o", value)) {
       options.outputFile = value;
+    } else if (arg == "--emit-llvm") {
+      if (options.emitObjOnly && !options.emitLLVMOnly) {
+        return makeFailure(
+            "Error: --emit-obj and --emit-llvm are mutually exclusive\n");
+      }
+      options.compileMode = true;
+      options.emitObjOnly = true;
+      options.emitLLVMOnly = true;
     } else if (arg == "--emit-obj") {
+      if (options.emitLLVMOnly) {
+        return makeFailure(
+            "Error: --emit-obj and --emit-llvm are mutually exclusive\n");
+      }
       options.compileMode = true;
       options.emitObjOnly = true;
     } else if (cursor.takeValueOf("--target", value)) {
@@ -191,6 +203,10 @@ std::optional<EarlyExit> parseBuildRunArguments(
 /** Checks for incompatible or incomplete build and execution options. */
 std::optional<EarlyExit> validateBuildRunOptions(
     const BuildRunOptions& options, const std::string& programName) {
+  if (options.emitLLVMOnly && options.emitMoon) {
+    return makeFailure(
+        "Error: --emit-moon and --emit-llvm are mutually exclusive\n");
+  }
   bool linksExecutable = options.compileMode && !options.emitObjOnly;
 
   // Cross-compilation produces object files and .moon artifacts; the JIT can

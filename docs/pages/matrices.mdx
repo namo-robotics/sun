@@ -280,3 +280,133 @@ manifest {
 The optional [NVIDIA library](/cuda) supplies `cuda.DeviceMatrix<T>`, explicit
 host/device transfers, and GPU arithmetic. Host `std.Matrix<T>` retains its
 existing storage and indexing behavior.
+
+## Matrix multiplication methods and operator
+
+For `Matrix<f32>` and `Matrix<f64>`, `a * b` performs matrix multiplication
+and returns `std.linalg.LinalgResult<Matrix<T>>`. Handle the result explicitly,
+for example with `try (a * b)`. Both operands are borrowed and must have the
+same element type. The result owns independent storage allocated through the
+left operand's allocator. This operator allocates intentionally; use the
+methods below when reusing output storage.
+
+```sun
+using std;
+using std.linalg;
+
+/** Demonstrates allocating multiplication and reusable output storage. */
+function main() LinalgResult<void> {
+    var alloc = make_heap_allocator();
+    var a = Matrix<f64>([[1.0, 2.0], [3.0, 4.0]], alloc);
+    var b = Matrix<f64>([[5.0, 6.0], [7.0, 8.0]], alloc);
+    var product = try (a * b);
+
+    var output = Matrix<f64>(alloc, [2, 2]);
+    try a.matmul_into(b, output);  // output = a * b, without allocation
+    try output.gemm(1.0, a, Transpose.None, b, Transpose.None, 1.0);
+    // output now contains twice a * b; product and both inputs are unchanged.
+    return LinalgResult.Ok;
+}
+
+manifest {
+    libraries: ["stdlib.moon"]
+}
+```
+
+`a.matmul_into(b, output)` overwrites output without reading its old values.
+`output.gemm(alpha, a, trans_a, b, trans_b, beta)` updates output using the full
+GEMM formula and supports transposed inputs. Both methods allocate no storage
+and preserve the destination on validation errors. They require a correctly
+shaped destination that does not share storage with either input.
+
+`std.linalg.matmul(a, b, allocator)` provides the same allocating product as
+`a * b` with an explicitly chosen allocator. Allocating multiplication checks
+input ranks, compatible shapes, and output size overflow before allocating.
+Integer matrices remain available as containers but cannot use these
+floating-point multiplication operations. Matrix addition and elementwise
+multiplication are not provided by these methods.
+
+## GEMM matrix multiplication
+
+`std.linalg.gemm` computes `C = alpha * op(A) * op(B) + beta * C` for
+`Matrix<f32>` and `Matrix<f64>`. Supply an existing two-dimensional destination;
+GEMM does not allocate output or heap scratch storage.
+
+```sun
+using std;
+using std.linalg;
+
+/** Multiplies two matrices into caller-owned output storage. */
+function main() LinalgResult<void> {
+    var alloc = make_heap_allocator();
+    var a = Matrix<f64>([[1.0, 2.0], [3.0, 4.0]], alloc);
+    var b = Matrix<f64>([[5.0, 6.0], [7.0, 8.0]], alloc);
+    var c = Matrix<f64>(alloc, [2, 2]);
+    try gemm<f64>(1.0, a, Transpose.None, b, Transpose.None, 0.0, c);
+    // c now contains [[19, 22], [43, 50]].
+    return LinalgResult.Ok;
+}
+
+manifest {
+    libraries: ["stdlib.moon"]
+}
+```
+
+`Transpose.Transpose` uses an input's transposed orientation without copying it.
+For example, `gemm<f64>(1.0, a, Transpose.Transpose, a, Transpose.None, 0.0, c)`
+computes `AᵀA`; the destination must have the corresponding shape.
+
+The shape-only matrix constructor leaves elements uninitialized. When `beta`
+is zero, GEMM overwrites `C` without reading it, so newly allocated output is
+valid. Otherwise initialize `C` before the call. Initialize input elements when
+they will be read; `alpha == 0` or an empty inner dimension skips input reads
+and only scales the output. Empty output dimensions are accepted.
+
+All validation precedes output writes. `LinalgResult.Error` carries a
+`LinalgError` whose `reason()` identifies invalid dimensions, incompatible
+shapes, or output storage shared with an input. Inputs may share storage with
+each other, but the destination must be separate even when `alpha` is zero.
+Constructing an error does not allocate; requesting its `message()` creates a
+string. Matrix views and integer matrices are not supported by this API.
+
+For `f32`, GEMM uses explicit SIMD when `B` has contiguous logical columns.
+This applies to `a * b`, `matmul_into`, and both GEMM interfaces. Transposing `A`
+still permits SIMD; noncontiguous transposed `B` and all `f64` products use the
+scalar path.
+
+Small products use 4×4 register tiles. Products with at least 16 rows, 16 columns,
+and an inner dimension of at least 32 use packing. Once there is enough work to
+amortize the capability check, supported x86-64 CPUs automatically select an
+isolated AVX2/FMA kernel. It checks CPU features and OS support for XMM/YMM state;
+other CPUs use portable 4×8 tiles.
+
+The AVX2/FMA kernel processes packed blocks in row-first order using 4×16 tiles
+and paired inner-loop iterations. The portable kernel uses four-step unrolling.
+Both retain increasing inner-dimension order, including cleanup iterations.
+Full AVX2/FMA panels hold up to 128 inner elements and 128 columns; portable
+panels hold up to 64 of each. Both process up to 32 rows at a time.
+
+Packing reserves 80 KiB of stack scratch plus a 256-byte edge-output tile, with
+no heap allocation. Scratch is local to each call; only active panels are
+initialized and read. Packing copies input elements, not owning matrices, and
+never changes matrix shape, storage alignment, or padding.
+
+The AVX2/FMA edge pass reuses those buffers with inner panels of up to 1024
+elements. It zero-fills missing input lanes and computes into the temporary
+output tile, copying only valid elements back. A single leftover column uses
+scalar accumulation to avoid excessive padding. Portable remainders use
+four-lane SIMD for leftover rows and scalar arithmetic for leftover columns,
+keeping each sum in registers across the inner dimension.
+
+Packed kernels apply beta on the first inner panel only. With zero beta they
+initialize accumulators without reading old output; subsequent panels continue
+the sum. Portable remainders are scaled separately. For zero alpha or an empty
+inner dimension, GEMM only scales output and does not read inputs.
+
+SIMD kernels permit hardware fused multiply-add automatically; no software FMA
+fallback is required. Scalar paths retain separate multiply/add, so rounding can
+vary with target, shape, and layout. Every kernel accumulates in increasing
+inner-dimension order without reassociation or fast-math. This implementation is
+single-threaded, and performance depends on shape and CPU.
+
+The underlying [SIMD API](/simd) is also available for other numeric algorithms.

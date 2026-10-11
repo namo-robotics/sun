@@ -1,0 +1,622 @@
+/** Provides allocation-free operations on owning, row-major matrices. */
+public module std.linalg {
+  /** Selects the logical orientation of an input without copying it. */
+  public enum Transpose { None, Transpose }
+
+  /** Identifies a rejected matrix operation without allocating a message. */
+  public enum LinalgErrorReason { InvalidDimensions, IncompatibleShapes, OverlappingOutput }
+
+  /** Describes an invalid operation; message text is allocated only on request. */
+  public class LinalgError implements IError {
+    var reason_: LinalgErrorReason;
+
+    /** Stores the reason without allocating. */
+    init(reason: LinalgErrorReason) {
+      this.reason_ = reason;
+    }
+
+    /** Returns the structured reason for the failure. */
+    public const method reason() LinalgErrorReason {
+      return this.reason_;
+    }
+
+    /** Returns a stable code within this error category. */
+    public const method code() i32 {
+      if (this.reason_ == LinalgErrorReason.InvalidDimensions) {
+        return 1;
+      }
+      if (this.reason_ == LinalgErrorReason.IncompatibleShapes) {
+        return 2;
+      }
+      return 3;
+    }
+
+    /** Allocates a description of the rejected operation. */
+    public const method message() std.String {
+      if (this.reason_ == LinalgErrorReason.InvalidDimensions) {
+        return std.String("GEMM requires valid two-dimensional matrices");
+      }
+      if (this.reason_ == LinalgErrorReason.IncompatibleShapes) {
+        return std.String("GEMM matrix shapes are incompatible");
+      }
+      return std.String("GEMM output shares storage with an input");
+    }
+  }
+
+  /** Returns an operation result or an allocation-free validation error. */
+  public enum LinalgResult<T> { Ok(T), Error(LinalgError) }
+
+  /** Checks shape and byte counts before any offset arithmetic is performed. */
+  function valid_dimensions<T: _Float>(rows: i64, cols: i64, size: i64) bool {
+    if (rows < 0 or cols < 0) {
+      return false;
+    }
+    if (rows != 0) {
+      if (cols > std.I64_MAX / rows) {
+        return false;
+      }
+    }
+    var count = rows * cols;
+    if (count > std.I64_MAX / _sizeof<T>()) {
+      return false;
+    }
+    return count == size;
+  }
+
+  /** Checks matrix rank before accessing its two dimensions. */
+  function valid_matrix<T: _Float>(matrix: const ref std.Matrix<T>) bool {
+    if (matrix.ndims() != 2) {
+      return false;
+    }
+    return valid_dimensions<T>(matrix.dim(0), matrix.dim(1), matrix.size());
+  }
+
+  /** Scales validated output storage, reading existing values only for nonzero beta. */
+  function scale_output<T: _Float>(output: ref std.Matrix<T>, beta: T) void {
+    var data = output.raw_data();
+    var count = output.size();
+    if (beta == _convert<T>(1)) {
+      return;
+    }
+    for (var i: i64 = 0; i < count; i = i + 1) {
+      if (beta == _convert<T>(0)) {
+        unsafe { _store<T>(data, i, _convert<T>(0)); };
+      } else {
+        unsafe { _store<T>(data, i, beta * _load<T>(data, i)); };
+      }
+    }
+  }
+
+  /** Scales only output outside the packed rectangle, after shape validation.
+   * The packed kernel initializes the excluded rectangle on its first panel. */
+  function scale_remainder<T: _Float>(output: ref std.Matrix<T>, beta: T, rows: i64, cols: i64) void {
+    if (beta == _convert<T>(1)) {
+      return;
+    }
+    var c = output.raw_data();
+    var m = output.dim(0);
+    var n = output.dim(1);
+    for (var i: i64 = 0; i < m; i = i + 1) {
+      var first: i64 = 0;
+      if (i < rows) {
+        first = cols;
+      }
+      var row = i * n;
+      for (var j = first; j < n; j = j + 1) {
+        if (beta == _convert<T>(0)) {
+          unsafe { _store<T>(c, row + j, _convert<T>(0)); };
+        } else {
+          unsafe { _store<T>(c, row + j, beta * _load<T>(c, row + j)); };
+        }
+      }
+    }
+  }
+
+  /** Accumulates one 4-by-8 tile from initialized packed panels.
+   * A contains k groups of four scaled values; B contains k groups of eight.
+   * Output contains four disjoint rows of eight values at offset with row stride
+   * n. Existing output must be initialized only when beta is nonzero. Every
+   * pointer and range is validated by the caller. Consecutive k steps are
+   * unrolled in increasing order allowing hardware fused multiply-add. */
+  function packed_tile(a: raw_ptr<u8>, b: raw_ptr<u8>, c: raw_ptr<u8>, offset: i64, n: i64, k: i64, beta: f32) void {
+    var acc0 = std.simd.F32x8();
+    var acc1 = std.simd.F32x8();
+    var acc2 = std.simd.F32x8();
+    var acc3 = std.simd.F32x8();
+    if (beta != 0.0f32) {
+      unsafe { acc0.load_unchecked(c, offset + 0 * n); };
+      unsafe { acc1.load_unchecked(c, offset + 1 * n); };
+      unsafe { acc2.load_unchecked(c, offset + 2 * n); };
+      unsafe { acc3.load_unchecked(c, offset + 3 * n); };
+      if (beta != 1.0f32) {
+        var factor = std.simd.F32x8(beta);
+        acc0 = factor.mul(acc0);
+        acc1 = factor.mul(acc1);
+        acc2 = factor.mul(acc2);
+        acc3 = factor.mul(acc3);
+      }
+    }
+    var bv = std.simd.F32x8();
+    var p: i64 = 0;
+    // Keep each accumulator ordered while reducing loop-control overhead.
+    while (p <= k - 4) {
+      unsafe { bv.load_unchecked(b, (p + 0) * 8); };
+      var factor0_step0 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 0) * 4 + 0); });
+      acc0 = factor0_step0.mul_add(bv, acc0);
+      var factor1_step0 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 0) * 4 + 1); });
+      acc1 = factor1_step0.mul_add(bv, acc1);
+      var factor2_step0 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 0) * 4 + 2); });
+      acc2 = factor2_step0.mul_add(bv, acc2);
+      var factor3_step0 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 0) * 4 + 3); });
+      acc3 = factor3_step0.mul_add(bv, acc3);
+      unsafe { bv.load_unchecked(b, (p + 1) * 8); };
+      var factor0_step1 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 1) * 4 + 0); });
+      acc0 = factor0_step1.mul_add(bv, acc0);
+      var factor1_step1 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 1) * 4 + 1); });
+      acc1 = factor1_step1.mul_add(bv, acc1);
+      var factor2_step1 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 1) * 4 + 2); });
+      acc2 = factor2_step1.mul_add(bv, acc2);
+      var factor3_step1 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 1) * 4 + 3); });
+      acc3 = factor3_step1.mul_add(bv, acc3);
+      unsafe { bv.load_unchecked(b, (p + 2) * 8); };
+      var factor0_step2 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 2) * 4 + 0); });
+      acc0 = factor0_step2.mul_add(bv, acc0);
+      var factor1_step2 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 2) * 4 + 1); });
+      acc1 = factor1_step2.mul_add(bv, acc1);
+      var factor2_step2 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 2) * 4 + 2); });
+      acc2 = factor2_step2.mul_add(bv, acc2);
+      var factor3_step2 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 2) * 4 + 3); });
+      acc3 = factor3_step2.mul_add(bv, acc3);
+      unsafe { bv.load_unchecked(b, (p + 3) * 8); };
+      var factor0_step3 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 3) * 4 + 0); });
+      acc0 = factor0_step3.mul_add(bv, acc0);
+      var factor1_step3 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 3) * 4 + 1); });
+      acc1 = factor1_step3.mul_add(bv, acc1);
+      var factor2_step3 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 3) * 4 + 2); });
+      acc2 = factor2_step3.mul_add(bv, acc2);
+      var factor3_step3 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 3) * 4 + 3); });
+      acc3 = factor3_step3.mul_add(bv, acc3);
+      p = p + 4;
+    }
+    while (p < k) {
+      unsafe { bv.load_unchecked(b, p * 8); };
+      var factor0 = std.simd.F32x8(unsafe { _load<f32>(a, p * 4 + 0); });
+      acc0 = factor0.mul_add(bv, acc0);
+      var factor1 = std.simd.F32x8(unsafe { _load<f32>(a, p * 4 + 1); });
+      acc1 = factor1.mul_add(bv, acc1);
+      var factor2 = std.simd.F32x8(unsafe { _load<f32>(a, p * 4 + 2); });
+      acc2 = factor2.mul_add(bv, acc2);
+      var factor3 = std.simd.F32x8(unsafe { _load<f32>(a, p * 4 + 3); });
+      acc3 = factor3.mul_add(bv, acc3);
+      p = p + 1;
+    }
+    unsafe { acc0.store_unchecked(c, offset + 0 * n); };
+    unsafe { acc1.store_unchecked(c, offset + 1 * n); };
+    unsafe { acc2.store_unchecked(c, offset + 2 * n); };
+    unsafe { acc3.store_unchecked(c, offset + 3 * n); };
+  }
+
+  /** Computes a partial AVX2/FMA tile through initialized stack scratch.
+   * CPU support is checked by the caller. A and B contain initialized packed
+   * four-row and sixteen-column tiles, padded outside valid input bounds.
+   * Output has rows in 1..4 and cols in 1..16 at offset with stride n. Only
+   * valid output elements are read or written; beta zero skips output reads.
+   * Scratch contains 64 writable floats and is disjoint from all matrices. */
+  function packed_edge(a: raw_ptr<u8>, b: raw_ptr<u8>, c: raw_ptr<u8>, offset: i64, n: i64, k: i64, beta: f32, rows: i64, cols: i64, scratch: raw_ptr<u8>) void {
+    if (beta != 0.0f32) {
+      for (var r: i64 = 0; r < 4; r = r + 1) {
+        for (var j: i64 = 0; j < 16; j = j + 1) {
+          var value: f32 = 0.0f32;
+          if (r < rows and j < cols) {
+            value = unsafe { _load<f32>(c, offset + r * n + j); };
+          }
+          unsafe { _store<f32>(scratch, r * 16 + j, value); };
+        }
+      }
+    }
+    unsafe { _gemm_tile_avx2_fma(a, b, scratch, 16, k, beta); };
+    for (var r: i64 = 0; r < rows; r = r + 1) {
+      for (var j: i64 = 0; j < cols; j = j + 1) {
+        unsafe { _store<f32>(c, offset + r * n + j, _load<f32>(scratch, r * 16 + j)); };
+      }
+    }
+  }
+
+  /** Accumulates one final column without padding it to a wide tile.
+   * Inputs are initialized, validated, and disjoint from the m-by-n output.
+   * B columns are contiguous. Existing output is read only for nonzero beta;
+   * each scalar sum follows increasing k and only the last column is written. */
+  function multiply_last_column(alpha: f32, a: raw_ptr<u8>, ar: i64, ac: i64, b: raw_ptr<u8>, br: i64, c: raw_ptr<u8>, m: i64, n: i64, k: i64, beta: f32) void {
+    for (var i: i64 = 0; i < m; i = i + 1) {
+      var sum: f32 = 0.0f32;
+      if (beta != 0.0f32) {
+        sum = unsafe { _load<f32>(c, i * n + n - 1); };
+        if (beta != 1.0f32) {
+          sum = beta * sum;
+        }
+      }
+      var arow = i * ar;
+      for (var p: i64 = 0; p < k; p = p + 1) {
+        unsafe { sum = sum + (alpha * _load<f32>(a, arow + p * ac)) * _load<f32>(b, p * br + n - 1); };
+      }
+      unsafe { _store<f32>(c, i * n + n - 1, sum); };
+    }
+  }
+
+  /** Packs only output edges after the complete AVX2/FMA tiles are finished.
+   * All matrices and CPU support are validated. Completed rows/cols are multiples
+   * of four/sixteen; edges retain original C until first-panel beta handling.
+   * Reuses disjoint scratch: A has 4096 floats, B 16384, and output 64.
+   * Inner panels hold at most 1024 elements, preserving increasing-k order.
+   * Missing input lanes are initialized to zero; no padding is read from matrices. */
+  function multiply_packed_edges(alpha: f32, a: raw_ptr<u8>, ar: i64, ac: i64, b: raw_ptr<u8>, br: i64, c: raw_ptr<u8>, m: i64, n: i64, k: i64, rows: i64, cols: i64, beta: f32, pa: raw_ptr<u8>, pb: raw_ptr<u8>, edge: raw_ptr<u8>) void {
+    var vector = std.simd.F32x8();
+    for (var jc: i64 = 0; jc < n; jc = jc + 16) {
+      var first_row = rows;
+      if (jc >= cols) {
+        first_row = 0;
+      }
+      if (first_row == m) {
+        continue;
+      }
+      var width = n - jc;
+      if (width > 16) {
+        width = 16;
+      }
+      if (width == 1) {
+        multiply_last_column(alpha, a, ar, ac, b, br, c, m, n, k, beta);
+        continue;
+      }
+      for (var pc: i64 = 0; pc < k; pc = pc + 1024) {
+        var kc = k - pc;
+        if (kc > 1024) {
+          kc = 1024;
+        }
+        var panel_beta: f32 = 1.0f32;
+        if (pc == 0) {
+          panel_beta = beta;
+        }
+        for (var j: i64 = 0; j < 16; j = j + 8) {
+          for (var p: i64 = 0; p < kc; p = p + 1) {
+            if (j + 8 <= width) {
+              unsafe {
+                vector.load_unchecked(b, (pc + p) * br + jc + j);
+                vector.store_unchecked(pb, j * kc + p * 8);
+              };
+            } else {
+              for (var lane: i64 = 0; lane < 8; lane = lane + 1) {
+                var value: f32 = 0.0f32;
+                if (j + lane < width) {
+                  value = unsafe { _load<f32>(b, (pc + p) * br + jc + j + lane); };
+                }
+                unsafe { _store<f32>(pb, j * kc + p * 8 + lane, value); };
+              }
+            }
+          }
+        }
+        for (var ic = first_row; ic < m; ic = ic + 4) {
+          var height = m - ic;
+          if (height > 4) {
+            height = 4;
+          }
+          for (var p: i64 = 0; p < kc; p = p + 1) {
+            for (var r: i64 = 0; r < 4; r = r + 1) {
+              var value: f32 = 0.0f32;
+              if (r < height) {
+                value = unsafe { alpha * _load<f32>(a, (ic + r) * ar + (pc + p) * ac); };
+              }
+              unsafe { _store<f32>(pa, p * 4 + r, value); };
+            }
+          }
+          packed_edge(pa, pb, c, ic * n + jc, n, kc, panel_beta, height, width, edge);
+        }
+      }
+    }
+  }
+
+  /** Packs bounded cache panels and selects a supported vector tile at runtime.
+   * AVX2/FMA CPUs with OS vector-state support process full packed blocks
+   * in one isolated function using 4-by-16 tiles;
+   * partial tiles use padded scratch and bounded output copies. Other CPUs use
+   * the portable 4-by-8 tile.
+   * Uses fixed-size stack scratch, with no heap allocation. Validated inputs must
+   * be initialized and disjoint from output, which need only be initialized when
+   * beta is nonzero. A uses ar/ac strides;
+   * B has contiguous columns and row stride br. Output uses row stride n.
+   * rows and cols bound complete tiles within the m-by-n output. They are
+   * multiples of four/sixteen for wide, or four/eight otherwise. Wide requires
+   * checked CPU/OS support and also computes all remaining output edges.
+   * Inner-dimension blocks run in increasing order without regrouping sums. */
+  function multiply_packed(alpha: f32, a: raw_ptr<u8>, ar: i64, ac: i64, b: raw_ptr<u8>, br: i64, c: raw_ptr<u8>, n: i64, k: i64, rows: i64, cols: i64, beta: f32, wide: bool, m: i64) void {
+    var panel_size: i64 = 64;
+    if (wide) {
+      panel_size = 128;
+    }
+    var pa = unsafe { _stack_alloc(16384); };
+    var pb = unsafe { _stack_alloc(65536); };
+    var edge = unsafe { _stack_alloc(256); };
+    var vector = std.simd.F32x8();
+    for (var jc: i64 = 0; jc < cols; jc = jc + panel_size) {
+      var nc = cols - jc;
+      if (nc > panel_size) {
+        nc = panel_size;
+      }
+      for (var pc: i64 = 0; pc < k; pc = pc + panel_size) {
+        var kc = k - pc;
+        if (kc > panel_size) {
+          kc = panel_size;
+        }
+        var panel_beta: f32 = 1.0f32;
+        if (pc == 0) {
+          panel_beta = beta;
+        }
+        // Store each B micro-panel contiguously in the order the kernel reads it.
+        for (var j: i64 = 0; j < nc; j = j + 8) {
+          for (var p: i64 = 0; p < kc; p = p + 1) {
+            unsafe {
+              vector.load_unchecked(b, (pc + p) * br + jc + j);
+              vector.store_unchecked(pb, j * kc + p * 8);
+            };
+          }
+        }
+        for (var ic: i64 = 0; ic < rows; ic = ic + 32) {
+          var mc = rows - ic;
+          if (mc > 32) {
+            mc = 32;
+          }
+          // A is scaled once while packing, with four rows beside each other.
+          for (var i: i64 = 0; i < mc; i = i + 4) {
+            for (var p: i64 = 0; p < kc; p = p + 1) {
+              for (var r: i64 = 0; r < 4; r = r + 1) {
+                unsafe { _store<f32>(pa, i * kc + p * 4 + r, alpha * _load<f32>(a, (ic + i + r) * ar + (pc + p) * ac)); };
+              }
+            }
+          }
+          if (wide) {
+            unsafe { _gemm_block_avx2_fma(pa, pb, _ptr_offset(c, (ic * n + jc) * _sizeof<f32>()), n, kc, panel_beta, mc, nc); };
+            continue;
+          }
+          for (var i: i64 = 0; i < mc; i = i + 4) {
+            for (var j: i64 = 0; j < nc; j = j + 8) {
+              var ap = unsafe { _ptr_offset(pa, i * kc * _sizeof<f32>()); };
+              var bp = unsafe { _ptr_offset(pb, j * kc * _sizeof<f32>()); };
+              packed_tile(ap, bp, c, (ic + i) * n + jc + j, n, kc, panel_beta);
+            }
+          }
+        }
+      }
+    }
+    if (wide and (rows != m or cols != n)) {
+      multiply_packed_edges(alpha, a, ar, ac, b, br, c, m, n, k, rows, cols, beta, pa, pb, edge);
+    }
+  }
+
+  /** Accumulates complete 4-by-4 f32 tiles, retaining each output tile across k.
+   * Inputs must be initialized and disjoint from initialized output; all shapes
+   * and strides must already be validated.
+   * A uses ar/ac strides; B has contiguous columns and row stride br. Output
+   * has row stride n. rows, cols, and first_column are multiples of four within
+   * output bounds; columns before first_column have already been accumulated.
+   * Each lane accumulates in increasing k allowing hardware fused multiply-add. */
+  function multiply_tiles(alpha: f32, a: raw_ptr<u8>, ar: i64, ac: i64, b: raw_ptr<u8>, br: i64, c: raw_ptr<u8>, n: i64, k: i64, rows: i64, cols: i64, first_column: i64) void {
+    for (var i: i64 = 0; i < rows; i = i + 4) {
+      var a0 = i * ar;
+      var c0 = i * n;
+      var a1 = (i + 1) * ar;
+      var c1 = (i + 1) * n;
+      var a2 = (i + 2) * ar;
+      var c2 = (i + 2) * n;
+      var a3 = (i + 3) * ar;
+      var c3 = (i + 3) * n;
+      for (var j = first_column; j < cols; j = j + 4) {
+        var acc0 = std.simd.F32x4();
+        unsafe { acc0.load_unchecked(c, c0 + j); };
+        var acc1 = std.simd.F32x4();
+        unsafe { acc1.load_unchecked(c, c1 + j); };
+        var acc2 = std.simd.F32x4();
+        unsafe { acc2.load_unchecked(c, c2 + j); };
+        var acc3 = std.simd.F32x4();
+        unsafe { acc3.load_unchecked(c, c3 + j); };
+        var bv = std.simd.F32x4();
+        for (var p: i64 = 0; p < k; p = p + 1) {
+          var offset = p * ac;
+          unsafe { bv.load_unchecked(b, p * br + j); };
+          var factor0 = std.simd.splat(unsafe { alpha * _load<f32>(a, a0 + offset); });
+          acc0 = factor0.mul_add(bv, acc0);
+          var factor1 = std.simd.splat(unsafe { alpha * _load<f32>(a, a1 + offset); });
+          acc1 = factor1.mul_add(bv, acc1);
+          var factor2 = std.simd.splat(unsafe { alpha * _load<f32>(a, a2 + offset); });
+          acc2 = factor2.mul_add(bv, acc2);
+          var factor3 = std.simd.splat(unsafe { alpha * _load<f32>(a, a3 + offset); });
+          acc3 = factor3.mul_add(bv, acc3);
+        }
+        unsafe { acc0.store_unchecked(c, c0 + j); };
+        unsafe { acc1.store_unchecked(c, c1 + j); };
+        unsafe { acc2.store_unchecked(c, c2 + j); };
+        unsafe { acc3.store_unchecked(c, c3 + j); };
+      }
+    }
+  }
+
+  /** Accumulates remaining f32 rows and columns with one output load/store.
+   * Inputs and output are initialized and validated; output is disjoint from
+   * inputs. A uses ar/ac strides, B has contiguous columns and stride br,
+   * and C has stride n.
+   * tiled_rows/cols bound the completed rectangle. Each sum follows increasing k. */
+  function multiply_remainders(alpha: f32, a: raw_ptr<u8>, ar: i64, ac: i64, b: raw_ptr<u8>, br: i64, c: raw_ptr<u8>, m: i64, n: i64, k: i64, tiled_rows: i64, tiled_cols: i64) void {
+    for (var i: i64 = 0; i < m; i = i + 1) {
+      var arow = i * ar;
+      var crow = i * n;
+      var j: i64 = 0;
+      if (i < tiled_rows) {
+        j = tiled_cols;
+      }
+      while (j <= n - 4) {
+        var sum = std.simd.F32x4();
+        var bv = std.simd.F32x4();
+        unsafe { sum.load_unchecked(c, crow + j); };
+        for (var p: i64 = 0; p < k; p = p + 1) {
+          var factor = std.simd.splat(unsafe { alpha * _load<f32>(a, arow + p * ac); });
+          unsafe { bv.load_unchecked(b, p * br + j); };
+          sum = factor.mul_add(bv, sum);
+        }
+        unsafe { sum.store_unchecked(c, crow + j); };
+        j = j + 4;
+      }
+      if (j < n) {
+        var sum0: f32 = unsafe { _load<f32>(c, crow + j); };
+        var sum1: f32 = 0.0f32;
+        var sum2: f32 = 0.0f32;
+        if (j + 1 < n) {
+          sum1 = unsafe { _load<f32>(c, crow + j + 1); };
+        }
+        if (j + 2 < n) {
+          sum2 = unsafe { _load<f32>(c, crow + j + 2); };
+        }
+        for (var p: i64 = 0; p < k; p = p + 1) {
+          var scaled: f32 = unsafe { alpha * _load<f32>(a, arow + p * ac); };
+          var brow = p * br + j;
+          sum0 = sum0 + scaled * unsafe { _load<f32>(b, brow); };
+          if (j + 1 < n) {
+            sum1 = sum1 + scaled * unsafe { _load<f32>(b, brow + 1); };
+          }
+          if (j + 2 < n) {
+            sum2 = sum2 + scaled * unsafe { _load<f32>(b, brow + 2); };
+          }
+        }
+        unsafe { _store<f32>(c, crow + j, sum0); };
+        if (j + 1 < n) {
+          unsafe { _store<f32>(c, crow + j + 1, sum1); };
+        }
+        if (j + 2 < n) {
+          unsafe { _store<f32>(c, crow + j + 2, sum2); };
+        }
+      }
+    }
+  }
+
+  /** Scales output and accumulates validated inputs, skipping output reads for zero beta.
+   * Dimensions and strides must keep every element offset within its allocation. */
+  function multiply<T: _Float>(alpha: T, left: const ref std.Matrix<T>, ar: i64, ac: i64, right: const ref std.Matrix<T>, br: i64, bc: i64, output: ref std.Matrix<T>, k: i64, beta: T) void {
+    var a = left.raw_data();
+    var b = right.raw_data();
+    var c = output.raw_data();
+    var m = output.dim(0);
+    var n = output.dim(1);
+    if (_is<f32>(alpha) and bc == 1 and n >= 4) {
+      var tiled_rows = m - m % 4;
+      var tiled_cols = n - n % 4;
+      var packed_cols: i64 = 0;
+      var vector_alpha = _convert<f32>(alpha);
+      var vector_beta = _convert<f32>(beta);
+      if (m >= 16 and n >= 16 and k >= 32) {
+        packed_cols = n - n % 8;
+        var minimum_products: i64 = 262144;
+        // Divide the work estimate to avoid overflow. Validated output bounds
+        // guarantee that the positive tiled_rows * packed_cols fits its size.
+        if (k > (minimum_products - 1) / (tiled_rows * packed_cols)) {
+          if (_cpu_avx2_fma()) {
+            multiply_packed(vector_alpha, a, ar, ac, b, br, c, n, k, tiled_rows, n - n % 16, vector_beta, true, m);
+            return;
+          }
+        }
+      }
+      if (packed_cols != 0) {
+        scale_remainder<T>(output, beta, tiled_rows, packed_cols);
+        multiply_packed(vector_alpha, a, ar, ac, b, br, c, n, k, tiled_rows, packed_cols, vector_beta, false, m);
+      } else {
+        scale_output<T>(output, beta);
+      }
+      multiply_tiles(vector_alpha, a, ar, ac, b, br, c, n, k, tiled_rows, tiled_cols, packed_cols);
+      if (tiled_rows != m or tiled_cols != n) {
+        multiply_remainders(vector_alpha, a, ar, ac, b, br, c, m, n, k, tiled_rows, tiled_cols);
+      }
+      return;
+    }
+    scale_output<T>(output, beta);
+    for (var i: i64 = 0; i < m; i = i + 1) {
+      var arow = i * ar;
+      var crow = i * n;
+      for (var p: i64 = 0; p < k; p = p + 1) {
+        var scaled: T = unsafe { alpha * _load<T>(a, arow + p * ac); };
+        var brow = p * br;
+        var j: i64 = 0;
+        while (j < n) {
+          unsafe {
+            _store<T>(c, crow + j, _load<T>(c, crow + j) + scaled * _load<T>(b, brow + j * bc));
+          };
+          j = j + 1;
+        }
+      }
+    }
+  }
+
+  /** Computes C = alpha * op(A) * op(B) + beta * C without allocation.
+   * Inputs must be initialized when alpha is nonzero and the product is nonempty.
+   * C need not be initialized when beta is zero. C must not share nonempty storage
+   * with either input. Validation failures leave C unchanged. SIMD paths use
+   * hardware fusion when available; rounding may vary with target and shape. */
+  public function gemm<T: _Float>(alpha: T, a: const ref std.Matrix<T>, trans_a: Transpose, b: const ref std.Matrix<T>, trans_b: Transpose, beta: T, c: ref std.Matrix<T>) LinalgResult<void> {
+    if (not valid_matrix<T>(a) or not valid_matrix<T>(b) or not valid_matrix<T>(c)) {
+      return LinalgResult.Error(LinalgError(LinalgErrorReason.InvalidDimensions));
+    }
+    var m = a.dim(0);
+    var k = a.dim(1);
+    var bk = b.dim(0);
+    var n = b.dim(1);
+    var ar = k;
+    var ac: i64 = 1;
+    var br = n;
+    var bc: i64 = 1;
+    if (trans_a == Transpose.Transpose) {
+      m = a.dim(1);
+      k = a.dim(0);
+      ar = 1;
+      ac = a.dim(1);
+    }
+    if (trans_b == Transpose.Transpose) {
+      bk = b.dim(1);
+      n = b.dim(0);
+      br = 1;
+      bc = b.dim(1);
+    }
+    if (k != bk or c.dim(0) != m or c.dim(1) != n) {
+      return LinalgResult.Error(LinalgError(LinalgErrorReason.IncompatibleShapes));
+    }
+    if (c.size() != 0) {
+      if ((a.size() != 0 and c.raw_data() == a.raw_data()) or (b.size() != 0 and c.raw_data() == b.raw_data())) {
+        return LinalgResult.Error(LinalgError(LinalgErrorReason.OverlappingOutput));
+      }
+    }
+    if (m == 0 or n == 0) {
+      return LinalgResult.Ok;
+    }
+    if (alpha != _convert<T>(0) and k != 0) {
+      multiply<T>(alpha, a, ar, ac, b, br, bc, c, k, beta);
+    } else {
+      scale_output<T>(c, beta);
+    }
+    return LinalgResult.Ok;
+  }
+
+  /** Allocates A * B through the supplied allocator after validating both shapes.
+   * Inputs are borrowed; all arithmetic is delegated to GEMM. */
+  public function matmul<T: _Float>(a: const ref std.Matrix<T>, b: const ref std.Matrix<T>, alloc: const ref std.HeapAllocator) LinalgResult<std.Matrix<T>> {
+    if (not valid_matrix<T>(a) or not valid_matrix<T>(b)) {
+      return LinalgResult.Error(LinalgError(LinalgErrorReason.InvalidDimensions));
+    }
+    if (a.dim(1) != b.dim(0)) {
+      return LinalgResult.Error(LinalgError(LinalgErrorReason.IncompatibleShapes));
+    }
+    var rows = a.dim(0);
+    var cols = b.dim(1);
+    if (rows != 0) {
+      if (cols > std.I64_MAX / _sizeof<T>() / rows) {
+        return LinalgResult.Error(LinalgError(LinalgErrorReason.InvalidDimensions));
+      }
+    }
+    var output = std.Matrix<T>(alloc, [rows, cols]);
+    try gemm<T>(_convert<T>(1), a, Transpose.None, b, Transpose.None, _convert<T>(0), output);
+    return LinalgResult.Ok(output);
+  }
+}

@@ -1,0 +1,190 @@
+using std;
+
+/** Checks SIMD lane arithmetic and checked storage access. */
+public module std.simd_tests {
+  /** Checks the zero-initializing constructor. */
+  test_function default_constructor() {
+    var value = std.simd.F32x4();
+    try std.test.assert_eq(value.x, 0.0f32);
+    try std.test.assert_eq(value.y, 0.0f32);
+    try std.test.assert_eq(value.z, 0.0f32);
+    try std.test.assert_eq(value.w, 0.0f32);
+  }
+
+  /** Checks every lane, borrowed operands, and aligned inline layout. */
+  test_function arithmetic() {
+    var a = std.simd.F32x4(1.0f32, -2.0f32, 3.0f32, 0.5f32);
+    var b = std.simd.splat(2.0f32);
+    var sum = a + b;
+    var product = a * b;
+    var difference = a.sub(b);
+    try std.test.assert_eq(sum.x, 3.0f32);
+    try std.test.assert_eq(sum.y, 0.0f32);
+    try std.test.assert_eq(sum.z, 5.0f32);
+    try std.test.assert_eq(sum.w, 2.5f32);
+    try std.test.assert_eq(product.x, 2.0f32);
+    try std.test.assert_eq(product.y, -4.0f32);
+    try std.test.assert_eq(product.z, 6.0f32);
+    try std.test.assert_eq(product.w, 1.0f32);
+    try std.test.assert_eq(difference.x, -1.0f32);
+    try std.test.assert_eq(difference.y, -4.0f32);
+    try std.test.assert_eq(difference.z, 1.0f32);
+    try std.test.assert_eq(difference.w, -1.5f32);
+    try std.test.assert_eq(a.x, 1.0f32);
+    try std.test.assert_eq(_sizeof<std.simd.F32x4>(), 16);
+    try std.test.assert_eq(_alignof<std.simd.F32x4>(), 16);
+  }
+
+  /** Checks four-byte-offset loads and stores and untouched surrounding lanes. */
+  test_function buffer_access() {
+    var alloc = make_heap_allocator();
+    var buffer = ContiguousBuffer<f32>(alloc, 7);
+    buffer.fill(-1.0f32);
+    var value = std.simd.F32x4(1.0f32, 2.0f32, 3.0f32, 4.0f32);
+    try std.test.expect_access_success(value.store(buffer, 1));
+    var loaded = try std.test.expect_access(std.simd.load(buffer, 1));
+    try std.test.assert_eq(loaded.x, 1.0f32);
+    try std.test.assert_eq(loaded.y, 2.0f32);
+    try std.test.assert_eq(loaded.z, 3.0f32);
+    try std.test.assert_eq(loaded.w, 4.0f32);
+    try std.test.assert_eq(buffer[0], -1.0f32);
+    try std.test.assert_eq(buffer[5], -1.0f32);
+    try std.test.expect_access_success(loaded.store(buffer, 3));
+    try std.test.assert_eq(buffer[6], 4.0f32);
+    match std.simd.load(buffer, -1) {
+      AccessResult.Ok(v) => {
+        try std.test.fail("negative load accepted");
+      },
+      AccessResult.OutOfBounds(error) => {}
+    };
+    match std.simd.load(buffer, I64_MAX) {
+      AccessResult.Ok(v) => {
+        try std.test.fail("overflowing load accepted");
+      },
+      AccessResult.OutOfBounds(error) => {}
+    };
+    match value.store(buffer, 4) {
+      AccessResult.Ok => {
+        try std.test.fail("short store accepted");
+      },
+      AccessResult.OutOfBounds(error) => {}
+    };
+    try std.test.assert_eq(buffer[6], 4.0f32);
+    var short_buffer = ContiguousBuffer<f32>(alloc, 3);
+    match std.simd.load(short_buffer, 0) {
+      AccessResult.Ok(v) => {
+        try std.test.fail("short load accepted");
+      },
+      AccessResult.OutOfBounds(error) => {}
+    };
+  }
+
+  /** Checks eight-lane arithmetic and misaligned buffer access, including bounds failures. */
+  test_function eight_lane_arithmetic_and_access() {
+    var alloc = make_heap_allocator();
+    var buffer = ContiguousBuffer<f32>(alloc, 10);
+    for (var i: i64 = 0; i < 10; i = i + 1) {
+      buffer[i] = _convert<f32>(i);
+    }
+    var a = try std.test.expect_access(std.simd.load8(buffer, 1));
+    var factor = std.simd.F32x8(2.0f32);
+    var product = a * factor;
+    var sum = product + factor;
+    var difference = sum.sub(a);
+    try std.test.expect_access_success(difference.store(buffer, 1));
+    for (var i: i64 = 1; i <= 8; i = i + 1) {
+      try std.test.assert_eq(buffer[i], _convert<f32>(i + 2));
+    }
+    try std.test.assert_eq(buffer[0], 0.0f32);
+    try std.test.assert_eq(buffer[9], 9.0f32);
+    try std.test.assert_eq(a.x0, 1.0f32);
+    try std.test.assert_eq(a.x7, 8.0f32);
+    try std.test.assert_eq(_sizeof<std.simd.F32x8>(), 32);
+    try std.test.assert_eq(_alignof<std.simd.F32x8>(), 32);
+    match std.simd.load8(buffer, -1) {
+      AccessResult.Ok(v) => {
+        try std.test.fail("negative wide load accepted");
+      },
+      AccessResult.OutOfBounds(error) => {}
+    };
+    match std.simd.load8(buffer, I64_MAX) {
+      AccessResult.Ok(v) => {
+        try std.test.fail("overflowing wide load accepted");
+      },
+      AccessResult.OutOfBounds(error) => {}
+    };
+    match difference.store(buffer, 3) {
+      AccessResult.Ok => {
+        try std.test.fail("short wide store accepted");
+      },
+      AccessResult.OutOfBounds(error) => {}
+    };
+    try std.test.assert_eq(buffer[9], 9.0f32);
+    var short_buffer = ContiguousBuffer<f32>(alloc, 7);
+    match std.simd.load8(short_buffer, 0) {
+      AccessResult.Ok(v) => {
+        try std.test.fail("short wide load accepted");
+      },
+      AccessResult.OutOfBounds(error) => {}
+    };
+    var zero = std.simd.F32x8();
+    try std.test.expect_access_success(zero.store(buffer, 1));
+    for (var i: i64 = 1; i <= 8; i = i + 1) {
+      try std.test.assert_eq(buffer[i], 0.0f32);
+    }
+  }
+
+  /** Checks target-dependent multiply-add in both widths without allocations. */
+  test_function multiply_add() {
+    var a = std.simd.F32x4(1.0f32, 2.0f32, 3.0f32, 4.0f32);
+    var b = std.simd.splat(2.0f32);
+    var c = std.simd.splat(-1.0f32);
+    var result = a.mul_add(b, c);
+    try std.test.assert_eq(result.x, 1.0f32);
+    try std.test.assert_eq(result.y, 3.0f32);
+    try std.test.assert_eq(result.z, 5.0f32);
+    try std.test.assert_eq(result.w, 7.0f32);
+    var a8 = std.simd.F32x8(3.0f32);
+    var b8 = std.simd.F32x8(2.0f32);
+    var c8 = std.simd.F32x8(-1.0f32);
+    var result8 = a8.mul_add(b8, c8);
+    try std.test.assert_eq(result8.x0, 5.0f32);
+    try std.test.assert_eq(result8.x7, 5.0f32);
+  }
+
+  /** Distinguishes fused rounding from separate operations in every lane. */
+  test_function fused_rounding() {
+    var alloc = make_heap_allocator();
+    var x = _bitcast<f32>(1065353217u32);
+    var y = _bitcast<f32>(1065353214u32);
+    var a = std.simd.splat(x);
+    var b = std.simd.splat(y);
+    var c = std.simd.splat(-1.0f32);
+    var fused = a.fma(b, c);
+    var product = a.mul(b);
+    var separate = product.add(c);
+    var buffer = ContiguousBuffer<f32>(alloc, 8);
+    try std.test.expect_access_success(fused.store(buffer, 0));
+    for (var i: i64 = 0; i < 4; i = i + 1) {
+      try std.test.assert_eq(buffer[i], -1.4210854715202004e-14f32);
+    }
+    try std.test.assert_eq(separate.x, 0.0f32);
+    var a8 = std.simd.F32x8(x);
+    var b8 = std.simd.F32x8(y);
+    var c8 = std.simd.F32x8(-1.0f32);
+    var fused8 = a8.fma(b8, c8);
+    try std.test.expect_access_success(fused8.store(buffer, 0));
+    for (var i: i64 = 0; i < 8; i = i + 1) {
+      try std.test.assert_eq(buffer[i], -1.4210854715202004e-14f32);
+    }
+    var largest = std.simd.F32x8(_bitcast<f32>(2139095039u32));
+    var twice = std.simd.F32x8(2.0f32);
+    var negative = std.simd.F32x8(-_bitcast<f32>(2139095039u32));
+    var finite = largest.fma(twice, negative);
+    try std.test.assert_eq(finite.x0, largest.x0);
+    try std.test.assert_eq(finite.x7, largest.x7);
+    var nan = std.simd.F32x8(_bitcast<f32>(2143289344u32));
+    var propagated = a8.fma(b8, nan);
+    try std.test.assert_eq(propagated.x0 == propagated.x0, false);
+  }
+}

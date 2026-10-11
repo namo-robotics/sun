@@ -14,6 +14,7 @@
   "testing": "Testing",
   "memory-safety": "Memory Safety",
   "threads": "Threads",
+  "simd": "SIMD",
   "matrices": "Matrices",
   "cuda": "NVIDIA GPU Matrices",
   "modules": "Modules & Namespaces",

@@ -64,20 +64,21 @@ std::string getTestOutputName(const CompileJob& job) {
  */
 bool maySkip(const CompileJob& job) {
   return !job.forceRebuild && !job.emitIR && !job.debugMode &&
-         !job.dumpProtoSun;
+         !job.dumpProtoSun && !job.emitLLVMOnly;
 }
 
 /**
- * The hash of everything the job reads to build its executable or object
- * file, or with `forTests` its test binary. Resolves the manifest the way
+ * The hash of everything the job reads to build its executable, object, or LLVM
+ * IR file, or with `forTests` its test binary. Resolves the manifest the way
  * the driver will, so the files hashed are the files compiled.
  */
 std::string computeJobInputHash(const CompileJob& job, bool forTests) {
   namespace fs = std::filesystem;
   sun::driver::BuildInputs inputs;
-  inputs.artifactKind = forTests          ? "tests"
-                        : job.emitObjOnly ? "object"
-                                          : "executable";
+  inputs.artifactKind = forTests           ? "tests"
+                        : job.emitLLVMOnly ? "llvm-ir"
+                        : job.emitObjOnly  ? "object"
+                                           : "executable";
   inputs.targetTriple = job.targetTriple;
   // Tests always carry debug info
   inputs.debugInfo = forTests || job.debugInfo;
@@ -170,6 +171,7 @@ CompileJob makeCompileJob(const BuildRunOptions& options) {
   job.baseLinkOpts.targetTriple = options.targetTriple;
   job.moonImports = options.shared.moonImports;
   job.emitObjOnly = options.emitObjOnly;
+  job.emitLLVMOnly = options.emitLLVMOnly;
   job.emitIR = options.shared.emitIR;
   job.debugMode = options.shared.debugMode;
   job.debugInfo = options.shared.debugInfo;
@@ -302,6 +304,18 @@ int compileEntrypoint(const CompileJob& job) {
             "packaged entrypoint has no production executable: " + inputFile);
       sun::support::messageStream("info")
           << "No main() found; emitting only the test binary\n";
+    } else if (job.emitLLVMOnly) {
+      std::error_code ec;
+      llvm::raw_fd_ostream output(job.outputFile, ec);
+      if (ec) {
+        errorMsg = ec.message();
+        success = false;
+      } else {
+        driver->getModule().print(output, nullptr);
+        output.flush();
+        success = !output.has_error();
+        if (!success) errorMsg = "Failed to write LLVM IR";
+      }
     } else if (job.emitObjOnly) {
       success = sun::driver::emitObjectFile(driver->getModule(), job.outputFile,
                                             errorMsg, job.optimize);
@@ -344,7 +358,7 @@ int runCompileCommand(const BuildRunOptions& options) {
   if (job.outputFile.empty()) {
     job.outputFile = deriveOutputName(job.inputFiles[0]);
     if (job.emitObjOnly) {
-      job.outputFile += ".o";
+      job.outputFile += job.emitLLVMOnly ? ".ll" : ".o";
     }
   }
   return compileEntrypoint(job);

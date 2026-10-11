@@ -123,6 +123,31 @@ TEST(Tooling_Cli_OptionParser, emit_obj_implies_compile_mode) {
   EXPECT_TRUE(parsed.options.emitObjOnly);
 }
 
+/** Full LLVM output is a compile-only artifact and retains the optimization
+ * selection. */
+TEST(Tooling_Cli_OptionParser, emit_llvm_implies_compile_only_mode) {
+  auto parsed =
+      parseBuildRun({"--emit-llvm", "-O0", "-o", "app.ll", "app.sun"});
+  ASSERT_FALSE(parsed.early.has_value());
+  EXPECT_TRUE(parsed.options.compileMode);
+  EXPECT_TRUE(parsed.options.emitObjOnly);
+  EXPECT_TRUE(parsed.options.emitLLVMOnly);
+  EXPECT_FALSE(parsed.options.shared.optimize);
+  EXPECT_EQ(parsed.options.outputFile, "app.ll");
+}
+
+/** LLVM artifact selection must not silently replace another output format. */
+TEST(Tooling_Cli_OptionParser, emit_llvm_rejects_conflicting_formats) {
+  for (const Args& args : {Args{"--emit-llvm", "--emit-obj", "app.sun"},
+                           Args{"--emit-obj", "--emit-llvm", "app.sun"}}) {
+    expectRejected(
+        parseBuildRun(args).early,
+        "Error: --emit-obj and --emit-llvm are mutually exclusive\n");
+  }
+  expectRejected(parseBuildRun({"--emit-llvm", "--emit-moon", "app.sun"}).early,
+                 "Error: --emit-moon and --emit-llvm are mutually exclusive\n");
+}
+
 TEST(Tooling_Cli_OptionParser, native_library_flags_take_both_spellings) {
   auto parsed = parseBuildRun({"-lm", "-l", "ssl", "-Lvendor", "-L", "/opt/lib",
                                "--sysroot", "/sysroot", "app.sun"});

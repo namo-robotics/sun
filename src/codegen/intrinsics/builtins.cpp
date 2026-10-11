@@ -192,6 +192,42 @@ const std::map<std::string, BuiltinEmitter>& builtinTable() {
        }},
 
       // Bit intrinsics
+      {"_cpu_avx2_fma",
+       [](auto& g, const auto& e) { return g.codegenCpuAvx2Fma(e); }},
+      {"_gemm_block_avx2_fma",
+       [](auto& g, const auto& e) { return g.codegenGemmAvx2Fma(e, true); }},
+      {"_gemm_tile_avx2_fma",
+       [](auto& g, const auto& e) { return g.codegenGemmAvx2Fma(e); }},
+      {"_stack_alloc",
+       [](auto& g, const auto& e) { return g.codegenStackAlloc(e); }},
+      {"_simd_f32x8_copy",
+       [](auto& g, const auto& e) { return g.codegenSimdF32(e, 8, "copy"); }},
+      {"_simd_f32x8_splat",
+       [](auto& g, const auto& e) { return g.codegenSimdF32(e, 8, "splat"); }},
+      {"_simd_f32x8_add",
+       [](auto& g, const auto& e) { return g.codegenSimdF32(e, 8, "add"); }},
+      {"_simd_f32x8_sub",
+       [](auto& g, const auto& e) { return g.codegenSimdF32(e, 8, "sub"); }},
+      {"_simd_f32x8_mul_add",
+       [](auto& g, const auto& e) { return g.codegenSimdF32(e, 8, "mul_add"); }},
+      {"_simd_f32x8_fma",
+       [](auto& g, const auto& e) { return g.codegenSimdF32(e, 8, "fma"); }},
+      {"_simd_f32x8_mul",
+       [](auto& g, const auto& e) { return g.codegenSimdF32(e, 8, "mul"); }},
+      {"_simd_f32x4_copy",
+       [](auto& g, const auto& e) { return g.codegenSimdF32(e, 4, "copy"); }},
+      {"_simd_f32x4_splat",
+       [](auto& g, const auto& e) { return g.codegenSimdF32(e, 4, "splat"); }},
+      {"_simd_f32x4_add",
+       [](auto& g, const auto& e) { return g.codegenSimdF32(e, 4, "add"); }},
+      {"_simd_f32x4_sub",
+       [](auto& g, const auto& e) { return g.codegenSimdF32(e, 4, "sub"); }},
+      {"_simd_f32x4_mul_add",
+       [](auto& g, const auto& e) { return g.codegenSimdF32(e, 4, "mul_add"); }},
+      {"_simd_f32x4_fma",
+       [](auto& g, const auto& e) { return g.codegenSimdF32(e, 4, "fma"); }},
+      {"_simd_f32x4_mul",
+       [](auto& g, const auto& e) { return g.codegenSimdF32(e, 4, "mul"); }},
       {"_mul_hi_u64",
        [](auto& g, const auto& e) { return g.codegenMulHiU64Intrinsic(e); }},
       {"_ctlz_u64",
@@ -203,17 +239,17 @@ const std::map<std::string, BuiltinEmitter>& builtinTable() {
          return g.codegenCountZerosIntrinsic(e, /*leading=*/false);
        }},
       {"_bswap_u16",
-       [](auto& g, const auto& e) {
-         return g.codegenBswapIntrinsic(e, /*bitWidth=*/16);
-       }},
+       [](auto& g,
+          const auto&
+              e) { return g.codegenBswapIntrinsic(e, /*bitWidth=*/16); }},
       {"_bswap_u32",
-       [](auto& g, const auto& e) {
-         return g.codegenBswapIntrinsic(e, /*bitWidth=*/32);
-       }},
+       [](auto& g,
+          const auto&
+              e) { return g.codegenBswapIntrinsic(e, /*bitWidth=*/32); }},
       {"_bswap_u64",
-       [](auto& g, const auto& e) {
-         return g.codegenBswapIntrinsic(e, /*bitWidth=*/64);
-       }},
+       [](auto& g,
+          const auto&
+              e) { return g.codegenBswapIntrinsic(e, /*bitWidth=*/64); }},
 
       // Futex intrinsics
       {"_futex_wait",

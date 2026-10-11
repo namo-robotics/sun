@@ -1,0 +1,91 @@
+# SIMD
+
+`std.simd.F32x4` holds four `f32` lanes in an inline, 16-byte-aligned class.
+Arithmetic processes corresponding lanes together using LLVM vector operations.
+No heap allocation occurs for vector construction or arithmetic.
+
+```sun
+using std;
+
+/** Scales four samples, adds a bias, and stores the result without allocation. */
+function process(samples: ref ContiguousBuffer<f32>) AccessResult<void> {
+    var input = try std.simd.load(samples, 0);
+    var gain = std.simd.splat(2.0f32);
+    var bias = std.simd.splat(0.5f32);
+    var output = input.fma(gain, bias);
+    try output.store(samples, 0);
+    return AccessResult.Ok;
+}
+```
+
+Include `stdlib.moon` in your program's manifest. `std.simd.F32x4()` initializes
+all lanes to zero. Construct individual lanes
+with `std.simd.F32x4(x, y, z, w)` and access them through the public fields
+`x`, `y`, `z`, and `w`.
+
+| API | Behavior |
+| --- | --- |
+| `std.simd.splat(value)` | Repeat a scalar in every lane |
+| `a.add(b)` or `a + b` | Add corresponding lanes |
+| `a.sub(b)` | Subtract corresponding lanes |
+| `a.mul(b)` or `a * b` | Multiply corresponding lanes |
+| `a.fma(b, c)` | Compute `a * b + c` with one rounding per lane |
+| `a.mul_add(b, c)` | Compute `a * b + c`, allowing hardware fusion |
+| `std.simd.load(buffer, offset)` | Read four initialized floats |
+| `value.store(buffer, offset)` | Write four floats |
+
+Arithmetic borrows operands and returns a new inline value. Multiply and add
+round separately. The `fma` method explicitly fuses multiplication and addition
+with one rounding; it can differ from `a * b + c`. The `mul_add` method
+permits either fused or separate rounding so targets without hardware FMA
+can avoid a software fallback. No reassociation or general fast-math is requested. NaNs and
+infinities follow ordinary floating-point arithmetic.
+
+Load and store offsets count float elements, not bytes. Checked access returns
+`AccessResult`, rejects negative or incomplete ranges, and never reads or writes
+past the buffer. A failed store leaves the buffer unchanged. Loads require
+initialized input elements; stores can initialize previously unwritten elements.
+Only ordinary `f32` alignment is required, including for offset accesses.
+
+For validated low-level kernels, `value.load_unchecked(data, offset)` replaces
+its lanes and `value.store_unchecked(data, offset)` writes its lanes. Both are
+unsafe methods taking `raw_ptr<u8>` plus a float-element offset. The caller must
+provide a valid, correctly aligned four-element range, with initialized input
+for loads. The checked buffer APIs are preferable for application code.
+
+LLVM selects instructions for the compilation target; the vector methods have
+no runtime CPU dispatch or guarantee of a single hardware instruction per
+operation. Available types are `F32x4` and `F32x8`; double-precision vectors, masks,
+shuffles, and reductions are not implemented.
+
+## Eight-lane operations
+
+`std.simd.F32x8` is an inline, 32-byte-aligned class containing `x0` through `x7`.
+`F32x8()` initializes zero lanes; `F32x8(value)` broadcasts a scalar. It supports
+the same borrowed `add`, `sub`, `mul`, `fma`, `mul_add`, `+`, and `*` operations as `F32x4`.
+Use `std.simd.load8(buffer, offset)` for checked loads and `value.store(buffer,
+offset)` for checked stores. Unchecked methods require eight valid elements,
+but still require only ordinary `f32` alignment for external memory.
+
+```sun
+/** Doubles eight initialized samples through checked buffer operations. */
+function process8(samples: ref ContiguousBuffer<f32>) AccessResult<void> {
+    var input = try std.simd.load8(samples, 0);
+    var gain = std.simd.F32x8(2.0f32);
+    var output = input * gain;
+    try output.store(samples, 0);
+    return AccessResult.Ok;
+}
+```
+
+The logical width does not force CPU features. LLVM can split an eight-lane
+operation into multiple narrower instructions on a baseline target. When the
+target enables AVX, it can use 256-bit instructions. The `fma` method uses
+hardware fused multiply-add when enabled by the compilation target, otherwise
+a fused software fallback. The fallback preserves rounding but can be slower.
+
+[Matrix multiplication](/matrices#gemm-matrix-multiplication) uses both widths,
+including portable packed 4×8 tiles for larger eligible `f32` products and
+an automatically selected, isolated AVX2/FMA kernel that processes complete
+packed blocks using 4×16 tiles. Partial tiles use a separate edge pass. The portable path uses
+`mul_add` automatically so hardware fusion needs no GEMM option.
