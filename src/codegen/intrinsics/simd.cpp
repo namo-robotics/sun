@@ -2,6 +2,7 @@
  */
 #include <llvm/IR/InlineAsm.h>
 #include <llvm/IR/Intrinsics.h>
+#include <llvm/IR/Metadata.h>
 #include <llvm/TargetParser/Triple.h>
 
 #include "codegen/codegen_visitor.h"
@@ -221,7 +222,17 @@ llvm::Value* IntrinsicsGenerator::codegenGemmTileAvx2Fma(
       }
     }
     p->addIncoming(b.CreateAdd(p, b.getInt64(1)), body);
-    b.CreateBr(loop);
+    auto* backedge = b.CreateBr(loop);
+    if (x86) {
+      // Expose adjacent loads to the scheduler without changing the order of
+      // each sum. LLVM retains a cleanup iteration for odd inner dimensions.
+      auto* count = llvm::MDNode::get(
+          context, {llvm::MDString::get(context, "llvm.loop.unroll.count"),
+                    llvm::ConstantAsMetadata::get(b.getInt32(2))});
+      auto* metadata = llvm::MDNode::getDistinct(context, {nullptr, count});
+      metadata->replaceOperandWith(0, metadata);
+      backedge->setMetadata(llvm::LLVMContext::MD_loop, metadata);
+    }
     b.SetInsertPoint(done);
     for (unsigned i = 0; i < 8; ++i)
       b.CreateAlignedStore(sums[i], output[i], llvm::Align(4));

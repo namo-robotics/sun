@@ -115,3 +115,17 @@ increasing inner-dimension order, and share A loads across the last one to three
 columns. An alternative loop order that reused packed A across column panels
 showed mixed gains while increasing B packing, so the existing packing order
 was retained. Performance measurements remain specific to CPU and shape.
+
+Further comparisons alternated the current kernel with inner-loop unroll factors
+of two, four, and eight across square and irregular products. A factor of two
+improved the measured 128–512 square cases by roughly 3–6% and the irregular
+cases by roughly 3–4%; it did not improve the 1024 case. Larger factors were less
+consistent. The AVX2/FMA kernel therefore requests two-step unrolling, retaining
+increasing accumulation order and a cleanup iteration for odd inner dimensions.
+This is an internal LLVM optimization hint, not a new user option.
+
+Separate experiments with deeper inner panels, wider column panels, and larger
+row blocks produced mixed gains, so panel sizes remain unchanged. Further work
+should measure AVX2/FMA edge kernels for irregular shapes and packing or per-tile
+overhead for square shapes. Closing the remaining gap needs gains across shapes,
+not just a faster result for one matrix size.

@@ -401,6 +401,11 @@ scaled A value, and fully tiled output skips remainder processing. Noncontiguous
 transposed `B` and all `f64` products use the scalar path. Matrix storage does
 not need padding or additional alignment.
 
+The AVX2/FMA kernel requests two-step inner-loop unrolling to overlap loads and
+arithmetic while keeping each sum in increasing inner-dimension order. Odd inner
+dimensions use a cleanup iteration. This requires no configuration or extra
+scratch storage.
+
 Eight-lane vectors use the compilation target's available instructions. Targets
 without 256-bit vectors can split them into narrower operations; the library
 also checks CPU and OS support before calling the separately targeted AVX2/FMA

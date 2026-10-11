@@ -430,6 +430,31 @@ public module std.linalg_tests {
     }
   }
 
+  /** Keeps rounding order through unrolled pairs, odd cleanup, and panel edges. */
+  test_function dispatched_accumulation_order() {
+    var alloc = make_heap_allocator();
+    for (var k: i64 = 127; k <= 129; k = k + 1) {
+      var a = Matrix<f32>(alloc, [64, k]);
+      var b = Matrix<f32>(alloc, [k, 64]);
+      var c = Matrix<f32>(alloc, [64, 64]);
+      for (var i: i64 = 0; i < 64; i = i + 1) {
+        for (var p: i64 = 0; p < k; p = p + 1) {
+          a[i, p] = 1.0f32;
+          b[p, i] = 0.0f32;
+        }
+        b[k - 3, i] = 16777216.0f32;
+        b[k - 2, i] = 1.0f32;
+        b[k - 1, i] = -16777216.0f32;
+      }
+      try expect_ok(a.matmul_into(b, c));
+      for (var i: i64 = 0; i < 64; i = i + 1) {
+        for (var j: i64 = 0; j < 64; j = j + 1) {
+          try std.test.assert_eq(c[i, j], 0.0f32);
+        }
+      }
+    }
+  }
+
   /** Allows hardware fusion in the SIMD row kernel. */
   test_function simd_multiply_add_rounding() {
     var alloc = make_heap_allocator();
