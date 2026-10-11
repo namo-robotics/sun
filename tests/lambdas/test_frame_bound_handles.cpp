@@ -11,7 +11,8 @@
 // keeps the lambda alive until the join. So every program here spawns.
 //
 // The runtime side (a borrowing thread joined in its own frame is fine, a
-// capture-free handle may go anywhere) is in stdlib/std/thread/thread_tests.sun.
+// capture-free handle may go anywhere) is in
+// stdlib/std/thread/thread_tests.sun.
 
 #include <gtest/gtest.h>
 

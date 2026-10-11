@@ -417,10 +417,6 @@ jobs:
         env:
           SUN_PATH: ${{ github.workspace }}
 
-      - name: Test C binding generation
-        run: |
-          python3 tests/tooling/bindgen/test_bindgen.py
-
       - name: Run stdlib Sun tests
         # The stdlib's own suite (stdlib/std/**/*_tests.sun), AOT-compiled to
         # build/stdlib_tests_test by the CMake build. ctest above already runs
@@ -531,9 +527,8 @@ jobs:
         env:
           SUN_PATH: ${{ github.workspace }}
 
-      - name: Test C binding generation
+      - name: Verify Darwin process bindings
         run: |
-          python3 tests/tooling/bindgen/test_bindgen.py
           export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
           test -f "$SDKROOT/usr/include/sys/proc_info.h"
           mkdir -p tmp

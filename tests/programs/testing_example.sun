@@ -26,5 +26,5 @@ function main() i32 {
 }
 
 manifest {
-    test_files: ["testing_example_tests.sun"]
+  test_files: ["testing_example_tests.sun"]
 }

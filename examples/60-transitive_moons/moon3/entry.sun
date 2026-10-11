@@ -7,6 +7,6 @@ public module moon3 {
 }
 
 manifest {
-    source_files: []
-    libraries: []
+  source_files: []
+  libraries: []
 }

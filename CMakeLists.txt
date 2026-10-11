@@ -696,16 +696,3 @@ option(SUN_ENABLE_CUDA "Build the optional NVIDIA matrix library" OFF)
 if(SUN_ENABLE_CUDA)
     add_subdirectory(cuda)
 endif()
-
-# Python is only a test harness; bindgen itself is native C++.
-option(SUN_TEST_BINDGEN "Enable bindgen integration tests" OFF)
-if(SUN_TEST_BINDGEN)
-    find_package(Python3 REQUIRED COMPONENTS Interpreter)
-    if(BUILD_TESTING)
-        add_test(NAME bindgen_tests
-                 COMMAND ${CMAKE_COMMAND} -E env
-                         SUN_BINDGEN_COMPILER=$<TARGET_FILE:sun>
-                         ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/tooling/bindgen/test_bindgen.py)
-        set_tests_properties(bindgen_tests PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-    endif()
-endif()

@@ -77,8 +77,9 @@ void ManifestProcessor::clearPathVariables() {
 }
 
 /** Expands configured paths, optionally tolerating undefined variables. */
-static std::optional<std::string> expandVariables(
-    const std::string& input, const SunConfig* config, bool required) {
+static std::optional<std::string> expandVariables(const std::string& input,
+                                                  const SunConfig* config,
+                                                  bool required) {
   std::string out;
   size_t i = 0;
   while (i < input.size()) {

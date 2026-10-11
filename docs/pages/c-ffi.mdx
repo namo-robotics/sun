@@ -521,8 +521,8 @@ builds require the libclang development headers and library (`libclang-20-dev`
 on Ubuntu, included with `llvm@20` on macOS).
 
 The command writes ordinary Sun source; `--output -` prints it to standard
-output. `SUN_TEST_BINDGEN=ON` enables integration tests in CMake; Python is used
-only to run those tests, with no extra packages.
+output. C++ binding tests run with the other tooling tests when `BUILD_TESTING`
+is enabled. Run them with `ctest --test-dir build -R '^Tooling_Bindgen\.'`.
 
 ```bash
 sun bindgen \

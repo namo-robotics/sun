@@ -162,7 +162,8 @@ class TypeRegistry {
 
   /**
    * Register built-in error types. The iteration protocol
-   * (IIterator/IIterable) lives in stdlib/std/iterator.sun since it names Option.
+   * (IIterator/IIterable) lives in stdlib/std/iterator.sun since it names
+   * Option.
    */
   void registerBuiltins() {
     registerIError();
