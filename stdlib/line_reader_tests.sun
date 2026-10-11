@@ -1,0 +1,247 @@
+/** Exercises bounded file lines and deterministic stream interruptions. */
+public module std.io.line_reader_tests {
+  /** Verifies a line's status and exact bytes. */
+  function expect_line(reader: ref std.io.LineReader, expected: static_ptr<u8>, incomplete: bool) std.test.AssertionResult<void> {
+    match reader.next() {
+      std.io.LineReadResult.Complete => {
+        try std.test.assert(not incomplete, "complete line");
+      },
+      std.io.LineReadResult.Incomplete => {
+        try std.test.assert(incomplete, "incomplete final line");
+      },
+      _ => {
+        try std.test.fail("expected a line");
+      }
+    };
+    try std.test.assert(reader.line().equals_literal(expected), "exact line bytes");
+    return std.test.AssertionResult.Ok;
+  }
+
+  /** Verifies stable EOF and an empty exposed line. */
+  function expect_eof(reader: ref std.io.LineReader) std.test.AssertionResult<void> {
+    for (var i: i64 = 0; i < 2; i = i + 1) {
+      match reader.next() {
+        std.io.LineReadResult.Eof => {},
+        _ => {
+          try std.test.fail("expected EOF");
+        }
+      };
+      try std.test.assert_eq(reader.line().length(), 0);
+    }
+    return std.test.AssertionResult.Ok;
+  }
+
+  /** Checks empty files, empty lines, CR preservation, and LF at every buffer position. */
+  test_function line_reader_boundaries() {
+    var alloc = make_heap_allocator();
+    var td = try std.test.expect_system(std.tests.TempDir(alloc, "line_boundaries"));
+    var path = td.file("lines");
+    var empty = String("");
+    try std.test.expect_system_success(std.io.write_string(path, empty));
+    if (true) {
+      var file = std.io.File();
+      try std.test.expect_system_success(file.open(path, std.io.FileMode.Read));
+      var reader = try std.test.expect_system(std.io.LineReader(alloc, file, 8, 3));
+      try expect_eof(reader);
+    }
+    var body = String("\nabc\ndefg\nh\r\nlast");
+    try std.test.expect_system_success(std.io.write_string(path, body));
+    for (var size: i64 = 1; size < 10; size = size + 1) {
+      var file = std.io.File();
+      try std.test.expect_system_success(file.open(path, std.io.FileMode.Read));
+      var reader = try std.test.expect_system(std.io.LineReader(alloc, file, 4, size));
+      try expect_line(reader, "", false);
+      try expect_line(reader, "abc", false);
+      try expect_line(reader, "defg", false);
+      try expect_line(reader, "h\r", false);
+      try expect_line(reader, "last", true);
+      try expect_eof(reader);
+    }
+  }
+
+  /** Checks exact limits, overlong draining and recovery, and overlong final data. */
+  test_function line_reader_limits() {
+    var alloc = make_heap_allocator();
+    var td = try std.test.expect_system(std.tests.TempDir(alloc, "line_limits"));
+    var path = td.file("lines");
+    var body = String("abcd\nabcdefghij\nok\nabcde");
+    try std.test.expect_system_success(std.io.write_string(path, body));
+    var file = std.io.File();
+    try std.test.expect_system_success(file.open(path, std.io.FileMode.Read));
+    var reader = try std.test.expect_system(std.io.LineReader(alloc, file, 4, 3));
+    try expect_line(reader, "abcd", false);
+    match reader.next() {
+      std.io.LineReadResult.TooLong => {},
+      _ => {
+        try std.test.fail("expected overlong line");
+      }
+    };
+    try std.test.assert(reader.line().equals_literal("abcd"), "bounded prefix");
+    try expect_line(reader, "ok", false);
+    match reader.next() {
+      std.io.LineReadResult.TooLong => {},
+      _ => {
+        try std.test.fail("expected overlong final line");
+      }
+    };
+    try std.test.assert_eq(reader.line().length(), 4);
+    try expect_eof(reader);
+  }
+
+  /** Streams a file much larger than the buffers and recognizes newline-terminated EOF. */
+  test_function line_reader_large_file() {
+    var alloc = make_heap_allocator();
+    var td = try std.test.expect_system(std.tests.TempDir(alloc, "line_large"));
+    var path = td.file("lines");
+    if (true) {
+      var file = std.io.File();
+      try std.test.expect_system_success(file.open(path, std.io.FileMode.Write));
+      for (var i: i64 = 0; i < 20000; i = i + 1) {
+        file.write("record\n");
+      }
+    }
+    var file = std.io.File();
+    try std.test.expect_system_success(file.open(path, std.io.FileMode.Read));
+    var reader = try std.test.expect_system(std.io.LineReader(alloc, file, 6, 31));
+    for (var i: i64 = 0; i < 20000; i = i + 1) {
+      try expect_line(reader, "record", false);
+    }
+    try expect_eof(reader);
+  }
+
+  /** Rejects invalid sizes and permits zero-length limits without confusing data with EOF. */
+  test_function line_reader_invalid_and_zero_limits() {
+    var alloc = make_heap_allocator();
+    var file = std.io.File();
+    match std.io.LineReader(alloc, file, -1, 3) {
+      SystemResult.Error(_) => {},
+      _ => {
+        try std.test.fail("negative limit accepted");
+      }
+    };
+    match std.io.LineReader(alloc, file, 4, 0) {
+      SystemResult.Error(_) => {},
+      _ => {
+        try std.test.fail("empty read buffer accepted");
+      }
+    };
+    var td = try std.test.expect_system(std.tests.TempDir(alloc, "line_zero"));
+    var path = td.file("lines");
+    var body = String("\nx\n");
+    try std.test.expect_system_success(std.io.write_string(path, body));
+    try std.test.expect_system_success(file.open(path, std.io.FileMode.Read));
+    var reader = try std.test.expect_system(std.io.LineReader(alloc, file, 0, 2));
+    try expect_line(reader, "", false);
+    match reader.next() {
+      std.io.LineReadResult.TooLong => {},
+      _ => {
+        try std.test.fail("zero limit accepts only empty lines");
+      }
+    };
+    try expect_eof(reader);
+  }
+
+  /** Injects short reads, EINTR, would-block, and errors while delivering a final partial record. */
+  class FragmentedReader implements std.io.ByteReader {
+    var calls: i64 = 0;
+
+    /** Returns one byte at a time, with retryable interruptions between bytes. */
+    public unsafe method read(fd: i32, data: raw_ptr<u8>, count: i64) i64 {
+      this.calls = this.calls + 1;
+      if (this.calls == 1 or this.calls == 4) {
+        unsafe { _store<i32>(errno_ptr(), 0, INTERRUPTED_ERRNO); };
+        return -1;
+      }
+      if (this.calls == 3) {
+        unsafe { _store<i32>(errno_ptr(), 0, WOULD_BLOCK_ERRNO); };
+        return -1;
+      }
+      if (this.calls == 7) {
+        unsafe { _store<i32>(errno_ptr(), 0, 5); };
+        return -1;
+      }
+      if (this.calls > 8) {
+        return 0;
+      }
+      var ch: u8 = b'a';
+      if (this.calls == 5) {
+        ch = b'\n';
+      }
+      unsafe { _store<u8>(data, 0, ch); };
+      return 1;
+    }
+  }
+
+  /** Keeps partial lines across retryable results and distinguishes a truncated final record. */
+  test_function line_reader_partial_reads_and_interruptions() {
+    var alloc = make_heap_allocator();
+    var file = std.io.File();
+    var reader = try std.test.expect_system(std.io.LineReader(alloc, file, 4, 8));
+    var operation = FragmentedReader();
+    match std.io.next_line_using(reader, operation) {
+      std.io.LineReadResult.WouldBlock => {},
+      _ => {
+        try std.test.fail("expected would-block");
+      }
+    };
+    try std.test.assert(reader.line().equals_literal("a"), "partial data retained");
+    match std.io.next_line_using(reader, operation) {
+      std.io.LineReadResult.Complete => {},
+      _ => {
+        try std.test.fail("expected complete short line");
+      }
+    };
+    try std.test.assert(reader.line().equals_literal("a"), "interruption loses no bytes");
+    match std.io.next_line_using(reader, operation) {
+      std.io.LineReadResult.Error(e) => {
+        try std.test.assert_eq(e.code(), 5);
+      },
+      _ => {
+        try std.test.fail("expected I/O error");
+      }
+    };
+    try std.test.assert(reader.line().equals_literal("a"), "I/O error retains partial data");
+    match std.io.next_line_using(reader, operation) {
+      std.io.LineReadResult.Incomplete => {},
+      _ => {
+        try std.test.fail("expected interrupted final record");
+      }
+    };
+    try std.test.assert(reader.line().equals_literal("aa"), "short reads accumulate");
+    try expect_eof(reader);
+  }
+
+  /** Retains overlong-line draining state across would-block and native errors. */
+  test_function line_reader_interrupted_overlong_drain() {
+    var alloc = make_heap_allocator();
+    var file = std.io.File();
+    var reader = try std.test.expect_system(std.io.LineReader(alloc, file, 0, 8));
+    var operation = FragmentedReader();
+    match std.io.next_line_using(reader, operation) {
+      std.io.LineReadResult.WouldBlock => {},
+      _ => {
+        try std.test.fail("expected would-block during drain");
+      }
+    };
+    match std.io.next_line_using(reader, operation) {
+      std.io.LineReadResult.TooLong => {},
+      _ => {
+        try std.test.fail("overlong state survives would-block");
+      }
+    };
+    match std.io.next_line_using(reader, operation) {
+      std.io.LineReadResult.Error(_) => {},
+      _ => {
+        try std.test.fail("expected error during drain");
+      }
+    };
+    match std.io.next_line_using(reader, operation) {
+      std.io.LineReadResult.TooLong => {},
+      _ => {
+        try std.test.fail("overlong state survives error until EOF");
+      }
+    };
+    try std.test.assert_eq(reader.line().length(), 0);
+    try expect_eof(reader);
+  }
+}

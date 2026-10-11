@@ -196,6 +196,125 @@ public module std.io {
     Error(Error)
   }
 
+  /** Describes a bounded line read; line() holds bytes without the LF delimiter. */
+  public enum LineReadResult {
+    Complete,
+    Eof,
+    Incomplete,
+    TooLong,
+    WouldBlock,
+    Error(Error)
+  }
+
+  /**
+   * Buffers lines from a borrowed file. Keep the file open and do not read or
+   * seek it separately while this reader is in use. Storage is bounded by the
+   * requested buffer size and maximum line length, independent of file size.
+   * Line storage grows on demand and is reused by subsequent reads.
+   * LF terminates a line; CR and all other bytes are preserved.
+   */
+  public class LineReader {
+    var file: ref File;
+    var buffer: ContiguousBuffer<u8>;
+    var text: String;
+    var maximum: i64;
+    var position: i64 = 0;
+    var available: i64 = 0;
+    var finished: bool = false;
+    var delivered: bool = false;
+    var overlong: bool = false;
+
+    /**
+     * Allocates reusable storage. Rejects negative line limits and nonpositive
+     * buffer sizes. The byte limit excludes LF; zero permits only empty lines.
+     */
+    init(alloc: ref HeapAllocator, file: ref File, max_line_length: i64, buffer_size: i64) SystemResult<void> {
+      if (max_line_length < 0 or buffer_size <= 0) {
+        return SystemResult.Error(Error(22, "invalid line reader bounds"));
+      }
+      this.file = file;
+      this.buffer = ContiguousBuffer<u8>(alloc, buffer_size);
+      this.text = String(alloc, "");
+      this.maximum = max_line_length;
+    }
+
+    /**
+     * Borrows the last line until the next read. TooLong exposes its bounded
+     * prefix; WouldBlock and Error expose partial data retained for a retry.
+     * Copy explicitly if the bytes must survive another read.
+     */
+    public const method line() const ref String {
+      return this.text;
+    }
+
+    /**
+     * Reads through LF or EOF, retrying interrupted I/O. Incomplete means EOF
+     * after an unterminated line. TooLong drains through LF or EOF, allowing
+     * the next call to read the following line. WouldBlock and Error retain
+     * progress. Repeated calls after EOF return Eof with an empty line.
+     */
+    public method next() LineReadResult {
+      var operation = NativeByteIo();
+      return next_line_using(this, operation);
+    }
+  }
+
+  /** Supplies a native read operation so short reads and interruptions can be tested. */
+  function next_line_using<Operation: ByteReader>(reader: ref LineReader, operation: ref Operation) LineReadResult {
+    if (reader.delivered) {
+      reader.text.clear();
+      reader.overlong = false;
+      reader.delivered = false;
+    }
+    while (true) {
+      if (reader.position == reader.available) {
+        if (reader.finished) {
+          return LineReadResult.Eof;
+        }
+        var bytes = MutableByteSlice(reader.buffer);
+        match read_slice_using(reader.file.get_fd(), bytes, operation) {
+          ReadResult.Data(n) => {
+            reader.position = 0;
+            reader.available = n;
+          },
+          ReadResult.Eof => {
+            reader.finished = true;
+            reader.delivered = true;
+            if (reader.overlong) {
+              return LineReadResult.TooLong;
+            }
+            if (reader.text.length() > 0) {
+              return LineReadResult.Incomplete;
+            }
+            return LineReadResult.Eof;
+          },
+          ReadResult.WouldBlock => {
+            return LineReadResult.WouldBlock;
+          },
+          ReadResult.Error(e) => {
+            return LineReadResult.Error(Error(e.code(), "failed to read line"));
+          }
+        };
+      }
+      // The native read initialized every byte below available.
+      var ch: u8 = unsafe { reader.buffer.get_unchecked(reader.position); };
+      reader.position = reader.position + 1;
+      if (ch == b'\n') {
+        reader.delivered = true;
+        if (reader.overlong) {
+          return LineReadResult.TooLong;
+        }
+        return LineReadResult.Complete;
+      }
+      if (reader.text.length() < reader.maximum) {
+        reader.text.append_char(ch);
+      } else {
+        reader.overlong = true;
+      }
+    }
+    return LineReadResult.Eof;
+  }
+
   /** Reports write completion or progress before blocking or failure; resume after that prefix. */
   public enum WriteResult {
     Complete(i64),
