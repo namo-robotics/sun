@@ -87,34 +87,108 @@ public module std.linalg {
     }
   }
 
+  /** Scales only output outside the packed rectangle, after shape validation.
+   * The packed kernel initializes the excluded rectangle on its first panel. */
+  function scale_remainder<T: _Float>(output: ref std.Matrix<T>, beta: T, rows: i64, cols: i64) void {
+    if (beta == _convert<T>(1)) {
+      return;
+    }
+    var c = output.raw_data();
+    var m = output.dim(0);
+    var n = output.dim(1);
+    for (var i: i64 = 0; i < m; i = i + 1) {
+      var first: i64 = 0;
+      if (i < rows) {
+        first = cols;
+      }
+      var row = i * n;
+      for (var j = first; j < n; j = j + 1) {
+        if (beta == _convert<T>(0)) {
+          unsafe { _store<T>(c, row + j, _convert<T>(0)); };
+        } else {
+          unsafe { _store<T>(c, row + j, beta * _load<T>(c, row + j)); };
+        }
+      }
+    }
+  }
+
   /** Accumulates one 4-by-8 tile from initialized packed panels.
    * A contains k groups of four scaled values; B contains k groups of eight.
-   * Output contains four initialized, disjoint rows of eight values at offset
-   * with row stride n. Every pointer and range is validated by the caller. */
-  function packed_tile(a: raw_ptr<u8>, b: raw_ptr<u8>, c: raw_ptr<u8>, offset: i64, n: i64, k: i64) void {
+   * Output contains four disjoint rows of eight values at offset with row stride
+   * n. Existing output must be initialized only when beta is nonzero. Every
+   * pointer and range is validated by the caller. Consecutive k steps are
+   * unrolled in increasing order allowing hardware fused multiply-add. */
+  function packed_tile(a: raw_ptr<u8>, b: raw_ptr<u8>, c: raw_ptr<u8>, offset: i64, n: i64, k: i64, beta: f32) void {
     var acc0 = std.simd.F32x8();
-    unsafe { acc0.load_unchecked(c, offset + 0 * n); };
     var acc1 = std.simd.F32x8();
-    unsafe { acc1.load_unchecked(c, offset + 1 * n); };
     var acc2 = std.simd.F32x8();
-    unsafe { acc2.load_unchecked(c, offset + 2 * n); };
     var acc3 = std.simd.F32x8();
-    unsafe { acc3.load_unchecked(c, offset + 3 * n); };
+    if (beta != 0.0f32) {
+      unsafe { acc0.load_unchecked(c, offset + 0 * n); };
+      unsafe { acc1.load_unchecked(c, offset + 1 * n); };
+      unsafe { acc2.load_unchecked(c, offset + 2 * n); };
+      unsafe { acc3.load_unchecked(c, offset + 3 * n); };
+      if (beta != 1.0f32) {
+        var factor = std.simd.F32x8(beta);
+        acc0 = factor.mul(acc0);
+        acc1 = factor.mul(acc1);
+        acc2 = factor.mul(acc2);
+        acc3 = factor.mul(acc3);
+      }
+    }
     var bv = std.simd.F32x8();
-    for (var p: i64 = 0; p < k; p = p + 1) {
+    var p: i64 = 0;
+    // Keep each accumulator ordered while reducing loop-control overhead.
+    while (p <= k - 4) {
+      unsafe { bv.load_unchecked(b, (p + 0) * 8); };
+      var factor0_step0 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 0) * 4 + 0); });
+      acc0 = factor0_step0.mul_add(bv, acc0);
+      var factor1_step0 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 0) * 4 + 1); });
+      acc1 = factor1_step0.mul_add(bv, acc1);
+      var factor2_step0 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 0) * 4 + 2); });
+      acc2 = factor2_step0.mul_add(bv, acc2);
+      var factor3_step0 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 0) * 4 + 3); });
+      acc3 = factor3_step0.mul_add(bv, acc3);
+      unsafe { bv.load_unchecked(b, (p + 1) * 8); };
+      var factor0_step1 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 1) * 4 + 0); });
+      acc0 = factor0_step1.mul_add(bv, acc0);
+      var factor1_step1 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 1) * 4 + 1); });
+      acc1 = factor1_step1.mul_add(bv, acc1);
+      var factor2_step1 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 1) * 4 + 2); });
+      acc2 = factor2_step1.mul_add(bv, acc2);
+      var factor3_step1 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 1) * 4 + 3); });
+      acc3 = factor3_step1.mul_add(bv, acc3);
+      unsafe { bv.load_unchecked(b, (p + 2) * 8); };
+      var factor0_step2 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 2) * 4 + 0); });
+      acc0 = factor0_step2.mul_add(bv, acc0);
+      var factor1_step2 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 2) * 4 + 1); });
+      acc1 = factor1_step2.mul_add(bv, acc1);
+      var factor2_step2 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 2) * 4 + 2); });
+      acc2 = factor2_step2.mul_add(bv, acc2);
+      var factor3_step2 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 2) * 4 + 3); });
+      acc3 = factor3_step2.mul_add(bv, acc3);
+      unsafe { bv.load_unchecked(b, (p + 3) * 8); };
+      var factor0_step3 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 3) * 4 + 0); });
+      acc0 = factor0_step3.mul_add(bv, acc0);
+      var factor1_step3 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 3) * 4 + 1); });
+      acc1 = factor1_step3.mul_add(bv, acc1);
+      var factor2_step3 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 3) * 4 + 2); });
+      acc2 = factor2_step3.mul_add(bv, acc2);
+      var factor3_step3 = std.simd.F32x8(unsafe { _load<f32>(a, (p + 3) * 4 + 3); });
+      acc3 = factor3_step3.mul_add(bv, acc3);
+      p = p + 4;
+    }
+    while (p < k) {
       unsafe { bv.load_unchecked(b, p * 8); };
       var factor0 = std.simd.F32x8(unsafe { _load<f32>(a, p * 4 + 0); });
-      var product0 = factor0.mul(bv);
-      acc0 = acc0.add(product0);
+      acc0 = factor0.mul_add(bv, acc0);
       var factor1 = std.simd.F32x8(unsafe { _load<f32>(a, p * 4 + 1); });
-      var product1 = factor1.mul(bv);
-      acc1 = acc1.add(product1);
+      acc1 = factor1.mul_add(bv, acc1);
       var factor2 = std.simd.F32x8(unsafe { _load<f32>(a, p * 4 + 2); });
-      var product2 = factor2.mul(bv);
-      acc2 = acc2.add(product2);
+      acc2 = factor2.mul_add(bv, acc2);
       var factor3 = std.simd.F32x8(unsafe { _load<f32>(a, p * 4 + 3); });
-      var product3 = factor3.mul(bv);
-      acc3 = acc3.add(product3);
+      acc3 = factor3.mul_add(bv, acc3);
+      p = p + 1;
     }
     unsafe { acc0.store_unchecked(c, offset + 0 * n); };
     unsafe { acc1.store_unchecked(c, offset + 1 * n); };
@@ -122,25 +196,43 @@ public module std.linalg {
     unsafe { acc3.store_unchecked(c, offset + 3 * n); };
   }
 
-  /** Packs bounded cache panels and accumulates complete 4-by-8 output tiles.
+  /** Packs bounded cache panels and selects a supported vector tile at runtime.
+   * AVX2/FMA CPUs with OS vector-state support use isolated 4-by-16 tiles;
+   * other CPUs and remaining eight-column groups use the portable 4-by-8 tile.
    * Uses fixed-size stack scratch, with no heap allocation. Validated inputs must
-   * be initialized and disjoint from initialized output. A uses ar/ac strides;
+   * be initialized and disjoint from output, which need only be initialized when
+   * beta is nonzero. A uses ar/ac strides;
    * B has contiguous columns and row stride br. Output uses row stride n.
-   * rows is a multiple of four and cols a multiple of eight, within output.
-   * Inner-dimension blocks run in increasing order to preserve rounding. */
-  function multiply_packed(alpha: f32, a: raw_ptr<u8>, ar: i64, ac: i64, b: raw_ptr<u8>, br: i64, c: raw_ptr<u8>, n: i64, k: i64, rows: i64, cols: i64) void {
-    var pa = unsafe { _stack_alloc(8192); };
-    var pb = unsafe { _stack_alloc(16384); };
+   * rows and cols are positive multiples of four and eight, within output.
+   * Inner-dimension blocks run in increasing order without regrouping sums. */
+  function multiply_packed(alpha: f32, a: raw_ptr<u8>, ar: i64, ac: i64, b: raw_ptr<u8>, br: i64, c: raw_ptr<u8>, n: i64, k: i64, rows: i64, cols: i64, beta: f32) void {
+    // The validated output bounds make rows * cols safe. Divide to avoid
+    // overflowing a full m*n*k work estimate, and skip CPUID for small products.
+    var minimum_products: i64 = 262144;
+    var wide = false;
+    if (k > (minimum_products - 1) / (rows * cols)) {
+      wide = _cpu_avx2_fma();
+    }
+    var panel_size: i64 = 64;
+    if (wide) {
+      panel_size = 128;
+    }
+    var pa = unsafe { _stack_alloc(16384); };
+    var pb = unsafe { _stack_alloc(65536); };
     var vector = std.simd.F32x8();
-    for (var jc: i64 = 0; jc < cols; jc = jc + 64) {
+    for (var jc: i64 = 0; jc < cols; jc = jc + panel_size) {
       var nc = cols - jc;
-      if (nc > 64) {
-        nc = 64;
+      if (nc > panel_size) {
+        nc = panel_size;
       }
-      for (var pc: i64 = 0; pc < k; pc = pc + 64) {
+      for (var pc: i64 = 0; pc < k; pc = pc + panel_size) {
         var kc = k - pc;
-        if (kc > 64) {
-          kc = 64;
+        if (kc > panel_size) {
+          kc = panel_size;
+        }
+        var panel_beta: f32 = 1.0f32;
+        if (pc == 0) {
+          panel_beta = beta;
         }
         // Store each B micro-panel contiguously in the order the kernel reads it.
         for (var j: i64 = 0; j < nc; j = j + 8) {
@@ -168,7 +260,14 @@ public module std.linalg {
             for (var j: i64 = 0; j < nc; j = j + 8) {
               var ap = unsafe { _ptr_offset(pa, i * kc * _sizeof<f32>()); };
               var bp = unsafe { _ptr_offset(pb, j * kc * _sizeof<f32>()); };
-              packed_tile(ap, bp, c, (ic + i) * n + jc + j, n, kc);
+              if (wide and j + 16 <= nc) {
+                unsafe {
+                  _gemm_tile_avx2_fma(ap, bp, _ptr_offset(c, ((ic + i) * n + jc + j) * _sizeof<f32>()), n, kc, panel_beta);
+                };
+                j = j + 8;
+              } else {
+                packed_tile(ap, bp, c, (ic + i) * n + jc + j, n, kc, panel_beta);
+              }
             }
           }
         }
@@ -182,7 +281,7 @@ public module std.linalg {
    * A uses ar/ac strides; B has contiguous columns and row stride br. Output
    * has row stride n. rows, cols, and first_column are multiples of four within
    * output bounds; columns before first_column have already been accumulated.
-   * Each lane accumulates in increasing k, with separate multiply and add. */
+   * Each lane accumulates in increasing k allowing hardware fused multiply-add. */
   function multiply_tiles(alpha: f32, a: raw_ptr<u8>, ar: i64, ac: i64, b: raw_ptr<u8>, br: i64, c: raw_ptr<u8>, n: i64, k: i64, rows: i64, cols: i64, first_column: i64) void {
     for (var i: i64 = 0; i < rows; i = i + 4) {
       var a0 = i * ar;
@@ -207,17 +306,13 @@ public module std.linalg {
           var offset = p * ac;
           unsafe { bv.load_unchecked(b, p * br + j); };
           var factor0 = std.simd.splat(unsafe { alpha * _load<f32>(a, a0 + offset); });
-          var product0 = factor0.mul(bv);
-          acc0 = acc0.add(product0);
+          acc0 = factor0.mul_add(bv, acc0);
           var factor1 = std.simd.splat(unsafe { alpha * _load<f32>(a, a1 + offset); });
-          var product1 = factor1.mul(bv);
-          acc1 = acc1.add(product1);
+          acc1 = factor1.mul_add(bv, acc1);
           var factor2 = std.simd.splat(unsafe { alpha * _load<f32>(a, a2 + offset); });
-          var product2 = factor2.mul(bv);
-          acc2 = acc2.add(product2);
+          acc2 = factor2.mul_add(bv, acc2);
           var factor3 = std.simd.splat(unsafe { alpha * _load<f32>(a, a3 + offset); });
-          var product3 = factor3.mul(bv);
-          acc3 = acc3.add(product3);
+          acc3 = factor3.mul_add(bv, acc3);
         }
         unsafe { acc0.store_unchecked(c, c0 + j); };
         unsafe { acc1.store_unchecked(c, c1 + j); };
@@ -227,9 +322,9 @@ public module std.linalg {
     }
   }
 
-  /** Accumulates validated, initialized input storage into disjoint initialized output.
+  /** Scales output and accumulates validated inputs, skipping output reads for zero beta.
    * Dimensions and strides must keep every element offset within its allocation. */
-  function multiply<T: _Float>(alpha: T, left: const ref std.Matrix<T>, ar: i64, ac: i64, right: const ref std.Matrix<T>, br: i64, bc: i64, output: ref std.Matrix<T>, k: i64) void {
+  function multiply<T: _Float>(alpha: T, left: const ref std.Matrix<T>, ar: i64, ac: i64, right: const ref std.Matrix<T>, br: i64, bc: i64, output: ref std.Matrix<T>, k: i64, beta: T) void {
     var a = left.raw_data();
     var b = right.raw_data();
     var c = output.raw_data();
@@ -238,14 +333,23 @@ public module std.linalg {
     var vector_enabled = false;
     var tiled_rows: i64 = 0;
     var tiled_cols: i64 = 0;
+    var packed_cols: i64 = 0;
     if (_is<f32>(alpha) and bc == 1 and n >= 4) {
       vector_enabled = true;
       tiled_rows = m - m % 4;
       tiled_cols = n - n % 4;
-      var packed_cols: i64 = 0;
       if (m >= 16 and n >= 16 and k >= 32) {
         packed_cols = n - n % 8;
-        multiply_packed(_convert<f32>(alpha), a, ar, ac, b, br, c, n, k, tiled_rows, packed_cols);
+      }
+    }
+    if (packed_cols != 0) {
+      scale_remainder<T>(output, beta, tiled_rows, packed_cols);
+    } else {
+      scale_output<T>(output, beta);
+    }
+    if (vector_enabled) {
+      if (packed_cols != 0) {
+        multiply_packed(_convert<f32>(alpha), a, ar, ac, b, br, c, n, k, tiled_rows, packed_cols, _convert<f32>(beta));
       }
       multiply_tiles(_convert<f32>(alpha), a, ar, ac, b, br, c, n, k, tiled_rows, tiled_cols, packed_cols);
     }
@@ -269,8 +373,7 @@ public module std.linalg {
           var cv = std.simd.F32x4();
           while (j <= n - 4) {
             unsafe { bv.load_unchecked(b, brow + j); cv.load_unchecked(c, crow + j); };
-            var product = factor.mul(bv);
-            var sum = cv.add(product);
+            var sum = factor.mul_add(bv, cv);
             unsafe { sum.store_unchecked(c, crow + j); };
             j = j + 4;
           }
@@ -288,7 +391,8 @@ public module std.linalg {
   /** Computes C = alpha * op(A) * op(B) + beta * C without allocation.
    * Inputs must be initialized when alpha is nonzero and the product is nonempty.
    * C need not be initialized when beta is zero. C must not share nonempty storage
-   * with either input. Validation failures leave C unchanged. */
+   * with either input. Validation failures leave C unchanged. SIMD paths use
+   * hardware fusion when available; rounding may vary with target and shape. */
   public function gemm<T: _Float>(alpha: T, a: const ref std.Matrix<T>, trans_a: Transpose, b: const ref std.Matrix<T>, trans_b: Transpose, beta: T, c: ref std.Matrix<T>) LinalgResult<void> {
     if (not valid_matrix<T>(a) or not valid_matrix<T>(b) or not valid_matrix<T>(c)) {
       return LinalgResult.Error(LinalgError(LinalgErrorReason.InvalidDimensions));
@@ -324,9 +428,10 @@ public module std.linalg {
     if (m == 0 or n == 0) {
       return LinalgResult.Ok;
     }
-    scale_output<T>(c, beta);
     if (alpha != _convert<T>(0) and k != 0) {
-      multiply<T>(alpha, a, ar, ac, b, br, bc, c, k);
+      multiply<T>(alpha, a, ar, ac, b, br, bc, c, k, beta);
+    } else {
+      scale_output<T>(c, beta);
     }
     return LinalgResult.Ok;
   }

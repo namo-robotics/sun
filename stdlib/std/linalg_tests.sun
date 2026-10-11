@@ -205,8 +205,8 @@ public module std.linalg_tests {
     }
   }
 
-  /** Checks separate rounding and increasing-k accumulation inside full tiles. */
-  test_function register_tiles_preserve_rounding() {
+  /** Allows fused or separate rounding while checking increasing-k accumulation inside full tiles. */
+  test_function register_tiles_accumulate_in_order() {
     var alloc = make_heap_allocator();
     var x = _bitcast<f32>(1065353217u32);
     var y = _bitcast<f32>(1065353214u32);
@@ -225,7 +225,7 @@ public module std.linalg_tests {
     try expect_ok(c.gemm(1.0f32, a, Transpose.None, b, Transpose.None, 1.0f32));
     for (var i: i64 = 0; i < 4; i = i + 1) {
       for (var j: i64 = 0; j < 4; j = j + 1) {
-        try std.test.assert_eq(c[i, j], 0.0f32);
+        try std.test.assert_eq(c[i, j] == 0.0f32 or c[i, j] == -1.4210854715202004e-14f32, true);
       }
       for (var p: i64 = 0; p < 3; p = p + 1) {
         a[i, p] = 1.0f32;
@@ -245,8 +245,8 @@ public module std.linalg_tests {
   /** Checks packing thresholds, cache-panel edges, and tails against scalar dot products. */
   test_function packed_panel_boundaries() {
     var alloc = make_heap_allocator();
-    var shapes: array<i64, 6, 3> = [[15i64, 31i64, 15i64], [16i64, 32i64, 16i64], [17i64, 63i64, 23i64], [33i64, 65i64, 65i64], [36i64, 129i64, 72i64], [32i64, 64i64, 64i64]];
-    for (var shape: i64 = 0; shape < 6; shape = shape + 1) {
+    var shapes: array<i64, 15, 3> = [[15i64, 31i64, 15i64], [16i64, 32i64, 16i64], [17i64, 63i64, 23i64], [33i64, 65i64, 65i64], [36i64, 129i64, 72i64], [32i64, 64i64, 64i64], [19i64, 66i64, 28i64], [20i64, 33i64, 31i64], [20i64, 33i64, 32i64], [21i64, 33i64, 33i64], [20i64, 127i64, 127i64], [20i64, 128i64, 128i64], [21i64, 129i64, 129i64], [32i64, 64i64, 127i64], [32i64, 64i64, 128i64]];
+    for (var shape: i64 = 0; shape < 15; shape = shape + 1) {
       var m = shapes[shape, 0];
       var k = shapes[shape, 1];
       var n = shapes[shape, 2];
@@ -309,6 +309,78 @@ public module std.linalg_tests {
     }
   }
 
+  /** Zero alpha and empty inner dimensions still scale all output, without reading inputs. */
+  test_function packed_shape_scaling_only() {
+    var alloc = make_heap_allocator();
+    var a = Matrix<f32>(alloc, [19, 65]);
+    var b = Matrix<f32>(alloc, [65, 23]);
+    var c = Matrix<f32>(alloc, [19, 23]);
+    for (var i: i64 = 0; i < 19; i = i + 1) {
+      for (var j: i64 = 0; j < 23; j = j + 1) {
+        c[i, j] = 1.25f32;
+      }
+    }
+    // Shape-only inputs are intentionally uninitialized and must not be read.
+    try expect_ok(c.gemm(0.0f32, a, Transpose.None, b, Transpose.None, -2.0f32));
+    for (var i: i64 = 0; i < 19; i = i + 1) {
+      for (var j: i64 = 0; j < 23; j = j + 1) {
+        try std.test.assert_eq(c[i, j], -2.5f32);
+      }
+    }
+    try expect_ok(c.gemm(0.0f32, a, Transpose.None, b, Transpose.None, 1.0f32));
+    for (var i: i64 = 0; i < 19; i = i + 1) {
+      for (var j: i64 = 0; j < 23; j = j + 1) {
+        try std.test.assert_eq(c[i, j], -2.5f32);
+        c[i, j] = _bitcast<f32>(2143289344u32);
+      }
+    }
+    try expect_ok(c.gemm(0.0f32, a, Transpose.None, b, Transpose.None, -0.0f32));
+    var empty_a = Matrix<f32>(alloc, [19, 0]);
+    var empty_b = Matrix<f32>(alloc, [0, 23]);
+    try expect_ok(c.gemm(1.0f32, empty_a, Transpose.None, empty_b, Transpose.None, 1.0f32));
+    for (var i: i64 = 0; i < 19; i = i + 1) {
+      for (var j: i64 = 0; j < 23; j = j + 1) {
+        try std.test.assert_eq(c[i, j], 0.0f32);
+      }
+    }
+  }
+
+  /** Allows target-dependent fusion in packed tiles and vector tails. */
+  test_function packed_multiply_add_rounding() {
+    var alloc = make_heap_allocator();
+    var native_fma = _cpu_avx2_fma();
+    var a = Matrix<f32>(alloc, [19, 129]);
+    var b = Matrix<f32>(alloc, [129, 128]);
+    var c = Matrix<f32>(alloc, [19, 128]);
+    var x = _bitcast<f32>(1065353217u32);
+    var y = _bitcast<f32>(1065353214u32);
+    for (var p: i64 = 0; p < 129; p = p + 1) {
+      for (var i: i64 = 0; i < 19; i = i + 1) {
+        a[i, p] = 0.0f32;
+        if (p == 128) {
+          a[i, p] = x;
+        }
+      }
+      for (var j: i64 = 0; j < 128; j = j + 1) {
+        b[p, j] = y;
+      }
+    }
+    for (var i: i64 = 0; i < 19; i = i + 1) {
+      for (var j: i64 = 0; j < 128; j = j + 1) {
+        c[i, j] = -1.0f32;
+      }
+    }
+    try expect_ok(c.gemm(1.0f32, a, Transpose.None, b, Transpose.None, 1.0f32));
+    for (var i: i64 = 0; i < 19; i = i + 1) {
+      for (var j: i64 = 0; j < 128; j = j + 1) {
+        if (native_fma and i < 16) {
+          try std.test.assert_eq(c[i, j], -1.4210854715202004e-14f32);
+        }
+        try std.test.assert_eq(c[i, j] == 0.0f32 or c[i, j] == -1.4210854715202004e-14f32, true);
+      }
+    }
+  }
+
   /** Preserves increasing-k rounding across packed panel boundaries. */
   test_function packed_accumulation_order() {
     var alloc = make_heap_allocator();
@@ -332,8 +404,8 @@ public module std.linalg_tests {
     }
   }
 
-  /** Keeps multiply and add separately rounded even in the SIMD kernel. */
-  test_function simd_does_not_fuse() {
+  /** Allows hardware fusion in the SIMD row kernel. */
+  test_function simd_multiply_add_rounding() {
     var alloc = make_heap_allocator();
     var x = _bitcast<f32>(1065353217u32);
     var y = _bitcast<f32>(1065353214u32);
@@ -341,8 +413,8 @@ public module std.linalg_tests {
     var b = Matrix<f32>([[y, y, y, y]], alloc);
     var c = Matrix<f32>([[-1.0f32, -1.0f32, -1.0f32, -1.0f32]], alloc);
     try expect_ok(c.gemm(1.0f32, a, Transpose.None, b, Transpose.None, 1.0f32));
-    try std.test.assert_eq(c[0, 0], 0.0f32);
-    try std.test.assert_eq(c[0, 3], 0.0f32);
+    try std.test.assert_eq(c[0, 0] == 0.0f32 or c[0, 0] == -1.4210854715202004e-14f32, true);
+    try std.test.assert_eq(c[0, 3] == 0.0f32 or c[0, 3] == -1.4210854715202004e-14f32, true);
   }
 
   /** Checks every transpose combination against an independent dot-product loop. */

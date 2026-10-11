@@ -119,17 +119,23 @@ enum class Intrinsic {
   // =========================================================================
   // Bit intrinsics (wide multiply, leading/trailing zero counts)
   // =========================================================================
+  CpuAvx2Fma,
+  GemmTileAvx2Fma,
   StackAlloc,
   SimdF32x4Copy,
   SimdF32x4Splat,
   SimdF32x4Add,
   SimdF32x4Sub,
   SimdF32x4Mul,
+  SimdF32x4Fma,
+  SimdF32x4MulAdd,
   SimdF32x8Copy,
   SimdF32x8Splat,
   SimdF32x8Add,
   SimdF32x8Sub,
   SimdF32x8Mul,
+  SimdF32x8Fma,
+  SimdF32x8MulAdd,
   MulHiU64,  // _mul_hi_u64(a, b) -> u64 (high 64 bits of the 128-bit product)
   CtlzU64,   // _ctlz_u64(x) -> u64 (leading zero bits; 64 for 0)
   CttzU64,   // _cttz_u64(x) -> u64 (trailing zero bits; 64 for 0)
@@ -258,15 +264,21 @@ inline Intrinsic getIntrinsic(const std::string& name) {
 
   // Bit intrinsics
   if (name == "_stack_alloc") return Intrinsic::StackAlloc;
+  if (name == "_cpu_avx2_fma") return Intrinsic::CpuAvx2Fma;
+  if (name == "_gemm_tile_avx2_fma") return Intrinsic::GemmTileAvx2Fma;
   if (name == "_simd_f32x8_copy") return Intrinsic::SimdF32x8Copy;
   if (name == "_simd_f32x8_splat") return Intrinsic::SimdF32x8Splat;
   if (name == "_simd_f32x8_add") return Intrinsic::SimdF32x8Add;
   if (name == "_simd_f32x8_sub") return Intrinsic::SimdF32x8Sub;
+  if (name == "_simd_f32x8_mul_add") return Intrinsic::SimdF32x8MulAdd;
+  if (name == "_simd_f32x8_fma") return Intrinsic::SimdF32x8Fma;
   if (name == "_simd_f32x8_mul") return Intrinsic::SimdF32x8Mul;
   if (name == "_simd_f32x4_copy") return Intrinsic::SimdF32x4Copy;
   if (name == "_simd_f32x4_splat") return Intrinsic::SimdF32x4Splat;
   if (name == "_simd_f32x4_add") return Intrinsic::SimdF32x4Add;
   if (name == "_simd_f32x4_sub") return Intrinsic::SimdF32x4Sub;
+  if (name == "_simd_f32x4_mul_add") return Intrinsic::SimdF32x4MulAdd;
+  if (name == "_simd_f32x4_fma") return Intrinsic::SimdF32x4Fma;
   if (name == "_simd_f32x4_mul") return Intrinsic::SimdF32x4Mul;
   if (name == "_mul_hi_u64") return Intrinsic::MulHiU64;
   if (name == "_ctlz_u64") return Intrinsic::CtlzU64;
@@ -361,16 +373,21 @@ inline bool isIntrinsic(const std::string& name) {
  */
 inline bool requiresUnsafeBlock(Intrinsic i) {
   switch (i) {
+    case Intrinsic::GemmTileAvx2Fma:
     case Intrinsic::StackAlloc:
     case Intrinsic::SimdF32x8Copy:
     case Intrinsic::SimdF32x8Splat:
     case Intrinsic::SimdF32x8Add:
     case Intrinsic::SimdF32x8Sub:
+    case Intrinsic::SimdF32x8MulAdd:
+    case Intrinsic::SimdF32x8Fma:
     case Intrinsic::SimdF32x8Mul:
     case Intrinsic::SimdF32x4Copy:
     case Intrinsic::SimdF32x4Splat:
     case Intrinsic::SimdF32x4Add:
     case Intrinsic::SimdF32x4Sub:
+    case Intrinsic::SimdF32x4MulAdd:
+    case Intrinsic::SimdF32x4Fma:
     case Intrinsic::SimdF32x4Mul:
     // Reads and writes through a raw pointer
     case Intrinsic::Load:

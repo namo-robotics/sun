@@ -413,3 +413,37 @@ declare function _simd_f32x8_mul(output: raw_ptr<f32>, a: raw_ptr<f32>, b: raw_p
  * Requires unsafe: initialize bytes before reads, stay in bounds, never free the
  * pointer, and never let it escape the containing function's lifetime. */
 declare function _stack_alloc(bytes: i64) raw_ptr<u8>;
+
+/** Computes a * b + c with one rounding per lane. All pointers require f32
+ * alignment and four accessible lanes; inputs must be initialized. Output
+ * may overlap any input. Requires unsafe. */
+declare function _simd_f32x4_fma(output: raw_ptr<f32>, a: raw_ptr<f32>, b: raw_ptr<f32>, c: raw_ptr<f32>) void;
+
+/** Computes a * b + c with one rounding per lane. All pointers require f32
+ * alignment and eight accessible lanes; inputs must be initialized. Output
+ * may overlap any input. Requires unsafe. */
+declare function _simd_f32x8_fma(output: raw_ptr<f32>, a: raw_ptr<f32>, b: raw_ptr<f32>, c: raw_ptr<f32>) void;
+
+/** Computes a * b + c, allowing hardware fusion or separate rounding per lane.
+ * All pointers require f32 alignment and four accessible lanes; initialize
+ * inputs before use. Output may overlap any input. Requires unsafe. */
+declare function _simd_f32x4_mul_add(output: raw_ptr<f32>, a: raw_ptr<f32>, b: raw_ptr<f32>, c: raw_ptr<f32>) void;
+
+/** Computes a * b + c, allowing hardware fusion or separate rounding per lane.
+ * All pointers require f32 alignment and eight accessible lanes; initialize
+ * inputs before use. Output may overlap any input. Requires unsafe. */
+declare function _simd_f32x8_mul_add(output: raw_ptr<f32>, a: raw_ptr<f32>, b: raw_ptr<f32>, c: raw_ptr<f32>) void;
+
+/** Reports runtime AVX2/FMA support, including OS support for XMM/YMM state.
+ * Returns false on other architectures. Does not allocate or change CPU state. */
+declare function _cpu_avx2_fma() bool;
+
+/** Accumulates a packed 4-by-16 tile on a CPU accepted by _cpu_avx2_fma.
+ * Requires unsafe and a successful runtime capability check before calling.
+ * A contains k groups of four scaled floats; B contains two consecutive panels
+ * of k groups of eight floats. C addresses four rows of sixteen writable floats
+ * with stride n. k is nonnegative, n is at least sixteen, and all pointer ranges
+ * must fit their allocations with f32 alignment. Inputs are initialized and
+ * disjoint from output. C is initialized only if beta is nonzero. Computes
+ * beta*C followed by increasing-k fused accumulation, without allocation. */
+declare function _gemm_tile_avx2_fma(a: raw_ptr<u8>, b: raw_ptr<u8>, c: raw_ptr<u8>, n: i64, k: i64, beta: f32) void;

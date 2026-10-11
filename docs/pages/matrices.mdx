@@ -371,15 +371,27 @@ string. Matrix views and integer matrices are not supported by this API.
 
 For `f32`, GEMM uses explicit SIMD when `B` has contiguous logical columns.
 Small products use 4×4 register tiles. Products with at least 16 rows, 16 columns,
-and an inner dimension of at least 32 use packed 4×8 register tiles. Both paths
+and an inner dimension of at least 32 use packed register tiles. Supported
+x86-64 CPUs automatically use an AVX2/FMA 4×16 tile when there is enough work
+to amortize dispatch. Smaller products, other CPUs, and remaining
+eight-column groups use the portable 4×8 tile. Both paths
 reuse each vector of `B` across four rows of `A`. This applies to `a * b`,
 `matmul_into`, and both GEMM interfaces. Transposing `A` still permits SIMD.
 
-The packed path processes panels of up to 64 inner elements and 64 columns,
-and blocks of up to 32 rows. It packs scaled `A` and contiguous `B` micro-panels
-into 24 KiB of bounded stack scratch, with no heap allocation. Each output tile
+The selected AVX2/FMA path processes panels of up to 128 inner elements and
+128 columns; the portable path uses panels of up to 64 by 64. Both process
+blocks of up to 32 rows. Packing uses bounded stack scratch of 80 KiB, with
+no heap allocation; only active panels are initialized and read. Each output tile
 stays in registers across one inner panel; panels are accumulated in increasing
-order. Scratch is local to each call, so concurrent calls do not share it.
+order. The portable tile processes four consecutive steps per iteration
+without regrouping additions, then handles any remaining steps. Scratch is local to
+each call, so concurrent calls do not share it.
+
+The first packed panel applies beta while initializing its registers. For
+`beta == 0`, it starts from zero without loading old output values. Later panels
+continue the accumulated result without applying beta again. Remainder rows
+and columns are scaled separately. For zero alpha or an empty inner dimension,
+GEMM only scales output and does not read inputs.
 
 Remaining four-column groups use the smaller tile kernel. Leftover rows use
 four-lane SIMD, and leftover columns use scalar arithmetic. Noncontiguous
@@ -388,9 +400,17 @@ not need padding or additional alignment.
 
 Eight-lane vectors use the compilation target's available instructions. Targets
 without 256-bit vectors can split them into narrower operations; the library
-does not perform runtime CPU dispatch. All kernels retain separate multiply
-and add operations and increasing-inner-dimension accumulation, without FMA,
-reassociation, or fast-math. Packing copies input values into temporary scratch;
+also checks CPU and OS support before calling the separately targeted AVX2/FMA
+packed tile. This kernel uses eight vector accumulators and cannot be inlined
+into baseline callers. Packing, validation, and remainder handling stay in Sun;
+the specialized tile is emitted as LLVM vector operations. SIMD kernels permit
+hardware fused multiply-add by default, without a GEMM configuration option.
+LLVM selects fused instructions when suitable for the
+compilation target and otherwise uses ordinary multiply/add; GEMM does not
+require software FMA. Scalar paths retain separate multiply/add, so results
+can differ slightly with target, shape, and layout.
+All kernels accumulate in increasing inner-dimension order without
+reassociation or fast-math. Packing copies input values into temporary scratch;
 it does not copy owning matrices or change their shapes. This implementation is
 single-threaded, and performance depends on shape and target CPU.
 

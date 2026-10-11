@@ -1,8 +1,10 @@
-/** Checks vector lowering and unsafe boundaries for fixed-width float intrinsics.
+/** Checks vector lowering and unsafe boundaries for fixed-width float
+ * intrinsics.
  */
 #include <gtest/gtest.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/TargetParser/Host.h>
 
 #include <string>
 
@@ -21,6 +23,8 @@ TEST(Builtins_SIMD, vector_ir_and_alignment) {
         _simd_f32x4_add(out, a, b);
         _simd_f32x4_sub(out, a, b);
         _simd_f32x4_mul(out, a, b);
+        _simd_f32x4_fma(out, a, b, out);
+        _simd_f32x4_mul_add(out, a, b, out);
         _simd_f32x4_copy(out, a);
       };
     }
@@ -31,6 +35,8 @@ TEST(Builtins_SIMD, vector_ir_and_alignment) {
         _simd_f32x8_add(out, a, b);
         _simd_f32x8_sub(out, a, b);
         _simd_f32x8_mul(out, a, b);
+        _simd_f32x8_fma(out, a, b, out);
+        _simd_f32x8_mul_add(out, a, b, out);
         _simd_f32x8_copy(out, a);
       };
     }
@@ -38,11 +44,15 @@ TEST(Builtins_SIMD, vector_ir_and_alignment) {
   std::string ir;
   llvm::raw_string_ostream stream(ir);
   driver->getModule().print(stream, nullptr);
+  EXPECT_NE(ir.find("llvm.fma.v8f32"), std::string::npos);
+  EXPECT_NE(ir.find("llvm.fmuladd.v8f32"), std::string::npos);
   EXPECT_NE(ir.find("fadd <8 x float>"), std::string::npos);
   EXPECT_NE(ir.find("fsub <8 x float>"), std::string::npos);
   EXPECT_NE(ir.find("fmul <8 x float>"), std::string::npos);
   EXPECT_NE(ir.find("load <8 x float>"), std::string::npos);
   EXPECT_NE(ir.find("store <8 x float>"), std::string::npos);
+  EXPECT_NE(ir.find("llvm.fma.v4f32"), std::string::npos);
+  EXPECT_NE(ir.find("llvm.fmuladd.v4f32"), std::string::npos);
   EXPECT_NE(ir.find("fadd <4 x float>"), std::string::npos);
   EXPECT_NE(ir.find("fsub <4 x float>"), std::string::npos);
   EXPECT_NE(ir.find("fmul <4 x float>"), std::string::npos);
@@ -68,10 +78,13 @@ TEST(Builtins_SIMD, vector_ir_and_alignment) {
 
 /** Ensures every raw-memory SIMD operation requires an unsafe block. */
 TEST(Builtins_SIMD, raw_operations_require_unsafe) {
-  for (const std::string operation : {"copy", "splat", "add", "sub", "mul"}) {
-    const std::string arguments = operation == "splat"  ? "p, 1.0f32"
-                                  : operation == "copy" ? "p, p"
-                                                        : "p, p, p";
+  for (const std::string operation :
+       {"copy", "splat", "add", "sub", "mul", "fma", "mul_add"}) {
+    const std::string arguments = (operation == "fma" || operation == "mul_add")
+                                      ? "p, p, p, p"
+                                  : operation == "splat" ? "p, 1.0f32"
+                                  : operation == "copy"  ? "p, p"
+                                                         : "p, p, p";
     EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeString(R"(
       /** Attempts unchecked memory access outside unsafe. */
       function main() i32 {
@@ -115,6 +128,13 @@ TEST(Builtins_SIMD, matrix_and_vectors_from_bundle) {
                            [6.0f32, 7.0f32, 8.0f32, 9.0f32, 10.0f32]], alloc);
       var factor = std.simd.splat(2.0f32);
       var squared = factor * factor;
+      var contracted = factor.mul_add(factor, factor);
+      if (contracted.w != 6.0f32) { return -6; }
+      var fused = factor.fma(factor, factor);
+      if (fused.w != 6.0f32) { return -4; }
+      var wide = std.simd.F32x8(2.0f32);
+      var wide_fused = wide.fma(wide, wide);
+      if (wide_fused.x7 != 6.0f32) { return -5; }
       if (squared.w != 4.0f32) { return -1; }
       match a * b {
         std.linalg.LinalgResult.Ok(c) => {
@@ -130,17 +150,23 @@ TEST(Builtins_SIMD, matrix_and_vectors_from_bundle) {
 
 /** Eight-lane primitives retain the same explicit unsafe boundary. */
 TEST(Builtins_SIMD, wide_operations_require_unsafe) {
-  for (const std::string operation : {"copy", "splat", "add", "sub", "mul"}) {
-    const std::string arguments = operation == "splat" ? "p, 1.0f32"
-                                 : operation == "copy" ? "p, p" : "p, p, p";
+  for (const std::string operation :
+       {"copy", "splat", "add", "sub", "mul", "fma", "mul_add"}) {
+    const std::string arguments = (operation == "fma" || operation == "mul_add")
+                                      ? "p, p, p, p"
+                                  : operation == "splat" ? "p, 1.0f32"
+                                  : operation == "copy"  ? "p, p"
+                                                         : "p, p, p";
     EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeString(R"(
       /** Rejects raw access outside unsafe. */
       function main() i32 {
         var p: raw_ptr<f32> = null;
-    )" + std::string("_simd_f32x8_") + operation + "(" + arguments + R"();
+    )" + std::string("_simd_f32x8_") + operation + "(" + arguments +
+                                                             R"();
         return 0;
       }
-    )"), "unsafe");
+    )"),
+                                  "unsafe");
   }
 }
 
@@ -155,10 +181,12 @@ TEST(Builtins_SIMD, overlapping_wide_copy) {
       for (var i: i64 = 1; i <= 8; i = i + 1) { result = result + lanes[i]; }
       return _convert<i32>(result);
     }
-  )"), 36);
+  )"),
+            36);
 }
 
-/** Scratch is usable within its function and rejects unsafe or unbounded requests. */
+/** Scratch is usable within its function and rejects unsafe or unbounded
+ * requests. */
 TEST(Builtins_SIMD, bounded_stack_scratch) {
   EXPECT_EQ(sun::driver::executeString(R"(
     /** Initializes stack bytes before reading them. */
@@ -169,25 +197,32 @@ TEST(Builtins_SIMD, bounded_stack_scratch) {
         _load<i32>(p, 7);
       };
     }
-  )"), 42);
+  )"),
+            42);
   EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeString(R"(
     /** Rejects scratch storage outside unsafe. */
     function main() i32 { var p = _stack_alloc(32); return 0; }
-  )"), "unsafe");
+  )"),
+                                "unsafe");
   for (const std::string bytes : {"0", "-1", "65537"}) {
-    EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeString(
-        "/** Rejects invalid scratch sizes. */ function main() i32 { unsafe { var p = _stack_alloc(" +
-        bytes + "); }; return 0; }"), "constant byte count");
+    EXPECT_SUN_ERROR_WITH_MESSAGE(
+        sun::driver::executeString(
+            "/** Rejects invalid scratch sizes. */ function main() i32 { "
+            "unsafe { var p = _stack_alloc(" +
+            bytes + "); }; return 0; }"),
+        "constant byte count");
   }
   EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeString(R"(
     /** Rejects dynamically sized stack reservations. */
     function reserve(n: i64) i32 { unsafe { var p = _stack_alloc(n); }; return 0; }
     /** Calls the invalid reservation. */
     function main() i32 { return reserve(32); }
-  )"), "constant byte count");
+  )"),
+                                "constant byte count");
 }
 
-/** Packed helpers and wide vector operations remain callable through stdlib.moon. */
+/** Packed helpers and wide vector operations remain callable through
+ * stdlib.moon. */
 TEST(Builtins_SIMD, packed_matrix_from_bundle) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
     using std;
@@ -205,5 +240,113 @@ TEST(Builtins_SIMD, packed_matrix_from_bundle) {
         std.linalg.LinalgResult.Error(error) => { return -1; }
       };
     }
-  )"), 130);
+  )"),
+            130);
+}
+
+/** Fused inputs are read before overlapping output is written at f32 alignment.
+ */
+TEST(Builtins_SIMD, overlapping_fma) {
+  for (const int lanes : {4, 8}) {
+    for (const std::string operation : {"fma", "mul_add"}) {
+      EXPECT_EQ(
+          sun::driver::executeString(
+              R"(
+      /** Uses the destination as an overlapping source and addend. */
+      function main() i32 {
+        var values = [1.0f32, 2.0f32, 3.0f32, 4.0f32, 5.0f32, 6.0f32, 7.0f32, 8.0f32, 9.0f32];
+        unsafe { _simd_f32x)" +
+              std::to_string(lanes) + "_" + operation +
+              R"((_address_of<f32>(values[1]), _address_of<f32>(values[0]), _address_of<f32>(values[0]), _address_of<f32>(values[1])); };
+        return _convert<i32>(values[1] + values[)" +
+              std::to_string(lanes) + R"(]);
+      }
+    )"),
+          lanes == 4 ? 24 : 76);
+    }
+  }
+}
+
+/** Runtime detection uses a baseline helper and isolates vector instructions.
+ */
+TEST(Builtins_SIMD, runtime_dispatch_ir) {
+  sun::driver::initTestEnvironment();
+  auto driver = sun::driver::Driver::createForAOT("dispatch_ir");
+  driver->compileString(R"(
+    /** Calls the specialized tile only after validating CPU support. */
+    function compute(a: raw_ptr<u8>, b: raw_ptr<u8>, c: raw_ptr<u8>) void {
+      if (_cpu_avx2_fma()) {
+        unsafe { _gemm_tile_avx2_fma(a, b, c, 16, 32, 0.0f32); };
+      }
+    }
+  )");
+  auto& module = driver->getModule();
+  auto* kernel = module.getFunction("__sun_gemm_tile_avx2_fma");
+  ASSERT_NE(kernel, nullptr);
+  EXPECT_TRUE(kernel->hasFnAttribute(llvm::Attribute::NoInline));
+  if (module.getTargetTriple().starts_with("x86_64")) {
+    EXPECT_EQ(kernel->getFnAttribute("target-features").getValueAsString(),
+              "+avx,+avx2,+fma,-avx512f");
+    auto* detection = module.getFunction("__sun_cpu_avx2_fma");
+    ASSERT_NE(detection, nullptr);
+    EXPECT_TRUE(detection->hasFnAttribute(llvm::Attribute::NoInline));
+    EXPECT_EQ(detection->getFnAttribute("target-cpu").getValueAsString(),
+              "x86-64");
+    std::string ir;
+    llvm::raw_string_ostream stream(ir);
+    detection->print(stream);
+    EXPECT_NE(ir.find("xgetbv"), std::string::npos);
+    EXPECT_NE(ir.find("cpuid"), std::string::npos);
+    EXPECT_NE(ir.find("br i1"), std::string::npos);
+  } else {
+    EXPECT_EQ(module.getFunction("__sun_cpu_avx2_fma"), nullptr);
+    EXPECT_FALSE(kernel->hasFnAttribute("target-features"));
+  }
+}
+
+/** Unchecked packed memory access remains behind the language unsafe boundary.
+ */
+TEST(Builtins_SIMD, packed_tile_requires_unsafe) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeString(R"(
+    /** Attempts to access packed storage without unsafe. */
+    function main() i32 {
+      var p: raw_ptr<u8> = null;
+      _gemm_tile_avx2_fma(p, p, p, 16, 32, 0.0f32);
+      return 0;
+    }
+  )"),
+                                "unsafe");
+}
+
+/** Compares runtime dispatch with LLVM's independent host feature detection. */
+TEST(Builtins_SIMD, runtime_cpu_features) {
+  const auto features = llvm::sys::getHostCPUFeatures();
+  const bool expected =
+      llvm::sys::getDefaultTargetTriple().starts_with("x86_64") &&
+      features.lookup("avx2") && features.lookup("fma");
+  EXPECT_EQ(sun::driver::executeString(R"(
+    /** Queries support without requiring unsafe or allocating storage. */
+    function main() i32 {
+      if (_cpu_avx2_fma()) { return 1; }
+      return 0;
+    }
+  )"),
+            expected ? 1 : 0);
+}
+
+/** Cross-compilation must not bake in the build host's AVX capabilities. */
+TEST(Builtins_SIMD, runtime_dispatch_non_x86) {
+  sun::driver::initTestEnvironment();
+  auto driver =
+      sun::driver::Driver::createForAOT("arm_dispatch", "aarch64-linux-gnu");
+  driver->compileString(R"(
+    /** ARM targets always select their portable matrix implementation. */
+    function available() bool { return _cpu_avx2_fma(); }
+  )");
+  std::string ir;
+  llvm::raw_string_ostream stream(ir);
+  driver->getModule().print(stream, nullptr);
+  EXPECT_EQ(ir.find("cpuid"), std::string::npos);
+  EXPECT_EQ(ir.find("xgetbv"), std::string::npos);
+  EXPECT_NE(ir.find("ret i1 false"), std::string::npos);
 }

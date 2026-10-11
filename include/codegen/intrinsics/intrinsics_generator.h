@@ -143,6 +143,11 @@ class IntrinsicsGenerator {
   llvm::Value* codegenSimdF32(const CallExprAST& expr, unsigned lanes,
                              const std::string& operation);
 
+  /** Checks CPU and OS support for an isolated AVX2/FMA kernel at runtime. */
+  llvm::Value* codegenCpuAvx2Fma(const CallExprAST& expr);
+  /** Emits a separately targeted packed 4-by-16 GEMM kernel with a scalar ABI. */
+  llvm::Value* codegenGemmTileAvx2Fma(const CallExprAST& expr);
+
   /**
    * Bit intrinsics (in intrinsics/bits.cpp)
    */

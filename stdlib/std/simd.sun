@@ -45,6 +45,23 @@ public module std.simd {
       return result;
     }
 
+    /** Computes this * multiplier + addend with one rounding per lane.
+     * Targets without hardware FMA use a fused software fallback. */
+    public const method fma(multiplier: const ref F32x4, addend: const ref F32x4) F32x4 {
+      var result = F32x4();
+      unsafe { _simd_f32x4_fma(_address_of<f32>(result.x), _address_of<f32>(this.x), _address_of<f32>(multiplier.x), _address_of<f32>(addend.x)); };
+      return result;
+    }
+
+    /** Computes this * multiplier + addend, permitting hardware FMA.
+     * Rounding may be fused or separate, depending on the compilation target.
+     * Unlike fma, this never requires a fused software fallback. */
+    public const method mul_add(multiplier: const ref F32x4, addend: const ref F32x4) F32x4 {
+      var result = F32x4();
+      unsafe { _simd_f32x4_mul_add(_address_of<f32>(result.x), _address_of<f32>(this.x), _address_of<f32>(multiplier.x), _address_of<f32>(addend.x)); };
+      return result;
+    }
+
     /** Adds corresponding lanes through the arithmetic operator. */
     public const method __add__(other: const ref F32x4) F32x4 {
       return this.add(other);
@@ -135,6 +152,23 @@ public module std.simd {
     public const method mul(other: const ref F32x8) F32x8 {
       var result = F32x8();
       unsafe { _simd_f32x8_mul(_address_of<f32>(result.x0), _address_of<f32>(this.x0), _address_of<f32>(other.x0)); };
+      return result;
+    }
+
+    /** Computes this * multiplier + addend with one rounding per lane.
+     * Targets without hardware FMA use a fused software fallback. */
+    public const method fma(multiplier: const ref F32x8, addend: const ref F32x8) F32x8 {
+      var result = F32x8();
+      unsafe { _simd_f32x8_fma(_address_of<f32>(result.x0), _address_of<f32>(this.x0), _address_of<f32>(multiplier.x0), _address_of<f32>(addend.x0)); };
+      return result;
+    }
+
+    /** Computes this * multiplier + addend, permitting hardware FMA.
+     * Rounding may be fused or separate, depending on the compilation target.
+     * Unlike fma, this never requires a fused software fallback. */
+    public const method mul_add(multiplier: const ref F32x8, addend: const ref F32x8) F32x8 {
+      var result = F32x8();
+      unsafe { _simd_f32x8_mul_add(_address_of<f32>(result.x0), _address_of<f32>(this.x0), _address_of<f32>(multiplier.x0), _address_of<f32>(addend.x0)); };
       return result;
     }
 
