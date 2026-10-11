@@ -78,4 +78,59 @@ public module std.simd_tests {
       AccessResult.OutOfBounds(error) => {}
     };
   }
+
+  /** Checks eight-lane arithmetic and misaligned buffer access, including bounds failures. */
+  test_function eight_lane_arithmetic_and_access() {
+    var alloc = make_heap_allocator();
+    var buffer = ContiguousBuffer<f32>(alloc, 10);
+    for (var i: i64 = 0; i < 10; i = i + 1) {
+      buffer[i] = _convert<f32>(i);
+    }
+    var a = try std.test.expect_access(std.simd.load8(buffer, 1));
+    var factor = std.simd.F32x8(2.0f32);
+    var product = a * factor;
+    var sum = product + factor;
+    var difference = sum.sub(a);
+    try std.test.expect_access_success(difference.store(buffer, 1));
+    for (var i: i64 = 1; i <= 8; i = i + 1) {
+      try std.test.assert_eq(buffer[i], _convert<f32>(i + 2));
+    }
+    try std.test.assert_eq(buffer[0], 0.0f32);
+    try std.test.assert_eq(buffer[9], 9.0f32);
+    try std.test.assert_eq(a.x0, 1.0f32);
+    try std.test.assert_eq(a.x7, 8.0f32);
+    try std.test.assert_eq(_sizeof<std.simd.F32x8>(), 32);
+    try std.test.assert_eq(_alignof<std.simd.F32x8>(), 32);
+    match std.simd.load8(buffer, -1) {
+      AccessResult.Ok(v) => {
+        try std.test.fail("negative wide load accepted");
+      },
+      AccessResult.OutOfBounds(error) => {}
+    };
+    match std.simd.load8(buffer, I64_MAX) {
+      AccessResult.Ok(v) => {
+        try std.test.fail("overflowing wide load accepted");
+      },
+      AccessResult.OutOfBounds(error) => {}
+    };
+    match difference.store(buffer, 3) {
+      AccessResult.Ok => {
+        try std.test.fail("short wide store accepted");
+      },
+      AccessResult.OutOfBounds(error) => {}
+    };
+    try std.test.assert_eq(buffer[9], 9.0f32);
+    var short_buffer = ContiguousBuffer<f32>(alloc, 7);
+    match std.simd.load8(short_buffer, 0) {
+      AccessResult.Ok(v) => {
+        try std.test.fail("short wide load accepted");
+      },
+      AccessResult.OutOfBounds(error) => {}
+    };
+    var zero = std.simd.F32x8();
+    try std.test.expect_access_success(zero.store(buffer, 1));
+    for (var i: i64 = 1; i <= 8; i = i + 1) {
+      try std.test.assert_eq(buffer[i], 0.0f32);
+    }
+  }
 }

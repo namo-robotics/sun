@@ -6,8 +6,8 @@
 
 /** Implements compiler-provided operations. */
 namespace sun::codegen::intrinsics {
-llvm::Value* IntrinsicsGenerator::codegenSimdF32x4(
-    const CallExprAST& expr, const std::string& operation) {
+llvm::Value* IntrinsicsGenerator::codegenSimdF32(
+    const CallExprAST& expr, unsigned lanes, const std::string& operation) {
   const bool binary =
       operation == "add" || operation == "sub" || operation == "mul";
   if (expr.getArgs().size() != (binary ? 3 : 2))
@@ -18,10 +18,10 @@ llvm::Value* IntrinsicsGenerator::codegenSimdF32x4(
   llvm::IRBuilderBase::FastMathFlagGuard flags(*ctx.builder);
   ctx.builder->clearFastMathFlags();
   auto* vectorType =
-      llvm::FixedVectorType::get(llvm::Type::getFloatTy(ctx.getContext()), 4);
+      llvm::FixedVectorType::get(llvm::Type::getFloatTy(ctx.getContext()), lanes);
   llvm::Value* result;
   if (operation == "splat") {
-    result = ctx.builder->CreateVectorSplat(4, input, "simd.splat");
+    result = ctx.builder->CreateVectorSplat(lanes, input, "simd.splat");
   } else {
     auto* a = ctx.builder->CreateAlignedLoad(vectorType, input, llvm::Align(4),
                                              "simd.a");

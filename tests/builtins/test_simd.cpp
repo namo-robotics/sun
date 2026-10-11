@@ -1,4 +1,4 @@
-/** Checks vector lowering and unsafe boundaries for four-lane float intrinsics.
+/** Checks vector lowering and unsafe boundaries for fixed-width float intrinsics.
  */
 #include <gtest/gtest.h>
 #include <llvm/IR/Instructions.h>
@@ -24,10 +24,25 @@ TEST(Builtins_SIMD, vector_ir_and_alignment) {
         _simd_f32x4_copy(out, a);
       };
     }
+    /** Keeps wide lowering independent of stores in the narrow test. */
+    function compute8(out: raw_ptr<f32>, a: raw_ptr<f32>, b: raw_ptr<f32>) void {
+      unsafe {
+        _simd_f32x8_splat(out, 2.0f32);
+        _simd_f32x8_add(out, a, b);
+        _simd_f32x8_sub(out, a, b);
+        _simd_f32x8_mul(out, a, b);
+        _simd_f32x8_copy(out, a);
+      };
+    }
   )");
   std::string ir;
   llvm::raw_string_ostream stream(ir);
   driver->getModule().print(stream, nullptr);
+  EXPECT_NE(ir.find("fadd <8 x float>"), std::string::npos);
+  EXPECT_NE(ir.find("fsub <8 x float>"), std::string::npos);
+  EXPECT_NE(ir.find("fmul <8 x float>"), std::string::npos);
+  EXPECT_NE(ir.find("load <8 x float>"), std::string::npos);
+  EXPECT_NE(ir.find("store <8 x float>"), std::string::npos);
   EXPECT_NE(ir.find("fadd <4 x float>"), std::string::npos);
   EXPECT_NE(ir.find("fsub <4 x float>"), std::string::npos);
   EXPECT_NE(ir.find("fmul <4 x float>"), std::string::npos);
@@ -111,4 +126,84 @@ TEST(Builtins_SIMD, matrix_and_vectors_from_bundle) {
     }
   )"),
             68);
+}
+
+/** Eight-lane primitives retain the same explicit unsafe boundary. */
+TEST(Builtins_SIMD, wide_operations_require_unsafe) {
+  for (const std::string operation : {"copy", "splat", "add", "sub", "mul"}) {
+    const std::string arguments = operation == "splat" ? "p, 1.0f32"
+                                 : operation == "copy" ? "p, p" : "p, p, p";
+    EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeString(R"(
+      /** Rejects raw access outside unsafe. */
+      function main() i32 {
+        var p: raw_ptr<f32> = null;
+    )" + std::string("_simd_f32x8_") + operation + "(" + arguments + R"();
+        return 0;
+      }
+    )"), "unsafe");
+  }
+}
+
+/** Wide loads complete before overlapping stores, without vector alignment. */
+TEST(Builtins_SIMD, overlapping_wide_copy) {
+  EXPECT_EQ(sun::driver::executeString(R"(
+    /** Shifts eight initialized floats by one element. */
+    function main() i32 {
+      var lanes = [1.0f32, 2.0f32, 3.0f32, 4.0f32, 5.0f32, 6.0f32, 7.0f32, 8.0f32, 9.0f32];
+      unsafe { _simd_f32x8_copy(_address_of<f32>(lanes[1]), _address_of<f32>(lanes[0])); };
+      var result: f32 = 0.0f32;
+      for (var i: i64 = 1; i <= 8; i = i + 1) { result = result + lanes[i]; }
+      return _convert<i32>(result);
+    }
+  )"), 36);
+}
+
+/** Scratch is usable within its function and rejects unsafe or unbounded requests. */
+TEST(Builtins_SIMD, bounded_stack_scratch) {
+  EXPECT_EQ(sun::driver::executeString(R"(
+    /** Initializes stack bytes before reading them. */
+    function main() i32 {
+      return unsafe {
+        var p = _stack_alloc(32);
+        _store<i32>(p, 7, 42);
+        _load<i32>(p, 7);
+      };
+    }
+  )"), 42);
+  EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeString(R"(
+    /** Rejects scratch storage outside unsafe. */
+    function main() i32 { var p = _stack_alloc(32); return 0; }
+  )"), "unsafe");
+  for (const std::string bytes : {"0", "-1", "65537"}) {
+    EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeString(
+        "/** Rejects invalid scratch sizes. */ function main() i32 { unsafe { var p = _stack_alloc(" +
+        bytes + "); }; return 0; }"), "constant byte count");
+  }
+  EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeString(R"(
+    /** Rejects dynamically sized stack reservations. */
+    function reserve(n: i64) i32 { unsafe { var p = _stack_alloc(n); }; return 0; }
+    /** Calls the invalid reservation. */
+    function main() i32 { return reserve(32); }
+  )"), "constant byte count");
+}
+
+/** Packed helpers and wide vector operations remain callable through stdlib.moon. */
+TEST(Builtins_SIMD, packed_matrix_from_bundle) {
+  EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
+    using std;
+    /** Crosses an inner-panel boundary with initialized inputs and fresh output. */
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var a = Matrix<f32>(alloc, [16i64, 65i64]);
+      var b = Matrix<f32>(alloc, [65i64, 16i64]);
+      var c = Matrix<f32>(alloc, [16i64, 16i64]);
+      for (var i: i64 = 0; i < 16; i = i + 1) {
+        for (var p: i64 = 0; p < 65; p = p + 1) { a[i, p] = 1.0f32; b[p, i] = 1.0f32; }
+      }
+      match a.matmul_into(b, c) {
+        std.linalg.LinalgResult.Ok => { return _convert<i32>(c[0, 0] + c[15, 15]); },
+        std.linalg.LinalgResult.Error(error) => { return -1; }
+      };
+    }
+  )"), 130);
 }

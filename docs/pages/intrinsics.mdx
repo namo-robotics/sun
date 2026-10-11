@@ -843,3 +843,26 @@ must address four accessible lanes with ordinary `f32` alignment. Input lanes
 must be initialized and output must be writable. Inputs are loaded before any
 output write, so overlapping ranges are supported. Arithmetic lowers to LLVM
 `<4 x float>` operations without fast-math flags or fused multiply-add.
+
+### Eight-lane floating-point intrinsics
+
+`_simd_f32x8_copy`, `_simd_f32x8_splat`, `_simd_f32x8_add`,
+`_simd_f32x8_sub`, and `_simd_f32x8_mul` have the same signatures and unsafe
+requirements as the four-lane forms above, but access eight floats. They lower
+to `<8 x float>` operations with four-byte memory alignment and no fast-math.
+The target may split these operations into narrower instructions. Prefer the
+checked `std.simd.F32x8` APIs outside validated kernels.
+
+### `_stack_alloc(bytes)`
+
+Reserves a 32-byte-aligned, uninitialized stack buffer and returns `raw_ptr<u8>`.
+The byte count must be a compile-time constant from 1 through 65536. Each call
+site reserves one buffer per invocation of the containing function; repeated
+loop iterations reuse that call site's buffer. Separate recursive invocations
+have separate storage. Multiple call sites can still consume substantial stack.
+
+This intrinsic requires `unsafe`. Initialize every byte before reading it,
+remain within bounds, do not free the pointer, and never retain it beyond the
+containing function's lifetime. It is intended for small, bounded kernel scratch
+buffers, not general allocation. The allocation-free packed GEMM kernel uses it
+to avoid hidden heap allocations.

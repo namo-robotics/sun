@@ -87,13 +87,103 @@ public module std.linalg {
     }
   }
 
+  /** Accumulates one 4-by-8 tile from initialized packed panels.
+   * A contains k groups of four scaled values; B contains k groups of eight.
+   * Output contains four initialized, disjoint rows of eight values at offset
+   * with row stride n. Every pointer and range is validated by the caller. */
+  function packed_tile(a: raw_ptr<u8>, b: raw_ptr<u8>, c: raw_ptr<u8>, offset: i64, n: i64, k: i64) void {
+    var acc0 = std.simd.F32x8();
+    unsafe { acc0.load_unchecked(c, offset + 0 * n); };
+    var acc1 = std.simd.F32x8();
+    unsafe { acc1.load_unchecked(c, offset + 1 * n); };
+    var acc2 = std.simd.F32x8();
+    unsafe { acc2.load_unchecked(c, offset + 2 * n); };
+    var acc3 = std.simd.F32x8();
+    unsafe { acc3.load_unchecked(c, offset + 3 * n); };
+    var bv = std.simd.F32x8();
+    for (var p: i64 = 0; p < k; p = p + 1) {
+      unsafe { bv.load_unchecked(b, p * 8); };
+      var factor0 = std.simd.F32x8(unsafe { _load<f32>(a, p * 4 + 0); });
+      var product0 = factor0.mul(bv);
+      acc0 = acc0.add(product0);
+      var factor1 = std.simd.F32x8(unsafe { _load<f32>(a, p * 4 + 1); });
+      var product1 = factor1.mul(bv);
+      acc1 = acc1.add(product1);
+      var factor2 = std.simd.F32x8(unsafe { _load<f32>(a, p * 4 + 2); });
+      var product2 = factor2.mul(bv);
+      acc2 = acc2.add(product2);
+      var factor3 = std.simd.F32x8(unsafe { _load<f32>(a, p * 4 + 3); });
+      var product3 = factor3.mul(bv);
+      acc3 = acc3.add(product3);
+    }
+    unsafe { acc0.store_unchecked(c, offset + 0 * n); };
+    unsafe { acc1.store_unchecked(c, offset + 1 * n); };
+    unsafe { acc2.store_unchecked(c, offset + 2 * n); };
+    unsafe { acc3.store_unchecked(c, offset + 3 * n); };
+  }
+
+  /** Packs bounded cache panels and accumulates complete 4-by-8 output tiles.
+   * Uses fixed-size stack scratch, with no heap allocation. Validated inputs must
+   * be initialized and disjoint from initialized output. A uses ar/ac strides;
+   * B has contiguous columns and row stride br. Output uses row stride n.
+   * rows is a multiple of four and cols a multiple of eight, within output.
+   * Inner-dimension blocks run in increasing order to preserve rounding. */
+  function multiply_packed(alpha: f32, a: raw_ptr<u8>, ar: i64, ac: i64, b: raw_ptr<u8>, br: i64, c: raw_ptr<u8>, n: i64, k: i64, rows: i64, cols: i64) void {
+    var pa = unsafe { _stack_alloc(8192); };
+    var pb = unsafe { _stack_alloc(16384); };
+    var vector = std.simd.F32x8();
+    for (var jc: i64 = 0; jc < cols; jc = jc + 64) {
+      var nc = cols - jc;
+      if (nc > 64) {
+        nc = 64;
+      }
+      for (var pc: i64 = 0; pc < k; pc = pc + 64) {
+        var kc = k - pc;
+        if (kc > 64) {
+          kc = 64;
+        }
+        // Store each B micro-panel contiguously in the order the kernel reads it.
+        for (var j: i64 = 0; j < nc; j = j + 8) {
+          for (var p: i64 = 0; p < kc; p = p + 1) {
+            unsafe {
+              vector.load_unchecked(b, (pc + p) * br + jc + j);
+              vector.store_unchecked(pb, j * kc + p * 8);
+            };
+          }
+        }
+        for (var ic: i64 = 0; ic < rows; ic = ic + 32) {
+          var mc = rows - ic;
+          if (mc > 32) {
+            mc = 32;
+          }
+          // A is scaled once while packing, with four rows beside each other.
+          for (var i: i64 = 0; i < mc; i = i + 4) {
+            for (var p: i64 = 0; p < kc; p = p + 1) {
+              for (var r: i64 = 0; r < 4; r = r + 1) {
+                unsafe { _store<f32>(pa, i * kc + p * 4 + r, alpha * _load<f32>(a, (ic + i + r) * ar + (pc + p) * ac)); };
+              }
+            }
+          }
+          for (var i: i64 = 0; i < mc; i = i + 4) {
+            for (var j: i64 = 0; j < nc; j = j + 8) {
+              var ap = unsafe { _ptr_offset(pa, i * kc * _sizeof<f32>()); };
+              var bp = unsafe { _ptr_offset(pb, j * kc * _sizeof<f32>()); };
+              packed_tile(ap, bp, c, (ic + i) * n + jc + j, n, kc);
+            }
+          }
+        }
+      }
+    }
+  }
+
   /** Accumulates complete 4-by-4 f32 tiles, retaining each output tile across k.
    * Inputs must be initialized and disjoint from initialized output; all shapes
    * and strides must already be validated.
    * A uses ar/ac strides; B has contiguous columns and row stride br. Output
-   * has row stride n. rows and cols are multiples of four within output bounds.
+   * has row stride n. rows, cols, and first_column are multiples of four within
+   * output bounds; columns before first_column have already been accumulated.
    * Each lane accumulates in increasing k, with separate multiply and add. */
-  function multiply_tiles(alpha: f32, a: raw_ptr<u8>, ar: i64, ac: i64, b: raw_ptr<u8>, br: i64, c: raw_ptr<u8>, n: i64, k: i64, rows: i64, cols: i64) void {
+  function multiply_tiles(alpha: f32, a: raw_ptr<u8>, ar: i64, ac: i64, b: raw_ptr<u8>, br: i64, c: raw_ptr<u8>, n: i64, k: i64, rows: i64, cols: i64, first_column: i64) void {
     for (var i: i64 = 0; i < rows; i = i + 4) {
       var a0 = i * ar;
       var c0 = i * n;
@@ -103,7 +193,7 @@ public module std.linalg {
       var c2 = (i + 2) * n;
       var a3 = (i + 3) * ar;
       var c3 = (i + 3) * n;
-      for (var j: i64 = 0; j < cols; j = j + 4) {
+      for (var j = first_column; j < cols; j = j + 4) {
         var acc0 = std.simd.F32x4();
         unsafe { acc0.load_unchecked(c, c0 + j); };
         var acc1 = std.simd.F32x4();
@@ -152,7 +242,12 @@ public module std.linalg {
       vector_enabled = true;
       tiled_rows = m - m % 4;
       tiled_cols = n - n % 4;
-      multiply_tiles(_convert<f32>(alpha), a, ar, ac, b, br, c, n, k, tiled_rows, tiled_cols);
+      var packed_cols: i64 = 0;
+      if (m >= 16 and n >= 16 and k >= 32) {
+        packed_cols = n - n % 8;
+        multiply_packed(_convert<f32>(alpha), a, ar, ac, b, br, c, n, k, tiled_rows, packed_cols);
+      }
+      multiply_tiles(_convert<f32>(alpha), a, ar, ac, b, br, c, n, k, tiled_rows, tiled_cols, packed_cols);
     }
     for (var i: i64 = 0; i < m; i = i + 1) {
       var arow = i * ar;

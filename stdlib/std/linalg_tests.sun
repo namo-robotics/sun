@@ -242,6 +242,96 @@ public module std.linalg_tests {
     }
   }
 
+  /** Checks packing thresholds, cache-panel edges, and tails against scalar dot products. */
+  test_function packed_panel_boundaries() {
+    var alloc = make_heap_allocator();
+    var shapes: array<i64, 6, 3> = [[15i64, 31i64, 15i64], [16i64, 32i64, 16i64], [17i64, 63i64, 23i64], [33i64, 65i64, 65i64], [36i64, 129i64, 72i64], [32i64, 64i64, 64i64]];
+    for (var shape: i64 = 0; shape < 6; shape = shape + 1) {
+      var m = shapes[shape, 0];
+      var k = shapes[shape, 1];
+      var n = shapes[shape, 2];
+      for (var ta: i64 = 0; ta < 2; ta = ta + 1) {
+        var rows = m;
+        var cols = k;
+        var opa = Transpose.None;
+        if (ta == 1) {
+          rows = k;
+          cols = m;
+          opa = Transpose.Transpose;
+        }
+        var a = Matrix<f32>(alloc, [rows, cols]);
+        var b = Matrix<f32>(alloc, [k, n]);
+        var c = Matrix<f32>(alloc, [m, n]);
+        for (var i: i64 = 0; i < rows; i = i + 1) {
+          for (var j: i64 = 0; j < cols; j = j + 1) {
+            a[i, j] = _convert<f32>((i + j) % 7 - 3) / 4.0f32;
+          }
+        }
+        for (var p: i64 = 0; p < k; p = p + 1) {
+          for (var j: i64 = 0; j < n; j = j + 1) {
+            b[p, j] = _convert<f32>((p + j) % 11 - 5) / 8.0f32;
+          }
+        }
+        for (var mode: i64 = 0; mode < 3; mode = mode + 1) {
+          var beta: f32 = 0.0f32;
+          if (mode == 1) {
+            beta = 1.0f32;
+          }
+          if (mode == 2) {
+            beta = -0.5f32;
+          }
+          for (var i: i64 = 0; i < m; i = i + 1) {
+            for (var j: i64 = 0; j < n; j = j + 1) {
+              c[i, j] = _convert<f32>(i - j);
+              if (mode == 0) {
+                c[i, j] = _bitcast<f32>(2143289344u32);
+              }
+            }
+          }
+          try expect_ok(c.gemm(-1.5f32, a, opa, b, Transpose.None, beta));
+          for (var i: i64 = 0; i < m; i = i + 1) {
+            for (var j: i64 = 0; j < n; j = j + 1) {
+              var expected = beta * _convert<f32>(i - j);
+              for (var p: i64 = 0; p < k; p = p + 1) {
+                var av: f32 = 0.0f32;
+                if (ta == 0) {
+                  av = a[i, p];
+                } else {
+                  av = a[p, i];
+                }
+                expected = expected + (-1.5f32 * av) * b[p, j];
+              }
+              try std.test.assert_eq(c[i, j], expected);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /** Preserves increasing-k rounding across packed panel boundaries. */
+  test_function packed_accumulation_order() {
+    var alloc = make_heap_allocator();
+    var a = Matrix<f32>(alloc, [16, 65]);
+    var b = Matrix<f32>(alloc, [65, 16]);
+    var c = Matrix<f32>(alloc, [16, 16]);
+    for (var i: i64 = 0; i < 16; i = i + 1) {
+      for (var p: i64 = 0; p < 65; p = p + 1) {
+        a[i, p] = 1.0f32;
+        b[p, i] = 0.0f32;
+      }
+      b[0, i] = 16777216.0f32;
+      b[63, i] = 1.0f32;
+      b[64, i] = -16777216.0f32;
+    }
+    try expect_ok(a.matmul_into(b, c));
+    for (var i: i64 = 0; i < 16; i = i + 1) {
+      for (var j: i64 = 0; j < 16; j = j + 1) {
+        try std.test.assert_eq(c[i, j], 0.0f32);
+      }
+    }
+  }
+
   /** Keeps multiply and add separately rounded even in the SIMD kernel. */
   test_function simd_does_not_fuse() {
     var alloc = make_heap_allocator();

@@ -369,20 +369,29 @@ each other, but the destination must be separate even when `alpha` is zero.
 Constructing an error does not allocate; requesting its `message()` creates a
 string. Matrix views and integer matrices are not supported by this API.
 
-For `f32`, GEMM uses explicit four-lane SIMD for complete groups of output
-columns when `B` is not transposed. Complete 4×4 output blocks accumulate in
-four SIMD registers across the inner dimension, then are stored once. Each
-vector loaded from `B` is reused across four rows of `A`. Leftover rows use the
-four-column SIMD loop. This applies to `a * b`, `matmul_into`, and both GEMM
-interfaces.
-Transposing `A` still permits this path. Remaining columns, transposed `B`, and
-all `f64` operations use scalar arithmetic.
+For `f32`, GEMM uses explicit SIMD when `B` has contiguous logical columns.
+Small products use 4×4 register tiles. Products with at least 16 rows, 16 columns,
+and an inner dimension of at least 32 use packed 4×8 register tiles. Both paths
+reuse each vector of `B` across four rows of `A`. This applies to `a * b`,
+`matmul_into`, and both GEMM interfaces. Transposing `A` still permits SIMD.
 
-SIMD loads require only ordinary `f32` alignment, so rows do not need padding
-or a column count divisible by four. The kernel performs separate multiply
-and add operations, without fused multiply-add or fast-math. It retains the
-same accumulation order along the inner dimension. This is a basic SIMD
-kernel, not a cache-blocked or threaded BLAS implementation; performance
-depends on matrix shape, target CPU, and compiler optimization.
+The packed path processes panels of up to 64 inner elements and 64 columns,
+and blocks of up to 32 rows. It packs scaled `A` and contiguous `B` micro-panels
+into 24 KiB of bounded stack scratch, with no heap allocation. Each output tile
+stays in registers across one inner panel; panels are accumulated in increasing
+order. Scratch is local to each call, so concurrent calls do not share it.
+
+Remaining four-column groups use the smaller tile kernel. Leftover rows use
+four-lane SIMD, and leftover columns use scalar arithmetic. Noncontiguous
+transposed `B` and all `f64` products use the scalar path. Matrix storage does
+not need padding or additional alignment.
+
+Eight-lane vectors use the compilation target's available instructions. Targets
+without 256-bit vectors can split them into narrower operations; the library
+does not perform runtime CPU dispatch. All kernels retain separate multiply
+and add operations and increasing-inner-dimension accumulation, without FMA,
+reassociation, or fast-math. Packing copies input values into temporary scratch;
+it does not copy owning matrices or change their shapes. This implementation is
+single-threaded, and performance depends on shape and target CPU.
 
 The underlying [SIMD API](/simd) is also available for other numeric algorithms.

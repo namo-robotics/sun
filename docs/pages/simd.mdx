@@ -50,8 +50,32 @@ for loads. The checked buffer APIs are preferable for application code.
 
 LLVM selects instructions for the compilation target; there is no runtime CPU
 dispatch or guarantee that every target uses a single hardware instruction per
-operation. The first SIMD type is `F32x4`; double-precision vectors, masks,
+operation. Available types are `F32x4` and `F32x8`; double-precision vectors, masks,
 shuffles, reductions, and fused multiply-add are not implemented.
 
-[Matrix multiplication](/matrices#gemm-matrix-multiplication) uses these operations
-for contiguous groups of four output columns in eligible `f32` products.
+## Eight-lane operations
+
+`std.simd.F32x8` is an inline, 32-byte-aligned class containing `x0` through `x7`.
+`F32x8()` initializes zero lanes; `F32x8(value)` broadcasts a scalar. It supports
+the same borrowed `add`, `sub`, `mul`, `+`, and `*` operations as `F32x4`.
+Use `std.simd.load8(buffer, offset)` for checked loads and `value.store(buffer,
+offset)` for checked stores. Unchecked methods require eight valid elements,
+but still require only ordinary `f32` alignment for external memory.
+
+```sun
+/** Doubles eight initialized samples through checked buffer operations. */
+function process8(samples: ref ContiguousBuffer<f32>) AccessResult<void> {
+    var input = try std.simd.load8(samples, 0);
+    var gain = std.simd.F32x8(2.0f32);
+    var output = input * gain;
+    try output.store(samples, 0);
+    return AccessResult.Ok;
+}
+```
+
+The logical width does not force CPU features. LLVM can split an eight-lane
+operation into multiple narrower instructions on a baseline target. When the
+target enables AVX, it can use 256-bit instructions. No FMA is introduced.
+
+[Matrix multiplication](/matrices#gemm-matrix-multiplication) uses both widths,
+including packed 4×8 tiles for larger eligible `f32` products.

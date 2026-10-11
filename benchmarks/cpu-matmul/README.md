@@ -23,6 +23,8 @@ and `OPENBLAS_LIBS` (including its runtime search path).
 ```sh
 python3 benchmarks/cpu-matmul/run.py --sizes 32 128 512 127x129x131 \
   --iterations 10 --samples 7 --warmups 2 --output tmp/cpu-matmul
+# Enable host instructions equally for both Sun variants:
+python3 benchmarks/cpu-matmul/run.py --native --output tmp/cpu-matmul-native
 python3 -m unittest discover -s benchmarks/cpu-matmul -p 'test_*.py'
 ```
 
@@ -51,7 +53,7 @@ starting at zero. Results are machine-specific; no speedup threshold is imposed.
 
 Both Sun variants compile the current standard library sources from temporary
 copies. The scalar copy replaces only GEMM's explicit SIMD dispatch condition with
-`false`; it disables both the 4×4 register tiles and the SIMD row remainder
+`false`; it disables packed 4×8 tiles, direct 4×4 tiles, and the SIMD row remainder
 path, retaining the scalar loop. The runner fails if it cannot
 locate that exact branch. Tracked source files and precompiled bundles are not
 modified.
@@ -60,11 +62,15 @@ modified.
 both variants with loop and SLP vectorization disabled. Unreachable code is
 removed, and an IR audit rejects vector floating arithmetic in the scalar build
 and requires vector multiply/add in the SIMD build. Thus “scalar” does not mean
-unoptimized. Explicit SIMD still uses the existing four-lane intrinsics. This
+unoptimized. Explicit SIMD uses four-lane and eight-lane intrinsics. The larger-matrix path
+uses bounded stack scratch for panel packing and cache blocking. This
 controlled pipeline isolates explicit SIMD; it does not measure the default
 Sun compiler pipeline with automatic vectorization enabled. Sun machine code
-uses LLVM's default target CPU, while OpenBLAS may dispatch to wider native
-instructions and use fused multiply-add.
+uses LLVM's default target CPU unless `--native` is selected. Native mode passes
+`-mcpu=native` to LLVM for both Sun variants; these executables must stay on the
+host they were built for. Metadata records the choice. On an AVX-capable x86
+host this allows eight-lane operations to use 256-bit instructions. OpenBLAS
+dispatches independently and may use FMA; Sun retains separate multiply/add.
 
 Each backend receives the same deterministic, mixed-sign, exactly representable
 inputs. Matrices and output are allocated once, outside timing. Warmups precede

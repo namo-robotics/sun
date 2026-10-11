@@ -81,6 +81,103 @@ public module std.simd {
     }
   }
 
+  /** Stores eight f32 lanes; targets without wide vectors use narrower instructions. */
+  public class F32x8 {
+    alignment: 32
+    public var x0: f32;
+    public var x1: f32;
+    public var x2: f32;
+    public var x3: f32;
+    public var x4: f32;
+    public var x5: f32;
+    public var x6: f32;
+    public var x7: f32;
+
+    /** Initializes all lanes to zero. */
+    init() {
+      this.x0 = 0.0f32;
+      this.x1 = 0.0f32;
+      this.x2 = 0.0f32;
+      this.x3 = 0.0f32;
+      this.x4 = 0.0f32;
+      this.x5 = 0.0f32;
+      this.x6 = 0.0f32;
+      this.x7 = 0.0f32;
+    }
+
+    /** Broadcasts a scalar to all eight lanes without allocation. */
+    init(value: f32) {
+      this.x0 = value;
+      this.x1 = value;
+      this.x2 = value;
+      this.x3 = value;
+      this.x4 = value;
+      this.x5 = value;
+      this.x6 = value;
+      this.x7 = value;
+    }
+
+    /** Adds corresponding lanes with ordinary floating-point rounding. */
+    public const method add(other: const ref F32x8) F32x8 {
+      var result = F32x8();
+      unsafe { _simd_f32x8_add(_address_of<f32>(result.x0), _address_of<f32>(this.x0), _address_of<f32>(other.x0)); };
+      return result;
+    }
+
+    /** Subtracts corresponding lanes with ordinary floating-point rounding. */
+    public const method sub(other: const ref F32x8) F32x8 {
+      var result = F32x8();
+      unsafe { _simd_f32x8_sub(_address_of<f32>(result.x0), _address_of<f32>(this.x0), _address_of<f32>(other.x0)); };
+      return result;
+    }
+
+    /** Multiplies corresponding lanes with ordinary floating-point rounding. */
+    public const method mul(other: const ref F32x8) F32x8 {
+      var result = F32x8();
+      unsafe { _simd_f32x8_mul(_address_of<f32>(result.x0), _address_of<f32>(this.x0), _address_of<f32>(other.x0)); };
+      return result;
+    }
+
+    /** Applies lane-wise add through the arithmetic operator. */
+    public const method __add__(other: const ref F32x8) F32x8 {
+      return this.add(other);
+    }
+
+    /** Applies lane-wise mul through the arithmetic operator. */
+    public const method __multiply__(other: const ref F32x8) F32x8 {
+      return this.mul(other);
+    }
+
+    /** Stores eight lanes after checking bounds; failure leaves the buffer unchanged. */
+    public const method store(buffer: ref std.ContiguousBuffer<f32>, offset: i64) std.AccessResult<void> {
+      if (offset < 0 or buffer.size() < 8 or offset > buffer.size() - 8) {
+        return std.AccessResult.OutOfBounds(std.IndexOutOfBoundsError(offset));
+      }
+      unsafe { this.store_unchecked(buffer.raw_data(), offset); };
+      return std.AccessResult.Ok;
+    }
+
+    /** Loads eight initialized floats at a validated element offset, with f32 alignment. */
+    public unsafe method load_unchecked(data: raw_ptr<u8>, offset: i64) void {
+      unsafe { _simd_f32x8_copy(_address_of<f32>(this.x0), _bitcast<raw_ptr<f32>>(_ptr_offset(data, offset * _sizeof<f32>()))); };
+    }
+
+    /** Stores eight floats at a validated element offset, with f32 alignment. */
+    public const unsafe method store_unchecked(data: raw_ptr<u8>, offset: i64) void {
+      unsafe { _simd_f32x8_copy(_bitcast<raw_ptr<f32>>(_ptr_offset(data, offset * _sizeof<f32>())), _address_of<f32>(this.x0)); };
+    }
+  }
+
+  /** Loads eight initialized lanes after checking the buffer range. */
+  public function load8(buffer: const ref std.ContiguousBuffer<f32>, offset: i64) std.AccessResult<F32x8> {
+    if (offset < 0 or buffer.size() < 8 or offset > buffer.size() - 8) {
+      return std.AccessResult.OutOfBounds(std.IndexOutOfBoundsError(offset));
+    }
+    var result = F32x8();
+    unsafe { result.load_unchecked(buffer.raw_data(), offset); };
+    return std.AccessResult.Ok(result);
+  }
+
   /** Broadcasts one scalar into all four lanes without allocation. */
   public function splat(value: f32) F32x4 {
     var result = F32x4();

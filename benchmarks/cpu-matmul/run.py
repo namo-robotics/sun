@@ -43,12 +43,13 @@ def scalar_source(source):
 
 def audit_ir(source, variant):
     """Reject vector floating arithmetic in scalar code and require it in SIMD code."""
-    operations = re.findall(r"\b(fadd|fsub|fmul|fdiv|frem)\b[^\n]*<\s*\d+\s+x\s+(?:float|double)\s*>", source)
+    operations = re.findall(r"\b(fadd|fsub|fmul|fdiv|frem)\b[^\n]*<\s*(\d+)\s+x\s+(float|double)\s*>", source)
     if variant == "scalar" and operations:
         raise RuntimeError("scalar IR contains vector floating arithmetic")
-    if variant == "simd" and not {"fadd", "fmul"}.issubset(operations):
-        raise RuntimeError("SIMD IR lacks vector multiply/add")
-    return {op: operations.count(op) for op in sorted(set(operations))}
+    if variant == "simd" and not {("fadd", "8", "float"), ("fmul", "8", "float")}.issubset(operations):
+        raise RuntimeError("SIMD IR lacks eight-lane multiply/add")
+    return {f"{op}<{width}x{kind}>": operations.count((op, width, kind))
+            for op, width, kind in sorted(set(operations))}
 
 
 def parse_samples(output, count, repetitions):
@@ -62,7 +63,7 @@ def parse_samples(output, count, repetitions):
     return samples, checksums[0]
 
 
-def plot_results(results, output):
+def plot_results(results, output, native=False):
     """Save a grouped throughput chart with sample ranges using a headless backend."""
     import matplotlib
     matplotlib.use("Agg")
@@ -85,7 +86,9 @@ def plot_results(results, output):
     ax.set_xticks(range(len(results)), [f'{c["m"]}×{c["k"]}×{c["n"]}' for c in results])
     ax.set_xlabel("M × K × N (A: M × K, B: K × N)")
     ax.set_ylabel("GFLOP/s (higher is better)")
-    ax.set_title("CPU f32 matrix multiplication · one thread\nMedian throughput; whiskers show sample range")
+    ax.set_title("CPU f32 matrix multiplication · one thread"
+                 + (" · native Sun target" if native else " · generic Sun target")
+                 + "\nMedian throughput; whiskers show sample range")
     ax.legend(loc="upper center", ncol=3)
     ax.grid(axis="y", alpha=0.2)
     ax.set_axisbelow(True)
@@ -105,6 +108,7 @@ def main():
     parser.add_argument("--iterations", type=int, default=20, help="products per timed sample")
     parser.add_argument("--samples", type=int, default=5)
     parser.add_argument("--warmups", type=int, default=2)
+    parser.add_argument("--native", action="store_true", help="enable host CPU instructions for both Sun variants; binaries stay on this host")
     parser.add_argument("--cpu", type=int, help="pin every measured process to this logical CPU")
     parser.add_argument("--output", type=Path, default=ROOT / "tmp/cpu-matmul")
     args = parser.parse_args()
@@ -185,7 +189,7 @@ def main():
         run(f"emit-{variant}", [tools["sun"], "--emit-llvm", "-O0", "--force-rebuild", "-o", str(raw), str(stage / "stdlib.sun")])
         run(f"opt-{variant}", [tools["opt"], "-passes=internalize,globaldce,default<O3>", "--internalize-public-api-list=main", "--vectorize-loops=false", "--vectorize-slp=false", "-S", str(raw), "-o", str(optimized)])
         audits[variant] = audit_ir(optimized.read_text(), variant)
-        run(f"object-{variant}", [tools["llc"], "-O3", "-filetype=obj", "-relocation-model=pic", str(optimized), "-o", str(obj)])
+        run(f"object-{variant}", [tools["llc"], "-O3", "-filetype=obj", "-relocation-model=pic", *(["-mcpu=native"] if args.native else []), str(optimized), "-o", str(obj)])
         run(f"link-{variant}", [tools["cc"], str(obj), str(out / "harness.o"), "-lm", "-lpthread", "-ldl", "-o", str(out / variant)])
         if shutil.which("objdump"):
             run(f"assembly-{variant}", ["objdump", "-d", str(out / variant)])
@@ -206,7 +210,7 @@ def main():
         results.append(case)
     metadata = {"timestamp_utc": datetime.now(timezone.utc).isoformat(), "platform": platform.platform(),
                 "cpu_info": Path("/proc/cpuinfo").read_text(), "affinity": sorted(os.sched_getaffinity(0)),
-                "pinned_cpu": args.cpu, "dtype": "f32", "threads": 1, "iterations": args.iterations,
+                "pinned_cpu": args.cpu, "native_codegen": args.native, "dtype": "f32", "threads": 1, "iterations": args.iterations,
                 "samples": args.samples, "warmups": args.warmups, "versions": versions,
                 "source_hashes": hashes, "vector_ir_audit": audits, "results": results}
     (out / "results.json").write_text(json.dumps(metadata, indent=2) + "\n")
@@ -218,7 +222,7 @@ def main():
         rows.append(f'| {case["m"]} × {case["k"]} × {case["n"]} | {rates} | {v["scalar"]["median_ns"] / v["simd"]["median_ns"]:.2f}× |')
     report = "\n".join(rows) + "\n\n![Median throughput](results.png)\n"
     (out / "results.md").write_text(report)
-    plot_results(results, out)
+    plot_results(results, out, args.native)
     print("\n" + report + f"\nResults and charts: {out}")
 
 

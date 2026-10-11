@@ -25,7 +25,9 @@ class RunnerTests(unittest.TestCase):
         """Scalar floating operations pass while packed operations invalidate the baseline."""
         run.audit_ir("%x = fmul float %a, %b", "scalar")
         packed = "%x = fmul <4 x float> %a, %b\n%y = fadd <4 x float> %x, %b"
-        run.audit_ir(packed, "simd")
+        run.audit_ir(packed + "\n" + packed.replace("4 x float", "8 x float"), "simd")
+        with self.assertRaises(RuntimeError):
+            run.audit_ir(packed, "simd")
         with self.assertRaises(RuntimeError):
             run.audit_ir(packed, "scalar")
         with self.assertRaises(RuntimeError):

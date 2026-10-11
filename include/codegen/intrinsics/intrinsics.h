@@ -119,11 +119,17 @@ enum class Intrinsic {
   // =========================================================================
   // Bit intrinsics (wide multiply, leading/trailing zero counts)
   // =========================================================================
+  StackAlloc,
   SimdF32x4Copy,
   SimdF32x4Splat,
   SimdF32x4Add,
   SimdF32x4Sub,
   SimdF32x4Mul,
+  SimdF32x8Copy,
+  SimdF32x8Splat,
+  SimdF32x8Add,
+  SimdF32x8Sub,
+  SimdF32x8Mul,
   MulHiU64,  // _mul_hi_u64(a, b) -> u64 (high 64 bits of the 128-bit product)
   CtlzU64,   // _ctlz_u64(x) -> u64 (leading zero bits; 64 for 0)
   CttzU64,   // _cttz_u64(x) -> u64 (trailing zero bits; 64 for 0)
@@ -251,6 +257,12 @@ inline Intrinsic getIntrinsic(const std::string& name) {
   if (name == "_futex_wake") return Intrinsic::FutexWake;
 
   // Bit intrinsics
+  if (name == "_stack_alloc") return Intrinsic::StackAlloc;
+  if (name == "_simd_f32x8_copy") return Intrinsic::SimdF32x8Copy;
+  if (name == "_simd_f32x8_splat") return Intrinsic::SimdF32x8Splat;
+  if (name == "_simd_f32x8_add") return Intrinsic::SimdF32x8Add;
+  if (name == "_simd_f32x8_sub") return Intrinsic::SimdF32x8Sub;
+  if (name == "_simd_f32x8_mul") return Intrinsic::SimdF32x8Mul;
   if (name == "_simd_f32x4_copy") return Intrinsic::SimdF32x4Copy;
   if (name == "_simd_f32x4_splat") return Intrinsic::SimdF32x4Splat;
   if (name == "_simd_f32x4_add") return Intrinsic::SimdF32x4Add;
@@ -349,6 +361,12 @@ inline bool isIntrinsic(const std::string& name) {
  */
 inline bool requiresUnsafeBlock(Intrinsic i) {
   switch (i) {
+    case Intrinsic::StackAlloc:
+    case Intrinsic::SimdF32x8Copy:
+    case Intrinsic::SimdF32x8Splat:
+    case Intrinsic::SimdF32x8Add:
+    case Intrinsic::SimdF32x8Sub:
+    case Intrinsic::SimdF32x8Mul:
     case Intrinsic::SimdF32x4Copy:
     case Intrinsic::SimdF32x4Splat:
     case Intrinsic::SimdF32x4Add:

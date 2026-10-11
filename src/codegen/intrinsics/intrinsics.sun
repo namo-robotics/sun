@@ -387,3 +387,29 @@ declare function _simd_f32x4_sub(output: raw_ptr<f32>, a: raw_ptr<f32>, b: raw_p
 /** Multiplies four initialized lanes from each input into writable output. All
  * pointers need f32 alignment and four accessible lanes. Overlap is allowed. */
 declare function _simd_f32x4_mul(output: raw_ptr<f32>, a: raw_ptr<f32>, b: raw_ptr<f32>) void;
+
+/** Copies eight initialized f32 lanes into writable storage. Both pointers need
+ * f32 alignment and eight accessible lanes. Overlap is allowed. Requires unsafe. */
+declare function _simd_f32x8_copy(output: raw_ptr<f32>, input: raw_ptr<f32>) void;
+
+/** Writes value into eight writable f32 lanes. Requires f32 alignment and unsafe. */
+declare function _simd_f32x8_splat(output: raw_ptr<f32>, value: f32) void;
+
+/** Adds eight initialized lanes from each input into writable output. All
+ * pointers need f32 alignment and eight accessible lanes. Overlap is allowed. */
+declare function _simd_f32x8_add(output: raw_ptr<f32>, a: raw_ptr<f32>, b: raw_ptr<f32>) void;
+
+/** Subtracts eight initialized lanes from each input into writable output. All
+ * pointers need f32 alignment and eight accessible lanes. Overlap is allowed. */
+declare function _simd_f32x8_sub(output: raw_ptr<f32>, a: raw_ptr<f32>, b: raw_ptr<f32>) void;
+
+/** Multiplies eight initialized lanes from each input into writable output. All
+ * pointers need f32 alignment and eight accessible lanes. Overlap is allowed. */
+declare function _simd_f32x8_mul(output: raw_ptr<f32>, a: raw_ptr<f32>, b: raw_ptr<f32>) void;
+
+/** Reserves uninitialized, aligned scratch memory until the containing function returns.
+ * The byte count must be a positive compile-time constant within the compiler limit.
+ * Each call site owns one buffer per function invocation; loop iterations reuse it.
+ * Requires unsafe: initialize bytes before reads, stay in bounds, never free the
+ * pointer, and never let it escape the containing function's lifetime. */
+declare function _stack_alloc(bytes: i64) raw_ptr<u8>;
