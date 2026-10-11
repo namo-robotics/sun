@@ -267,12 +267,16 @@ TEST(Builtins_SIMD, overlapping_fma) {
   }
 }
 
-/** Runtime detection uses a baseline helper and isolates vector instructions.
+/** Checks kernel isolation on x86 and removal of unreachable AVX code on ARM.
  */
 TEST(Builtins_SIMD, runtime_dispatch_ir) {
   sun::driver::initTestEnvironment();
-  auto driver = sun::driver::Driver::createForAOT("dispatch_ir");
-  driver->compileString(R"(
+  for (const std::string target :
+       {"", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin",
+        "aarch64-linux-gnu"}) {
+    SCOPED_TRACE(target.empty() ? "host target" : target);
+    auto driver = sun::driver::Driver::createForAOT("dispatch_ir", target);
+    driver->compileString(R"(
     /** Calls the specialized tile only after validating CPU support. */
     function compute(a: raw_ptr<u8>, b: raw_ptr<u8>, c: raw_ptr<u8>) void {
       if (_cpu_avx2_fma()) {
@@ -281,33 +285,37 @@ TEST(Builtins_SIMD, runtime_dispatch_ir) {
       }
     }
   )");
-  auto& module = driver->getModule();
-  auto* kernel = module.getFunction("__sun_gemm_tile_avx2_fma");
-  ASSERT_NE(kernel, nullptr);
-  EXPECT_TRUE(kernel->hasFnAttribute(llvm::Attribute::NoInline));
-  auto* blockKernel = module.getFunction("__sun_gemm_block_avx2_fma");
-  ASSERT_NE(blockKernel, nullptr);
-  EXPECT_TRUE(blockKernel->hasFnAttribute(llvm::Attribute::NoInline));
-  if (module.getTargetTriple().starts_with("x86_64")) {
-    EXPECT_EQ(kernel->getFnAttribute("target-features").getValueAsString(),
-              "+avx,+avx2,+fma,-avx512f");
-    EXPECT_EQ(blockKernel->getFnAttribute("target-features").getValueAsString(),
-              "+avx,+avx2,+fma,-avx512f");
-    auto* detection = module.getFunction("__sun_cpu_avx2_fma");
-    ASSERT_NE(detection, nullptr);
-    EXPECT_TRUE(detection->hasFnAttribute(llvm::Attribute::NoInline));
-    EXPECT_EQ(detection->getFnAttribute("target-cpu").getValueAsString(),
-              "x86-64");
-    std::string ir;
-    llvm::raw_string_ostream stream(ir);
-    detection->print(stream);
-    EXPECT_NE(ir.find("xgetbv"), std::string::npos);
-    EXPECT_NE(ir.find("cpuid"), std::string::npos);
-    EXPECT_NE(ir.find("br i1"), std::string::npos);
-  } else {
-    EXPECT_EQ(module.getFunction("__sun_cpu_avx2_fma"), nullptr);
-    EXPECT_FALSE(kernel->hasFnAttribute("target-features"));
-    EXPECT_FALSE(blockKernel->hasFnAttribute("target-features"));
+    auto& module = driver->getModule();
+    auto* kernel = module.getFunction("__sun_gemm_tile_avx2_fma");
+    auto* blockKernel = module.getFunction("__sun_gemm_block_avx2_fma");
+    if (module.getTargetTriple().starts_with("x86_64")) {
+      ASSERT_NE(kernel, nullptr);
+      EXPECT_TRUE(kernel->hasFnAttribute(llvm::Attribute::NoInline));
+      ASSERT_NE(blockKernel, nullptr);
+      EXPECT_TRUE(blockKernel->hasFnAttribute(llvm::Attribute::NoInline));
+      EXPECT_EQ(kernel->getFnAttribute("target-features").getValueAsString(),
+                "+avx,+avx2,+fma,-avx512f");
+      EXPECT_EQ(
+          blockKernel->getFnAttribute("target-features").getValueAsString(),
+          "+avx,+avx2,+fma,-avx512f");
+      auto* detection = module.getFunction("__sun_cpu_avx2_fma");
+      ASSERT_NE(detection, nullptr);
+      EXPECT_TRUE(detection->hasFnAttribute(llvm::Attribute::NoInline));
+      EXPECT_EQ(detection->getFnAttribute("target-cpu").getValueAsString(),
+                "x86-64");
+      std::string ir;
+      llvm::raw_string_ostream stream(ir);
+      detection->print(stream);
+      EXPECT_NE(ir.find("xgetbv"), std::string::npos);
+      EXPECT_NE(ir.find("cpuid"), std::string::npos);
+      EXPECT_NE(ir.find("br i1"), std::string::npos);
+    } else {
+      EXPECT_EQ(module.getFunction("__sun_cpu_avx2_fma"), nullptr);
+      // The capability query is false on ARM, so neither guarded kernel
+      // survives.
+      EXPECT_EQ(kernel, nullptr);
+      EXPECT_EQ(blockKernel, nullptr);
+    }
   }
 }
 
