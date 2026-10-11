@@ -45,5 +45,5 @@ function main() i32 {
 }
 
 manifest {
-    libraries: ["stdlib.moon", "tls.moon"]
+  libraries: ["stdlib.moon", "tls.moon"]
 }

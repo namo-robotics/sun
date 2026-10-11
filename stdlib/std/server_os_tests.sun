@@ -1,0 +1,293 @@
+using std;
+
+/** Portable server primitive regression tests. */
+public module std.server_os_tests {
+  /** Online CPUs must be a positive host count. */
+  test_function online_cpus() {
+    try std.test.assert((try std.test.expect_system(std.thread.online_cpu_count())) > 0, "online CPU count is positive");
+  }
+
+  /** Notifications coalesce, drain clears readiness, and clones retain ownership. */
+  test_function wakeup_lifecycle() {
+    var alloc = make_heap_allocator();
+    var wake = try std.test.expect_system(std.io.Wakeup(alloc));
+    var other = wake.clone();
+    var loop = std.io.EventLoop(alloc, 4);
+    try std.test.expect_system_success(loop.open());
+    try std.test.expect_system_success(loop.add(wake.fd(), std.io.POLLIN, 7u64));
+    try std.test.assert_eq(try std.test.expect_system(loop.wait(0)), 0);
+    for (var i: i64 = 0; i < 100000; i = i + 1) {
+      try std.test.expect_system_success(other.notify());
+    }
+    try std.test.assert_eq(try std.test.expect_system(loop.wait(0)), 1);
+    try std.test.expect_system_success(wake.drain());
+    try std.test.assert_eq(try std.test.expect_system(loop.wait(0)), 0);
+    try std.test.expect_system_success(wake.drain());
+    try std.test.expect_system_success(other.notify());
+    try std.test.assert_eq(try std.test.expect_system(loop.wait(0)), 1);
+    try std.test.expect_system_success(loop.remove(wake.fd()));
+  }
+}
+
+/** Concurrency and socket behavior using private native checks only inside stdlib tests. */
+public module std.server_os_tests {
+  /** Notify repeatedly from a worker while the main thread drains the same source. */
+  function send_wakeups(wake: std.io.Wakeup) i32 {
+    for (var i: i64 = 0; i < 10000; i = i + 1) {
+      match wake.notify() {
+        SystemResult.Ok => {},
+        SystemResult.Error(error) => {
+          return error.code();
+        }
+      };
+    }
+    return 0;
+  }
+
+  /** Concurrent notification, clone destruction, and a final notification preserve readiness. */
+  test_function concurrent_wakeup() {
+    var alloc = make_heap_allocator();
+    var wake = try std.test.expect_system(std.io.Wakeup(alloc));
+    var worker = std.thread.spawn(send_wakeups, wake.clone());
+    for (var i: i64 = 0; i < 10000; i = i + 1) {
+      try std.test.expect_system_success(wake.drain());
+    }
+    try std.test.assert_eq(worker.join(), 0);
+    try std.test.expect_system_success(wake.drain());
+    try std.test.expect_system_success(wake.notify());
+    var poll = std.io.Poller(alloc);
+    poll.add_read(wake.fd());
+    try std.test.assert_eq(try std.test.expect_system(poll.wait(0)), 1);
+    try std.test.expect_system_success(wake.drain());
+    try std.test.assert_eq(try std.test.expect_system(poll.wait(0)), 0);
+  }
+
+  /** Wakeup destruction closes endpoints only when the last clone leaves scope. */
+  test_function wakeup_descriptor_cleanup() {
+    var alloc = make_heap_allocator();
+    var fd: i32 = -1;
+    if (true) {
+      var wake = try std.test.expect_system(std.io.Wakeup(alloc));
+      fd = wake.fd();
+      try std.test.assert((unsafe { c_fcntl(fd, 1); } & 1) != 0);
+      try std.test.assert((unsafe { c_fcntl(fd, 3); } & O_NONBLOCK) != 0);
+      if (true) {
+        var clone = wake.clone();
+        try std.test.expect_system_success(clone.notify());
+      }
+      try std.test.expect_system_success(wake.drain());
+    }
+    try std.test.assert_eq(unsafe { c_fcntl(fd, 1); }, -1);
+  }
+
+  /** Unopened files and invalid socket descriptors return checked failures. */
+  test_function closed_resource_errors() {
+    var file = std.io.File();
+    match file.metadata() {
+      SystemResult.Error(error) => {
+        try std.test.assert_eq(error.code(), 9);
+      },
+      _ => {
+        try std.test.fail("closed metadata succeeded");
+      }
+    };
+    try std.test.assert(is_system_error(set_fd_close_on_exec(-1, true)));
+    try std.test.assert(is_system_error(set_tcp_nodelay(-1, true)));
+    try std.test.assert(is_system_error(set_socket_reuse_port(-1, true)));
+  }
+
+  /** Return whether a checked configuration operation failed. */
+  function is_system_error(result: SystemResult<void>) bool {
+    return match result {
+      SystemResult.Ok => false,
+      SystemResult.Error(error) => true
+    };
+  }
+
+  /** Exercise would-block, accepted flags, buffered EOF, half-close, and invalidated batches. */
+  test_function nonblocking_tcp() {
+    var alloc = make_heap_allocator();
+    var listener = TcpListener();
+    try std.test.expect_system_success(listener.bind(ipv4_loopback(), 0, true, false));
+    try std.test.expect_system_success(listener.listen(8));
+    try std.test.expect_system_success(listener.set_nonblocking(true));
+    match listener.try_accept() {
+      AcceptResult.WouldBlock => {},
+      _ => {
+        try std.test.fail("empty accept must not throw");
+      }
+    };
+    var client = TcpStream();
+    try std.test.expect_system_success(client.connect_local(try std.test.expect_system(listener.local_port())));
+    var server = match listener.try_accept() {
+      AcceptResult.Accepted(stream) => stream,
+      _ => {
+        try std.test.fail("connection was not accepted");
+        return;
+      }
+    };
+    var fd = server.get_fd();
+    try std.test.assert((unsafe { c_fcntl(fd, 1); } & 1) != 0);
+    try std.test.assert((unsafe { c_fcntl(fd, 3); } & O_NONBLOCK) != 0);
+    try std.test.expect_system_success(server.set_nodelay(true));
+    var buffer = ContiguousBuffer<u8>(alloc, 32);
+    buffer.fill(42);
+    var bytes = MutableByteSlice(buffer);
+    match server.try_read(bytes) {
+      std.io.ReadResult.WouldBlock => {},
+      _ => {
+        try std.test.fail("empty read must report would-block");
+      }
+    };
+    var loop = std.io.EventLoop(alloc, 4);
+    try std.test.expect_system_success(loop.open());
+    try std.test.expect_system_success(loop.add(fd, std.io.POLLIN, 5u64));
+    try std.test.assert_eq(try std.test.expect_system(client.send_str("pending")), 7);
+    // Keep the client's read half open to specifically test peer write shutdown.
+    try std.test.assert_eq(unsafe { __shutdown(client.get_fd(), 1); }, 0);
+    try std.test.assert((try std.test.expect_system(loop.wait(1000))) > 0);
+    var event = try std.test.expect_access(loop.event_at(0));
+    try std.test.assert(event.is_readable());
+    match server.try_read(bytes) {
+      std.io.ReadResult.Data(n) => {
+        try std.test.assert_eq(n, 7);
+      },
+      _ => {
+        try std.test.fail("EOF discarded buffered data");
+      }
+    };
+    try std.test.assert((try std.test.expect_system(loop.wait(1000))) > 0);
+    var eof_event = try std.test.expect_access(loop.event_at(0));
+    try std.test.assert(eof_event.is_hup(), "read half-close is reported");
+    match server.try_read(bytes) {
+      std.io.ReadResult.Eof => {},
+      _ => {
+        try std.test.fail("drained stream should report EOF");
+      }
+    };
+    try std.test.expect_system_success(loop.modify(fd, std.io.POLLOUT, 6u64));
+    match loop.event_at(0) {
+      AccessResult.OutOfBounds(error) => {},
+      _ => {
+        try std.test.fail("modified registration left a stale batch");
+      }
+    };
+    try std.test.assert((try std.test.expect_system(loop.wait(1000))) > 0);
+    try std.test.expect_system_success(loop.remove(fd));
+    match loop.event_at(0) {
+      AccessResult.OutOfBounds(error) => {},
+      _ => {
+        try std.test.fail("removed registration left a stale batch");
+      }
+    };
+    var send_buffer = ContiguousBuffer<u8>(alloc, 32);
+    send_buffer.fill(42);
+    var output = ByteSlice(send_buffer);
+    match server.try_write(output) {
+      std.io.WriteResult.Complete(n) => {
+        try std.test.assert_eq(n, 32);
+      },
+      _ => {
+        try std.test.fail("write on open half should complete");
+      }
+    };
+  }
+}
+
+/** Additional socket backpressure and registration reuse regressions. */
+public module std.server_os_tests {
+  /** A bounded native send buffer forces a partial nonblocking write with a resumable prefix. */
+  test_function tcp_partial_write() {
+    var alloc = make_heap_allocator();
+    var listener = TcpListener();
+    try std.test.expect_system_success(listener.bind(ipv4_loopback(), 0, true, false));
+    try std.test.expect_system_success(listener.listen(8));
+    try std.test.expect_system_success(listener.set_nonblocking(true));
+    var client = TcpStream();
+    try std.test.expect_system_success(client.connect_local(try std.test.expect_system(listener.local_port())));
+    var server = match listener.try_accept() {
+      AcceptResult.Accepted(stream) => stream,
+      _ => {
+        try std.test.fail("connection was not accepted");
+        return;
+      }
+    };
+    var size: i32 = 4096;
+    var option: i32 = _target_is("macos") ? 4097 : 7;
+    try std.test.assert_eq(unsafe { __setsockopt(server.get_fd(), SOL_SOCKET, option, _address_of<i32>(size), 4); }, 0);
+    var buffer = ContiguousBuffer<u8>(alloc, 1048576);
+    buffer.fill(42);
+    var bytes = ByteSlice(buffer);
+    match server.try_write(bytes) {
+      std.io.WriteResult.WouldBlock(n) => {
+        try std.test.assert(n > 0 and n < bytes.size(), "partial prefix precedes would-block");
+      },
+      _ => {
+        try std.test.fail("bounded socket should apply backpressure");
+      }
+    };
+  }
+
+  /** Reusing the same descriptor and token must not revive a removed cached event. */
+  test_function stale_registration_reuse() {
+    var alloc = make_heap_allocator();
+    var wake = try std.test.expect_system(std.io.Wakeup(alloc));
+    var loop = std.io.EventLoop(alloc, 4);
+    try std.test.expect_system_success(loop.open());
+    try std.test.expect_system_success(loop.add(wake.fd(), std.io.POLLIN, 1u64));
+    try std.test.expect_system_success(wake.notify());
+    try std.test.assert_eq(try std.test.expect_system(loop.wait(1000)), 1);
+    try std.test.expect_system_success(loop.remove(wake.fd()));
+    try std.test.expect_system_success(loop.add(wake.fd(), std.io.POLLIN, 1u64));
+    match loop.event_at(0) {
+      AccessResult.OutOfBounds(error) => {},
+      _ => {
+        try std.test.fail("reused registration revived a stale event");
+      }
+    };
+    try std.test.assert_eq(try std.test.expect_system(loop.wait(1000)), 1);
+    var current = try std.test.expect_access(loop.event_at(0));
+    try std.test.assert(current.token() == 1u64);
+    try std.test.expect_system_success(loop.remove(wake.fd()));
+  }
+}
+
+/** Metadata and ownership with the first available descriptor. */
+public module std.server_os_tests {
+  /** Open a real file at descriptor zero and verify metadata and cleanup after moving. */
+  function metadata_at_zero() std.test.AssertionResult<void> {
+    unsafe { c_close(0); };
+    if (true) {
+      var file = std.io.File();
+      try std.test.expect_system_success(file.open("README.md", std.io.FileMode.Read));
+      try std.test.assert_eq(file.get_fd(), 0);
+      try std.test.assert(file.is_open());
+      var info = try std.test.expect_system(file.metadata());
+      try std.test.assert(info.kind == std.io.FileKind.File);
+      try std.test.assert(info.size > 0);
+      var moved = file;
+      var after = try std.test.expect_system(moved.metadata());
+      try std.test.assert_eq(after.size, info.size);
+    }
+    try std.test.assert_eq(unsafe { c_fcntl(0, 1); }, -1);
+    return std.test.AssertionResult.Ok;
+  }
+
+  /** Isolate descriptor-zero ownership checks from the runner's input stream. */
+  test_function file_metadata_descriptor_zero() {
+    var pid = try std.test.expect_system(std.process.fork());
+    if (pid == 0) {
+      match metadata_at_zero() {
+        std.test.AssertionResult.Ok => {
+          std.process.exit_now(0);
+        },
+        std.test.AssertionResult.Error(error) => {
+          std.process.exit_now(1);
+        }
+      };
+    }
+    var status = try std.test.expect_system(std.process.wait_pid(pid, 0));
+    try std.test.assert(std.process.exited(status));
+    try std.test.assert_eq(std.process.exit_status(status), 0);
+  }
+}

@@ -7,7 +7,7 @@
 // sources that declare the classes themselves (the standard library's own
 // situation), and not at all when neither is present (driver.cpp). The
 // runtime behavior of interpolation is tested in
-// stdlib/interpolation_tests.sun.
+// stdlib/std/interpolation_tests.sun.
 
 #include <gtest/gtest.h>
 

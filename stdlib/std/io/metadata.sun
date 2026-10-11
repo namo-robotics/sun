@@ -1,0 +1,66 @@
+/** Metadata observations tied to an open descriptor rather than a pathname. */
+public module std.io {
+  /** Unix timestamp preserving negative seconds and a normalized nanosecond remainder. */
+  public class FileTime {
+    public var seconds: i64;
+    public var nanoseconds: i64;
+
+    /** Store a native timestamp without rounding or multiplying into an overflowing scalar. */
+    init(seconds: i64, nanoseconds: i64) {
+      this.seconds = seconds;
+      this.nanoseconds = nanoseconds;
+    }
+  }
+
+  /** A metadata snapshot; later writes may change it, and nonregular sizes are OS-specific. */
+  public class FileMetadata {
+    public var kind: FileKind;
+    public var size: i64;
+    public var modified: FileTime;
+
+    /** Capture file kind, byte size, and last content modification time. */
+    init(kind: FileKind, size: i64, modified: FileTime) {
+      this.kind = kind;
+      this.size = size;
+      this.modified = modified;
+    }
+  }
+
+  /** Decode the portable POSIX file type bits. */
+  function metadata_kind(mode: u32) FileKind {
+    return match mode & 61440u32 {
+      32768u32 => FileKind.File,
+      16384u32 => FileKind.Dir,
+      40960u32 => FileKind.Symlink,
+      _ => FileKind.Other
+    };
+  }
+
+  /**
+   * Private stat boundary for supported 64-bit Linux and macOS ABIs.
+   * Aligned storage covers all native fields; only kind, size and mtime escape.
+   */
+  function descriptor_metadata(fd: i32) SystemResult<FileMetadata> {
+    var record: array<u64, 18> = [0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64];
+    var data = unsafe { _bitcast<raw_ptr<u8>>(_address_of<u64>(record[0])); };
+    var result = native_file_stat(fd, data);
+    if (result < 0) {
+      return SystemResult.Error(Error(errno(), "failed to inspect open file"));
+    }
+    var mode: u32 = 0;
+    var size_index: i64 = 6;
+    var time_index: i64 = 11;
+    if (_target_is("macos")) {
+      mode = _convert<u32>(unsafe { _load<u16>(data, 2); });
+      size_index = 12;
+      time_index = 6;
+    } else {
+      var mode_index: i64 = _target_is("x86_64") ? 6 : 4;
+      mode = unsafe { _load<u32>(data, mode_index); };
+    }
+    var size = unsafe { _load<i64>(data, size_index); };
+    var seconds = unsafe { _load<i64>(data, time_index); };
+    var nanos = unsafe { _load<i64>(data, time_index + 1); };
+    return SystemResult.Ok(FileMetadata(metadata_kind(mode), size, FileTime(seconds, nanos)));
+  }
+}

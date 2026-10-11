@@ -389,7 +389,7 @@ zero — that silence is exactly the bug this syntax exists to prevent.
 For heap-allocated objects, use an allocator from the standard library:
 
 ```sun
-import "stdlib/allocator.sun";
+import "stdlib/std/allocator.sun";
 
 function main() i32 {
     var allocator = make_heap_allocator();
@@ -411,8 +411,8 @@ function main() i32 {
 For automatic memory management, wrap the raw pointer in `Unique<T>`:
 
 ```sun
-import "stdlib/allocator.sun";
-import "stdlib/unique.sun";
+import "stdlib/std/allocator.sun";
+import "stdlib/std/unique.sun";
 
 function main() i32 {
     var allocator = make_heap_allocator();

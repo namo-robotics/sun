@@ -1,0 +1,69 @@
+// stdlib/std/target_linux.sun - Everything OS-specific, with Linux's values
+//
+// One file per operating system defines the same names (see
+// target_darwin.sun for the macOS set); the manifest's `target:` block
+// includes exactly one of them per build, chosen by the compilation's
+// --target. Shared stdlib code references these names without caring which
+// OS supplied them.
+
+/** Provides the standard-library declarations implemented in this source file. */
+public module std {
+  /** Native identifier for the number of online processors. */
+  const ONLINE_CPUS: i32 = 84;
+  /** Native port reuse option; distribution policy is platform-specific. */
+  const SO_REUSEPORT: i32 = 15;
+
+  /*
+   * Native null-terminated environment vector.
+   */
+  extern "C" var c_environ: raw_ptr<raw_ptr<u8>> as "environ";
+
+  /**
+   * Return this platform's current environment vector.
+   */
+  function environment_ptr() raw_ptr<raw_ptr<u8>> {
+    return unsafe { c_environ; };
+  }
+
+  /**
+   * Both glibc and musl export __errno_location for the per-thread errno.
+   */
+  extern "C" function c_errno_location() raw_ptr<i32> as "__errno_location";
+
+  /**
+   * Where this OS keeps the per-thread errno value.
+   */
+  function errno_ptr() raw_ptr<i32> {
+    return unsafe { c_errno_location(); };
+  }
+
+  // Descriptor flags and the errno used for non-blocking operations.
+  const O_NONBLOCK: i32 = 2048;  // 0x800
+  /** Native error code for an interrupted system call. */
+  const INTERRUPTED_ERRNO: i32 = 4;
+  const WOULD_BLOCK_ERRNO: i32 = 11;
+  /** Native error code for an address that is already bound. */
+  const ADDRESS_IN_USE_ERRNO: i32 = 98;
+
+  /**
+   * MSG_NOSIGNAL on every send already keeps a broken-pipe write from
+   * raising SIGPIPE, so per-socket setup has nothing to do.
+   */
+  function suppress_sigpipe(fd: i32) void {}
+
+  // setsockopt family (asm-generic values).
+  public const MSG_NOSIGNAL: i32 = 16384;
+  public const SOL_SOCKET: i32 = 1;
+  public const SO_REUSEADDR: i32 = 2;
+  public const SO_RCVTIMEO: i32 = 20;
+
+  // IPPROTO_IP-level options for IPv4 multicast.
+  public const IP_MULTICAST_TTL: i32 = 33;
+  public const IP_MULTICAST_LOOP: i32 = 34;
+  public const IP_ADD_MEMBERSHIP: i32 = 35;
+  public const IP_DROP_MEMBERSHIP: i32 = 36;
+
+  // struct addrinfo: ai_addr is the 4th pointer-sized slot (byte 24). The
+  // full layout is documented at the getaddrinfo declaration in sys.sun.
+  const ADDRINFO_ADDR_INDEX: i64 = 3;
+}

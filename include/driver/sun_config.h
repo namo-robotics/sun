@@ -50,6 +50,7 @@ struct ConfigResource {
 /** A C header translated into a Sun module during compilation. */
 struct ConfigCBinding {
   bool enabled = true;
+  bool skipIfUnavailable = false;
   std::string header;
   std::string output;
   std::string baseDir;

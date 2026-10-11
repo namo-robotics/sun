@@ -1,9 +1,9 @@
 // tests/builtins/test_atomics.cpp - The atomic and futex intrinsics
 //
 // These are the primitives std.thread.Mutex is built from. The Mutex
-// behavior tests (single- and multi-threaded) live in stdlib/mutex_tests.sun;
-// what is checked here is each intrinsic on its own, plus the memory
-// orderings the backend emits for them.
+// behavior tests (single- and multi-threaded) live in
+// stdlib/std/thread/mutex_tests.sun; what is checked here is each intrinsic on
+// its own, plus the memory orderings the backend emits for them.
 
 #include <gtest/gtest.h>
 #include <llvm/Support/raw_ostream.h>

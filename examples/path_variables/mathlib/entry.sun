@@ -7,6 +7,6 @@ public module mathlib {
 }
 
 manifest {
-    source_files: []
-    libraries: []
+  source_files: []
+  libraries: []
 }

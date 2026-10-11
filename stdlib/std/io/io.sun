@@ -1,0 +1,1246 @@
+// stdlib/std/io/io.sun - Files, directories and descriptor polling
+//
+// Usage:
+//   using std.io;
+//
+//   var f = File();
+//   try f.open("test.txt", FileMode.Write);
+//   f.write("Hello, World!");
+//   f.close();
+//
+// Every path is taken two ways: as a static_ptr<u8> — what a string literal
+// is — and as a `ref String` for a path put together at runtime. Both feed the
+// same private worker, which talks to C through a raw NUL-terminated pointer.
+
+/** Work with files, directories, and descriptor polling. */
+public module std.io {
+  /**
+   * How to open a file.
+   *   Read   — the file must exist
+   *   Write  — create, or truncate what is there
+   *   Append — create if missing, write at the end
+   * An enum rather than integer flags: the three choices are closed, and a
+   * caller cannot combine or misspell them.
+   */
+  public enum FileMode { Read, Write, Append }
+
+  /**
+   * Where a seek offset is measured from.
+   */
+  public enum Whence { Start, Current, End }
+
+  /**
+   * What a directory entry is. Some filesystems do not report a kind, in
+   * which case it is Unknown and is_dir(path) answers the question.
+   */
+  public enum FileKind { Unknown, File, Dir, Symlink, Other }
+
+  // open(2) flags. O_RDONLY is 0 everywhere; the composable write flags
+  // differ per OS and live in target_<os>.sun.
+  const O_RDONLY: i32 = 0;
+  const CREATE_MODE: i32 = 420;  // 0644
+
+  // Standard descriptors
+  public const STDIN_FD: i32 = 0;
+  public const STDOUT_FD: i32 = 1;
+  public const STDERR_FD: i32 = 2;
+
+  // poll(2) event bits, for Poller.add. The add_read / add_write / is_*
+  // helpers cover the common cases without assembling a bitmask.
+  public const POLLIN: i16 = 1;
+  public const POLLPRI: i16 = 2;
+  public const POLLOUT: i16 = 4;
+  public const POLLERR: i16 = 8;
+  public const POLLHUP: i16 = 16;
+  public const POLLNVAL: i16 = 32;
+
+  /**
+   * struct pollfd — { int, short, short }, 8 bytes, same layout on every
+   * Linux ABI. Public because Poller stores a Vec of these, and a bundled
+   * specialization over a private type is not visible to importers.
+   */
+  public class PollFd {
+    var fd: i32;
+    var events: i16;
+    var revents: i16 = 0;
+
+    /**
+     * Build a poll record for one descriptor and the events to watch for.
+     */
+    init(fd: i32, events: i16) {
+      this.fd = fd;
+      this.events = events;
+    }
+  }
+
+  /**
+   * One descriptor reported ready by Poller.wait(Duration).
+   */
+  public class Event {
+    var fd_: i32;
+    var events_: i16;
+
+    /**
+     * Build an event from a descriptor and the POLL* bits it reported.
+     */
+    init(fd: i32, events: i16) {
+      this.fd_ = fd;
+      this.events_ = events;
+    }
+
+    /**
+     * The descriptor that became ready.
+     */
+    public const method fd() i32 {
+      return this.fd_;
+    }
+
+    /**
+     * The raw POLL* bits reported for this descriptor.
+     */
+    public const method events() i16 {
+      return this.events_;
+    }
+
+    /**
+     * Report whether data is ready to read.
+     */
+    public const method is_readable() bool {
+      return (this.events_ & POLLIN) != 0;
+    }
+
+    /**
+     * Report whether urgent data is ready to read.
+     */
+    public const method is_priority() bool {
+      return (this.events_ & POLLPRI) != 0;
+    }
+
+    /**
+     * Report whether the descriptor has room to write.
+     */
+    public const method is_writable() bool {
+      return (this.events_ & POLLOUT) != 0;
+    }
+
+    /**
+     * Report whether the descriptor has an error condition.
+     */
+    public const method is_error() bool {
+      return (this.events_ & POLLERR) != 0;
+    }
+
+    /**
+     * Report whether the peer closed its end.
+     */
+    public const method is_hup() bool {
+      return (this.events_ & POLLHUP) != 0;
+    }
+
+    /**
+     * Report whether the descriptor is not open.
+     */
+    public const method is_invalid() bool {
+      return (this.events_ & POLLNVAL) != 0;
+    }
+  }
+
+  /**
+   * Convert a Duration to poll's millisecond timeout without wrapping.
+   * Positive fractions of a millisecond round up; very long durations clamp
+   * to the largest i32. Public so std.terminal's key reads share it.
+   */
+  public function poll_timeout_millis(timeout: const ref std.time.Duration) i32 {
+    var max_timeout: i64 = 2147483647;
+    if (timeout.as_secs() > 2147483) {
+      return 2147483647;
+    }
+
+    var millis: i64 = timeout.as_millis();
+    if ((timeout.subsec_nanos() % 1000000) != 0) {
+      millis = millis + 1;
+    }
+    if (millis > max_timeout) {
+      return 2147483647;
+    }
+    return _convert<i32>(millis);
+  }
+
+  /**
+   * Translate a FileMode into the C open() flag bits it stands for.
+   */
+  function open_flags(mode: FileMode) i32 {
+    return match mode {
+      FileMode.Read => O_RDONLY,
+      FileMode.Write => O_WRONLY_CREAT_TRUNC,
+      FileMode.Append => O_WRONLY_CREAT_APPEND
+    };
+  }
+
+  /**
+   * Translate a Whence into the C lseek() constant it stands for.
+   */
+  function convert_whence(w: Whence) i32 {
+    return match w {
+      Whence.Start => 0,
+      Whence.Current => 1,
+      Whence.End => 2
+    };
+  }
+
+  /** Distinguishes transferred bytes, EOF, and a non-blocking descriptor's retry condition. */
+  public enum ReadResult {
+    Data(i64),
+    Eof,
+    WouldBlock,
+    Error(Error)
+  }
+
+  /** Describes a bounded line read; line() holds bytes without the LF delimiter. */
+  public enum LineReadResult {
+    Complete,
+    Eof,
+    Incomplete,
+    TooLong,
+    WouldBlock,
+    Error(Error)
+  }
+
+  /**
+   * Buffers lines from a borrowed file. Keep the file open and do not read or
+   * seek it separately while this reader is in use. Storage is bounded by the
+   * requested buffer size and maximum line length, independent of file size.
+   * Line storage grows on demand and is reused by subsequent reads.
+   * LF terminates a line; CR and all other bytes are preserved.
+   */
+  public class LineReader {
+    var file: ref File;
+    var buffer: ContiguousBuffer<u8>;
+    var text: String;
+    var maximum: i64;
+    var position: i64 = 0;
+    var available: i64 = 0;
+    var finished: bool = false;
+    var delivered: bool = false;
+    var overlong: bool = false;
+
+    /**
+     * Allocates reusable storage. Rejects negative line limits and nonpositive
+     * buffer sizes. The byte limit excludes LF; zero permits only empty lines.
+     */
+    init(alloc: ref HeapAllocator, file: ref File, max_line_length: i64, buffer_size: i64) SystemResult<void> {
+      if (max_line_length < 0 or buffer_size <= 0) {
+        return SystemResult.Error(Error(22, "invalid line reader bounds"));
+      }
+      this.file = file;
+      this.buffer = ContiguousBuffer<u8>(alloc, buffer_size);
+      this.text = String(alloc, "");
+      this.maximum = max_line_length;
+    }
+
+    /**
+     * Borrows the last line until the next read. TooLong exposes its bounded
+     * prefix; WouldBlock and Error expose partial data retained for a retry.
+     * Copy explicitly if the bytes must survive another read.
+     */
+    public const method line() const ref String {
+      return this.text;
+    }
+
+    /**
+     * Reads through LF or EOF, retrying interrupted I/O. Incomplete means EOF
+     * after an unterminated line. TooLong drains through LF or EOF, allowing
+     * the next call to read the following line. WouldBlock and Error retain
+     * progress. Repeated calls after EOF return Eof with an empty line.
+     */
+    public method next() LineReadResult {
+      var operation = NativeByteIo();
+      return next_line_using(this, operation);
+    }
+  }
+
+  /** Supplies a native read operation so short reads and interruptions can be tested. */
+  function next_line_using<Operation: ByteReader>(reader: ref LineReader, operation: ref Operation) LineReadResult {
+    if (reader.delivered) {
+      reader.text.clear();
+      reader.overlong = false;
+      reader.delivered = false;
+    }
+    while (true) {
+      if (reader.position == reader.available) {
+        if (reader.finished) {
+          return LineReadResult.Eof;
+        }
+        var bytes = MutableByteSlice(reader.buffer);
+        match read_slice_using(reader.file.get_fd(), bytes, operation) {
+          ReadResult.Data(n) => {
+            reader.position = 0;
+            reader.available = n;
+          },
+          ReadResult.Eof => {
+            reader.finished = true;
+            reader.delivered = true;
+            if (reader.overlong) {
+              return LineReadResult.TooLong;
+            }
+            if (reader.text.length() > 0) {
+              return LineReadResult.Incomplete;
+            }
+            return LineReadResult.Eof;
+          },
+          ReadResult.WouldBlock => {
+            return LineReadResult.WouldBlock;
+          },
+          ReadResult.Error(e) => {
+            return LineReadResult.Error(Error(e.code(), "failed to read line"));
+          }
+        };
+      }
+      // The native read initialized every byte below available.
+      var ch: u8 = unsafe { reader.buffer.get_unchecked(reader.position); };
+      reader.position = reader.position + 1;
+      if (ch == b'\n') {
+        reader.delivered = true;
+        if (reader.overlong) {
+          return LineReadResult.TooLong;
+        }
+        return LineReadResult.Complete;
+      }
+      if (reader.text.length() < reader.maximum) {
+        reader.text.append_char(ch);
+      } else {
+        reader.overlong = true;
+      }
+    }
+    return LineReadResult.Eof;
+  }
+
+  /** Reports write completion or progress before blocking or failure; resume after that prefix. */
+  public enum WriteResult {
+    Complete(i64),
+    WouldBlock(i64),
+    Error(i64, Error)
+  }
+
+  /** Internal contract for a native read into caller-validated storage. */
+  interface ByteReader {
+    /** Reads at most count bytes into writable storage. */
+    unsafe method read(fd: i32, data: raw_ptr<u8>, count: i64) i64;
+  }
+
+  /** Internal contract for a native write from caller-validated storage. */
+  interface ByteWriter {
+    /** Writes at most count bytes from readable storage. */
+    unsafe method write(fd: i32, data: raw_ptr<u8>, count: i64) i64;
+  }
+
+  /** Supplies native byte operations to the bounded retry loops. */
+  class NativeByteIo implements ByteReader, ByteWriter {
+    /** Reads into storage already checked by the bounded caller. */
+    public unsafe method read(fd: i32, data: raw_ptr<u8>, count: i64) i64 {
+      return unsafe { c_read(fd, data, count); };
+    }
+
+    /** Writes storage already checked by the bounded caller. */
+    public unsafe method write(fd: i32, data: raw_ptr<u8>, count: i64) i64 {
+      return unsafe { c_write(fd, data, count); };
+    }
+  }
+
+  /** Reads once after retrying interruptions; an empty buffer returns Data(0), never EOF. */
+  function read_slice(fd: i32, buffer: ref MutableByteSlice) ReadResult {
+    var operation = NativeByteIo();
+    return read_slice_using(fd, buffer, operation);
+  }
+
+  /** Runs the read retry loop with a native operation supplied by the caller. */
+  function read_slice_using<Operation: ByteReader>(fd: i32, buffer: ref MutableByteSlice, read_op: ref Operation) ReadResult {
+    if (buffer.size() == 0) {
+      return ReadResult.Data(0);
+    }
+    while (true) {
+      var n: i64 = unsafe { read_op.read(fd, buffer.raw_data(), buffer.size()); };
+      if (n > 0) {
+        return ReadResult.Data(n);
+      }
+      if (n == 0) {
+        return ReadResult.Eof;
+      }
+      var code = errno();
+      if (code == WOULD_BLOCK_ERRNO) {
+        return ReadResult.WouldBlock;
+      }
+      if (code != INTERRUPTED_ERRNO) {
+        return ReadResult.Error(Error(code, "failed to read bytes"));
+      }
+    }
+    return ReadResult.Data(0);
+  }
+
+  /** Writes the entire slice unless blocked or failed, retrying interruptions and short writes. */
+  function write_slice(fd: i32, buffer: const ref ByteSlice) WriteResult {
+    var operation = NativeByteIo();
+    return write_slice_using(fd, buffer, operation);
+  }
+
+  /** Runs the complete-write loop with a native operation supplied by the caller. */
+  function write_slice_using<Operation: ByteWriter>(fd: i32, buffer: const ref ByteSlice, write_op: ref Operation) WriteResult {
+    var written: i64 = 0;
+    while (written < buffer.size()) {
+      var n: i64 = unsafe { write_op.write(fd, _ptr_offset(buffer.raw_data(), written), buffer.size() - written); };
+      if (n > 0) {
+        written = written + n;
+      } else {
+        if (n == 0) {
+          return WriteResult.Error(written, Error(0, "write made no progress"));
+        }
+        var code = errno();
+        if (code == WOULD_BLOCK_ERRNO) {
+          return WriteResult.WouldBlock(written);
+        }
+        if (code != INTERRUPTED_ERRNO) {
+          return WriteResult.Error(written, Error(code, "failed to write bytes"));
+        }
+      }
+    }
+    return WriteResult.Complete(written);
+  }
+
+  /** A non-owning descriptor handle. Its owner must keep the descriptor open during use. */
+  public class BorrowedStream {
+    var fd: i32;
+
+    /** Borrows a descriptor without acquiring responsibility for closing it. */
+    init(fd: i32) {
+      this.fd = fd;
+    }
+
+    /** Returns the borrowed descriptor number. */
+    public const method get_fd() i32 {
+      return this.fd;
+    }
+
+    /** Reads at most the slice's size, distinguishing empty input, EOF, and would-block. */
+    public const method read(buffer: ref MutableByteSlice) ReadResult {
+      return read_slice(this.fd, buffer);
+    }
+
+    /** Writes until complete, blocked, or failed; every result reports the transferred prefix. */
+    public const method write_all(buffer: const ref ByteSlice) WriteResult {
+      return write_slice(this.fd, buffer);
+    }
+  }
+
+  /** Borrows standard input without closing it when the handle leaves scope. */
+  public function stdin() BorrowedStream {
+    return BorrowedStream(STDIN_FD);
+  }
+
+  /** Borrows standard output without closing it when the handle leaves scope. */
+  public function stdout() BorrowedStream {
+    return BorrowedStream(STDOUT_FD);
+  }
+
+  /** Borrows standard error without closing it when the handle leaves scope. */
+  public function stderr() BorrowedStream {
+    return BorrowedStream(STDERR_FD);
+  }
+
+  /** A file handle that starts empty; open or adopt a descriptor before use. */
+  public class File {
+    /** Inspect this open file without changing its position or resolving its path again. */
+    public const method metadata() SystemResult<FileMetadata> {
+      if (not this.owns_fd) {
+        return SystemResult.Error(Error(9, "file is closed"));
+      }
+      return descriptor_metadata(this.fd);
+    }
+
+    // Moves clear ownership independently of the descriptor, including fd zero.
+    var fd: i32 = -1;
+    var owns_fd: bool = false;
+
+    /**
+     * Open a file with the specified mode
+     */
+    public method open(path: static_ptr<u8>, mode: FileMode) SystemResult<void> {
+      try this.open_cstr(path.raw(), mode);
+      return SystemResult.Ok;
+    }
+
+    /**
+     * Open a file named at runtime. Throws if the system refuses.
+     */
+    public method open(path: ref String, mode: FileMode) SystemResult<void> {
+      try this.open_cstr(path.c_str(), mode);
+      return SystemResult.Ok;
+    }
+
+    /**
+     * Open a file named by a C string. The one place the open syscall is made.
+     */
+    method open_cstr(path: raw_ptr<u8>, mode: FileMode) SystemResult<void> {
+      var result: i32 = unsafe { c_open(path, open_flags(mode), CREATE_MODE); };
+      if (result < 0) {
+        return SystemResult.Error(Error(errno(), "failed to open file"));
+      }
+      this.close();
+      this.fd = result;
+      this.owns_fd = true;
+      return SystemResult.Ok;
+    }
+
+    /**
+     * Adopt an already-open descriptor. The File owns it from here.
+     */
+    public method adopt(fd: i32) void {
+      this.close();
+      this.fd = fd;
+      this.owns_fd = fd >= 0;
+    }
+
+    /**
+     * Write string data to the file
+     * Returns number of bytes written, or negative on error
+     */
+    public method write(data: static_ptr<u8>) i64 {
+      return unsafe { c_write(this.fd, data.raw(), data.length()); };
+    }
+
+    /**
+     * Write a String's bytes. Returns how many bytes went out, or a negative
+     * value on failure.
+     */
+    public method write(data: ref String) i64 {
+      return unsafe { c_write(this.fd, data.c_str(), data.length()); };
+    }
+
+    /**
+     * Read the rest of the file into a String
+     */
+    public method read_all(alloc: ref HeapAllocator) SystemResult<String> {
+      var out: String = String(alloc, "");
+      var chunk: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 4096);
+      var n: i64 = unsafe { c_read(this.fd, chunk.raw_data(), 4096); };
+      while (n > 0) {
+        for (var i: i64 = 0; i < n; i = i + 1) {
+          out.append_char(unsafe { chunk.get_unchecked(i); });
+        }
+        n = unsafe { c_read(this.fd, chunk.raw_data(), 4096); };
+      }
+      if (n < 0) {
+        return SystemResult.Error(Error(errno(), "failed to read file"));
+      }
+      return SystemResult.Ok(out);
+    }
+
+    /**
+     * Close the file. Safe to call more than once.
+     */
+    public method close() void {
+      if (this.owns_fd) {
+        unsafe { c_close(this.fd); };
+        this.fd = -1;
+        this.owns_fd = false;
+      }
+    }
+
+    /**
+     * Report whether this File still holds a descriptor.
+     */
+    public method is_open() bool {
+      return this.owns_fd;
+    }
+
+    /**
+     * The underlying descriptor. The File still owns it.
+     */
+    public method get_fd() i32 {
+      return this.fd;
+    }
+
+    /**
+     * Seek to a position in the file
+     * Returns the new offset from the beginning of the file
+     */
+    public method seek(offset: i64, whence: Whence) i64 {
+      return unsafe { c_lseek(this.fd, offset, convert_whence(whence)); };
+    }
+
+    /**
+     * The current read/write offset from the start of the file.
+     */
+    public method tell() i64 {
+      return this.seek(0, Whence.Current);
+    }
+
+    /**
+     * Flush file data to disk
+     */
+    public method sync() SystemResult<void> {
+      var result: i32 = unsafe { c_fsync(this.fd); };
+      if (result < 0) {
+        return SystemResult.Error(Error(errno(), "failed to sync file"));
+      }
+      return SystemResult.Ok;
+    }
+
+    /**
+     * Truncate or extend file to specified length
+     */
+    public method truncate(length: i64) SystemResult<void> {
+      var result: i32 = unsafe { c_ftruncate(this.fd, length); };
+      if (result < 0) {
+        return SystemResult.Error(Error(errno(), "failed to truncate file"));
+      }
+      return SystemResult.Ok;
+    }
+
+    /**
+     * Get file size by seeking to end and back
+     */
+    public method size() i64 {
+      var current: i64 = this.tell();
+      var end_pos: i64 = this.seek(0, Whence.End);
+      this.seek(current, Whence.Start);
+      return end_pos;
+    }
+
+    /** Reads into a bounded mutable slice, retrying interruptions. */
+    public method read(buffer: ref MutableByteSlice) ReadResult {
+      return read_slice(this.fd, buffer);
+    }
+
+    /** Writes a bounded read-only slice, reporting progress if blocked or failed. */
+    public method write_all(buffer: const ref ByteSlice) WriteResult {
+      return write_slice(this.fd, buffer);
+    }
+
+    /**
+     * Write raw bytes; the caller must supply readable storage of at least len bytes.
+     */
+    public unsafe method write_bytes(buf: raw_ptr<u8>, len: i64) i64 {
+      return unsafe { c_write(this.fd, buf, len); };
+    }
+
+    /**
+     * Read raw bytes; the caller must supply writable storage of at least len bytes.
+     */
+    public unsafe method read_into(buf: raw_ptr<u8>, len: i64) i64 {
+      return unsafe { c_read(this.fd, buf, len); };
+    }
+
+    /**
+     * Close the descriptor if the File still holds one.
+     */
+    deinit() {
+      this.close();
+    }
+  }
+
+  // -------------------------------------------------------------------
+  // Whole-file helpers
+  // -------------------------------------------------------------------
+
+  /** Reads an entire file into an owned string and returns Error on an I/O failure. */
+  public function read_to_string(alloc: ref HeapAllocator, path: static_ptr<u8>) SystemResult<String> {
+    var f: File = File();
+    try f.open(path, FileMode.Read);
+    var text: String = try f.read_all(alloc);
+    f.close();
+    return SystemResult.Ok(text);
+  }
+
+  /**
+   * Read a whole file named at runtime into a new String.
+   */
+  public function read_to_string(alloc: ref HeapAllocator, path: ref String) SystemResult<String> {
+    var f: File = File();
+    try f.open(path, FileMode.Read);
+    var text: String = try f.read_all(alloc);
+    f.close();
+    return SystemResult.Ok(text);
+  }
+
+  /**
+   * Write a String over a file named by a literal, replacing what was there.
+   */
+  public function write_string(path: static_ptr<u8>, contents: ref String) SystemResult<void> {
+    var f: File = File();
+    try f.open(path, FileMode.Write);
+    if (f.write(contents) < 0) {
+      return SystemResult.Error(Error(errno(), "failed to write file"));
+    }
+    f.close();
+    return SystemResult.Ok;
+  }
+
+  /**
+   * Write a String over a file named at runtime, replacing what was there.
+   */
+  public function write_string(path: ref String, contents: ref String) SystemResult<void> {
+    var f: File = File();
+    try f.open(path, FileMode.Write);
+    if (f.write(contents) < 0) {
+      return SystemResult.Error(Error(errno(), "failed to write file"));
+    }
+    f.close();
+    return SystemResult.Ok;
+  }
+
+  // -------------------------------------------------------------------
+  // Paths
+  // -------------------------------------------------------------------
+
+  /** Removes the file at a null-terminated path and returns Error if removal fails. */
+  function remove_file_cstr(path: raw_ptr<u8>) SystemResult<void> {
+    var result: i32 = unsafe { c_unlink(path); };
+    if (result < 0) {
+      return SystemResult.Error(Error(errno(), "failed to remove file"));
+    }
+    return SystemResult.Ok;
+  }
+
+  /**
+   * Remove a file
+   */
+  public function remove_file(path: static_ptr<u8>) SystemResult<void> {
+    try remove_file_cstr(path.raw());
+    return SystemResult.Ok;
+  }
+
+  /**
+   * Delete a file named at runtime. Throws if it cannot be removed.
+   */
+  public function remove_file(path: ref String) SystemResult<void> {
+    try remove_file_cstr(path.c_str());
+    return SystemResult.Ok;
+  }
+
+  /**
+   * Rename a file, both paths as C strings. The one place the rename syscall is
+   * made.
+   */
+  function rename_file_cstr(old_path: raw_ptr<u8>, new_path: raw_ptr<u8>) SystemResult<void> {
+    var result: i32 = unsafe { c_rename(old_path, new_path); };
+    if (result < 0) {
+      return SystemResult.Error(Error(errno(), "failed to rename file"));
+    }
+    return SystemResult.Ok;
+  }
+
+  /**
+   * Rename or move a file
+   */
+  public function rename_file(old_path: static_ptr<u8>, new_path: static_ptr<u8>) SystemResult<void> {
+    try rename_file_cstr(old_path.raw(), new_path.raw());
+    return SystemResult.Ok;
+  }
+
+  /**
+   * Rename a file from a literal path to one built at runtime.
+   */
+  public function rename_file(old_path: static_ptr<u8>, new_path: ref String) SystemResult<void> {
+    try rename_file_cstr(old_path.raw(), new_path.c_str());
+    return SystemResult.Ok;
+  }
+
+  /**
+   * Rename a file from a path built at runtime to a literal one.
+   */
+  public function rename_file(old_path: ref String, new_path: static_ptr<u8>) SystemResult<void> {
+    try rename_file_cstr(old_path.c_str(), new_path.raw());
+    return SystemResult.Ok;
+  }
+
+  /**
+   * Rename a file, both paths built at runtime.
+   */
+  public function rename_file(old_path: ref String, new_path: ref String) SystemResult<void> {
+    try rename_file_cstr(old_path.c_str(), new_path.c_str());
+    return SystemResult.Ok;
+  }
+
+  /**
+   * Create a directory named by a C string. The one place the mkdir syscall is
+   * made.
+   */
+  function make_dir_cstr(path: raw_ptr<u8>, mode: i32) SystemResult<void> {
+    var result: i32 = unsafe { c_mkdir(path, mode); };
+    if (result < 0) {
+      return SystemResult.Error(Error(errno(), "failed to create directory"));
+    }
+    return SystemResult.Ok;
+  }
+
+  /**
+   * Create a directory with the specified mode (e.g. 0755 = 493)
+   */
+  public function make_dir(path: static_ptr<u8>, mode: i32) SystemResult<void> {
+    try make_dir_cstr(path.raw(), mode);
+    return SystemResult.Ok;
+  }
+
+  /**
+   * Create a directory named at runtime, with the given permission bits.
+   */
+  public function make_dir(path: ref String, mode: i32) SystemResult<void> {
+    try make_dir_cstr(path.c_str(), mode);
+    return SystemResult.Ok;
+  }
+
+  /**
+   * Remove a directory named by a C string. The one place the rmdir syscall is
+   * made.
+   */
+  function remove_dir_cstr(path: raw_ptr<u8>) SystemResult<void> {
+    var result: i32 = unsafe { c_rmdir(path); };
+    if (result < 0) {
+      return SystemResult.Error(Error(errno(), "failed to remove directory"));
+    }
+    return SystemResult.Ok;
+  }
+
+  /**
+   * Remove an empty directory
+   */
+  public function remove_dir(path: static_ptr<u8>) SystemResult<void> {
+    try remove_dir_cstr(path.raw());
+    return SystemResult.Ok;
+  }
+
+  /**
+   * Remove a directory named at runtime. It must already be empty.
+   */
+  public function remove_dir(path: ref String) SystemResult<void> {
+    try remove_dir_cstr(path.c_str());
+    return SystemResult.Ok;
+  }
+
+  // -------------------------------------------------------------------
+  // Metadata
+  // -------------------------------------------------------------------
+  // Path helpers below preserve their historical behavior. File.metadata()
+  // inspects an open descriptor through the private native stat boundary.
+
+  /** Reports whether a null-terminated filesystem path is accessible as an existing entry. */
+  function exists_cstr(path: raw_ptr<u8>) bool {
+    return unsafe { c_access(path, 0); } == 0;
+  }
+
+  /**
+   * Does the path exist? access(path, F_OK)
+   */
+  public function exists(path: static_ptr<u8>) bool {
+    return exists_cstr(path.raw());
+  }
+
+  /**
+   * Report whether anything exists at a path built at runtime.
+   */
+  public function exists(path: ref String) bool {
+    return exists_cstr(path.c_str());
+  }
+
+  /**
+   * Report whether a path named by a C string is a directory.
+   */
+  function is_dir_cstr(path: raw_ptr<u8>) bool {
+    var dir: raw_ptr<u8> = unsafe { c_opendir(path); };
+    if (dir == null) {
+      return false;
+    }
+    unsafe { c_closedir(dir); };
+    return true;
+  }
+
+  /**
+   * Report whether a literal path is a directory.
+   */
+  public function is_dir(path: static_ptr<u8>) bool {
+    return is_dir_cstr(path.raw());
+  }
+
+  /**
+   * Report whether a path built at runtime is a directory.
+   */
+  public function is_dir(path: ref String) bool {
+    return is_dir_cstr(path.c_str());
+  }
+
+  /**
+   * Report whether a literal path is an ordinary file.
+   */
+  public function is_file(path: static_ptr<u8>) bool {
+    return exists(path) and not is_dir(path);
+  }
+
+  /**
+   * Report whether a path built at runtime is an ordinary file.
+   */
+  public function is_file(path: ref String) bool {
+    return exists(path) and not is_dir(path);
+  }
+
+  /**
+   * The size in bytes of the file at a literal path. Throws if it cannot be
+   * opened.
+   */
+  public function get_file_size(path: static_ptr<u8>) SystemResult<i64> {
+    var f: File = File();
+    try f.open(path, FileMode.Read);
+    var size: i64 = f.seek(0, Whence.End);
+    f.close();
+    if (size < 0) {
+      return SystemResult.Error(Error(errno(), "failed to size file"));
+    }
+    return SystemResult.Ok(size);
+  }
+
+  /**
+   * The size in bytes of the file at a path built at runtime.
+   */
+  public function get_file_size(path: ref String) SystemResult<i64> {
+    var f: File = File();
+    try f.open(path, FileMode.Read);
+    var size: i64 = f.seek(0, Whence.End);
+    f.close();
+    if (size < 0) {
+      return SystemResult.Error(Error(errno(), "failed to size file"));
+    }
+    return SystemResult.Ok(size);
+  }
+
+  // -------------------------------------------------------------------
+  // Directories
+  // -------------------------------------------------------------------
+
+  /**
+   * One entry from read_dir. The kind comes from the directory record, so
+   * no extra syscall is needed to tell a file from a subdirectory.
+   */
+  public class DirEntry {
+    var name_: String;
+    var kind_: FileKind;
+
+    /**
+     * Build a directory entry. The name moves in.
+     */
+    init(name: String, kind: FileKind) {
+      this.name_ = name;
+      this.kind_ = kind;
+    }
+
+    /**
+     * Borrowed: the entry keeps the name.
+     */
+    public method name() ref String {
+      return unsafe { _to_ref<String>(_address_of<String>(this.name_)); };
+    }
+
+    /**
+     * Whether the entry is a file, a directory, or something else.
+     */
+    public method kind() FileKind {
+      return this.kind_;
+    }
+
+    /**
+     * Report whether this entry is a directory.
+     */
+    public method is_dir() bool {
+      return this.kind_ == FileKind.Dir;
+    }
+
+    /**
+     * Report whether this entry is an ordinary file.
+     */
+    public method is_file() bool {
+      return this.kind_ == FileKind.File;
+    }
+  }
+
+  /**
+   * DT_* values from the directory record's d_type byte.
+   */
+  function kind_of(d_type: u8) FileKind {
+    return match d_type {
+      4 => FileKind.Dir,
+      8 => FileKind.File,
+      10 => FileKind.Symlink,
+      0 => FileKind.Unknown,
+      _ => FileKind.Other
+    };
+  }
+
+  /**
+   * Is the record's name "." or ".."?
+   */
+  function is_dot_entry(name: raw_ptr<u8>) bool {
+    var first: u8 = unsafe { _load<u8>(name, 0); };
+    if (first != b'.') {
+      return false;
+    }
+    var second: u8 = unsafe { _load<u8>(name, 1); };
+    if (second == 0) {
+      return true;
+    }
+    if (second != b'.') {
+      return false;
+    }
+    return unsafe { _load<u8>(name, 2); } == 0;
+  }
+
+  /**
+   * List a directory. "." and ".." are left out; the order is whatever the
+   * filesystem gives, not sorted.
+   */
+  function read_dir_cstr(alloc: ref HeapAllocator, path: raw_ptr<u8>) SystemResult<Vec<DirEntry>> {
+    var dir: raw_ptr<u8> = unsafe { c_opendir(path); };
+    if (dir == null) {
+      return SystemResult.Error(Error(errno(), "failed to open directory"));
+    }
+
+    var entries: Vec<DirEntry> = Vec<DirEntry>(alloc, 8);
+    var rec: raw_ptr<u8> = unsafe { c_readdir(dir); };
+    while (rec != null) {
+      // struct dirent's head differs per OS; the two byte offsets that
+      // matter come from target_<os>.sun. d_name is a flexible char[] at
+      // the end of the record's fixed head.
+      var name: raw_ptr<u8> = unsafe { _ptr_offset(rec, DIRENT_NAME_OFFSET); };
+      if (not is_dot_entry(name)) {
+        var d_type: u8 = unsafe { _load<u8>(rec, DIRENT_TYPE_OFFSET); };
+        entries.push(DirEntry(from_c_str(alloc, name), kind_of(d_type)));
+      }
+      rec = unsafe { c_readdir(dir); };
+    }
+
+    unsafe { c_closedir(dir); };
+    return SystemResult.Ok(entries);
+  }
+
+  /**
+   * List the entries of a directory at a literal path. '.' and '..' are left
+   * out.
+   */
+  public function read_dir(alloc: ref HeapAllocator, path: static_ptr<u8>) SystemResult<Vec<DirEntry>> {
+    return SystemResult.Ok((try read_dir_cstr(alloc, path.raw())));
+  }
+
+  /**
+   * List the entries of a directory at a path built at runtime.
+   */
+  public function read_dir(alloc: ref HeapAllocator, path: ref String) SystemResult<Vec<DirEntry>> {
+    return SystemResult.Ok((try read_dir_cstr(alloc, path.c_str())));
+  }
+
+  // -------------------------------------------------------------------
+  // Standard input
+  // -------------------------------------------------------------------
+
+  /**
+   * Read one line from stdin, without the trailing newline. None at end of
+   * input with nothing read. Unbuffered on purpose: a buffered reader would
+   * swallow bytes a later child process expects to find on the descriptor.
+   */
+  public function read_line(alloc: ref HeapAllocator) Option<String> {
+    var line: String = String(alloc, "");
+    var byte: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 1);
+    var got_any: bool = false;
+
+    var n: i64 = unsafe { c_read(STDIN_FD, byte.raw_data(), 1); };
+    while (n > 0) {
+      got_any = true;
+      var ch: u8 = unsafe { byte.get_unchecked(0); };
+      if (ch == 10) {
+        return Option.Some(line);
+      }
+      line.append_char(ch);
+      n = unsafe { c_read(STDIN_FD, byte.raw_data(), 1); };
+    }
+
+    if (not got_any) {
+      return Option.None;
+    }
+    return Option.Some(line);
+  }
+
+  // -------------------------------------------------------------------
+  // Polling
+  // -------------------------------------------------------------------
+
+  /**
+   * Waits for readiness on a set of descriptors. The descriptors keep their
+   * positions, so revents(i) answers for the fd added i-th.
+   */
+  public class Poller {
+    var alloc: HeapAllocator;
+    var fds: Vec<PollFd>;
+
+    /**
+     * Build an empty poller. Add descriptors before waiting.
+     */
+    init(alloc: ref HeapAllocator) {
+      this.alloc = alloc.copy();
+      this.fds = Vec<PollFd>(alloc, 4);
+    }
+
+    /**
+     * Watch for an arbitrary combination of the POLL* bits.
+     */
+    public method add(fd: i32, events: i16) void {
+      this.fds.push(PollFd(fd, events));
+    }
+
+    /**
+     * Watch for readable data (or the peer hanging up).
+     */
+    public method add_read(fd: i32) void {
+      this.fds.push(PollFd(fd, POLLIN));
+    }
+
+    /**
+     * Watch for room to write.
+     */
+    public method add_write(fd: i32) void {
+      this.fds.push(PollFd(fd, POLLOUT));
+    }
+
+    /**
+     * Watch a descriptor for both readable data and room to write.
+     */
+    public method add_read_write(fd: i32) void {
+      this.fds.push(PollFd(fd, POLLIN | POLLOUT));
+    }
+
+    /**
+     * Stop watching every registration for a descriptor.
+     */
+    public method remove(fd: i32) bool {
+      var kept: i64 = 0;
+      var original: i64 = this.fds.size();
+      for (var i: i64 = 0; i < original; i = i + 1) {
+        var entry = unsafe { this.fds.get_unchecked(i); };
+        if (entry.fd != fd) {
+          if (kept != i) {
+            var copy = PollFd(entry.fd, entry.events);
+            copy.revents = entry.revents;
+            unsafe { this.fds.set_unchecked(kept, copy); };
+          }
+          kept = kept + 1;
+        }
+      }
+      while (this.fds.size() > kept) {
+        this.fds.pop();
+      }
+      return kept != original;
+    }
+
+    /** Change every matching registration's interest and clear its old readiness. */
+    public method modify(fd: i32, events: i16) bool {
+      var found: bool = false;
+      for (var i: i64 = 0; i < this.fds.size(); i = i + 1) {
+        var entry = unsafe { this.fds.get_unchecked(i); };
+        if (entry.fd == fd) {
+          entry.events = events;
+          entry.revents = 0;
+          found = true;
+        }
+      }
+      return found;
+    }
+
+    /**
+     * Forget every descriptor. Positions restart from zero after this.
+     */
+    public method clear() void {
+      this.fds.clear();
+    }
+
+    /**
+     * How many descriptors are being watched.
+     */
+    public method count() i64 {
+      return this.fds.size();
+    }
+
+    /**
+     * Blocks until something is ready, the timeout expires, or a signal
+     * arrives. -1 waits forever. Returns how many descriptors are ready.
+     */
+    public method wait(timeout_ms: i32) SystemResult<i32> {
+      var ready: i32 = unsafe {
+        c_poll(
+          this.fds.raw_data(),
+          this.fds.size(),
+          timeout_ms
+        );
+      };
+      if (ready < 0) {
+        return SystemResult.Error(Error(errno(), "poll failed"));
+      }
+      return SystemResult.Ok(ready);
+    }
+
+    /**
+     * Wait for a finite duration and return the descriptors that became ready.
+     */
+    public method wait(timeout: const ref std.time.Duration) SystemResult<Vec<Event>> {
+      var ready_count: i32 = try this.wait(poll_timeout_millis(timeout));
+      var capacity: i64 = _convert<i64>(ready_count);
+      if (capacity < 1) {
+        capacity = 1;
+      }
+      var ready: Vec<Event> = Vec<Event>(this.alloc, capacity);
+      for (var i: i64 = 0; i < this.fds.size(); i = i + 1) {
+        var entry: ref PollFd = unsafe { this.fds.get_unchecked(i); };
+        if (entry.revents != 0) {
+          ready.push(Event(entry.fd, entry.revents));
+        }
+      }
+      return SystemResult.Ok(ready);
+    }
+
+    /**
+     * The descriptor added i-th.
+     */
+    public method fd_at(i: i64) i32 {
+      return unsafe { this.fds.get_unchecked(i); }.fd;
+    }
+
+    /**
+     * The raw POLL* bits the system reported for the descriptor added i-th.
+     */
+    public method revents(i: i64) i16 {
+      return unsafe { this.fds.get_unchecked(i); }.revents;
+    }
+
+    /**
+     * Report whether the descriptor added i-th has data to read.
+     */
+    public method is_readable(i: i64) bool {
+      return (this.revents(i) & POLLIN) != 0;
+    }
+
+    /**
+     * Report whether the descriptor added i-th has room to write.
+     */
+    public method is_writable(i: i64) bool {
+      return (this.revents(i) & POLLOUT) != 0;
+    }
+
+    /**
+     * The peer closed its end. Any buffered bytes are still readable.
+     */
+    public method is_hup(i: i64) bool {
+      return (this.revents(i) & POLLHUP) != 0;
+    }
+
+    /**
+     * Report whether the system flagged an error on the descriptor added i-th.
+     */
+    public method is_error(i: i64) bool {
+      return (this.revents(i) & POLLERR) != 0;
+    }
+  }
+}

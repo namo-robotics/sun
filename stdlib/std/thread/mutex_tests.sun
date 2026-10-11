@@ -1,0 +1,218 @@
+// stdlib/std/thread/mutex_tests.sun - Tests for thread.sun (Mutex).
+// The atomic and futex intrinsics it is built from are tested in
+// tests/builtins/test_atomics.cpp.
+
+using std;
+using std.thread;
+
+/** Provides the standard-library declarations implemented in this source file. */
+public module std {
+  /** Groups tests for the mutex library behavior. */
+  module mutex_tests {
+    // State for mutex_two_threads_sequential only. Each multi-threaded test
+    // has its own counter and lock so parallel tests never share state.
+    var two_threads_counter: i32 = 0;
+    var two_threads_mutex: Mutex = Mutex();
+
+    /**
+     * Adds one to the two-thread counter under its lock.
+     */
+    function increment_two_threads_counter() void {
+      two_threads_mutex.lock();
+      two_threads_counter = two_threads_counter + 1;
+      two_threads_mutex.unlock();
+    }
+
+    // State for mutex_three_threads only.
+    var three_threads_counter: i32 = 0;
+    var three_threads_mutex: Mutex = Mutex();
+
+    // State for mutex_prevents_races only.
+    var races_counter: i32 = 0;
+    var races_mutex: Mutex = Mutex();
+
+    /** Checks mutex single thread lock unlock. */
+    test_function mutex_single_thread_lock_unlock() {
+      var m = Mutex();
+      var counter: i32 = 0;
+
+      m.lock();
+      counter = counter + 1;
+      m.unlock();
+
+      m.lock();
+      counter = counter + 10;
+      m.unlock();
+
+      try std.test.assert_eq(counter, 11);
+    }
+
+    /** Checks mutex multiple lock unlock. */
+    test_function mutex_multiple_lock_unlock() {
+      var m = Mutex();
+      var result: i32 = 0;
+
+      var i: i32 = 0;
+      while (i < 10) {
+        m.lock();
+        result = result + 1;
+        m.unlock();
+        i = i + 1;
+      }
+
+      try std.test.assert_eq(result, 10);
+    }
+
+    /** Checks mutex two threads sequential. */
+    test_function mutex_two_threads_sequential() {
+      var t1 = spawn(
+        () => i32 {
+          var i: i32 = 0;
+          while (i < 100) {
+            increment_two_threads_counter();
+            i = i + 1;
+          }
+          return 0;
+        }
+      );
+
+      var t2 = spawn(
+        () => i32 {
+          var i: i32 = 0;
+          while (i < 100) {
+            increment_two_threads_counter();
+            i = i + 1;
+          }
+          return 0;
+        }
+      );
+
+      t1.join();
+      t2.join();
+
+      // Both threads increment 100 times each.
+      try std.test.assert_eq(two_threads_counter, 200);
+    }
+
+    /** Checks mutex three threads. */
+    test_function mutex_three_threads() {
+      var t1 = spawn(
+        () => i32 {
+          var i: i32 = 0;
+          while (i < 50) {
+            three_threads_mutex.lock();
+            three_threads_counter = three_threads_counter + 1;
+            three_threads_mutex.unlock();
+            i = i + 1;
+          }
+          return 0;
+        }
+      );
+
+      var t2 = spawn(
+        () => i32 {
+          var i: i32 = 0;
+          while (i < 50) {
+            three_threads_mutex.lock();
+            three_threads_counter = three_threads_counter + 1;
+            three_threads_mutex.unlock();
+            i = i + 1;
+          }
+          return 0;
+        }
+      );
+
+      var t3 = spawn(
+        () => i32 {
+          var i: i32 = 0;
+          while (i < 50) {
+            three_threads_mutex.lock();
+            three_threads_counter = three_threads_counter + 1;
+            three_threads_mutex.unlock();
+            i = i + 1;
+          }
+          return 0;
+        }
+      );
+
+      t1.join();
+      t2.join();
+      t3.join();
+
+      // Three threads each increment 50 times.
+      try std.test.assert_eq(three_threads_counter, 150);
+    }
+
+    /**
+     * Without the mutex these increments would race; run the exercise a few
+     * times to raise the odds of catching a broken lock.
+     */
+    test_function mutex_prevents_races() {
+      for (var run: i32 = 0; run < 5; run = run + 1) {
+        races_counter = 0;
+
+        var t1 = spawn(
+          () => i32 {
+            var i: i32 = 0;
+            while (i < 1000) {
+              races_mutex.lock();
+              races_counter = races_counter + 1;
+              races_mutex.unlock();
+              i = i + 1;
+            }
+            return 0;
+          }
+        );
+
+        var t2 = spawn(
+          () => i32 {
+            var i: i32 = 0;
+            while (i < 1000) {
+              races_mutex.lock();
+              races_counter = races_counter + 1;
+              races_mutex.unlock();
+              i = i + 1;
+            }
+            return 0;
+          }
+        );
+
+        t1.join();
+        t2.join();
+
+        try std.test.assert_eq(races_counter, 2000);
+      }
+    }
+
+    // State for guard_releases_on_scope_exit only.
+    var guard_counter: i32 = 0;
+    var guard_mutex: Mutex = Mutex();
+
+    /**
+     * Adds one to the guard counter under a scope-bound guard.
+     */
+    function increment_under_guard() void {
+      var guard = guard_mutex.acquire();
+      guard_counter = guard_counter + 1;
+    }
+
+    /** Checks guard releases on scope exit. */
+    test_function guard_releases_on_scope_exit() {
+      if (true) {
+        var guard = guard_mutex.acquire();
+        guard_counter = guard_counter + 1;
+      }
+      // The guard is gone, so another thread can take the lock. This would
+      // block forever if the guard had not released it.
+      var t = spawn(
+        () => i32 {
+          increment_under_guard();
+          return 0;
+        }
+      );
+      t.join();
+      increment_under_guard();
+      try std.test.assert_eq(guard_counter, 3);
+    }
+  }  // module mutex_tests
+}  // module std

@@ -344,7 +344,7 @@ TEST(Modules_ProtoImport, manifest_processor_returns_nullopt_without_manifest) {
 }
 
 // ============================================================================
-// Wire helpers (stdlib/proto_wire.sun)
+// Wire helpers (stdlib/std/proto_wire.sun)
 // ============================================================================
 
 TEST(Modules_ProtoImport, wire_varint_roundtrip_small_and_multibyte) {

@@ -353,7 +353,7 @@ The *symbol* is still global. Two modules may each declare the same C function
 under their own Sun name, but their signatures must agree — the second
 declaration of a symbol is checked against the first and rejected on a
 mismatch. This is why the standard library keeps every one of its externs in a
-single private file, `stdlib/sys.sun`.
+single private file, `stdlib/std/sys.sun`.
 
 ## Carrying the C library along
 
@@ -438,22 +438,24 @@ carried archives just as the linker would, so a program that works under
 
 The standard library lists target-specific macOS process bindings in its
 manifest through `$SUN_DARWIN_PROCESS_BINDINGS`, selected in `sun-config.json`.
-To regenerate on macOS with the generator dependencies installed:
+Its `c_bindings` entry reads `sys/proc_info.h` directly from `$SDKROOT` and
+allows `proc_bsdinfo` and `proc_taskinfo`. To regenerate on macOS:
 
 ```bash
+export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
 for arch in arm64 x86_64; do
-  sun bindgen stdlib/bindings/process_darwin.h \
-    --target "$arch-apple-darwin" --module darwin_process_abi \
-    --allow proc_bsdinfo --allow proc_taskinfo \
-    --output "stdlib/bindings/process_darwin_$arch.sun" \
-    -- -isysroot "$(xcrun --sdk macosx --show-sdk-path)"
-  sun fmt "stdlib/bindings/process_darwin_$arch.sun"
+  sun --emit-moon stdlib/stdlib.sun --target "$arch-apple-darwin" \
+    -o "tmp/stdlib-$arch.moon"
+  sun fmt "stdlib/std/process/bindings/process_darwin_$arch.sun"
 done
 ```
 
 Each file retains its target and layout assertions. macOS CI regenerates both
-files from the SDK and checks for differences. Ordinary builds use the
-checked-in files without SDK header generation.
+files through the config and checks for differences. Other targets skip this
+binding. When `SDKROOT` is undefined or its process header is absent, builds
+keep using the checked-in bindings because this entry sets
+`"skip_if_unavailable": true`. Set `SDKROOT` in the environment or pass
+`--path-var SDKROOT=/path/to/MacOSX.sdk` to enable generation.
 
 Generate bindings as ordinary `.sun` files, inspect or check them into source
 control, and list them explicitly in your manifest. You can run `sun bindgen`
@@ -501,8 +503,17 @@ appropriate files in the manifest.
 
 Configured generation runs before manifest files are read and before build
 cache checks. Changes to generated declarations therefore trigger recompilation.
-To compile checked-in bindings without regenerating them, omit `c_bindings` and
-keep their manifest entries. That workflow does not parse C headers.
+By default, missing headers and undefined path variables fail the build.
+Set `"skip_if_unavailable": true` on a binding to skip generation when its
+header path contains an undefined variable or the header does not exist. This
+leaves any previous output untouched; files listed in the manifest must still
+exist and match the compilation target. Once the header exists, parsing errors,
+missing included headers, unsupported declarations, and invalid Clang options
+still fail the build. This option does not suppress those errors.
+
+To always compile checked-in bindings without regenerating them, omit
+`c_bindings` and keep their manifest entries. That workflow does not parse C
+headers.
 
 The built-in `sun bindgen` command is implemented in C++ and uses the compiler's
 linked libclang 20. It needs no Python interpreter or Python packages. Compiler
@@ -510,8 +521,8 @@ builds require the libclang development headers and library (`libclang-20-dev`
 on Ubuntu, included with `llvm@20` on macOS).
 
 The command writes ordinary Sun source; `--output -` prints it to standard
-output. `SUN_TEST_BINDGEN=ON` enables integration tests in CMake; Python is used
-only to run those tests, with no extra packages.
+output. C++ binding tests run with the other tooling tests when `BUILD_TESTING`
+is enabled. Run them with `ctest --test-dir build -R '^Tooling_Bindgen\.'`.
 
 ```bash
 sun bindgen \

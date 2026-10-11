@@ -1,9 +1,10 @@
 // threads.cpp — the parts of OS threading that cannot be written in Sun
 //
-// `spawn` and `Thread<T>` live in stdlib/thread.sun. What is left here is the
-// piece Sun has no way to express: pthread_create wants a `ptr(*)(ptr)` entry
-// point, while Sun lambdas use the fat-pointer ABI, so a trampoline has to be
-// built per lambda signature. Three intrinsics bridge the two:
+// `spawn` and `Thread<T>` live in stdlib/std/thread/thread.sun. What is left
+// here is the piece Sun has no way to express: pthread_create wants a
+// `ptr(*)(ptr)` entry point, while Sun lambdas use the fat-pointer ABI, so a
+// trampoline has to be built per lambda signature. Three intrinsics bridge the
+// two:
 //
 //   _spawn<F>(fn, args...)  build the context, start the thread
 //   _thread_join<T>(ctx)    wait, take the result
@@ -34,10 +35,10 @@ namespace sun::codegen::intrinsics {
 // -------------------------------------------------------------------
 
 // { ptr func, ptr env, ptr result, i64 tid, ptr args } — see
-// stdlib/thread.sun. Read off the type semantic analysis already resolved
-// rather than synthesized here, so there is one definition of the layout and
-// codegen never has to spell the class's name (which carries a library hash
-// once std.thread arrives through a bundle).
+// stdlib/std/thread/thread.sun. Read off the type semantic analysis already
+// resolved rather than synthesized here, so there is one definition of the
+// layout and codegen never has to spell the class's name (which carries a
+// library hash once std.thread arrives through a bundle).
 StructType* IntrinsicsGenerator::getThreadContextStruct(
     const TypePtr& contextPtrType) {
   auto* pointer = sun::codegen::support::tryGetType<sun::types::RawPointerType>(

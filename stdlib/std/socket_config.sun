@@ -1,0 +1,52 @@
+/** Checked descriptor and socket configuration shared by portable server code. */
+public module std {
+  /** Recognize an interrupted system operation without exposing a platform errno constant. */
+  public function is_interrupted(code: i32) bool {
+    return code == INTERRUPTED_ERRNO;
+  }
+
+  /** Preserve other descriptor flags while changing inheritance across exec. Not atomic with fork. */
+  public function set_fd_close_on_exec(fd: i32, enabled: bool) SystemResult<void> {
+    var flags = unsafe { c_fcntl(fd, 1); };
+    if (flags < 0) {
+      return SystemResult.Error(Error(errno(), "failed to read descriptor flags"));
+    }
+    var changed = enabled ? flags | 1 : flags & ~1;
+    if (unsafe { c_fcntl(fd, 2, changed); } < 0) {
+      return SystemResult.Error(Error(errno(), "failed to set close-on-exec"));
+    }
+    return SystemResult.Ok;
+  }
+
+  /** Set an integer socket option and retain unsupported-option and configuration errors. */
+  function socket_boolean(fd: i32, level: i32, option: i32, enabled: bool) SystemResult<void> {
+    var value: i32 = enabled ? 1 : 0;
+    if (unsafe { __setsockopt(fd, level, option, _address_of<i32>(value), 4); } < 0) {
+      return SystemResult.Error(Error(errno(), "failed to configure socket"));
+    }
+    return SystemResult.Ok;
+  }
+
+  /** Configure TCP_NODELAY on a borrowed socket. */
+  public function set_tcp_nodelay(fd: i32, enabled: bool) SystemResult<void> {
+    return socket_boolean(fd, 6, 1, enabled);
+  }
+
+  /** Configure address reuse before bind; binding rules remain OS-specific. */
+  public function set_socket_reuse_address(fd: i32, enabled: bool) SystemResult<void> {
+    return socket_boolean(fd, SOL_SOCKET, SO_REUSEADDR, enabled);
+  }
+
+  /** Configure port reuse before bind; does not promise load balancing or identical OS policy. */
+  public function set_socket_reuse_port(fd: i32, enabled: bool) SystemResult<void> {
+    return socket_boolean(fd, SOL_SOCKET, SO_REUSEPORT, enabled);
+  }
+
+  /** Apply the platform's checked socket-level broken-pipe protection. */
+  function configure_socket_sigpipe(fd: i32) SystemResult<void> {
+    if (_target_is("macos")) {
+      return socket_boolean(fd, SOL_SOCKET, 4130, true);
+    }
+    return SystemResult.Ok;
+  }
+}

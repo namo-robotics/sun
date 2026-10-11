@@ -1,0 +1,50 @@
+// stdlib/std/iterator.sun - Iteration protocol
+//
+// IIterator<T, Container> yields elements one at a time; next() returns
+// Option.None when the sequence is exhausted. IIterable<T, Self> is a
+// container that can produce such an iterator. `for (var x: T in c)` accepts
+// either: it calls iter() when present, then loops on next() until None.
+//
+// T is the item type, so it decides whether iteration borrows or yields
+// values. A container that owns its elements iterates by borrow — it uses
+// `ref T` as the item type, so next() returns Option<ref T> and the loop body
+// sees the element in place rather than a copy the container still owns:
+//
+//   class VecIterator<T> implements IIterator<ref T, Vec<T>> {
+//     public method next(v: ref Vec<T>) Option<ref T> { ... }
+//   }
+//
+// An iterator that computes its elements has nothing to borrow and yields
+// them by value, as below. `for (var x: T in c)` is written the same way for
+// both.
+//
+//   class Countdown implements IIterator<i32, Countdown> {
+//     var n: i32;
+//     init(n: i32) { this.n = n; }
+//     method next(self: ref Countdown) Option<i32> {
+//       if (this.n == 0) { return Option.None; }
+//       this.n = this.n - 1;
+//       return Option.Some(this.n + 1);
+//     }
+//   }
+
+/** Provides the standard-library declarations implemented in this source file. */
+public module std {
+  /** Produces successive items from a borrowed container until iteration is exhausted. */
+  public interface IIterator<T, Container> {
+    /**
+     * Hand back the next item, or None once the container is exhausted. The
+     * container is passed by reference because the loop lowering supplies its
+     * address.
+     */
+    method next(container: ref Container) Option<T>;
+  }
+
+  /** Provides an iterator over the values held by a container. */
+  public interface IIterable<T, Self> {
+    /**
+     * Build a fresh iterator positioned at the start of this container.
+     */
+    method iter() IIterator<T, Self>;
+  }
+}

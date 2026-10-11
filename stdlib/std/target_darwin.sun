@@ -1,0 +1,74 @@
+// stdlib/std/target_darwin.sun - Everything OS-specific, with macOS's values
+//
+// The macOS counterpart of target_linux.sun: the same names, this OS's
+// values. The manifest's `target:` block includes exactly one of the two per
+// build, chosen by the compilation's --target.
+
+/** Provides the standard-library declarations implemented in this source file. */
+public module std {
+  /** Native identifier for the number of online processors. */
+  const ONLINE_CPUS: i32 = 58;
+  /** Native port reuse option; distribution policy is platform-specific. */
+  const SO_REUSEPORT: i32 = 512;
+
+  /**
+   * Darwin returns the address of its environment-vector slot.
+   */
+  extern "C" function c_ns_get_environ() raw_ptr<raw_ptr<raw_ptr<u8>>> as "_NSGetEnviron";
+
+  /**
+   * Return this platform's current environment vector.
+   */
+  function environment_ptr() raw_ptr<raw_ptr<u8>> {
+    var slot: raw_ptr<raw_ptr<raw_ptr<u8>>> = unsafe { c_ns_get_environ(); };
+    return unsafe { _load<raw_ptr<raw_ptr<u8>>>(slot, 0); };
+  }
+
+  /**
+   * macOS spells the per-thread errno accessor __error.
+   */
+  extern "C" function c_errno_location() raw_ptr<i32> as "__error";
+
+  /**
+   * Where this OS keeps the per-thread errno value.
+   */
+  function errno_ptr() raw_ptr<i32> {
+    return unsafe { c_errno_location(); };
+  }
+
+  // Descriptor flags and the errno used for non-blocking operations.
+  const O_NONBLOCK: i32 = 4;
+  /** Native error code for an interrupted system call. */
+  const INTERRUPTED_ERRNO: i32 = 4;
+  const WOULD_BLOCK_ERRNO: i32 = 35;
+  /** Native error code for an address that is already bound. */
+  const ADDRESS_IN_USE_ERRNO: i32 = 48;
+
+  // setsockopt family. macOS has no MSG_NOSIGNAL — it folds to no flag at
+  // all here — and marks the socket SO_NOSIGPIPE instead (below).
+  public const MSG_NOSIGNAL: i32 = 0;
+  public const SOL_SOCKET: i32 = 65535;  // 0xffff
+  public const SO_REUSEADDR: i32 = 4;
+  public const SO_RCVTIMEO: i32 = 4102;  // 0x1006
+  const SO_NOSIGPIPE: i32 = 4130;  // 0x1022
+
+  // IPPROTO_IP-level options for IPv4 multicast.
+  public const IP_MULTICAST_TTL: i32 = 10;
+  public const IP_MULTICAST_LOOP: i32 = 11;
+  public const IP_ADD_MEMBERSHIP: i32 = 12;
+  public const IP_DROP_MEMBERSHIP: i32 = 13;
+
+  /**
+   * Mark the socket so a send on a broken connection fails with EPIPE
+   * instead of raising SIGPIPE.
+   */
+  function suppress_sigpipe(fd: i32) void {
+    var optval: i32 = 1;
+    unsafe { __setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, _address_of<i32>(optval), 4); };
+  }
+
+  // struct addrinfo: macOS puts ai_canonname before ai_addr, so ai_addr is
+  // the 5th pointer-sized slot (byte 32). The full layout is documented at
+  // the getaddrinfo declaration in sys.sun.
+  const ADDRINFO_ADDR_INDEX: i64 = 4;
+}

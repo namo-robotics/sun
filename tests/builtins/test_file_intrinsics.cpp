@@ -3,7 +3,7 @@
 // Drives __file_open / __file_write / __file_read / __file_close, __lseek,
 // __fsync, __ftruncate, __unlink, __rename, __mkdir and __rmdir with no
 // stdlib loaded, and checks the effect on disk from C++. The std.io File
-// class built on top of them is tested in stdlib/io_tests.sun.
+// class built on top of them is tested in stdlib/std/io/io_tests.sun.
 
 #include <gtest/gtest.h>
 #include <unistd.h>

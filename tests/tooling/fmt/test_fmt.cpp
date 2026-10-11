@@ -725,6 +725,16 @@ std::vector<std::filesystem::path> corpusFiles() {
       if (entry.path().extension() == ".sun") files.push_back(entry.path());
     }
   }
+  // Namespace directories replace the former flat stdlib source layout.
+  if (std::filesystem::exists("stdlib/std")) {
+    for (const auto& entry :
+         std::filesystem::recursive_directory_iterator("stdlib/std")) {
+      if (entry.path().extension() == ".sun" &&
+          entry.path().parent_path().filename() != "bindings") {
+        files.push_back(entry.path());
+      }
+    }
+  }
   return files;
 }
 

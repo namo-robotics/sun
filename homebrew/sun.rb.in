@@ -24,7 +24,7 @@ class Sun < Formula
     # relative to its own binary, so a Cellar install finds these with no
     # SUN_PATH set.
     (lib/"sun").install Dir["lib/sun/*.moon"]
-    (share/"sun/stdlib").install Dir["share/sun/stdlib/*.sun"]
+    (share/"sun/stdlib").install Dir["share/sun/stdlib/*"]
   end
 
   def caveats

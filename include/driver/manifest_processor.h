@@ -95,6 +95,11 @@ class ManifestProcessor {
   static std::string expandPathVariables(const std::string& input,
                                          const SunConfig* config = nullptr);
 
+  /** Expands path variables, returning nullopt for an undefined variable.
+   * Malformed expressions and dependency resolution errors still fail. */
+  static std::optional<std::string> tryExpandPathVariables(
+      const std::string& input, const SunConfig* config = nullptr);
+
   /**
    * Resolve every entry of a manifest against baseDir. `targetTriple` (the
    * --target value, host when empty) selects which of the manifest's

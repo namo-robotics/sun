@@ -558,8 +558,9 @@ function main() i64 {
         << library[0].filePath;
     EXPECT_EQ(rangeText(readFile(library[0].filePath), library[0]), name);
   };
-  expectStdlib("push(1)", {{"push(1)"}, {"push(2)"}}, "stdlib/vec.sun", "push");
-  expectStdlib("Vec<i64>(", {{"Vec<i64>("}}, "stdlib/vec.sun", "Vec");
+  expectStdlib("push(1)", {{"push(1)"}, {"push(2)"}}, "stdlib/std/vec.sun",
+               "push");
+  expectStdlib("Vec<i64>(", {{"Vec<i64>("}}, "stdlib/std/vec.sun", "Vec");
   // The loop variable is declared in the document itself
   auto item = references("item;");
   ASSERT_EQ(item.size(), 2u) << describe(source, item);

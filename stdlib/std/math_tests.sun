@@ -1,0 +1,120 @@
+// stdlib/std/math_tests.sun - Tests for math.sun (generic math helpers).
+// Replaces the C++ suite Stdlib_Math.
+
+using std;
+
+/** Provides the standard-library declarations implemented in this source file. */
+public module std {
+  /** Groups tests for the math library behavior. */
+  module math_tests {
+    /** Checks min i32. */
+    test_function min_i32() {
+      try std.test.assert_eq(compute_min<i32>(10, 5), 5);
+    }
+
+    /** Checks min i32 reversed. */
+    test_function min_i32_reversed() {
+      try std.test.assert_eq(compute_min<i32>(3, 9), 3);
+    }
+
+    /** Checks min f64. */
+    test_function min_f64() {
+      var result = compute_min<f64>(3.5, 2.1);
+      try std.test.assert(result > 2.0 and result < 2.2, "min_f64 should pick 2.1");
+    }
+
+    /** Checks max i32. */
+    test_function max_i32() {
+      try std.test.assert_eq(compute_max<i32>(10, 5), 10);
+    }
+
+    /** Checks max i64. */
+    test_function max_i64() {
+      var m: i64 = compute_max<i64>(100, 200);
+      try std.test.assert_eq(m, 200);
+    }
+
+    /** Checks abs positive. */
+    test_function abs_positive() {
+      try std.test.assert_eq(compute_abs<i32>(42), 42);
+    }
+
+    /** Checks abs negative. */
+    test_function abs_negative() {
+      try std.test.assert_eq(compute_abs<i32>(-42), 42);
+    }
+
+    /** Checks abs zero. */
+    test_function abs_zero() {
+      try std.test.assert_eq(compute_abs<i32>(0), 0);
+    }
+
+    /** Checks clamp within range. */
+    test_function clamp_within_range() {
+      try std.test.assert_eq(clamp<i32>(5, 0, 10), 5);
+    }
+
+    /** Checks clamp below min. */
+    test_function clamp_below_min() {
+      try std.test.assert_eq(clamp<i32>(-5, 0, 10), 0);
+    }
+
+    /** Checks clamp above max. */
+    test_function clamp_above_max() {
+      try std.test.assert_eq(clamp<i32>(15, 0, 10), 10);
+    }
+
+    /** Checks sign positive. */
+    test_function sign_positive() {
+      try std.test.assert_eq(compute_sign<i32>(42), 1);
+    }
+
+    /** Checks sign negative. */
+    test_function sign_negative() {
+      try std.test.assert_eq(compute_sign<i32>(-42), -1);
+    }
+
+    /** Checks sign zero. */
+    test_function sign_zero() {
+      try std.test.assert_eq(compute_sign<i32>(0), 0);
+    }
+
+    /** Checks in range true. */
+    test_function in_range_true() {
+      try std.test.assert(is_in_range<i32>(5, 0, 10));
+    }
+
+    /** Checks in range at boundary. */
+    test_function in_range_at_boundary() {
+      try std.test.assert(is_in_range<i32>(0, 0, 10), "low end is inside");
+      try std.test.assert(is_in_range<i32>(10, 0, 10), "high end is inside");
+    }
+
+    /** Checks in range false. */
+    test_function in_range_false() {
+      try std.test.assert(not is_in_range<i32>(15, 0, 10));
+    }
+
+    /** Checks combined min max. */
+    test_function combined_min_max() {
+      var a: i32 = 5;
+      var b: i32 = 10;
+      var c: i32 = 3;
+      var m1 = compute_max<i32>(a, b);  // 10
+      var m2 = compute_max<i32>(b, c);  // 10
+      try std.test.assert_eq(compute_min<i32>(m1, m2), 10);
+    }
+
+    /** Checks clamp uses minmax pattern. */
+    test_function clamp_uses_minmax_pattern() {
+      // clamp behaves like compute_max(lo, compute_min(x, hi))
+      var x: i32 = 15;
+      var lo: i32 = 0;
+      var hi: i32 = 10;
+      var clamped = clamp<i32>(x, lo, hi);
+      var manual = compute_max<i32>(lo, compute_min<i32>(x, hi));
+      try std.test.assert_eq(clamped, manual);
+      try std.test.assert_eq(clamped, 10);
+    }
+  }  // module math_tests
+}  // module std
