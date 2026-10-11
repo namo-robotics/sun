@@ -447,3 +447,14 @@ declare function _cpu_avx2_fma() bool;
  * disjoint from output. C is initialized only if beta is nonzero. Computes
  * beta*C followed by increasing-k fused accumulation, without allocation. */
 declare function _gemm_tile_avx2_fma(a: raw_ptr<u8>, b: raw_ptr<u8>, c: raw_ptr<u8>, n: i64, k: i64, beta: f32) void;
+
+/** Accumulates a packed block on a CPU accepted by _cpu_avx2_fma.
+ * Requires unsafe and a successful runtime capability check. rows and cols are
+ * positive multiples of four and sixteen, k is nonnegative, and n >= cols.
+ * A contains successive four-row micro-panels, each with k groups of four
+ * scaled floats. B contains successive eight-column micro-panels, each with
+ * k groups of eight floats. C holds rows writable rows of cols floats, stride n.
+ * All ranges fit their allocations with f32 alignment; inputs are initialized
+ * and disjoint from C. C needs initialization only for nonzero beta. Applies
+ * beta once per output then accumulates in increasing k, without allocation. */
+declare function _gemm_block_avx2_fma(a: raw_ptr<u8>, b: raw_ptr<u8>, c: raw_ptr<u8>, n: i64, k: i64, beta: f32, rows: i64, cols: i64) void;

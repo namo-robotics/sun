@@ -330,7 +330,7 @@ multiplication are not provided by these methods.
 
 `std.linalg.gemm` computes `C = alpha * op(A) * op(B) + beta * C` for
 `Matrix<f32>` and `Matrix<f64>`. Supply an existing two-dimensional destination;
-GEMM does not allocate output or scratch storage.
+GEMM does not allocate output or heap scratch storage.
 
 ```sun
 using std;
@@ -380,20 +380,36 @@ reuse each vector of `B` across four rows of `A`. This applies to `a * b`,
 
 The selected AVX2/FMA path processes panels of up to 128 inner elements and
 128 columns; the portable path uses panels of up to 64 by 64. Both process
-blocks of up to 32 rows. Packing uses bounded stack scratch of 80 KiB, with
+blocks of up to 32 rows. Packing uses bounded stack scratch of 80 KiB plus a
+256-byte edge-output tile, with
 no heap allocation; only active panels are initialized and read. Each output tile
 stays in registers across one inner panel; panels are accumulated in increasing
 order. The portable tile processes four consecutive steps per iteration
 without regrouping additions, then handles any remaining steps. Scratch is local to
 each call, so concurrent calls do not share it.
 
+For complete AVX2/FMA tiles, one specialized function processes each packed
+row-by-column block. It traverses tile rows, then tile columns, retaining the
+existing increasing-k accumulation within each tile. This reduces function calls
+and transitions between baseline and AVX code without adding scratch storage.
+Partial tiles continue to use the separate edge pass.
+
 The first packed panel applies beta while initializing its registers. For
 `beta == 0`, it starts from zero without loading old output values. Later panels
-continue the accumulated result without applying beta again. Remainder rows
-and columns are scaled separately. For zero alpha or an empty inner dimension,
+continue the accumulated result without applying beta again. The portable path
+scales remainder rows and columns separately. For zero alpha or an empty inner dimension,
 GEMM only scales output and does not read inputs.
 
-Remaining four-column groups use the smaller tile kernel. Leftover rows use
+The selected AVX2/FMA path also computes partial tiles. An edge pass reuses the
+packing buffers, initializes missing input lanes to zero, and computes into a
+temporary output tile. Only valid output elements are copied back. With zero
+beta, old output is never read; otherwise only valid elements are copied into
+the temporary tile. Edge panels hold up to 1024 inner elements to reduce packing
+and copy overhead. Matrix storage itself is never padded or accessed out of bounds.
+A single leftover column uses scalar accumulation to avoid padding one column
+to sixteen.
+
+On the portable path, remaining four-column groups use the smaller tile kernel. Leftover rows use
 four-lane SIMD, and leftover columns use scalar arithmetic. Remainder sums
 stay in registers across the inner dimension: output is loaded once after
 scaling and stored once per sum. The final one to three columns share each

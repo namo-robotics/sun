@@ -121,6 +121,7 @@ enum class Intrinsic {
   // =========================================================================
   CpuAvx2Fma,
   GemmTileAvx2Fma,
+  GemmBlockAvx2Fma,
   StackAlloc,
   SimdF32x4Copy,
   SimdF32x4Splat,
@@ -265,6 +266,7 @@ inline Intrinsic getIntrinsic(const std::string& name) {
   // Bit intrinsics
   if (name == "_stack_alloc") return Intrinsic::StackAlloc;
   if (name == "_cpu_avx2_fma") return Intrinsic::CpuAvx2Fma;
+  if (name == "_gemm_block_avx2_fma") return Intrinsic::GemmBlockAvx2Fma;
   if (name == "_gemm_tile_avx2_fma") return Intrinsic::GemmTileAvx2Fma;
   if (name == "_simd_f32x8_copy") return Intrinsic::SimdF32x8Copy;
   if (name == "_simd_f32x8_splat") return Intrinsic::SimdF32x8Splat;
@@ -373,6 +375,7 @@ inline bool isIntrinsic(const std::string& name) {
  */
 inline bool requiresUnsafeBlock(Intrinsic i) {
   switch (i) {
+    case Intrinsic::GemmBlockAvx2Fma:
     case Intrinsic::GemmTileAvx2Fma:
     case Intrinsic::StackAlloc:
     case Intrinsic::SimdF32x8Copy:

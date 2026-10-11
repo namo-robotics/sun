@@ -277,6 +277,7 @@ TEST(Builtins_SIMD, runtime_dispatch_ir) {
     function compute(a: raw_ptr<u8>, b: raw_ptr<u8>, c: raw_ptr<u8>) void {
       if (_cpu_avx2_fma()) {
         unsafe { _gemm_tile_avx2_fma(a, b, c, 16, 32, 0.0f32); };
+        unsafe { _gemm_block_avx2_fma(a, b, c, 32, 32, 0.0f32, 8, 32); };
       }
     }
   )");
@@ -284,8 +285,13 @@ TEST(Builtins_SIMD, runtime_dispatch_ir) {
   auto* kernel = module.getFunction("__sun_gemm_tile_avx2_fma");
   ASSERT_NE(kernel, nullptr);
   EXPECT_TRUE(kernel->hasFnAttribute(llvm::Attribute::NoInline));
+  auto* blockKernel = module.getFunction("__sun_gemm_block_avx2_fma");
+  ASSERT_NE(blockKernel, nullptr);
+  EXPECT_TRUE(blockKernel->hasFnAttribute(llvm::Attribute::NoInline));
   if (module.getTargetTriple().starts_with("x86_64")) {
     EXPECT_EQ(kernel->getFnAttribute("target-features").getValueAsString(),
+              "+avx,+avx2,+fma,-avx512f");
+    EXPECT_EQ(blockKernel->getFnAttribute("target-features").getValueAsString(),
               "+avx,+avx2,+fma,-avx512f");
     auto* detection = module.getFunction("__sun_cpu_avx2_fma");
     ASSERT_NE(detection, nullptr);
@@ -301,6 +307,7 @@ TEST(Builtins_SIMD, runtime_dispatch_ir) {
   } else {
     EXPECT_EQ(module.getFunction("__sun_cpu_avx2_fma"), nullptr);
     EXPECT_FALSE(kernel->hasFnAttribute("target-features"));
+    EXPECT_FALSE(blockKernel->hasFnAttribute("target-features"));
   }
 }
 
@@ -316,6 +323,69 @@ TEST(Builtins_SIMD, packed_tile_requires_unsafe) {
     }
   )"),
                                 "unsafe");
+}
+
+/** Block kernels retain the unchecked-storage safety boundary. */
+TEST(Builtins_SIMD, packed_block_requires_unsafe) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeString(R"(
+    /** Attempts block execution without the required unsafe boundary. */
+    function main() i32 {
+      var p: raw_ptr<u8> = null;
+      _gemm_block_avx2_fma(p, p, p, 32, 3, 0.0f32, 8, 32);
+      return 0;
+    }
+  )"),
+                                "unsafe");
+}
+
+/** Checks multiple packed tiles, odd k, beta modes, and untouched row padding.
+ */
+TEST(Builtins_SIMD, packed_block_output_bounds) {
+  EXPECT_EQ(sun::driver::executeString(R"(
+    /** Uses guarded output to check the packed-block storage contract. */
+    function main() i32 {
+      if (not _cpu_avx2_fma()) { return 0; }
+      unsafe {
+        var a = _stack_alloc(96);
+        var b = _stack_alloc(384);
+        var storage = _stack_alloc(1128);
+        var c = _ptr_offset(storage, 4);
+        for (var i: i64 = 0; i < 282; i = i + 1) {
+          _store<f32>(storage, i, 123.0f32);
+        }
+        for (var i: i64 = 0; i < 8; i = i + 1) {
+          for (var p: i64 = 0; p < 3; p = p + 1) {
+            _store<f32>(a, (i / 4) * 12 + p * 4 + i % 4, _convert<f32>(i + 1));
+          }
+          for (var j: i64 = 0; j < 32; j = j + 1) {
+            _store<f32>(c, i * 35 + j, _bitcast<f32>(2143289344u32));
+          }
+        }
+        for (var j: i64 = 0; j < 32; j = j + 1) {
+          for (var p: i64 = 0; p < 3; p = p + 1) {
+            _store<f32>(b, (j / 8) * 24 + p * 8 + j % 8, _convert<f32>((j + 1) * (p + 1)));
+          }
+        }
+        for (var mode: i64 = 0; mode < 3; mode = mode + 1) {
+          var beta: f32 = 0.0f32;
+          var factor: f32 = 6.0f32;
+          if (mode == 1) { beta = -0.5f32; factor = 3.0f32; }
+          if (mode == 2) { beta = 1.0f32; factor = 9.0f32; }
+          _gemm_block_avx2_fma(a, b, c, 35, 3, beta, 8, 32);
+          for (var i: i64 = 0; i < 8; i = i + 1) {
+            for (var j: i64 = 0; j < 35; j = j + 1) {
+              var expected: f32 = 123.0f32;
+              if (j < 32) { expected = factor * _convert<f32>((i + 1) * (j + 1)); }
+              if (_load<f32>(c, i * 35 + j) != expected) { return 1; }
+            }
+          }
+          if (_load<f32>(storage, 0) != 123.0f32 or _load<f32>(storage, 281) != 123.0f32) { return 2; }
+        }
+      };
+      return 0;
+    }
+  )"),
+            0);
 }
 
 /** Compares runtime dispatch with LLVM's independent host feature detection. */

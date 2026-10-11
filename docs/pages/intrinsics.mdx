@@ -891,3 +891,14 @@ The kernel applies beta, then accumulates in increasing inner-dimension order
 with vector FMA. It uses a scalar calling convention and a separate, non-inlined
 function with AVX2/FMA target attributes, keeping these instructions out of
 baseline callers. Prefer the validated `std.linalg.gemm` API.
+
+`_gemm_block_avx2_fma(a, b, c, n, k, beta, rows, cols)` uses the same isolated
+arithmetic for an entire packed block. `rows` and `cols` must be positive
+multiples of four and sixteen, and `n >= cols`. A contains successive four-row
+micro-panels, each holding `k` groups of four scaled floats; B contains successive
+eight-column micro-panels, each holding `k` groups of eight floats. C holds
+`rows` writable rows of `cols` floats with stride `n`. The same capability,
+alignment, initialization, bounds, and disjoint-output requirements apply.
+The kernel applies beta once per output and preserves increasing-k accumulation.
+Keeping the tile loops inside the targeted function avoids a separate call and
+AVX-to-baseline transition for every tile. It does not allocate scratch storage.

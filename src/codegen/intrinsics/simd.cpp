@@ -122,23 +122,29 @@ llvm::Value* IntrinsicsGenerator::codegenCpuAvx2Fma(const CallExprAST& expr) {
 }
 
 llvm::Value* IntrinsicsGenerator::codegenGemmTileAvx2Fma(
-    const CallExprAST& expr) {
-  if (expr.getArgs().size() != 6)
-    sun::support::logAndThrowError("_gemm_tile_avx2_fma expects six arguments");
-  llvm::SmallVector<llvm::Value*, 6> args;
+    const CallExprAST& expr, bool block) {
+  if (expr.getArgs().size() != (block ? 8 : 6))
+    sun::support::logAndThrowError("Invalid packed GEMM argument count");
+  llvm::SmallVector<llvm::Value*, 8> args;
   for (const auto& arg : expr.getArgs()) args.push_back(codegen(*arg));
-  auto* fn = module->getFunction("__sun_gemm_tile_avx2_fma");
+  const auto* name =
+      block ? "__sun_gemm_block_avx2_fma" : "__sun_gemm_tile_avx2_fma";
+  auto* fn = module->getFunction(name);
   if (!fn) {
     auto& context = ctx.getContext();
     llvm::IRBuilder<> b(context);
     auto* f32 = b.getFloatTy();
     auto* vec = llvm::FixedVectorType::get(f32, 8);
     auto* ptr = llvm::PointerType::getUnqual(context);
-    auto* type = llvm::FunctionType::get(
-        b.getVoidTy(), {ptr, ptr, ptr, b.getInt64Ty(), b.getInt64Ty(), f32},
-        false);
-    fn = llvm::Function::Create(type, llvm::GlobalValue::InternalLinkage,
-                                "__sun_gemm_tile_avx2_fma", module);
+    llvm::SmallVector<llvm::Type*, 8> parameters = {
+        ptr, ptr, ptr, b.getInt64Ty(), b.getInt64Ty(), f32};
+    if (block) {
+      parameters.push_back(b.getInt64Ty());
+      parameters.push_back(b.getInt64Ty());
+    }
+    auto* type = llvm::FunctionType::get(b.getVoidTy(), parameters, false);
+    fn = llvm::Function::Create(type, llvm::GlobalValue::InternalLinkage, name,
+                                module);
     // Prevent AVX instructions from escaping into a baseline caller through
     // inlining.
     fn->addFnAttr(llvm::Attribute::NoInline);
@@ -148,9 +154,9 @@ llvm::Value* IntrinsicsGenerator::codegenGemmTileAvx2Fma(
       fn->addFnAttr("target-cpu", "x86-64");
       fn->addFnAttr("target-features", "+avx,+avx2,+fma,-avx512f");
     }
-    auto* a = fn->getArg(0);
-    auto* inputB = fn->getArg(1);
-    auto* c = fn->getArg(2);
+    llvm::Value* a = fn->getArg(0);
+    llvm::Value* inputB = fn->getArg(1);
+    llvm::Value* c = fn->getArg(2);
     auto* n = fn->getArg(3);
     auto* k = fn->getArg(4);
     auto* beta = fn->getArg(5);
@@ -166,7 +172,41 @@ llvm::Value* IntrinsicsGenerator::codegenGemmTileAvx2Fma(
     llvm::Value* scaled[8];
     llvm::PHINode* initial[8];
     llvm::PHINode* sums[8];
-    b.SetInsertPoint(entry);
+    llvm::BasicBlock* columns = nullptr;
+    llvm::PHINode* column = nullptr;
+    if (block) {
+      // Keep all tiles within one targeted function so no baseline/AVX
+      // transition is needed between tiles in the packed block.
+      auto* begin = llvm::BasicBlock::Create(context, "block.entry", fn, entry);
+      auto* rows = llvm::BasicBlock::Create(context, "rows", fn);
+      auto* rowBody = llvm::BasicBlock::Create(context, "row.body", fn);
+      auto* nextRow = llvm::BasicBlock::Create(context, "row.next", fn);
+      columns = llvm::BasicBlock::Create(context, "columns", fn);
+      auto* exit = llvm::BasicBlock::Create(context, "exit", fn);
+      b.SetInsertPoint(begin);
+      b.CreateBr(rows);
+      b.SetInsertPoint(rows);
+      auto* row = b.CreatePHI(b.getInt64Ty(), 2);
+      row->addIncoming(b.getInt64(0), begin);
+      b.CreateCondBr(b.CreateICmpSLT(row, fn->getArg(6)), rowBody, exit);
+      b.SetInsertPoint(rowBody);
+      b.CreateBr(columns);
+      b.SetInsertPoint(columns);
+      column = b.CreatePHI(b.getInt64Ty(), 2);
+      column->addIncoming(b.getInt64(0), rowBody);
+      b.CreateCondBr(b.CreateICmpSLT(column, fn->getArg(7)), entry, nextRow);
+      b.SetInsertPoint(nextRow);
+      row->addIncoming(b.CreateAdd(row, b.getInt64(4)), nextRow);
+      b.CreateBr(rows);
+      b.SetInsertPoint(exit);
+      b.CreateRetVoid();
+      b.SetInsertPoint(entry);
+      a = b.CreateGEP(f32, a, b.CreateMul(row, k));
+      inputB = b.CreateGEP(f32, inputB, b.CreateMul(column, k));
+      c = b.CreateGEP(f32, c, b.CreateAdd(b.CreateMul(row, n), column));
+    } else {
+      b.SetInsertPoint(entry);
+    }
     for (unsigned i = 0; i < 8; ++i) {
       auto* offset = b.CreateAdd(b.CreateMul(n, b.getInt64(i / 2)),
                                  b.getInt64((i % 2) * 8));
@@ -236,7 +276,12 @@ llvm::Value* IntrinsicsGenerator::codegenGemmTileAvx2Fma(
     b.SetInsertPoint(done);
     for (unsigned i = 0; i < 8; ++i)
       b.CreateAlignedStore(sums[i], output[i], llvm::Align(4));
-    b.CreateRetVoid();
+    if (block) {
+      column->addIncoming(b.CreateAdd(column, b.getInt64(16)), done);
+      b.CreateBr(columns);
+    } else {
+      b.CreateRetVoid();
+    }
   }
   return ctx.builder->CreateCall(fn, args);
 }

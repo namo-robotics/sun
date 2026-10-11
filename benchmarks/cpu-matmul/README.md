@@ -125,7 +125,31 @@ increasing accumulation order and a cleanup iteration for odd inner dimensions.
 This is an internal LLVM optimization hint, not a new user option.
 
 Separate experiments with deeper inner panels, wider column panels, and larger
-row blocks produced mixed gains, so panel sizes remain unchanged. Further work
-should measure AVX2/FMA edge kernels for irregular shapes and packing or per-tile
-overhead for square shapes. Closing the remaining gap needs gains across shapes,
-not just a faster result for one matrix size.
+row blocks produced mixed gains, so full-tile panel sizes remain unchanged.
+
+The selected AVX2/FMA path now handles partial tiles through a separate edge
+pass. It reuses packing scratch with deeper inner panels, zero-fills missing
+input lanes, and copies only valid output elements through a small stack tile.
+Complete tiles retain their existing packing loop. An earlier implementation
+added edge checks to that loop and regressed several aligned and single-edge
+cases, so it was not retained. A single leftover column retains scalar
+accumulation to avoid excessive padding. Alternating before/after measurements
+showed roughly 15–17% higher throughput for 127×129×131 and roughly 10% for
+255×257×259 with the separate edge pass; these are local measurements, not
+performance guarantees. Further square-product tuning should measure
+packing and per-tile overhead; performance remains dependent on CPU and shape.
+
+## Packed-block execution
+
+The AVX2/FMA path processes complete packed blocks in one specialized function,
+instead of calling it separately for every 4×16 tile. The generated block kernel
+has no internal calls or vector stack accesses in the inspected build and emits
+one `vzeroupper` on exit. Packing layout, scratch capacity, beta handling, and
+per-output accumulation order are unchanged.
+
+Alternating comparisons against saved tile-call binaries favored block execution
+by roughly 2–5% on the measured medium-size products; the 1024 case showed little
+reliable change. Both row-first and column-first tile orders were tested. The
+column-first order did not consistently improve results, so row-first was kept.
+Absolute throughput varied substantially between runs; use alternating comparisons
+to assess a change rather than comparing charts collected at different times.

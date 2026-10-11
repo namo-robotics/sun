@@ -86,5 +86,6 @@ a fused software fallback. The fallback preserves rounding but can be slower.
 
 [Matrix multiplication](/matrices#gemm-matrix-multiplication) uses both widths,
 including portable packed 4×8 tiles for larger eligible `f32` products and
-an automatically selected, isolated AVX2/FMA 4×16 kernel. The portable path uses
+an automatically selected, isolated AVX2/FMA kernel that processes complete
+packed blocks using 4×16 tiles. Partial tiles use a separate edge pass. The portable path uses
 `mul_add` automatically so hardware fusion needs no GEMM option.

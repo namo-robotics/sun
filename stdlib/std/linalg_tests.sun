@@ -271,8 +271,8 @@ public module std.linalg_tests {
   /** Checks packing thresholds, cache-panel edges, and tails against scalar dot products. */
   test_function packed_panel_boundaries() {
     var alloc = make_heap_allocator();
-    var shapes: array<i64, 15, 3> = [[15i64, 31i64, 15i64], [16i64, 32i64, 16i64], [17i64, 63i64, 23i64], [33i64, 65i64, 65i64], [36i64, 129i64, 72i64], [32i64, 64i64, 64i64], [19i64, 66i64, 28i64], [20i64, 33i64, 31i64], [20i64, 33i64, 32i64], [21i64, 33i64, 33i64], [20i64, 127i64, 127i64], [20i64, 128i64, 128i64], [21i64, 129i64, 129i64], [32i64, 64i64, 127i64], [32i64, 64i64, 128i64]];
-    for (var shape: i64 = 0; shape < 15; shape = shape + 1) {
+    var shapes: array<i64, 18, 3> = [[15i64, 31i64, 15i64], [16i64, 32i64, 16i64], [17i64, 63i64, 23i64], [33i64, 65i64, 65i64], [36i64, 129i64, 72i64], [32i64, 64i64, 64i64], [19i64, 66i64, 28i64], [20i64, 33i64, 31i64], [20i64, 33i64, 32i64], [21i64, 33i64, 33i64], [20i64, 127i64, 127i64], [20i64, 128i64, 128i64], [21i64, 129i64, 129i64], [32i64, 64i64, 127i64], [32i64, 64i64, 128i64], [21i64, 1023i64, 19i64], [22i64, 1024i64, 20i64], [23i64, 1025i64, 31i64]];
+    for (var shape: i64 = 0; shape < 18; shape = shape + 1) {
       var m = shapes[shape, 0];
       var k = shapes[shape, 1];
       var n = shapes[shape, 2];
@@ -329,6 +329,72 @@ public module std.linalg_tests {
               }
               try std.test.assert_eq(c[i, j], expected);
             }
+          }
+        }
+      }
+    }
+  }
+
+  /** Checks every partial wide-tile shape, transposed A, and output scaling.
+   * Products exceed the dispatch threshold and use exact dyadic arithmetic. */
+  test_function dispatched_edge_shapes() {
+    var alloc = make_heap_allocator();
+    for (var tail_rows: i64 = 1; tail_rows <= 3; tail_rows = tail_rows + 1) {
+      for (var tail_cols: i64 = 1; tail_cols <= 15; tail_cols = tail_cols + 1) {
+        var m = 64 + tail_rows;
+        var n = 64 + tail_cols;
+        var k: i64 = 65;
+        var transposed = tail_cols % 2 == 0;
+        var rows = m;
+        var cols = k;
+        var opa = Transpose.None;
+        if (transposed) {
+          rows = k;
+          cols = m;
+          opa = Transpose.Transpose;
+        }
+        var a = Matrix<f32>(alloc, [rows, cols]);
+        var b = Matrix<f32>(alloc, [k, n]);
+        var c = Matrix<f32>(alloc, [m, n]);
+        for (var i: i64 = 0; i < rows; i = i + 1) {
+          for (var j: i64 = 0; j < cols; j = j + 1) {
+            a[i, j] = _convert<f32>((i + j) % 7 - 3) / 4.0f32;
+          }
+        }
+        for (var p: i64 = 0; p < k; p = p + 1) {
+          for (var j: i64 = 0; j < n; j = j + 1) {
+            b[p, j] = _convert<f32>((p + j) % 5 - 2) / 8.0f32;
+          }
+        }
+        var beta: f32 = 0.0f32;
+        if (tail_cols % 3 == 1) {
+          beta = 1.0f32;
+        }
+        if (tail_cols % 3 == 2) {
+          beta = -0.5f32;
+        }
+        for (var i: i64 = 0; i < m; i = i + 1) {
+          for (var j: i64 = 0; j < n; j = j + 1) {
+            c[i, j] = _convert<f32>(i - j);
+            if (beta == 0.0f32) {
+              c[i, j] = _bitcast<f32>(2143289344u32);
+            }
+          }
+        }
+        try expect_ok(c.gemm(-1.5f32, a, opa, b, Transpose.None, beta));
+        for (var i: i64 = 0; i < m; i = i + 1) {
+          for (var j: i64 = 0; j < n; j = j + 1) {
+            var expected = beta * _convert<f32>(i - j);
+            for (var p: i64 = 0; p < k; p = p + 1) {
+              var av: f32 = 0.0f32;
+              if (transposed) {
+                av = a[p, i];
+              } else {
+                av = a[i, p];
+              }
+              expected = expected + (-1.5f32 * av) * b[p, j];
+            }
+            try std.test.assert_eq(c[i, j], expected);
           }
         }
       }

@@ -194,6 +194,8 @@ const std::map<std::string, BuiltinEmitter>& builtinTable() {
       // Bit intrinsics
       {"_cpu_avx2_fma",
        [](auto& g, const auto& e) { return g.codegenCpuAvx2Fma(e); }},
+      {"_gemm_block_avx2_fma",
+       [](auto& g, const auto& e) { return g.codegenGemmTileAvx2Fma(e, true); }},
       {"_gemm_tile_avx2_fma",
        [](auto& g, const auto& e) { return g.codegenGemmTileAvx2Fma(e); }},
       {"_stack_alloc",
