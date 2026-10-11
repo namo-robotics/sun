@@ -439,8 +439,9 @@ public module std.linalg {
   }
 
   /** Accumulates remaining f32 rows and columns with one output load/store.
-   * Inputs and initialized output must be disjoint and caller-validated. A uses
-   * ar/ac strides, B has contiguous columns and stride br, and C has stride n.
+   * Inputs and output are initialized and validated; output is disjoint from
+   * inputs. A uses ar/ac strides, B has contiguous columns and stride br,
+   * and C has stride n.
    * tiled_rows/cols bound the completed rectangle. Each sum follows increasing k. */
   function multiply_remainders(alpha: f32, a: raw_ptr<u8>, ar: i64, ac: i64, b: raw_ptr<u8>, br: i64, c: raw_ptr<u8>, m: i64, n: i64, k: i64, tiled_rows: i64, tiled_cols: i64) void {
     for (var i: i64 = 0; i < m; i = i + 1) {
@@ -502,60 +503,44 @@ public module std.linalg {
     var c = output.raw_data();
     var m = output.dim(0);
     var n = output.dim(1);
-    var vector_enabled = false;
-    var tiled_rows: i64 = 0;
-    var tiled_cols: i64 = 0;
-    var packed_cols: i64 = 0;
     if (_is<f32>(alpha) and bc == 1 and n >= 4) {
-      vector_enabled = true;
-      tiled_rows = m - m % 4;
-      tiled_cols = n - n % 4;
+      var tiled_rows = m - m % 4;
+      var tiled_cols = n - n % 4;
+      var packed_cols: i64 = 0;
+      var vector_alpha = _convert<f32>(alpha);
+      var vector_beta = _convert<f32>(beta);
       if (m >= 16 and n >= 16 and k >= 32) {
         packed_cols = n - n % 8;
+        var minimum_products: i64 = 262144;
+        // Divide the work estimate to avoid overflow. Validated output bounds
+        // guarantee that the positive tiled_rows * packed_cols fits its size.
+        if (k > (minimum_products - 1) / (tiled_rows * packed_cols)) {
+          if (_cpu_avx2_fma()) {
+            multiply_packed(vector_alpha, a, ar, ac, b, br, c, n, k, tiled_rows, n - n % 16, vector_beta, true, m);
+            return;
+          }
+        }
       }
-    }
-    var wide = false;
-    if (packed_cols != 0) {
-      // Divide the work estimate to avoid overflow. Nonempty validated output
-      // guarantees that tiled_rows * packed_cols fits the element count.
-      if (k > 262143 / (tiled_rows * packed_cols)) {
-        wide = _cpu_avx2_fma();
-      }
-    }
-    if (wide) {
-      multiply_packed(_convert<f32>(alpha), a, ar, ac, b, br, c, n, k, tiled_rows, n - n % 16, _convert<f32>(beta), true, m);
-      return;
-    }
-    if (packed_cols != 0) {
-      scale_remainder<T>(output, beta, tiled_rows, packed_cols);
-    } else {
-      scale_output<T>(output, beta);
-    }
-    if (vector_enabled) {
       if (packed_cols != 0) {
-        multiply_packed(_convert<f32>(alpha), a, ar, ac, b, br, c, n, k, tiled_rows, packed_cols, _convert<f32>(beta), false, m);
+        scale_remainder<T>(output, beta, tiled_rows, packed_cols);
+        multiply_packed(vector_alpha, a, ar, ac, b, br, c, n, k, tiled_rows, packed_cols, vector_beta, false, m);
+      } else {
+        scale_output<T>(output, beta);
       }
-      multiply_tiles(_convert<f32>(alpha), a, ar, ac, b, br, c, n, k, tiled_rows, tiled_cols, packed_cols);
-      if (tiled_rows == m and tiled_cols == n) {
-        return;
+      multiply_tiles(vector_alpha, a, ar, ac, b, br, c, n, k, tiled_rows, tiled_cols, packed_cols);
+      if (tiled_rows != m or tiled_cols != n) {
+        multiply_remainders(vector_alpha, a, ar, ac, b, br, c, m, n, k, tiled_rows, tiled_cols);
       }
-      multiply_remainders(_convert<f32>(alpha), a, ar, ac, b, br, c, m, n, k, tiled_rows, tiled_cols);
       return;
     }
+    scale_output<T>(output, beta);
     for (var i: i64 = 0; i < m; i = i + 1) {
       var arow = i * ar;
       var crow = i * n;
-      var first_column: i64 = 0;
-      if (i < tiled_rows) {
-        first_column = tiled_cols;
-      }
-      if (first_column == n) {
-        continue;
-      }
       for (var p: i64 = 0; p < k; p = p + 1) {
         var scaled: T = unsafe { alpha * _load<T>(a, arow + p * ac); };
         var brow = p * br;
-        var j = first_column;
+        var j: i64 = 0;
         while (j < n) {
           unsafe {
             _store<T>(c, crow + j, _load<T>(c, crow + j) + scaled * _load<T>(b, brow + j * bc));

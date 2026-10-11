@@ -146,7 +146,7 @@ class IntrinsicsGenerator {
   /** Checks CPU and OS support for an isolated AVX2/FMA kernel at runtime. */
   llvm::Value* codegenCpuAvx2Fma(const CallExprAST& expr);
   /** Emits an isolated packed GEMM tile or block kernel with a scalar ABI. */
-  llvm::Value* codegenGemmTileAvx2Fma(const CallExprAST& expr, bool block = false);
+  llvm::Value* codegenGemmAvx2Fma(const CallExprAST& expr, bool block = false);
 
   /**
    * Bit intrinsics (in intrinsics/bits.cpp)

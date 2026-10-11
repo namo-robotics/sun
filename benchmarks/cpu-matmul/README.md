@@ -51,8 +51,8 @@ starting at zero. Results are machine-specific; no speedup threshold is imposed.
 
 Both Sun variants compile the current standard library sources from temporary
 copies. The scalar copy replaces only GEMM's explicit SIMD dispatch condition with
-`false`; it disables both packed tiles, direct 4×4 tiles, and the SIMD row remainder
-path, retaining the scalar loop. The runner fails if it cannot
+`false`; it disables packed tiles, direct 4×4 tiles, and SIMD remainder
+handling, retaining the scalar loop. The runner fails if it cannot
 locate that exact branch. Tracked source files and precompiled bundles are not
 modified.
 
@@ -93,63 +93,24 @@ Consequently the OpenBLAS comparison measures the full implementations, not just
 instruction width. Close background workloads and use repeated pinned runs for
 performance conclusions.
 
-The runtime-selected kernel uses eight independent vector accumulators, with
-no spills in the measured inner loop. CPU detection checks AVX2, FMA, OSXSAVE,
-and enabled XMM/YMM state before entering the non-inlined specialized function.
-Tests also exercise emulated CPUs missing these features. The portable fallback
-retains 4×8 tiles; the selected path uses 4×16 tiles and larger cache panels.
-The work threshold avoids dispatch overhead on small products. Panel and tile
-choices remain internal implementation details, not configuration options.
+## Kernel implementation
 
-## Packing and remainder measurements
+Eligible products use the isolated AVX2/FMA kernel after CPU and OS capability
+checks. Each call processes a packed block in row-first tile order, using eight
+vector accumulators per 4×16 tile and two-step inner-loop unrolling. Accumulation
+remains in increasing inner-dimension order. Unsupported CPUs use portable 4×8
+tiles; small products skip the capability check.
 
-Coarse phase timers in temporary instrumented sources separated A packing,
-B packing, and packed-tile execution. On the measured machine, packing accounted
-for roughly 9–12% of square-product time. Remainder work and dispatch accounted
-for about 47% of the 127×129×131 case before remainder sums were kept in registers.
-These diagnostic timings include instrumentation overhead; the normal benchmark
-and chart use uninstrumented code.
+An edge pass reuses the packing buffers, zero-fills missing input lanes, and
+copies only valid output elements through a stack tile. A single leftover column
+uses scalar accumulation to avoid excessive padding. All paths use bounded stack
+scratch and apply beta only on the first inner panel. See the
+[matrix documentation](../../docs/pages/matrices.mdx) for layout and initialization
+requirements.
 
-The remainder kernels now load and store each output sum once, preserve
-increasing inner-dimension order, and share A loads across the last one to three
-columns. An alternative loop order that reused packed A across column panels
-showed mixed gains while increasing B packing, so the existing packing order
-was retained. Performance measurements remain specific to CPU and shape.
-
-Further comparisons alternated the current kernel with inner-loop unroll factors
-of two, four, and eight across square and irregular products. A factor of two
-improved the measured 128–512 square cases by roughly 3–6% and the irregular
-cases by roughly 3–4%; it did not improve the 1024 case. Larger factors were less
-consistent. The AVX2/FMA kernel therefore requests two-step unrolling, retaining
-increasing accumulation order and a cleanup iteration for odd inner dimensions.
-This is an internal LLVM optimization hint, not a new user option.
-
-Separate experiments with deeper inner panels, wider column panels, and larger
-row blocks produced mixed gains, so full-tile panel sizes remain unchanged.
-
-The selected AVX2/FMA path now handles partial tiles through a separate edge
-pass. It reuses packing scratch with deeper inner panels, zero-fills missing
-input lanes, and copies only valid output elements through a small stack tile.
-Complete tiles retain their existing packing loop. An earlier implementation
-added edge checks to that loop and regressed several aligned and single-edge
-cases, so it was not retained. A single leftover column retains scalar
-accumulation to avoid excessive padding. Alternating before/after measurements
-showed roughly 15–17% higher throughput for 127×129×131 and roughly 10% for
-255×257×259 with the separate edge pass; these are local measurements, not
-performance guarantees. Further square-product tuning should measure
-packing and per-tile overhead; performance remains dependent on CPU and shape.
-
-## Packed-block execution
-
-The AVX2/FMA path processes complete packed blocks in one specialized function,
-instead of calling it separately for every 4×16 tile. The generated block kernel
-has no internal calls or vector stack accesses in the inspected build and emits
-one `vzeroupper` on exit. Packing layout, scratch capacity, beta handling, and
-per-output accumulation order are unchanged.
-
-Alternating comparisons against saved tile-call binaries favored block execution
-by roughly 2–5% on the measured medium-size products; the 1024 case showed little
-reliable change. Both row-first and column-first tile orders were tested. The
-column-first order did not consistently improve results, so row-first was kept.
-Absolute throughput varied substantially between runs; use alternating comparisons
-to assess a change rather than comparing charts collected at different times.
+Performance depends on CPU and shape. For tuning comparisons, alternate the old
+and new implementations on identical inputs and inspect generated assembly for
+spills and unintended calls. Avoid drawing conclusions from charts collected at
+different times: CPU frequency and background activity can substantially change
+absolute throughput. The runner's IR audits and per-sample output checks remain
+part of every comparison.

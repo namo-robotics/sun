@@ -468,8 +468,7 @@ const moon::ModuleMetadata* MoonReader::getMetadata(
     error_ = "Failed to parse metadata protobuf for: " + moduleKey;
     return nullptr;
   }
-  return metadataCache_.emplace(moduleKey, std::move(metadata))
-      .first->second.get();
+  return metadataCache_.emplace(moduleKey, std::move(metadata)).first->second.get();
 }
 
 std::string MoonReader::getBitcodeId(const std::string& moduleKey) const {
