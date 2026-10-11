@@ -205,6 +205,7 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
   }
   testDriver->setMoonImports(job.moonImports);
   testDriver->setTestHandling(Driver::TestHandling::Compile);
+  testDriver->setExecutable(true);
 
   compileInputs(*testDriver, job);
 
@@ -272,6 +273,7 @@ int compileEntrypoint(const CompileJob& job) {
     }
     driver->setMoonImports(job.moonImports);
     driver->setDumpProtoSun(job.dumpProtoSun);
+    driver->setExecutable(!job.emitObjOnly);
 
     compileInputs(*driver, job);
 

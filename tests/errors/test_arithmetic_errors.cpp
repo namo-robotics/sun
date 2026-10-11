@@ -1,8 +1,13 @@
 /** Verifies trapping operators and recoverable arithmetic results. */
 #include <gtest/gtest.h>
+#include <sys/resource.h>
 #include <sys/wait.h>
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
 #include <unistd.h>
 
+#include <array>
 #include <csignal>
 #include <cstdlib>
 #include <filesystem>
@@ -12,72 +17,94 @@
 
 using sun::driver::executeString;
 
+/** Prevents expected child crashes from producing dumps or crash-report jobs.
+ */
+static void disableExpectedCoreDump() {
+  const rlimit limit{0, 0};
+  if (setrlimit(RLIMIT_CORE, &limit) != 0) _exit(125);
+#ifdef __linux__
+  // Piped Linux core handlers can ignore RLIMIT_CORE; disable dumping as well.
+  if (prctl(PR_SET_DUMPABLE, 0L, 0L, 0L, 0L) != 0) _exit(125);
+#endif
+}
+
 /** Recognizes the signals emitted by LLVM traps on supported native targets. */
 static bool arithmeticTrapped(int status) {
   return WIFSIGNALED(status) &&
          (WTERMSIG(status) == SIGILL || WTERMSIG(status) == SIGTRAP);
 }
 
+/** Selects one integer type and optimization setting for trap coverage. */
+class Errors_ArithmeticTraps : public ::testing::TestWithParam<int> {};
+
+/** Selects a signed integer type and optimization setting for overflow traps.
+ */
+class Errors_ArithmeticOverflow : public ::testing::TestWithParam<int> {};
+
 /** Zero divisors trap for every integer width and assignment form. */
-TEST(Errors_Arithmetic, zero_divisors_trap) {
-  for (bool optimize : {false, true}) {
-    for (const std::string type :
-         {"i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64"}) {
-      for (const std::string op : {"/", "%", "/=", "%="}) {
-        std::string body = op.size() == 2 ? "a " + op + " b; return a;"
-                                          : "return a " + op + " b;";
-        std::string source =
-            "/** Performs ordinary arithmetic. */\nfunction apply(a: " + type +
-            ", b: " + type + ") " + type + " { " + body +
-            " }\n"
-            "/** Supplies a runtime zero divisor. */\nfunction main() i32 { "
-            "return _convert<i32>(apply(7, 0)); }";
-        SCOPED_TRACE(type + op);
-        EXPECT_EXIT(
-            {
-              auto driver = sun::driver::Driver::createForJIT("arithmetic_trap",
-                                                              false, optimize);
-              driver->executeString(source);
-              _exit(0);
-            },
-            arithmeticTrapped, "");
-      }
-    }
+TEST_P(Errors_ArithmeticTraps, zero_divisors_trap) {
+  const bool optimize = GetParam() >= 8;
+  const std::string type = std::array{
+      "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64"}[GetParam() % 8];
+  for (const std::string op : {"/", "%", "/=", "%="}) {
+    std::string body =
+        op.size() == 2 ? "a " + op + " b; return a;" : "return a " + op + " b;";
+    std::string source =
+        "/** Performs ordinary arithmetic. */\nfunction apply(a: " + type +
+        ", b: " + type + ") " + type + " { " + body +
+        " }\n"
+        "/** Supplies a runtime zero divisor. */\nfunction main() i32 { "
+        "return _convert<i32>(apply(7, 0)); }";
+    SCOPED_TRACE(type + op);
+    EXPECT_EXIT(
+        {
+          disableExpectedCoreDump();
+          auto driver = sun::driver::Driver::createForJIT("arithmetic_trap",
+                                                          false, optimize);
+          driver->executeString(source);
+          _exit(0);
+        },
+        arithmeticTrapped, "");
   }
 }
 
 /** Signed overflow traps for division and remainder instead of producing
  * poison. */
-TEST(Errors_Arithmetic, signed_overflow_traps) {
-  for (bool optimize : {false, true}) {
-    for (const std::string type : {"i8", "i16", "i32", "i64"}) {
-      int width = std::stoi(type.substr(1));
-      std::string minimum = width == 64
-                                ? "-9223372036854775807 - 1"
-                                : std::to_string(-(int64_t{1} << (width - 1)));
-      for (const std::string op : {"/", "%", "/=", "%="}) {
-        std::string body = op.size() == 2 ? "a " + op + " b; return a;"
-                                          : "return a " + op + " b;";
-        std::string source =
-            "/** Performs signed arithmetic. */\nfunction apply(a: " + type +
-            ", b: " + type + ") " + type + " { " + body +
-            " }\n"
-            "/** Supplies overflowing operands. */\nfunction main() i32 { "
-            "return _convert<i32>(apply(" +
-            minimum + ", -1)); }";
-        SCOPED_TRACE(type + op);
-        EXPECT_EXIT(
-            {
-              auto driver = sun::driver::Driver::createForJIT(
-                  "arithmetic_overflow", false, optimize);
-              driver->executeString(source);
-              _exit(0);
-            },
-            arithmeticTrapped, "");
-      }
-    }
+TEST_P(Errors_ArithmeticOverflow, signed_overflow_traps) {
+  const bool optimize = GetParam() >= 4;
+  const std::string type =
+      std::array{"i8", "i16", "i32", "i64"}[GetParam() % 4];
+  int width = std::stoi(type.substr(1));
+  std::string minimum = width == 64
+                            ? "-9223372036854775807 - 1"
+                            : std::to_string(-(int64_t{1} << (width - 1)));
+  for (const std::string op : {"/", "%", "/=", "%="}) {
+    std::string body =
+        op.size() == 2 ? "a " + op + " b; return a;" : "return a " + op + " b;";
+    std::string source =
+        "/** Performs signed arithmetic. */\nfunction apply(a: " + type +
+        ", b: " + type + ") " + type + " { " + body +
+        " }\n"
+        "/** Supplies overflowing operands. */\nfunction main() i32 { "
+        "return _convert<i32>(apply(" +
+        minimum + ", -1)); }";
+    SCOPED_TRACE(type + op);
+    EXPECT_EXIT(
+        {
+          disableExpectedCoreDump();
+          auto driver = sun::driver::Driver::createForJIT("arithmetic_overflow",
+                                                          false, optimize);
+          driver->executeString(source);
+          _exit(0);
+        },
+        arithmeticTrapped, "");
   }
 }
+
+INSTANTIATE_TEST_SUITE_P(IntegerWidths, Errors_ArithmeticTraps,
+                         ::testing::Range(0, 16));
+INSTANTIATE_TEST_SUITE_P(IntegerWidths, Errors_ArithmeticOverflow,
+                         ::testing::Range(0, 8));
 
 /** Valid variable divisors need no error-returning signature. */
 TEST(Errors_Arithmetic, ordinary_operations_need_no_error_contract) {

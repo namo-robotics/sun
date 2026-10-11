@@ -7,6 +7,7 @@ target_sources(sun_tests PRIVATE
     test_generic_regressions.cpp
     test_file_imports.cpp
     test_moon_cache.cpp
+    test_metadata_cache.cpp
     test_proto_import.cpp
     test_sun_config.cpp
     test_packages.cpp

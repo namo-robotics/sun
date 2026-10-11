@@ -78,6 +78,19 @@
       "file": "AGENTS.md"
     }
   ],
+  // Discover the binary once: CTest shards have distinct environments, which
+  // C++ Test Explorer otherwise displays as duplicate executable trees.
+  "cppTestExplorer.buildDirectories": [],
+  "cppTestExplorer.sourceRoots": [],
+  "cppTestExplorer.executables": [
+    {
+      "id": "sun_tests",
+      "path": "build/tests/sun_tests",
+      "group": "SunCompiler",
+      "cwd": ".",
+      "env": { "SUN_PATH": "." }
+    }
+  ],
   "cppTestExplorer.parallelMode": "case",
   "cppTestExplorer.concurrency": 0,
   "cppTestExplorer.testGrouping": {

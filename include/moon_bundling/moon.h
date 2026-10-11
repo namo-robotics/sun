@@ -228,7 +228,8 @@ class MoonReader {
   std::filesystem::path path_;
   std::vector<ModuleIndexEntry> index_;
   std::unordered_map<std::string, size_t> indexMap_;
-  std::unordered_map<std::string, moon::ModuleMetadata> metadataCache_;
+  std::unordered_map<std::string, std::shared_ptr<const moon::ModuleMetadata>>
+      metadataCache_;
   std::vector<NativeArchiveEntry> nativeArchives_;
   std::string error_;
 

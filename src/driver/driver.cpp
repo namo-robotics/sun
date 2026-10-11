@@ -143,13 +143,12 @@ static llvm::ExitOnError ExitOnErr;
 using llvm::orc::ThreadSafeModule;
 
 /**
- * Strip library code the program never uses before handing a module to the
- * JIT. ORC eagerly compiles every defined function in an added module, so
- * linked-but-unused stdlib code would dominate JIT time. Internalize
- * everything except the entry points, then GlobalDCE drops whatever main
- * can't reach (references through vtables/globals are preserved).
+ * Strip library code the program never uses before optimizing an executable.
+ * Both optimization and ORC compilation otherwise process unused definitions.
+ * Internalize everything except entry points, then GlobalDCE drops anything
+ * main cannot reach (references through vtables/globals are preserved).
  */
-static void stripUnreachableForJIT(llvm::Module& module) {
+static void stripUnreachableForExecutable(llvm::Module& module) {
   for (auto& F : module) {
     // Global initializers need no exemption: they are internal already, and
     // llvm.global_ctors (appending linkage, never discarded) keeps them and
@@ -1097,7 +1096,7 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
   // This happens AFTER codegen so we know exactly which symbols are needed
   if (hasMoonImports) {
     ScopedStage stage("moon link");
-    if (!linker.linkOnlyUsedSymbols()) {
+    if (!linker.linkOnlyUsedSymbols(ownBundleHash_.empty())) {
       throw SunError(SunError::Kind::Semantic,
                      "Failed to link precompiled module: " + linker.getError());
     }
@@ -1116,6 +1115,13 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
   // All codegen is done (including static init); emit the DI finalization
   // before any module verification.
   codegenVisitor->finalizeDebugInfo();
+
+  // Discard unused library definitions before running expensive LLVM passes.
+  // Library and object compilation must retain their externally visible API.
+  if ((execute || executable_) && ctx->mainModule->getFunction("main")) {
+    ScopedStage stage("prune unreachable");
+    stripUnreachableForExecutable(*ctx->mainModule);
+  }
 
   // Optimize only after codegen has finished using instruction pointers.
   if (ctx->optimizationEnabled()) {
@@ -1224,7 +1230,6 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
 
   // Clone the module into the new context
   auto moduleClone = llvm::CloneModule(*ctx->mainModule);
-  stripUnreachableForJIT(*moduleClone);
   bool hasStaticCtors = wrapStaticCtorsForJIT(*moduleClone);
 
   // Add the cloned module to JIT with its own context
@@ -1793,15 +1798,8 @@ void Driver::compileFiles(
     const std::vector<std::string>& protoFiles,
     const std::map<std::string, std::string>& sourceOverrides) {
   auto mergedAst = parseAndMergeFiles(sourceFiles, protoFiles, sourceOverrides);
-
-  // Create a parser for runPipeline (used for precompiled imports lookup)
   auto stubParser = Parser::createStringParser("");
-
-  // Set moonImports_ so runPipeline can use them for stub injection and linker
-  // setup
   moonImports_ = moonImports;
-
-  // Run the shared compilation pipeline
   runPipeline(std::move(mergedAst), stubParser, false);
 }
 
@@ -1809,78 +1807,10 @@ SunValue Driver::executeFiles(const std::vector<std::string>& sourceFiles,
                               const std::vector<MoonImport>& moonImports,
                               int argc, char** argv,
                               const std::vector<std::string>& protoFiles) {
-  // For now, delegate to compileFiles then execute
-  // This can be optimized later to avoid the extra JIT setup
-  compileFiles(sourceFiles, moonImports, protoFiles);
-  SunValue result = VoidValue{};
-
-  // JIT execution similar to runPipeline
-  llvm::Function* func = ctx->mainModule->getFunction("main");
-  if (!func) {
-    sun::support::messageStream("error")
-        << "Could not find 'main' function in module.\n";
-    return result;
-  }
-
-  // Get info before cloning
-  llvm::Type* returnType = func->getReturnType();
-  size_t mainArgCount = func->arg_size();
-
-  // Clone module for JIT
-  auto jitStage = std::make_unique<ScopedStage>("jit compile");
-  auto anonContext = std::make_unique<llvm::LLVMContext>();
-  auto moduleClone = llvm::CloneModule(*ctx->mainModule);
-  stripUnreachableForJIT(*moduleClone);
-  bool hasStaticCtors = wrapStaticCtorsForJIT(*moduleClone);
-
-  // Archives carried by imported bundles resolve like linked libraries, and
-  // the exit handlers their code registers run when this run ends
-  registerArchivesWithJIT();
-  JITExitScope exitHandlers;
-
-  auto RT = ctx->jit->getMainJITDylib().createResourceTracker();
-  llvm::ExitOnError ExitOnErr;
-  ExitOnErr(
-      ctx->jit->addModule(llvm::orc::ThreadSafeModule(std::move(moduleClone),
-                                                      std::move(anonContext)),
-                          RT));
-
-  // Run global initializers before main
-  if (hasStaticCtors) {
-    auto initSym = ExitOnErr(ctx->jit->lookup("__sun_run_static_ctors"));
-    void (*initFP)() = initSym.getAddress().toPtr<void (*)()>();
-    initFP();
-  }
-
-  // Execute main
-  auto ExprSymbol = ExitOnErr(ctx->jit->lookup("main"));
-  jitStage.reset();
-  bool mainHasArgs = (mainArgCount == 2);
-
-  if (returnType->isVoidTy()) {
-    if (mainHasArgs) {
-      void (*FP)(int, char**) =
-          ExprSymbol.getAddress().toPtr<void (*)(int, char**)>();
-      FP(argc, argv);
-    } else {
-      void (*FP)() = ExprSymbol.getAddress().toPtr<void (*)()>();
-      FP();
-    }
-  } else if (returnType->isIntegerTy(32)) {
-    int32_t ret;
-    if (mainHasArgs) {
-      int32_t (*FP)(int, char**) =
-          ExprSymbol.getAddress().toPtr<int32_t (*)(int, char**)>();
-      ret = FP(argc, argv);
-    } else {
-      int32_t (*FP)() = ExprSymbol.getAddress().toPtr<int32_t (*)()>();
-      ret = FP();
-    }
-    result = ret;
-  }
-
-  ExitOnErr(RT->remove());
-  return result;
+  auto mergedAst = parseAndMergeFiles(sourceFiles, protoFiles, {});
+  auto stubParser = Parser::createStringParser("");
+  moonImports_ = moonImports;
+  return runPipeline(std::move(mergedAst), stubParser, true, argc, argv);
 }
 
 }  // namespace sun::driver

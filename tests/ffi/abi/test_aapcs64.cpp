@@ -747,6 +747,7 @@ TEST(Ffi_Abi_StaticLink, cross_musl_stdlib_binary_runs_under_qemu) {
 
   auto driver =
       Driver::createForAOT("musl_stdlib_module", "aarch64-linux-musl");
+  driver->setExecutable(true);
   driver->setMoonImports(
       {sun::moon_bundling::MoonImport("build/aarch64-linux-gnu/stdlib.moon")});
   driver->compileString(R"(

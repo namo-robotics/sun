@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <fstream>
 #include <map>
+#include <mutex>
 #include <set>
 #include <sstream>
 
@@ -33,6 +34,38 @@ void validateBundleHash(const std::string& hash) {
       }))
     sun::support::logAndThrowError(
         "Bundle identity must be a full lowercase SHA-256 digest");
+}
+
+/** Reuses immutable protobufs across readers without trusting paths or bundle
+ * IDs. */
+std::shared_ptr<const moon::ModuleMetadata> sharedMetadata(
+    llvm::StringRef bytes) {
+  static std::mutex mutex;
+  static std::unordered_map<std::string,
+                            std::shared_ptr<const moon::ModuleMetadata>>
+      cache;
+  static size_t retainedBytes = 0;
+  constexpr size_t maxRetainedBytes = 32 * 1024 * 1024;
+  const auto digest = computeSha256Hex(bytes);
+  std::lock_guard lock(mutex);
+  if (auto it = cache.find(digest); it != cache.end()) return it->second;
+
+  auto metadata = std::make_shared<moon::ModuleMetadata>();
+  if (!metadata->ParseFromArray(bytes.data(), static_cast<int>(bytes.size())))
+    return nullptr;
+  validateBundleHash(metadata->content_hash());
+  const auto size = metadata->SpaceUsedLong();
+  if (size <= maxRetainedBytes) {
+    // Readers retain shared ownership when eviction drops the cache's
+    // reference.
+    if (retainedBytes + size > maxRetainedBytes) {
+      cache.clear();
+      retainedBytes = 0;
+    }
+    cache.emplace(digest, metadata);
+    retainedBytes += size;
+  }
+  return metadata;
 }
 
 }  // namespace
@@ -412,7 +445,7 @@ const moon::ModuleMetadata* MoonReader::getMetadata(
   // Check cache
   auto cacheIt = metadataCache_.find(moduleKey);
   if (cacheIt != metadataCache_.end()) {
-    return &cacheIt->second;
+    return cacheIt->second.get();
   }
 
   // Find index entry
@@ -430,17 +463,12 @@ const moon::ModuleMetadata* MoonReader::getMetadata(
     return nullptr;
   }
 
-  // Parse protobuf
-  moon::ModuleMetadata metadata;
-  if (!metadata.ParseFromArray(buffer.data(),
-                               static_cast<int>(buffer.size()))) {
+  auto metadata = sharedMetadata(llvm::StringRef(buffer.data(), buffer.size()));
+  if (!metadata) {
     error_ = "Failed to parse metadata protobuf for: " + moduleKey;
     return nullptr;
   }
-
-  validateBundleHash(metadata.content_hash());
-  metadataCache_[moduleKey] = std::move(metadata);
-  return &metadataCache_[moduleKey];
+  return metadataCache_.emplace(moduleKey, std::move(metadata)).first->second.get();
 }
 
 std::string MoonReader::getBitcodeId(const std::string& moduleKey) const {

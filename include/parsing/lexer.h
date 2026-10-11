@@ -15,6 +15,7 @@
 
 #include "parsing/escapes.h"
 #include "parsing/nfa.h"
+#include "parsing/token_table.h"
 #include "support/error.h"
 
 /** Turns source text into syntax trees and provides source formatting. */
@@ -147,7 +148,7 @@ enum class TokenKind {
   COUNT
 };
 
-static const std::map<TokenKind, std::string> tokenRegexes = {
+inline const std::map<TokenKind, std::string> tokenRegexes = {
     {TokenKind::COMMENT, "//[^\r\n]*"},  // Line comments
     // Non-nested block comments; cannot match past the first */
     {TokenKind::BLOCK_COMMENT, "/\\*[^*]*\\*+([^/*][^*]*\\*+)*/"},
@@ -684,7 +685,7 @@ class Lexer {
   // (virtual streambuf dispatch + sentry per byte, plus growing the buffer one
   // char at a time); a slurped buffer makes advance() a load and two adds.
   int currentChar = ' ';
-  DFA* dfa_ = &getTokenDFA();
+  const TokenTable* dfa_ = &getTokenTable();
   sun::support::Position currentPos{1, 1, 0};
   // When set, comments are returned as tokens instead of skipped
   // (deliberately preserved across resetInput)
@@ -1073,12 +1074,8 @@ class Lexer {
     return fullRegex;
   }
 
-  /**
-   * One process-wide token DFA, shared by every Lexer. Per-scan state is just
-   * an int, so nothing here is per-instance; scanning only grows the lazily
-   * built transition cache. That mutation is safe because the compiler and the
-   * LSP are single-threaded. If that ever changes, make this thread_local or
-   * guard DFA::step()'s miss path with a mutex.
+  /** Returns a lazy reference matcher for regex capture tests and diagnostics.
+   * Token scanning uses the immutable build-generated table instead.
    */
   static DFA& getTokenDFA() {
     static DFA tokenDFA = RegexParser().parse(getStaticFullRegex());
@@ -1120,9 +1117,7 @@ class Lexer {
 
   /** Scans and returns the next token from the input. */
   Token getNextToken() {
-    // Cached at construction: getTokenDFA() is a function-local static, so
-    // calling it per token pays the thread-safe-init guard every time.
-    DFA& dfa = *dfa_;
+    const TokenTable& dfa = *dfa_;
 
     // The scan runs on locals rather than through advance(), so the position
     // triple stays in registers instead of being written to members on every

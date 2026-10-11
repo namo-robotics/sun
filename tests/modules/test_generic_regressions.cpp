@@ -463,12 +463,21 @@ void renameParameter(std::string& source, const std::string& className,
   }
 }
 
-TEST_F(Modules_GenericRegressions, NestedTypeArguments) {
+/** Runs each nested-generic variant independently so CTest can distribute them.
+ */
+class Modules_NestedTypeArguments : public Modules_GenericRegressions,
+                                    public ::testing::WithParamInterface<int> {
+};
+
+/** Checks direct and imported generic types with the selected parameter
+ * spelling. */
+TEST_P(Modules_NestedTypeArguments, DirectAndImported) {
   ASSERT_TRUE(std::filesystem::exists("build/stdlib.moon"));
   const std::string original =
       readFile("tests/programs/generic_regressions/nested.sun");
   ASSERT_FALSE(original.empty());
-  for (int variant = 0; variant < 4; ++variant) {
+  {
+    const int variant = GetParam();
     SCOPED_TRACE(variant);
     std::string source = original;
     if (variant == 1) {
@@ -521,6 +530,9 @@ TEST_F(Modules_GenericRegressions, NestedTypeArguments) {
     ASSERT_NO_FATAL_FAILURE(checkProgram("consumer.sun", checkNative));
   }
 }
+
+INSTANTIATE_TEST_SUITE_P(Variants, Modules_NestedTypeArguments,
+                         ::testing::Values(0, 1, 2, 3));
 
 // Issue #213: exported constraints accept implementations from the consumer.
 TEST_F(Modules_GenericRegressions, ExportedInterfaceConstraints) {
