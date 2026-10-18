@@ -121,6 +121,10 @@ public module std.server_os_tests {
     };
     var client = TcpStream();
     try std.test.expect_system_success(client.connect_local(try std.test.expect_system(listener.local_port())));
+    // Client connect can finish before the listener has a pending connection.
+    var accept_poll = std.io.Poller(alloc);
+    accept_poll.add_read(listener.get_fd());
+    try std.test.assert_eq(try std.test.expect_system(accept_poll.wait(1000)), 1);
     var server = match listener.try_accept() {
       AcceptResult.Accepted(stream) => stream,
       _ => {
@@ -208,6 +212,10 @@ public module std.server_os_tests {
     try std.test.expect_system_success(listener.set_nonblocking(true));
     var client = TcpStream();
     try std.test.expect_system_success(client.connect_local(try std.test.expect_system(listener.local_port())));
+    // Client connect can finish before the listener has a pending connection.
+    var accept_poll = std.io.Poller(alloc);
+    accept_poll.add_read(listener.get_fd());
+    try std.test.assert_eq(try std.test.expect_system(accept_poll.wait(1000)), 1);
     var server = match listener.try_accept() {
       AcceptResult.Accepted(stream) => stream,
       _ => {
