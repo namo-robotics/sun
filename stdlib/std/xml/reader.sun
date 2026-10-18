@@ -22,11 +22,13 @@ public module std {
   class XmlRawAttribute {
     var name: String;
     var value: String;
+    var source_span: XmlSourceSpan;
 
     /** Moves lexical attribute data into temporary storage. */
-    init(name: String, value: String) {
+    init(name: String, value: String, source_span: XmlSourceSpan) {
       this.name = name;
       this.value = value;
+      this.source_span = source_span;
     }
   }
 
@@ -36,6 +38,8 @@ public module std {
     var input: const ref String;
     var filename: Option<String> = Option.None;
     var pos: i64 = 0;
+    var event_start: i64 = 0;
+    var event_end: i64 = 0;
     var stack: Vec<XmlFrame>;
     var initialized: bool = false;
     var roots: i64 = 0;
@@ -388,6 +392,7 @@ public module std {
         if (this.pos == before) {
           return XmlResult.Error(this.error("attributes require whitespace"));
         }
+        var attribute_start = this.pos;
         var key = try this.raw_name();
         this.space();
         try this.expect(61);
@@ -410,7 +415,7 @@ public module std {
           }
           namespaces.push(XmlNamespace(prefix, value.clone(this.alloc)));
         }
-        attributes.push(XmlRawAttribute(key, value));
+        attributes.push(XmlRawAttribute(key, value, XmlSourceSpan(attribute_start, this.pos)));
       }
       var empty = xml_byte(this.input, this.pos) == 47;
       if (empty) {
@@ -434,10 +439,17 @@ public module std {
             return XmlResult.Error(this.error("duplicate expanded attribute"));
           }
         }
-        element.attributes.push(XmlAttribute(key, attributes[i].value.clone(this.alloc)));
+        var attribute = XmlAttribute(key, attributes[i].value.clone(this.alloc));
+        attribute.source_span = Option.Some(attributes[i].source_span.copy());
+        element.attributes.push(attribute);
       }
       this.pending_end = empty;
       return XmlResult.Ok(XmlEvent.Start(element));
+    }
+
+    /** Returns the last successful event range; empty-element End events are zero-width. */
+    public const method source_span() XmlSourceSpan {
+      return XmlSourceSpan(this.event_start, this.event_end);
     }
 
     /** Advances the parser, retaining the first failure on subsequent calls. */
@@ -445,8 +457,11 @@ public module std {
       if (this.failed) {
         return XmlResult.Error(this.named_error(XmlError(this.failure_message, this.failure_offset, this.failure_line, this.failure_column)));
       }
-      return match this.next_impl() {
-        XmlResult.Ok(event) => XmlResult.Ok(event),
+      match this.next_impl() {
+        XmlResult.Ok(event) => {
+          this.event_end = this.pos;
+          return XmlResult.Ok(event);
+        },
         XmlResult.Error(error) => {
           var located = this.error(error.explanation);
           this.failed = true;
@@ -457,6 +472,7 @@ public module std {
           return XmlResult.Error(this.named_error(located));
         }
       };
+      return XmlResult.Ok(Option.None);
     }
 
     /** Implements event decoding after the sticky-error check. */
@@ -475,6 +491,7 @@ public module std {
           try this.declaration();
         }
       }
+      this.event_start = this.pos;
       if (this.pending_end) {
         this.pending_end = false;
         var frame = match this.stack.pop() {

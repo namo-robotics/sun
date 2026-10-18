@@ -633,4 +633,54 @@ public module xml_tests {
     }
     return TestResult.Ok;
   }
+
+  /** Keeps ranges in original bytes across declarations, references, and empty tags. */
+  test_function reader_source_spans() TestResult {
+    var a = make_heap_allocator();
+    var input = String("<?xml version=\"1.0\"?>\r\n<r value=\"&amp;\"/><s/>");
+    var reader = XmlReader(a, input);
+    match try reader.next() {
+      Option.Some(_) => {},
+      _ => {
+        try std.test.assert(false, "expected declaration whitespace");
+      }
+    };
+    try std.test.assert_eq(reader.source_span().start, 21);
+    try std.test.assert_eq(reader.source_span().end, 23);
+    match try reader.next() {
+      Option.Some(event) => {
+        match event {
+          XmlEvent.Start(element) => {
+            try std.test.assert_eq(reader.source_span().start, 23);
+            try std.test.assert_eq(reader.source_span().end, 41);
+            match try element.attribute_source_span(0) {
+              Option.Some(span) => {
+                try std.test.assert_eq(span.start, 26);
+                try std.test.assert_eq(span.end, 39);
+              },
+              Option.None => {
+                try std.test.assert(false, "missing attribute range");
+              }
+            };
+          },
+          _ => {
+            try std.test.assert(false, "expected root event");
+          }
+        };
+      },
+      _ => {
+        try std.test.assert(false, "expected root");
+      }
+    };
+    var end = try reader.next();
+    try std.test.assert_eq(reader.source_span().start, 41);
+    try std.test.assert_eq(reader.source_span().end, 41);
+    match reader.next() {
+      XmlResult.Error(_) => {},
+      _ => {
+        try std.test.assert(false, "multiple roots must still fail");
+      }
+    };
+    return TestResult.Ok;
+  }
 }

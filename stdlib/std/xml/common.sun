@@ -1,6 +1,23 @@
 /** Shared XML names, diagnostics, and Unicode validation. */
 public module std {
 
+  /** Identifies a half-open byte range in the original XML input. */
+  public class XmlSourceSpan {
+    public var start: i64;
+    public var end: i64;
+
+    /** Records original input offsets; decoded text may have a different length. */
+    init(start: i64, end: i64) {
+      this.start = start;
+      this.end = end;
+    }
+
+    /** Copies location metadata without allocating. */
+    public const method copy() XmlSourceSpan {
+      return XmlSourceSpan(this.start, this.end);
+    }
+  }
+
   /** Reports XML syntax, unsupported features, limits, or invalid API operations. */
   public class XmlError implements IError {
     var explanation: static_ptr<u8>;
@@ -262,6 +279,7 @@ public module std {
   public class XmlAttribute {
     var name: XmlName;
     var value: String;
+    var source_span: Option<XmlSourceSpan> = Option.None;
 
     /** Moves an attribute into storage. */
     init(name: XmlName, value: String) {
