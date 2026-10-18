@@ -293,9 +293,12 @@ static void refreshEntrypoints() {
     try {
       sun::driver::SunConfig config =
           sun::driver::SunConfig::loadFile(configPath);
-      for (const auto& entry : config.entrypoints) {
+      for (auto& entry : config.entrypoints) {
         // Project discovery never fetches remote source repositories.
         if (!entry.git.empty()) continue;
+        entry.path = ManifestProcessor::expandPathVariables(entry.path, &config);
+        entry.testBinaryName = ManifestProcessor::expandPathVariables(
+            entry.testBinaryName, &config);
         combined.push_back(entry.path);
         configEntrypointInfo.emplace(normalizePath(entry.path), entry);
       }
