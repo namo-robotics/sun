@@ -3,9 +3,6 @@
 #include <llvm/IR/Instructions.h>
 #include <signal.h>
 
-#include <chrono>
-#include <thread>
-
 #include "driver/execution_utils.h"
 
 /** Keep native signal fixtures private to this translation unit. */
@@ -98,20 +95,22 @@ TEST(Builtins_Signals, concurrent_delivery_during_restoration) {
   sun::driver::initTestEnvironment();
   auto driver = sun::driver::Driver::createForJIT();
   driver->setMoonImports(sun::driver::getStdlibMoonImports());
-  // A worker-targeted signal lets installation and restoration run
-  // concurrently.
-  /** Keep delivering until the scoped worker is joined. */
-  std::jthread sender([](std::stop_token stop) {
-    while (!stop.stop_requested()) {
-      raise(SIGINT);
-      raise(SIGTERM);
-      std::this_thread::sleep_for(std::chrono::microseconds(20));
-    }
-  });
+  // Join the sender inside main: executeString unloads its module before
+  // returning, even while the Driver itself remains alive.
   EXPECT_EQ(driver->executeString(R"(
     using std;
+    var stopped = std.thread.AtomicBool();
+    /** Deliver each signal synchronously on the sender thread. */
+    extern "C" function native_raise(sig: i32) i32 as "raise";
+    /** Keep delivery concurrent with subscription installation and restoration. */
+    function send_signals() void {
+      while (not stopped.load()) {
+        unsafe { native_raise(std.process.SIGINT); native_raise(std.process.SIGTERM); };
+        std.time.sleep(std.time.create_duration_micros(20));
+      }
+    }
     /** Repeatedly retire and reuse the subscription's pipe descriptors. */
-    function main() i32 {
+    function exercise_subscriptions() i32 {
       for (var i: i32 = 0; i < 100; i = i + 1) {
         match std.signal.SignalSubscription() {
           SystemResult.Ok(subscription) => {
@@ -130,10 +129,16 @@ TEST(Builtins_Signals, concurrent_delivery_during_restoration) {
       }
       return 0;
     }
+    /** Join all possible handler executions before the JIT unloads their code. */
+    function main() i32 {
+      var sender = std.thread.spawn(send_signals);
+      var result = exercise_subscriptions();
+      stopped.store(true);
+      sender.join();
+      return result;
+    }
   )"),
             0);
-  sender.request_stop();
-  sender.join();
 }
 
 /** The handler has only the approved libc calls and explicit lock-free atomics.
