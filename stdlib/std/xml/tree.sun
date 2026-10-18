@@ -1,10 +1,13 @@
 /** Editable owned XML documents with ordered mixed content. */
 public module std {
+
   /** Holds the supported XML content kinds. */
   public enum XmlNodeValue { Element(XmlElement), Text(String), Comment(String), Instruction(XmlInstruction) }
+
   /** Owns one content item; elements recursively own their children. */
   public class XmlNode {
     var value: XmlNodeValue;
+
     /** Moves a content item into a node. */
     init(value: XmlNodeValue) {
       this.value = value;
@@ -69,6 +72,7 @@ public module std {
       };
     }
   }
+
   /** Owns an expanded element name, ordered attributes, and ordered child nodes. */
   public class XmlElement {
     var depth_: i64 = 1;
@@ -76,6 +80,7 @@ public module std {
     var attributes: Vec<XmlAttribute>;
     var children: Vec<XmlNode>;
     var namespaces: Vec<XmlNamespace>;
+
     /** Creates an empty element using explicit storage allocation. */
     init(alloc: ref HeapAllocator, name: XmlName) {
       this.name_ = name;
@@ -293,11 +298,13 @@ public module std {
       return XmlResult.Ok;
     }
   }
+
   /** Owns a root element and the ordered content surrounding it. */
   public class XmlDocument {
     var root_: XmlElement;
     var before: Vec<XmlNode>;
     var after: Vec<XmlNode>;
+
     /** Moves a root into a new document. */
     init(alloc: ref HeapAllocator, root: XmlElement) {
       root.rebase(1);

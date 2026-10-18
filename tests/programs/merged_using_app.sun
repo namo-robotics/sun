@@ -6,8 +6,10 @@ using lib;
 
 /** Groups declarations used by this compiler regression test. */
 public module app {
+
   /** Returns its generic argument so the caller can test specialization. */
   module inner {
+
     /** Owns a value whose imported type is resolved through an enclosing module. */
     class Holder {
       var b: Box<i32>;

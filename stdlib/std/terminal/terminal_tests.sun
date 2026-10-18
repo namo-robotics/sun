@@ -12,8 +12,10 @@ using std.terminal;
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Groups tests for the terminal library behavior. */
   module terminal_tests {
+
     /** ENOTTY, "inappropriate ioctl for device": the same number on Linux and macOS. */
     var ENOTTY: i32 = 25;
 

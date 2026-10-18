@@ -7,8 +7,10 @@ using std.thread;
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Groups tests for the mutex library behavior. */
   module mutex_tests {
+
     // State for mutex_two_threads_sequential only. Each multi-threaded test
     // has its own counter and lock so parallel tests never share state.
     var two_threads_counter: i32 = 0;

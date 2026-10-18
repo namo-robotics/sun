@@ -4,6 +4,7 @@ using std;
 // privacy is module-scoped, so tests declared inside the module reach it.
 /** Groups declarations used by this compiler regression test. */
 module distance {
+
   /** Returns half of the supplied value for the testing example. */
   function half(n: i64) i64 {
     return n / 2;

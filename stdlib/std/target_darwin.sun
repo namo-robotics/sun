@@ -6,6 +6,7 @@
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Native identifier for the number of online processors. */
   const ONLINE_CPUS: i32 = 58;
   /** Native port reuse option; distribution policy is platform-specific. */

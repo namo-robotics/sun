@@ -12,6 +12,7 @@
 
 /** Measure durations and work with clocks and calendar times. */
 public module std.time {
+
   // clockid_t values. CLOCK_REALTIME is 0 everywhere; CLOCK_MONOTONIC
   // differs per OS and lives in target_<os>.sun.
   const CLOCK_REALTIME: i32 = 0;

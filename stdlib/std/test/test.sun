@@ -19,6 +19,7 @@
 
 /** Assertions and helpers for running tests. */
 public module std.test {
+
   /**
    * Raised by a failed assertion; carries the explanation text.
    */

@@ -9,8 +9,10 @@ using std.thread;
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Groups tests for the thread library behavior. */
   module thread_tests {
+
     /**
      * Doubles its argument; a named function to spawn.
      */
@@ -30,6 +32,7 @@ public module std {
      */
     class Counter {
       public var n: i32;
+
       /** Initializes the fixture fields used by this example or regression test. */
       init() {
         this.n = 0;
@@ -283,6 +286,7 @@ public module std {
     /** Records the final counter after the thread handle has been destroyed. */
     class JoinedCounter {
       public var n: i32 = 0;
+
       /** Starts a counter for the propagation cleanup test. */
       init() {}
 
@@ -339,6 +343,7 @@ public module std {
      */
     class Config {
       public var limit: i32;
+
       /** Initializes the fixture fields used by this example or regression test. */
       init(limit: i32) {
         this.limit = limit;
@@ -368,6 +373,7 @@ public module std {
      */
     class JoinedRes {
       public var v: i32;
+
       /** Initializes the fixture fields used by this example or regression test. */
       init(v: i32) {
         this.v = v;
@@ -407,6 +413,7 @@ public module std {
      */
     class UnjoinedRes {
       public var v: i32;
+
       /** Initializes the fixture fields used by this example or regression test. */
       init(v: i32) {
         this.v = v;
@@ -441,6 +448,7 @@ public module std {
     class Buffer {
       public var v: i32;
       public var data: raw_ptr<i8>;
+
       /** Initializes the fixture fields used by this example or regression test. */
       init(v: i32) {
         this.v = v;
@@ -496,6 +504,7 @@ public module std {
      */
     class EnumRes {
       public var v: i32;
+
       /** Initializes the fixture fields used by this example or regression test. */
       init(v: i32) {
         this.v = v;
@@ -603,6 +612,7 @@ public module std {
      */
     class MovedRes {
       public var v: i32;
+
       /** Initializes the fixture fields used by this example or regression test. */
       init(v: i32) {
         this.v = v;
@@ -658,6 +668,7 @@ public module std {
      */
     class Worker {
       var t: Thread<i32>;
+
       /** Initializes the fixture fields used by this example or regression test. */
       init() {
         this.t = spawn(() => i32 { return 7; });
@@ -684,6 +695,7 @@ public module std {
      */
     class BoundCounter {
       var count: i32;
+
       /** Initializes the fixture fields used by this example or regression test. */
       init() {
         this.count = 40;
@@ -711,6 +723,7 @@ public module std {
      */
     class Job {
       var base: i32;
+
       /** Initializes the fixture fields used by this example or regression test. */
       init(base: i32) {
         this.base = base;

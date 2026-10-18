@@ -13,6 +13,7 @@
 
 /** Read and write integers in a chosen byte order. */
 public module std.byte_order {
+
   // ========================================================================
   // Unconditional byte reversal
   // ========================================================================

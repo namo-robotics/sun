@@ -21,6 +21,7 @@
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Owns a fixed-size allocation of contiguous element storage. */
   public class ContiguousBuffer<T> implements IIterable<ref T, ContiguousBuffer<T>> {
     var data: Unique<u8>;  // Element storage (owned, auto-freed)

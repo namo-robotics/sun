@@ -1,12 +1,15 @@
 /** Event-based parsing of complete UTF-8 XML input. */
 public module std {
+
   /** Owns a reader event; empty elements emit both Start and End. */
   public enum XmlEvent { Start(XmlElement), End(XmlName), Text(String), Comment(String), Instruction(XmlInstruction) }
+
   /** Keeps lexical names and namespace declarations for an open element. */
   class XmlFrame {
     var raw: String;
     var name: XmlName;
     var namespaces: Vec<XmlNamespace>;
+
     /** Moves one open element's state into the stack. */
     init(raw: String, name: XmlName, namespaces: Vec<XmlNamespace>) {
       this.raw = raw;
@@ -14,16 +17,19 @@ public module std {
       this.namespaces = namespaces;
     }
   }
+
   /** Temporarily owns an unresolved attribute. */
   class XmlRawAttribute {
     var name: String;
     var value: String;
+
     /** Moves lexical attribute data into temporary storage. */
     init(name: String, value: String) {
       this.name = name;
       this.value = value;
     }
   }
+
   /** Borrows input and owns only parser state and returned event payloads. */
   public class XmlReader {
     var alloc: HeapAllocator;
@@ -38,6 +44,7 @@ public module std {
     var failure_offset: i64 = -1;
     var failure_line: i64 = -1;
     var failure_column: i64 = -1;
+
     /** Borrows complete input until the reader is destroyed. */
     init(alloc: ref HeapAllocator, input: const ref String) {
       this.alloc = alloc.copy();
@@ -532,6 +539,7 @@ public module std {
       return XmlResult.Ok(Option.Some(XmlEvent.Text(text)));
     }
   }
+
   /** Builds one owned subtree exclusively from validated reader events. */
   function xml_read_element(reader: ref XmlReader, element: XmlElement) XmlResult<XmlElement> {
     var result = element;

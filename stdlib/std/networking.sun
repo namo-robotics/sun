@@ -32,6 +32,7 @@
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** A newly owned connection, routine would-block, or an actual accept failure. */
   public enum AcceptResult { Accepted(TcpStream), WouldBlock, Error(Error) }
 

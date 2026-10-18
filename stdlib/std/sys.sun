@@ -19,6 +19,7 @@
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Read metadata for an open descriptor into platform-sized storage. */
   extern "C" function c_fstat(fd: i32, data: raw_ptr<u8>) i32 as "fstat";
 

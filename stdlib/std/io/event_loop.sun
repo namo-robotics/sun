@@ -1,5 +1,6 @@
 /** Kernel-backed, level-triggered descriptor readiness with application tokens. */
 public module std.io {
+
   /** A readiness snapshot; its token belongs to the registration at wait time. */
   public class ReadyEvent {
     var event_: Event;

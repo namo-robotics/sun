@@ -4,8 +4,10 @@ using std;
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Groups tests for the test library behavior. */
   module test_tests {
+
     /**
      * Check both successful and failing assertions for one primitive type.
      */

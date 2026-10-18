@@ -104,7 +104,7 @@ const char* const kUsageBody =
 }  // namespace
 
 const char* const kFmtUsage =
-    "Usage: sun fmt [--check] <file.sun|directory>...\n";
+    "Usage: sun fmt [--check] [--no-ignore] <file.sun|directory>...\n";
 
 const char* const kTestUsageFull =
     "Usage: sun test [--test-sequential] "

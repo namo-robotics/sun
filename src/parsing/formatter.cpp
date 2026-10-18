@@ -185,17 +185,32 @@ class Formatter {
 
   // --- statements ---------------------------------------------------------
 
+  /** Identifies declarations that need visual separation from one another. */
+  static bool isSpacedDeclaration(const ExprAST& expr) {
+    switch (expr.getType()) {
+      case ASTNodeType::FUNCTION:
+      case ASTNodeType::CLASS_DEFINITION:
+      case ASTNodeType::INTERFACE_DEFINITION:
+      case ASTNodeType::ENUM_DEFINITION:
+      case ASTNodeType::MODULE:
+        return true;
+      default:
+        return false;
+    }
+  }
+
   /** Formats statements in order, beginning at the requested index. */
   void printStmts(const std::vector<std::unique_ptr<ExprAST>>& stmts,
                   size_t start = 0) {
-    bool previousWasFunction = false;
+    bool separateNextDeclaration = false;
     for (size_t i = start; i < stmts.size(); ++i) {
       const auto& stmt = stmts[i];
       if (!stmt || stmt->isPrecompiled()) continue;
       const Position& loc = stmt->getLocation();
-      const bool isFunction = stmt->getType() == ASTNodeType::FUNCTION;
-      if (previousWasFunction && isFunction) ensureBlankLine();
-      previousWasFunction = isFunction;
+      const bool isDeclaration = isSpacedDeclaration(*stmt);
+      if (separateNextDeclaration && isDeclaration) ensureBlankLine();
+      separateNextDeclaration =
+          isDeclaration || stmt->getType() == ASTNodeType::USING;
       flushCommentsBefore(loc.offset);
       blankGap(loc.line);
       writeIndent();
@@ -261,16 +276,17 @@ class Formatter {
   // --- blocks -------------------------------------------------------------
 
   /**
-   * Multiline block: '{' newline, indented statements, '}'
+   * Prints an indented block, optionally separating a module's opening brace.
    */
-  void printBlockML(const BlockExprAST& b, size_t start = 0) {
+  void printBlockML(const BlockExprAST& b, size_t start = 0,
+                    bool blankAfterOpening = false) {
     const Position& loc = b.getLocation();
     int endOffset = loc.endOffset.value_or(static_cast<int>(src_.size()));
     if (b.getBody().size() == start && !hasCommentBefore(endOffset)) {
       out_ += "{}";
       return;
     }
-    out_ += "{\n";
+    out_ += blankAfterOpening ? "{\n\n" : "{\n";
     ++indent_;
     int savedLast = lastLine_;
     lastLine_ = -1;  // no blank line right after '{'
@@ -489,6 +505,35 @@ class Formatter {
 
   // --- declarations ---------------------------------------------------------
 
+  /** Borrows a field or method and records its position for source ordering. */
+  template <typename Field, typename Method>
+  struct Member {
+    int offset;
+    int line;
+    int endLine;
+    const Field* field;
+    const Method* method;
+  };
+
+  /** Sorts members by source position and prints their spacing and comments. */
+  template <typename Field, typename Method, typename PrintMember>
+  void printMembers(std::vector<Member<Field, Method>>& members,
+                    PrintMember printMember) {
+    std::sort(members.begin(), members.end(),
+              [](const auto& a, const auto& b) { return a.offset < b.offset; });
+    for (size_t i = 0; i < members.size(); ++i) {
+      const auto& member = members[i];
+      if (i > 0 && (members[i - 1].method || member.method)) ensureBlankLine();
+      flushCommentsBefore(member.offset);
+      blankGap(member.line);
+      writeIndent();
+      printMember(member);
+      lastLine_ = member.endLine;
+      emitTrailingComments(member.endLine);
+      out_ += '\n';
+    }
+  }
+
   /** Writes a class declaration, including its fields and methods. */
   void printClass(const sun::ast::ClassDefinitionAST& c) {
     if (c.isPartial()) out_ += "partial ";
@@ -517,21 +562,11 @@ class Formatter {
     int savedLast = lastLine_;
     lastLine_ = -1;
 
-    /**
-     * Fields and methods live in separate vectors; merge by source order
-     */
-    struct Member {
-      int offset;
-      int line;
-      int endLine;
-      const sun::ast::ClassFieldDecl* field;
-      const FunctionAST* method;
-    };
     if (c.getAlignment()) {
       writeIndent();
       out_ += "alignment: " + std::to_string(c.getAlignment()) + "\n";
     }
-    std::vector<Member> members;
+    std::vector<Member<sun::ast::ClassFieldDecl, FunctionAST>> members;
     for (const auto& f : c.getFields()) {
       members.push_back(
           {f.location.offset, f.location.line,
@@ -544,17 +579,7 @@ class Formatter {
       members.push_back(
           {loc.offset, loc.line, endLineOf(loc), nullptr, m.function.get()});
     }
-    std::sort(
-        members.begin(), members.end(),
-        [](const Member& a, const Member& b) { return a.offset < b.offset; });
-
-    bool previousWasMethod = false;
-    for (const auto& m : members) {
-      if (previousWasMethod && m.method) ensureBlankLine();
-      previousWasMethod = m.method != nullptr;
-      flushCommentsBefore(m.offset);
-      blankGap(m.line);
-      writeIndent();
+    printMembers(members, [this](const auto& m) {
       if (m.field) {
         printVisibility(m.field->visibility);
         out_ += "var ";
@@ -582,10 +607,7 @@ class Formatter {
           if (m.method->isExtern()) out_ += ';';
         }
       }
-      lastLine_ = m.endLine;
-      emitTrailingComments(m.endLine);
-      out_ += '\n';
-    }
+    });
 
     int endOffset =
         c.getLocation().endOffset.value_or(static_cast<int>(src_.size()));
@@ -610,16 +632,8 @@ class Formatter {
     int savedLast = lastLine_;
     lastLine_ = -1;
 
-    /** A class member and its source position used to preserve formatting
-     * order. */
-    struct Member {
-      int offset;
-      int line;
-      int endLine;
-      const sun::ast::InterfaceFieldDecl* field;
-      const sun::ast::InterfaceMethodDecl* method;
-    };
-    std::vector<Member> members;
+    std::vector<Member<sun::ast::InterfaceFieldDecl,
+                       sun::ast::InterfaceMethodDecl>> members;
     for (const auto& f : n.getFields()) {
       members.push_back({f.location.offset, f.location.line,
                          endLineOf(f.location), &f, nullptr});
@@ -628,17 +642,7 @@ class Formatter {
       const Position& loc = m.function->getLocation();
       members.push_back({loc.offset, loc.line, endLineOf(loc), nullptr, &m});
     }
-    std::sort(
-        members.begin(), members.end(),
-        [](const Member& a, const Member& b) { return a.offset < b.offset; });
-
-    bool previousWasMethod = false;
-    for (const auto& m : members) {
-      if (previousWasMethod && m.method) ensureBlankLine();
-      previousWasMethod = m.method != nullptr;
-      flushCommentsBefore(m.offset);
-      blankGap(m.line);
-      writeIndent();
+    printMembers(members, [this](const auto& m) {
       if (m.field) {
         printVisibility(m.field->visibility);
         out_ += "var ";
@@ -646,24 +650,20 @@ class Formatter {
         out_ += ": ";
         printType(m.field->type);
         out_ += ';';
-      } else if (!m.method->hasDefaultImpl) {
-        printVisibility(m.method->visibility());
-        if (m.method->isConst) out_ += "const ";
-        if (m.method->function->getProto().isUnsafeMethod()) out_ += "unsafe ";
-        // Signature-only method (the parser synthesizes an empty body)
-        out_ += "method ";
-        printProtoSig(m.method->function->getProto());
-        out_ += ';';
       } else {
         printVisibility(m.method->visibility());
         if (m.method->isConst) out_ += "const ";
         if (m.method->function->getProto().isUnsafeMethod()) out_ += "unsafe ";
-        printFunction(*m.method->function, /*asMethod=*/true);
+        if (m.method->hasDefaultImpl) {
+          printFunction(*m.method->function, /*asMethod=*/true);
+        } else {
+          // Signature-only method (the parser synthesizes an empty body)
+          out_ += "method ";
+          printProtoSig(m.method->function->getProto());
+          out_ += ';';
+        }
       }
-      lastLine_ = m.endLine;
-      emitTrailingComments(m.endLine);
-      out_ += '\n';
-    }
+    });
 
     int endOffset =
         n.getLocation().endOffset.value_or(static_cast<int>(src_.size()));
@@ -738,7 +738,7 @@ class Formatter {
     out_ += "module ";
     out_ += dotted;
     out_ += ' ';
-    printBlockML(cur->getBody());
+    printBlockML(cur->getBody(), 0, true);
   }
 
   /** Writes a pattern match using formatted Sun source syntax. */

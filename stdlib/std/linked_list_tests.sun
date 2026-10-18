@@ -7,8 +7,10 @@ using std;
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Groups tests for the linked list library behavior. */
   module linked_list_tests {
+
     /** Combines assertion failures with errors from borrowed reads. */
     enum TestResult { Ok, Assertion(std.test.AssertionError), Read(NotFoundError) }
 

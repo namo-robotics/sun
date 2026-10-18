@@ -1,8 +1,11 @@
 using std;
+
 /** Exercises XML parsing, editing, namespaces, and serialization. */
 public module xml_tests {
+
   /** Combines assertion and XML failures for these tests. */
   enum TestResult { Ok, Assertion(std.test.AssertionError), Xml(XmlError), Bounds(IndexOutOfBoundsError) }
+
   /** Constructs an unqualified owned name using the test allocator. */
   function name(alloc: ref HeapAllocator, local: static_ptr<u8>) XmlName {
     return XmlName(String(alloc, ""), String(alloc, local), String(alloc, ""));

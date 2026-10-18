@@ -2,6 +2,7 @@
 
 /** C bindings for darwin_process_abi; regenerate for each target and SDK. */
 public module darwin_process_abi {
+
   _assert_c_target("arm64-apple-darwin");
 
   /** Mirrors the target C struct proc_bsdinfo. */

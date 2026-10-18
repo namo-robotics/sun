@@ -1,5 +1,6 @@
 /** Scoped SIGINT/SIGTERM events delivered through a nonblocking wakeup pipe. */
 public module std.signal {
+
   /** Compiler-owned, process-lifetime storage; layout matches signals.cpp. */
   class SignalState {
     var gate: i32;
@@ -205,6 +206,7 @@ public module std.signal {
 
 /** Explicit process-wide broken-pipe policy for servers using native I/O libraries. */
 public module std.signal {
+
   /**
    * Permanently ignore SIGPIPE process-wide so native writes, including TLS,
    * return errors instead of terminating the process. Call during startup before

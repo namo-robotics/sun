@@ -1,5 +1,8 @@
 {
   "root": true,
+  "sun_fmt": {
+    "ignore": ["/build/", "/third_party/", "/tmp/"]
+  },
   "sun_path": {
     "target": {
       "x86_64-linux-gnu": ["build"],

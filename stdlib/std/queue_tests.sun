@@ -5,8 +5,10 @@ using std;
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Groups tests for the queue library behavior. */
   module queue_tests {
+
     // Drop counters, one per test that uses them, so tests running in
     // parallel never share state.
     var drops_when_queue_dies: i32 = 0;
@@ -18,6 +20,7 @@ public module std {
      */
     class TrackedByDeath {
       public var id: i32;
+
       /** Initializes the fixture fields used by this example or regression test. */
       init(id: i32) {
         this.id = id;
@@ -36,6 +39,7 @@ public module std {
      */
     class TrackedByClear {
       public var id: i32;
+
       /** Initializes the fixture fields used by this example or regression test. */
       init(id: i32) {
         this.id = id;

@@ -1,5 +1,6 @@
 /** Native signal action layout for this target's libc. */
 public module std.signal {
+
   /** Complete saved disposition, including its mask and flags. */
   class SignalAction {
     /** Borrow the native mask storage for sigemptyset. */

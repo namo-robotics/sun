@@ -6,8 +6,10 @@ using std;
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Groups tests for the matrix library behavior. */
   module matrix_tests {
+
     /** Checks shape inference and row-major values from a rectangular literal. */
     test_function matrix_from_literal() {
       var allocator = make_heap_allocator();

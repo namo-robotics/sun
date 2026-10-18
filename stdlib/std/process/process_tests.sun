@@ -10,8 +10,10 @@ using std.process;
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Groups tests for the process library behavior. */
   module process_tests {
+
     // ------------------------------------------------------------------
     // Command / Child / Output (was Stdlib_Sys_Command)
     // ------------------------------------------------------------------

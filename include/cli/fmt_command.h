@@ -9,7 +9,7 @@
 namespace sun::cli {
 
 /**
- * sun fmt [--check] <file.sun|directory>...
+ * sun fmt [--check] [--no-ignore] <file.sun|directory>...
  * Formats files in place; directories are searched recursively for .sun
  * files. With --check nothing is rewritten and files that would change are
  * listed instead. Every file is processed before exiting.

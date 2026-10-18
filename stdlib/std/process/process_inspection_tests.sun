@@ -3,8 +3,10 @@ using std.process;
 
 /** Native regression tests for portable process inspection and ownership. */
 public module std.process {
+
   /** Exercise native inspection and owned process handles. */
   module inspection_tests {
+
     /** Require a failure and return its preserved native error code. */
     function error_code<T>(result: SystemResult<T>) std.test.AssertionResult<i32> {
       return match result {

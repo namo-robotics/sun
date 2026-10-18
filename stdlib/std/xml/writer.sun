@@ -1,5 +1,6 @@
 /** Checked XML serialization with automatic namespace declarations. */
 public module std {
+
   /** Appends escaped character data to an existing buffer. */
   function xml_escape(out: ref String, text: const ref String, attribute: bool) void {
     for (var i: i64 = 0; i < text.length(); i += 1) {
@@ -23,12 +24,14 @@ public module std {
       }
     }
   }
+
   /** Tracks one open writer element and its delayed start tag. */
   class XmlWriteFrame {
     var qname: String;
     var head: String;
     var namespaces: Vec<XmlNamespace>;
     var attributes: Vec<XmlName>;
+
     /** Starts an empty frame with explicitly allocated storage. */
     init(alloc: ref HeapAllocator) {
       this.qname = String(alloc, "");
@@ -37,6 +40,7 @@ public module std {
       this.attributes = Vec<XmlName>(alloc, 4);
     }
   }
+
   /** Appends checked XML to borrowed output; any failure permanently stops this writer. */
   public class XmlWriter {
     var alloc: HeapAllocator;
@@ -48,6 +52,7 @@ public module std {
     var started: bool = false;
     var roots: i64 = 0;
     var serial: i64 = 0;
+
     /** Borrows output and allocates only through the supplied allocator. */
     init(alloc: ref HeapAllocator, output: ref String) {
       this.alloc = alloc.copy();
@@ -328,6 +333,7 @@ public module std {
       return XmlResult.Ok;
     }
   }
+
   /** Appends positive decimal digits without allocating temporary strings. */
   function xml_append_number(out: ref String, value: i64) void {
     if (value >= 10) {

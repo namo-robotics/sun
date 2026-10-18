@@ -3,6 +3,10 @@
 #include <gtest/gtest.h>
 
 #include <string>
+#include <filesystem>
+#include <fstream>
+
+#include "cli/fmt_command.h"
 
 #include "parsing/formatter.h"
 #include "support/error.h"
@@ -211,6 +215,7 @@ TEST(Tooling_Fmt, LifecycleMethods) {
                 "}"),
             "class A {\n"
             "  var x: i32;\n"
+            "\n"
             "  init(v: i32) Result<void> {\n"
             "    this.x = v;\n"
             "  }\n"
@@ -245,6 +250,15 @@ TEST(Tooling_Fmt, NoBlankAfterOpenBrace) {
             "}\n");
 }
 
+/** Keeps empty modules compact and separates comment-only module contents once. */
+TEST(Tooling_Fmt, ModuleOpeningBlankLine) {
+  EXPECT_EQ(fmt("module empty {}"), "module empty {}\n");
+  const std::string expected = "module notes {\n\n  /** Contents. */\n}\n";
+  EXPECT_EQ(fmt("module notes {\n/** Contents. */\n}"), expected);
+  EXPECT_EQ(fmt("module notes {\n\n\n/** Contents. */\n}"), expected);
+  EXPECT_EQ(fmt(expected), expected);
+}
+
 TEST(Tooling_Fmt, BlankLineBetweenFunctions) {
   EXPECT_EQ(fmt("function a() void {}\n\nfunction b() void {}\n"),
             "function a() void {}\n"
@@ -270,6 +284,41 @@ TEST(Tooling_Fmt, InsertsBlankLinesBetweenFunctions) {
   EXPECT_EQ(fmt(expected), expected);
 }
 
+/** Separates every pair of declaration kinds before attached documentation. */
+TEST(Tooling_Fmt, BlankLinesBetweenDeclarationKinds) {
+  const std::string first[] = {
+      "function left() void {}", "class Left {}", "interface Left {}",
+      "enum Left { Value }", "module left {}"};
+  const std::string second[] = {
+      "function right() void {}", "class Right {}", "interface Right {}",
+      "enum Right { Value }", "module right {}"};
+  for (const auto& left : first) {
+    for (const auto& right : second) {
+      SCOPED_TRACE(left + " -> " + right);
+      const auto expected = fmt(left) + "\n/** Next declaration. */\n" + fmt(right);
+      EXPECT_EQ(fmt(left + "\n/** Next declaration. */\n" + right), expected);
+      EXPECT_EQ(fmt(expected), expected);
+      EXPECT_EQ(fmt(left + "\n" + right), fmt(left) + "\n" + fmt(right));
+    }
+  }
+}
+
+/** Separates the XML-style enum and class without detaching their comments. */
+TEST(Tooling_Fmt, DocumentedTypesInsideModule) {
+  const std::string source =
+      "public module std {\n"
+      "  /** Supported content. */\n"
+      "  public enum XmlNodeValue { Text(String) }\n"
+      "  /** Owned content. */\n"
+      "  public class XmlNode {\n  }\n"
+      "}\n";
+  auto expected = source;
+  expected.insert(expected.find("  /** Supported content."), "\n");
+  expected.insert(expected.find("  /** Owned content."), "\n");
+  EXPECT_EQ(fmt(source), expected);
+  EXPECT_EQ(fmt(expected), expected);
+}
+
 /** Keeps method documentation attached and avoids duplicate blank lines. */
 TEST(Tooling_Fmt, InsertsBlankLinesBetweenDocumentedMethods) {
   const std::string source =
@@ -291,6 +340,43 @@ TEST(Tooling_Fmt, InsertsBlankLinesBetweenDocumentedMethods) {
   EXPECT_EQ(fmt(expected), expected);
 }
 
+/** Keeps field groups together and separates documented methods on both sides. */
+TEST(Tooling_Fmt, BlankLinesBetweenFieldsAndMethods) {
+  const std::string source =
+      "class Node {\n"
+      "  var value: i32;\n"
+      "  var count: i32; // count\n"
+      "  /** Construct. */\n"
+      "  init() {}\n"
+      "  /** Extra data. */\n"
+      "  var extra: i32;\n"
+      "  /** Read. */\n"
+      "  method read() void {}\n"
+      "}\n";
+  auto expected = source;
+  expected.replace(expected.find("; // count"), 10, ";  // count");
+  expected.insert(expected.find("  /** Construct."), "\n");
+  expected.insert(expected.find("  /** Extra data."), "\n");
+  expected.insert(expected.find("  /** Read."), "\n");
+  EXPECT_EQ(fmt(source), expected);
+  EXPECT_EQ(fmt(expected), expected);
+}
+
+/** Applies field-to-method separation to interface members too. */
+TEST(Tooling_Fmt, BlankLinesBetweenInterfaceFieldsAndMethods) {
+  const std::string source =
+      "interface View {\n"
+      "  var first: i32;\n"
+      "  var second: i32;\n"
+      "  /** Read. */\n"
+      "  method read() i32;\n"
+      "}\n";
+  auto expected = source;
+  expected.insert(expected.find("  /** Read."), "\n");
+  EXPECT_EQ(fmt(source), expected);
+  EXPECT_EQ(fmt(expected), expected);
+}
+
 /** Applies the same spacing inside modules and interface declarations. */
 TEST(Tooling_Fmt, FunctionSpacingInModulesAndInterfaces) {
   const std::string source =
@@ -301,8 +387,10 @@ TEST(Tooling_Fmt, FunctionSpacingInModulesAndInterfaces) {
       "  /** Read. */\n  method read() i32;\n"
       "  /** Peek. */\n  method peek() i32;\n}\n";
   auto expected = source;
+  expected.insert(expected.find("  /** First."), "\n");
   expected.insert(expected.find("  /** Second."), "\n");
   expected.insert(expected.find("  /** Peek."), "\n");
+  expected.insert(expected.find("/** Reader."), "\n");
   EXPECT_EQ(fmt(source), expected);
   EXPECT_EQ(fmt(expected), expected);
 }
@@ -423,6 +511,7 @@ TEST(Tooling_Fmt, ClassWithFieldsAndMethods) {
                 "}"),
             "class Counter {\n"
             "  var count: i32;\n"
+            "\n"
             "  init(start: i32) {\n"
             "    this.count = start;\n"
             "  }\n"
@@ -497,18 +586,37 @@ TEST(Tooling_Fmt, TryCatchThrow) {
 
 TEST(Tooling_Fmt, DottedModule) {
   EXPECT_EQ(fmt("module std.io {\nfunction f() void {}\n}"),
-            "module std.io {\n"
+            "module std.io {\n\n"
             "  function f() void {}\n"
             "}\n");
 }
 
 TEST(Tooling_Fmt, NestedModulesStayNested) {
   EXPECT_EQ(fmt("module a {\nmodule b {\nfunction f() void {}\n}\n}"),
-            "module a {\n"
-            "  module b {\n"
+            "module a {\n\n"
+            "  module b {\n\n"
             "    function f() void {}\n"
             "  }\n"
             "}\n");
+}
+
+/** Separates imports from documented declarations while keeping imports together. */
+TEST(Tooling_Fmt, UsingBeforeDeclaration) {
+  for (const std::string declaration : {
+           "function draw() void {}", "class Drawing {}", "interface Shape {}",
+           "enum Color { Red }", "module drawing {}"}) {
+    const std::string imports = "using std;\nusing std.Vec;\n";
+    const std::string comment = "/** Draws a shape. */\n";
+    const std::string input = imports + comment + declaration;
+    const std::string expected = imports + "\n" + comment + fmt(declaration);
+    EXPECT_EQ(fmt(input), expected);
+    EXPECT_EQ(fmt(expected), expected);
+    const std::string nested = fmt("module example {\n" + input + "\n}");
+    EXPECT_NE(nested.find("  using std.Vec;\n\n  /** Draws a shape. */"),
+              std::string::npos);
+    EXPECT_EQ(fmt(nested), nested);
+    EXPECT_EQ(fmt(imports + declaration), imports + "\n" + fmt(declaration));
+  }
 }
 
 TEST(Tooling_Fmt, UsingAndDeclare) {
@@ -646,14 +754,14 @@ TEST(Tooling_Fmt, ConstMethodsAndLoops) {
                 "public const method get() i32 { return this.n; }\n"
                 "const method zero() bool { return this.n == 0; }\n"
                 "}\n"
-                "interface I {\n"
+                "\ninterface I {\n"
                 "const method get() i32;\n"
                 "}\n"
-                "function f(v: ref Vec<i32>) void {\n"
+                "\nfunction f(v: ref Vec<i32>) void {\n"
                 "for (const x: i32 in v) { }\n"
                 "}"),
             "class C {\n"
-            "  var n: i32;\n"
+            "  var n: i32;\n\n"
             "  public const method get() i32 {\n"
             "    return this.n;\n"
             "  }\n"
@@ -662,10 +770,10 @@ TEST(Tooling_Fmt, ConstMethodsAndLoops) {
             "    return this.n == 0;\n"
             "  }\n"
             "}\n"
-            "interface I {\n"
+            "\ninterface I {\n"
             "  const method get() i32;\n"
             "}\n"
-            "function f(v: ref Vec<i32>) void {\n"
+            "\nfunction f(v: ref Vec<i32>) void {\n"
             "  for (const x: i32 in v) {}\n"
             "}\n");
 }
@@ -858,13 +966,13 @@ TEST(Tooling_Fmt, MatchOpeningLineTrailingCommentIsIdempotent) {
 // Same shape for a multiline enum header
 TEST(Tooling_Fmt, EnumOpeningLineTrailingCommentIsIdempotent) {
   std::string once =
-      fmt("function f() void {}\n"
+      fmt("function f() void {}\n\n"
           "enum Shape {  // shapes\n"
           "Circle,\n"
           "Rect\n"
           "}\n");
   EXPECT_EQ(once,
-            "function f() void {}\n"
+            "function f() void {}\n\n"
             "enum Shape {\n"
             "  // shapes\n"
             "  Circle,\n"
@@ -955,6 +1063,7 @@ TEST(Tooling_Fmt, ClassFieldInitializers) {
       "class Foo {\n"
       "  var x: i32 = 10;\n"
       "  var y: i32 = this.x + 2;\n"
+      "\n"
       "  init() {}\n"
       "}\n";
   EXPECT_EQ(fmt(source), expected);
@@ -1042,7 +1151,7 @@ TEST(Tooling_Fmt, GenericConstraintKeepsTypeArgumentSyntax) {
 TEST(Tooling_Fmt, DocumentedPublicDottedModule) {
   const std::string expected =
       "/** Readers. */\n"
-      "public module a.b.c {\n"
+      "public module a.b.c {\n\n"
       "  // Reads a value.\n"
       "  public function read() i32 {\n"
       "    return 1;\n"
@@ -1056,8 +1165,8 @@ TEST(Tooling_Fmt, DocumentedPublicDottedModule) {
 
 TEST(Tooling_Fmt, PublicNestedModulesStayNested) {
   const std::string source =
-      "// Outer.\npublic module a {\n"
-      "  // Inner.\n  public module b {\n"
+      "// Outer.\npublic module a {\n\n"
+      "  // Inner.\n  public module b {\n\n"
       "    function f() void {}\n  }\n}\n";
   EXPECT_EQ(fmt(source), source);
   EXPECT_EQ(fmt(fmt(source)), source);
@@ -1078,4 +1187,121 @@ TEST(Tooling_Fmt, ClassAlignment) {
   auto formatted = fmt("class Vector {alignment:16 var x:f32;}");
   EXPECT_EQ(formatted, "class Vector {\n  alignment: 16\n  var x: f32;\n}\n");
   EXPECT_EQ(fmt(formatted), formatted);
+}
+
+/** Exercises project exclusions through the formatter command without changing cwd. */
+class Tooling_FmtIgnore : public ::testing::Test {
+ protected:
+  std::filesystem::path dir;
+
+  /** Creates an isolated project inside the workspace temporary directory. */
+  void SetUp() override {
+    dir = std::filesystem::current_path() / "tmp" / "fmt_ignore" /
+          ::testing::UnitTest::GetInstance()->current_test_info()->name();
+    std::filesystem::remove_all(dir);
+    write("sun-config.json", R"({"root":true})");
+  }
+
+  /** Removes the temporary project after each test. */
+  void TearDown() override { std::filesystem::remove_all(dir); }
+
+  /** Writes a fixture relative to the isolated project. */
+  void write(const std::string& path, const std::string& text) {
+    std::filesystem::create_directories((dir / path).parent_path());
+    std::ofstream(dir / path) << text;
+  }
+
+  /** Reads a fixture so tests can verify which files were changed. */
+  std::string read(const std::string& path) {
+    std::ifstream input(dir / path);
+    return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+  }
+
+  /** Runs check mode on one project path with an optional override. */
+  int check(const std::string& path, bool noIgnore = false) {
+    std::vector<std::string> args = {"--check", (dir / path).string()};
+    if (noIgnore) args.push_back("--no-ignore");
+    return sun::cli::runFmtCommand(args);
+  }
+};
+
+/** Excluded directories are pruned and explicitly named files respect exclusions. */
+TEST_F(Tooling_FmtIgnore, DirectoriesAndOverride) {
+  write("sun-config.json", R"({"root":true,"sun_fmt":{"ignore":["/build/"]}})");
+  write("build/bad.sun", "not valid Sun!");
+  write("main.sun", "function f() void {}\n");
+  EXPECT_EQ(check("."), 0);
+  EXPECT_EQ(check("build"), 0);
+  EXPECT_EQ(check("build/bad.sun"), 0);
+  EXPECT_EQ(check("build/bad.sun", true), 2);
+  write("build/bad.sun", "function f()void{}");
+  EXPECT_EQ(check("build/bad.sun", true), 1);
+  EXPECT_EQ(sun::cli::runFmtCommand({(dir / "build/bad.sun").string()}), 0);
+  EXPECT_EQ(read("build/bad.sun"), "function f()void{}");
+  EXPECT_EQ(sun::cli::runFmtCommand({"--no-ignore", (dir / "build/bad.sun").string()}), 0);
+  EXPECT_EQ(read("build/bad.sun"), "function f() void {}\n");
+}
+
+/** Patterns support anchoring, directory components, wildcards, and ordered exceptions. */
+TEST_F(Tooling_FmtIgnore, PatternsAndNegation) {
+  write("sun-config.json", R"({"root":true,"sun_fmt":{"ignore":[
+    "/root.sun", "cache/", "*.generated.sun", "src/**/skip?.sun",
+    "/output/**", "!/output/keep.sun", "[ab].sun", "\\!literal.sun"
+  ]}})");
+  for (const auto* path : {"root.sun", "nested/root.sun", "cache/bad.sun",
+                           "nested/cache/bad.sun", "nested/x.generated.sun",
+                           "src/skip1.sun", "src/a/b/skip2.sun", "src/skip12.sun",
+                           "output/drop.sun", "output/keep.sun", "a.sun", "!literal.sun"})
+    write(path, "function f()void{}");
+  for (const auto* path : {"root.sun", "cache/bad.sun", "nested/cache/bad.sun",
+                           "nested/x.generated.sun", "src/skip1.sun",
+                           "src/a/b/skip2.sun", "output/drop.sun", "a.sun", "!literal.sun"})
+    EXPECT_EQ(check(path), 0) << path;
+  for (const auto* path : {"nested/root.sun", "src/skip12.sun", "output/keep.sun"})
+    EXPECT_EQ(check(path), 1) << path;
+  EXPECT_EQ(check("output"), 1);
+}
+
+/** Nearer configurations override ancestors and root boundaries stop inheritance. */
+TEST_F(Tooling_FmtIgnore, NestedConfiguration) {
+  write("sun-config.json", R"({"root":true,"sun_fmt":{"ignore":["*.sun"]}})");
+  write("nested/sun-config.json", R"({"sun_fmt":{"ignore":["!keep.sun"]}})");
+  write("nested/keep.sun", "function f()void{}");
+  write("nested/drop.sun", "function f()void{}");
+  EXPECT_EQ(check("nested/keep.sun"), 1);
+  EXPECT_EQ(check("nested/drop.sun"), 0);
+  EXPECT_EQ(check("nested"), 1);
+  write("nested/sun-config.json", R"({"root":true,"sun_fmt":{"ignore":[]}})");
+  EXPECT_EQ(check("nested/drop.sun"), 1);
+}
+
+/** A file exception cannot reopen an excluded directory. */
+TEST_F(Tooling_FmtIgnore, ExcludedParents) {
+  write("sun-config.json", R"({"root":true,"sun_fmt":{"ignore":["cache/","!cache/keep.sun"]}})");
+  write("cache/keep.sun", "function f()void{}");
+  EXPECT_EQ(check("."), 0);
+  EXPECT_EQ(check("cache/keep.sun"), 0);
+}
+
+/** Invalid configuration produces an error before any files are rewritten. */
+TEST_F(Tooling_FmtIgnore, InvalidConfiguration) {
+  write("main.sun", "function f()void{}");
+  for (const auto* config : {R"({"root":true,"sun_fmt":[]})",
+                             R"({"root":true,"sun_fmt":{"ignore":"build"}})",
+                             R"({"root":true,"sun_fmt":{"ignore":[42]}})",
+                             R"({"root":true,"sun_fmt":{"ignored":[]}})",
+                             R"({"root":true,"sun_fmt":{"ignore":["["]}})"}) {
+    write("sun-config.json", config);
+    EXPECT_EQ(check("main.sun"), 2) << config;
+    EXPECT_EQ(read("main.sun"), "function f()void{}");
+  }
+  EXPECT_EQ(check("main.sun", true), 1);
+}
+
+/** Existing hidden-directory and template exclusions survive --no-ignore. */
+TEST_F(Tooling_FmtIgnore, BuiltInExclusions) {
+  write(".hidden/bad.sun", "not valid Sun!");
+  write("template.inja.sun", "not valid Sun!");
+  write("main.sun", "function f() void {}\n");
+  EXPECT_EQ(check(".", true), 0);
 }

@@ -1,5 +1,6 @@
 /** Clock constants for macOS. */
 public module std.time {
+
   // clockid_t: macOS numbers CLOCK_MONOTONIC 6.
   const CLOCK_MONOTONIC: i32 = 6;
 }

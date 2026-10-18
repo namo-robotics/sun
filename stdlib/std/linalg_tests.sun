@@ -3,6 +3,7 @@ using std.linalg;
 
 /** Verifies scalar matrix multiplication and its validation contract. */
 public module std.linalg_tests {
+
   /** Turns an unexpected operation failure into a test assertion. */
   function expect_ok(result: LinalgResult<void>) std.test.AssertionResult<void> {
     match result {
@@ -709,6 +710,7 @@ public module std.linalg_tests {
 
 /** Tests internal dimension validation without allocating invalid matrices. */
 public module std.linalg {
+
   /** Rejects negative, inconsistent, overflowing element and byte counts. */
   test_function dimension_arithmetic() {
     try std.test.assert(not valid_dimensions<f32>(-1, 0, 0));

@@ -5,8 +5,10 @@ using std;
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Groups tests for the vec library behavior. */
   module vec_tests {
+
     /** Combines assertions with failures from borrowed element access. */
     enum TestResult { Ok, Assertion(std.test.AssertionError), Bounds(IndexOutOfBoundsError) }
 
@@ -245,6 +247,7 @@ public module std {
     /** Owns a string and counts destruction of live values. */
     class RemovalTracked {
       public var value: String;
+
       /** Initializes the fixture fields used by this example or regression test. */
       init(value: String) {
         this.value = value;

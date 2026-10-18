@@ -1,5 +1,6 @@
 /** Stores results inline; reference payloads remain borrowed. */
 public module std {
+
   /** Combines standard error categories for functions that use several APIs. */
   public enum Result<T> {
     Ok(T),

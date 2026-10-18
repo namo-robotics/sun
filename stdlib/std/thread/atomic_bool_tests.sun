@@ -1,5 +1,6 @@
 /** Test acquire/release communication through the public atomic Boolean. */
 public module std.atomic_bool_tests {
+
   var published: std.thread.AtomicBool = std.thread.AtomicBool();
   var payload: i32 = 0;
 

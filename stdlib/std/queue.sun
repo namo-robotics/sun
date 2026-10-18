@@ -19,6 +19,7 @@
 //   };
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Owns a first-in, first-out sequence backed by a linked list. */
   public class Queue<T> implements IIterable<ref T, Queue<T>> {
     var items: LinkedList<T>;

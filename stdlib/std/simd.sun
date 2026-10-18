@@ -1,5 +1,6 @@
 /** Provides fixed-width SIMD arithmetic with checked buffer access. */
 public module std.simd {
+
   /** Stores four independent f32 lanes without heap allocation. */
   public class F32x4 {
     alignment: 16

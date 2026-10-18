@@ -1,5 +1,6 @@
 /** File and directory constants for Linux. */
 public module std.io {
+
   // open(2) composables from the asm-generic set: O_CREAT=0x40,
   // O_TRUNC=0x200, O_APPEND=0x400, over O_WRONLY=1.
   const O_WRONLY_CREAT_TRUNC: i32 = 577;  // 0x241
@@ -13,6 +14,7 @@ public module std.io {
 
 /** Linux open-file metadata boundary. */
 public module std.io {
+
   /** Use the native 64-bit stat ABI on both supported architectures. */
   function native_file_stat(fd: i32, data: raw_ptr<u8>) i32 {
     return unsafe { c_fstat(fd, data); };

@@ -1,5 +1,6 @@
 /** Linux epoll boundary; no native packed records escape into application code. */
 public module std.io {
+
   /** Storage large enough for either supported epoll_event ABI, aligned to words. */
   class EpollChange {
     var events: u32;

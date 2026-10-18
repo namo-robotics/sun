@@ -5,8 +5,10 @@ using std;
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Groups tests for the math library behavior. */
   module math_tests {
+
     /** Checks min i32. */
     test_function min_i32() {
       try std.test.assert_eq(compute_min<i32>(10, 5), 5);

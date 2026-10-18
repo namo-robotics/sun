@@ -1,5 +1,6 @@
 /** Owned, coalescing cross-thread notifications for Poller and EventLoop. */
 public module std.io {
+
   /** Configure a new pipe endpoint before publishing it to another thread. */
   function configure_wakeup_fd(fd: i32) SystemResult<void> {
     try set_fd_nonblocking(fd, true);

@@ -1,5 +1,6 @@
 /** macOS libproc inspection and explicitly non-atomic process handles. */
 public module std.process {
+
   /** Read the BSD start timeval as an opaque microsecond start marker. */
   function native_process_identity(alloc: ref HeapAllocator, target: i32) SystemResult<ProcessIdentity> {
     var record = ContiguousBuffer<darwin_process_abi.proc_bsdinfo>(alloc, 1);

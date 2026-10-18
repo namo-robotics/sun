@@ -21,6 +21,7 @@
 
 /** Run tasks on threads and synchronize shared access. */
 public module std.thread {
+
   /**
    * An inline Boolean with no allocation or lock fallback on supported x86-64
    * and AArch64 targets. Load acquires; store releases; compare_exchange has

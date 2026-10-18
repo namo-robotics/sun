@@ -1,11 +1,13 @@
 /** Shared XML names, diagnostics, and Unicode validation. */
 public module std {
+
   /** Reports XML syntax, unsupported features, limits, or invalid API operations. */
   public class XmlError implements IError {
     var explanation: static_ptr<u8>;
     var offset_: i64;
     var line_: i64;
     var column_: i64;
+
     /** Creates a diagnostic; negative coordinates mean no source location. */
     init(message: static_ptr<u8>, offset: i64, line: i64, column: i64) {
       this.explanation = message;
@@ -39,8 +41,10 @@ public module std {
       return this.column_;
     }
   }
+
   /** Returns a value or an XML diagnostic. */
   public enum XmlResult<T> { Ok(T), Error(XmlError) }
+
   /** Creates a diagnostic for operations without an input position. */
   function xml_error(message: static_ptr<u8>) XmlError {
     return XmlError(message, -1, -1, -1);
@@ -63,16 +67,19 @@ public module std {
   function xml_character(c: i64) bool {
     return c == 9 or c == 10 or c == 13 or (c >= 32 and c <= 55295) or (c >= 57344 and c <= 65533) or (c >= 65536 and c <= 1114111);
   }
+
   /** Holds a decoded Unicode scalar and its UTF-8 width. */
   class XmlScalar {
     var value: i64;
     var width: i64;
+
     /** Records a validated scalar. */
     init(value: i64, width: i64) {
       this.value = value;
       this.width = width;
     }
   }
+
   /** Validates one UTF-8 sequence and XML character. */
   function xml_scalar(text: const ref String, pos: i64) XmlResult<XmlScalar> {
     var lead = xml_byte(text, pos);
@@ -153,11 +160,13 @@ public module std {
     }
     return result;
   }
+
   /** Stores expanded name identity independently of the preferred prefix. */
   public class XmlName {
     var uri_: String;
     var local_: String;
     var prefix_: String;
+
     /** Moves name components into storage; consumers validate them before use. */
     init(uri: String, local: String, prefix: String) {
       this.uri_ = uri;
@@ -209,10 +218,12 @@ public module std {
       return XmlResult.Ok;
     }
   }
+
   /** Owns a namespace declaration. */
   public class XmlNamespace {
     var prefix: String;
     var uri: String;
+
     /** Moves a declaration into storage. */
     init(prefix: String, uri: String) {
       this.prefix = prefix;
@@ -234,20 +245,24 @@ public module std {
       return XmlNamespace(this.prefix.clone(alloc), this.uri.clone(alloc));
     }
   }
+
   /** Owns one expanded attribute name and decoded value. */
   public class XmlAttribute {
     var name: XmlName;
     var value: String;
+
     /** Moves an attribute into storage. */
     init(name: XmlName, value: String) {
       this.name = name;
       this.value = value;
     }
   }
+
   /** Owns the target and content of a processing instruction. */
   public class XmlInstruction {
     var target: String;
     var data: String;
+
     /** Borrows the instruction target. */
     public const method target_name() const ref String {
       return this.target;
@@ -264,6 +279,7 @@ public module std {
       this.data = data;
     }
   }
+
   /** Validates processing instructions without interpreting their content. */
   function xml_validate_instruction(target: const ref String, data: const ref String) XmlResult<void> {
     // XML permits colons in processing instruction targets.

@@ -1,5 +1,6 @@
 /** Terminal line-discipline layout and request codes for Linux. */
 public module std.terminal {
+
   /**
    * struct termios on Linux: four u32 flag words, a u8 line discipline, 32
    * control characters, then u32 input and output speeds. 60 bytes, aligned

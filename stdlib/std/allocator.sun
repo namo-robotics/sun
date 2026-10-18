@@ -12,6 +12,7 @@
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /**
    * Interface for memory allocators
    * All allocators must implement this interface

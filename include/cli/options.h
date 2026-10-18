@@ -89,6 +89,7 @@ struct TestOptions {
  */
 struct FmtOptions {
   bool checkMode = false;  // --check: report instead of rewriting
+  bool noIgnore = false;   // bypass configured formatter exclusions
   std::vector<std::string> inputs;
 };
 

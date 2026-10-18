@@ -293,13 +293,22 @@ bool containsWrapper(const llvm::json::Value& value) {
 SunConfig parse(const Object& root, const std::filesystem::path& file,
                 const std::string& target) {
   keys(root, {"root", "sun_path", "path_variables", "entrypoints", "packages",
-              "dependencies", "target", "c_bindings"});
+              "dependencies", "target", "c_bindings", "sun_fmt"});
   SunConfig config;
   config.configDir = std::filesystem::weakly_canonical(
       std::filesystem::absolute(file).parent_path());
   if (auto* value = root.get("root")) {
     boolValue(*value);
     config.root = *value->getAsBoolean();
+  }
+  if (auto* value = root.get("sun_fmt")) {
+    const auto& fmt = object(*value);
+    keys(fmt, {"ignore"});
+    if (auto* ignore = fmt.get("ignore")) {
+      stringsValue(*ignore);
+      for (const auto& pattern : *ignore->getAsArray())
+        config.fmtIgnore.push_back({config.configDir, pattern.getAsString()->str()});
+    }
   }
   if (auto* value = root.get("sun_path"))
     for (const auto& path : *select(*value, target, stringsValue)->getAsArray())
@@ -451,6 +460,8 @@ std::optional<SunConfig> SunConfig::findFrom(
       if (!merged)
         merged = std::move(config);
       else {
+        merged->fmtIgnore.insert(merged->fmtIgnore.begin(),
+                                 config.fmtIgnore.begin(), config.fmtIgnore.end());
         for (const auto& [name, value] : config.pathVariables)
           merged->pathVariables.emplace(name, value);
         for (const auto& [name, value] : config.dependencies)

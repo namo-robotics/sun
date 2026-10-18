@@ -1,5 +1,6 @@
 /** Metadata observations tied to an open descriptor rather than a pathname. */
 public module std.io {
+
   /** Unix timestamp preserving negative seconds and a normalized nanosecond remainder. */
   public class FileTime {
     public var seconds: i64;

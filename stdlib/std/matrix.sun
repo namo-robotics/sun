@@ -24,6 +24,7 @@
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   // Interface for types that support indexed access and slicing
   // Any class implementing this interface can use bracket indexing syntax
   // NOTE: Generic interfaces not yet supported, so this is just documentation

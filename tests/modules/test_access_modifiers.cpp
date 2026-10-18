@@ -135,16 +135,16 @@ TEST(Modules_AccessModifiers, parser_rejects_public_on_non_declarations) {
 
 TEST(Modules_AccessModifiers, formatter_round_trips_public) {
   std::string src =
-      "public module m {\n"
+      "public module m {\n\n"
       "  public class C {\n"
       "    public var x: i32;\n"
-      "    var y: i32;\n"
+      "    var y: i32;\n\n"
       "    init() {}\n"
       "  }\n"
-      "  public interface I {\n"
+      "\n  public interface I {\n"
       "    public method m() i32;\n"
       "  }\n"
-      "  public enum E { A, B }\n"
+      "\n  public enum E { A, B }\n"
       "  public var g: i32 = 1;\n"
       "  public extern \"C\" function puts(s: raw_ptr<u8>) i32;\n"
       "  public declare Alias = i32;\n"

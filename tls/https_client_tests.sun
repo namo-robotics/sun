@@ -14,8 +14,10 @@ using tls;
 
 /** Groups declarations used by this compiler regression test. */
 public module tls {
+
   /** Groups tests for the https client library behavior. */
   module https_client_tests {
+
     // ------------------------------------------------------------------
     // Response parsing (no network)
     // ------------------------------------------------------------------

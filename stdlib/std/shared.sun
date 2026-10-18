@@ -17,6 +17,7 @@
 //   var t = std.thread.spawn(bump, s.clone());
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /**
    * The heap payload: one per Shared "family". Not named by user code.
    */

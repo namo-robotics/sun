@@ -6,8 +6,10 @@ using std;
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Groups tests for the io library behavior. */
   module io_tests {
+
     // -----------------------------------------------------------------
     // Directory listing and file metadata (was Stdlib_Io_Dir)
     // -----------------------------------------------------------------

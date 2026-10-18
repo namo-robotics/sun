@@ -6,8 +6,10 @@ using std;
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Groups tests for the bigint library behavior. */
   module bigint_tests {
+
     /**
      * Build a BigUint from decimal text.
      */

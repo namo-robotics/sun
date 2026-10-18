@@ -6,8 +6,10 @@ using std;
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Groups tests for the byte order library behavior. */
   module byte_order_tests {
+
     /** Checks swap and endian helpers. */
     test_function swap_and_endian_helpers() {
       var a: u16 = 4660;  // 0x1234

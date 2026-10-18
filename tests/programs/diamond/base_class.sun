@@ -12,6 +12,7 @@ class Point {
   public method sum() i32 {
     return this.x + this.y;
   }
+
   public var x: i32;
   public var y: i32;
 }
