@@ -310,6 +310,8 @@ std::optional<EarlyExit> parseFmtArguments(const std::vector<std::string>& args,
   for (const std::string& arg : args) {
     if (arg == "--check") {
       options.checkMode = true;
+    } else if (arg == "--no-ignore") {
+      options.noIgnore = true;
     } else if (arg == "-h" || arg == "--help") {
       return EarlyExit{0, EarlyExit::Stream::Err, kFmtUsage};
     } else if (looksLikeOption(arg)) {

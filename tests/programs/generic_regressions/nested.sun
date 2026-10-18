@@ -1,39 +1,49 @@
 using std;
+
 /** Exercises nested generic readers. */
 public module m {
+
   /** Stores sample metadata. */
   public class Info {
     public var n: i32 = 0;
+
     /** Creates an empty fixture value for this example or regression test. */
     init() {}
   }
+
   /** Represents a decoder passed to a callback. */
   public class Decoder {
     /** Creates an empty fixture value for this example or regression test. */
     init() {}
   }
+
   /** Stores a decoding callback. */
   public class TypeSupport<T> {
     public var decode: function (ref Decoder, const ref HeapAllocator) T;
+
     /** Initializes the fixture fields used by this example or regression test. */
     init(decode: function (ref Decoder, const ref HeapAllocator) T) {
       this.decode = decode;
     }
   }
+
   /** Pairs metadata with an optional value. */
   public class Sample<T> {
     public var info: Info;
     public var data: Option<T>;
+
     /** Initializes the fixture fields used by this example or regression test. */
     init(info: Info, data: Option<T>) {
       this.info = info;
       this.data = data;
     }
   }
+
   /** Builds empty and populated sample vectors. */
   public class Reader<T> {
     public var support: TypeSupport<T>;
     public var state: Shared<Info>;
+
     /** Initializes the fixture fields used by this example or regression test. */
     init(support: TypeSupport<T>, state: Shared<Info>) {
       this.support = support;
@@ -56,6 +66,7 @@ public module m {
       return out;
     }
   }
+
   /** Constructs a reader through a generic method. */
   public class Subscriber {
     /** Creates an empty fixture value for this example or regression test. */
@@ -67,14 +78,17 @@ public module m {
     }
   }
 }
+
 /** A message fixture used to test nested generic callback types. */
 class Msg {
   public var v: i32;
+
   /** Initializes the fixture fields used by this example or regression test. */
   init(v: i32) {
     this.v = v;
   }
 }
+
 /** Returns a message fixture through the generic decoder callback signature. */
 function decode(d: ref m.Decoder, a: const ref HeapAllocator) Msg {
   return Msg(7);

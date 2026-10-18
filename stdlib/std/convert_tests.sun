@@ -5,8 +5,10 @@ using std;
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Groups tests for the convert library behavior. */
   module convert_tests {
+
     /** Checks narrow i64 to i32 in range. */
     test_function narrow_i64_to_i32_in_range() {
       var ms: i64 = 200;

@@ -219,7 +219,7 @@ TEST(Classes_StructLiterals, formatter_round_trip) {
             "  var a: i32;\n"
             "  var b: i32;\n"
             "}\n"
-            "function main() i32 {\n"
+            "\nfunction main() i32 {\n"
             "  var c: C = { a: 1, b: 2 };\n"
             "  return c.a;\n"
             "}\n");

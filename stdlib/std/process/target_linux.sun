@@ -1,5 +1,6 @@
 /** Process signal constants for Linux. */
 public module std.process {
+
   // The job-control signals above 15, where Linux and macOS disagree.
   public const SIGCHLD: i32 = 17;
   public const SIGCONT: i32 = 18;

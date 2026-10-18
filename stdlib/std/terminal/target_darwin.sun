@@ -1,5 +1,6 @@
 /** Terminal line-discipline layout and request codes for macOS. */
 public module std.terminal {
+
   // c_lflag bit the kernel sets on a return to canonical mode; declared
   // ahead of Termios.equals, which masks it.
   const PENDIN: u64 = 0x20000000;

@@ -238,6 +238,22 @@ class DiscoveryProtocolTests(unittest.TestCase):
         self.write_config(self.entry)
         self.assertEqual(len(self.workspace_tests()), 1)
 
+    def test_configured_test_binary_expands_path_variables(self):
+        """Discovery resolves configured paths so the editor can use built tests."""
+        self.config.write_text(json.dumps({
+            "path_variables": {"TEST_SOURCE": ".", "TEST_BUILD": "build"},
+            "entrypoints": [{
+                "path": "$TEST_SOURCE/main.sun",
+                "test_binary_name": "$TEST_BUILD/suite_test",
+            }],
+        }))
+        suites = self.workspace_tests()
+        self.assertEqual(len(suites), 1)
+        self.assertEqual(Path(suites[0]["entrypoint"]).resolve(), self.entry)
+        self.assertEqual(suites[0]["test_binary"],
+                         str(self.directory / "build" / "suite_test"))
+        self.assertEqual(suites[0]["files"][0]["tests"][0]["id"], "suite.first")
+
     def test_explicit_and_configured_suites_share_updated_sources(self):
         """Both settings supply suites, including tests in unopened files."""
         self.configure([self.entry])

@@ -454,6 +454,8 @@ TEST(Tooling_Cli_OptionParser, fmt_collects_inputs_and_check_mode) {
   EXPECT_EQ(parsed.options.inputs, Args({"a.sun", "src"}));
 
   EXPECT_FALSE(parseFmt({"a.sun"}).options.checkMode);
+  EXPECT_FALSE(parseFmt({"a.sun"}).options.noIgnore);
+  EXPECT_TRUE(parseFmt({"--no-ignore", "a.sun"}).options.noIgnore);
 }
 
 TEST(Tooling_Cli_OptionParser, fmt_help_succeeds_and_mistakes_exit_with_two) {

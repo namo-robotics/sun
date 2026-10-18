@@ -10,8 +10,10 @@ using std;
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Groups declarations used by this compiler regression test. */
   module tests {
+
     /**
      * A scratch directory under /tmp, created on init and removed with its
      * files on deinit. Propagating a failed assertion exits the scope and

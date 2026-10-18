@@ -106,6 +106,12 @@ struct ConfigEntrypoint {
   std::string testBinaryName;  // empty: outputName + "_test"
 };
 
+/** A formatter exclusion pattern anchored to its declaring config directory. */
+struct ConfigFmtIgnore {
+  std::filesystem::path baseDir;
+  std::string pattern;
+};
+
 /** Parsed project configuration used to build and run Sun targets. */
 struct SunConfig {
   static constexpr const char* kFileName = "sun-config.json";
@@ -119,6 +125,7 @@ struct SunConfig {
   std::map<std::string, ConfigCBinding> cBindings;
   std::string targetTriple;  // resolved compilation triple, retaining vendor
                              // and OS version
+  std::vector<ConfigFmtIgnore> fmtIgnore;  // ancestor rules first, nearest last
   bool root = false;         // stop the upward search at this file
 
   /**

@@ -1,5 +1,6 @@
 /** Exercise process-wide signal state sequentially within one test. */
 public module std.signal {
+
   /** Deliver a signal synchronously to the calling thread. */
   extern "C" function test_raise(sig: i32) i32 as "raise";
 

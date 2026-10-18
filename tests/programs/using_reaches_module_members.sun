@@ -6,8 +6,10 @@ using std;
 
 /** Forwards its generic argument through another generic function. */
 public module outer {
+
   /** Returns its generic argument so the caller can test specialization. */
   module inner {
+
     /** Owns a value whose imported type is resolved through an enclosing module. */
     class Holder {
       var v: Vec<i32>;

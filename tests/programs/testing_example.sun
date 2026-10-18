@@ -4,6 +4,7 @@ using std;
 
 /** Groups declarations used by this compiler regression test. */
 module arithmetic {
+
   /** Doubles a value through a private module helper. */
   function double_it(n: i32) i32 {
     return n * 2;

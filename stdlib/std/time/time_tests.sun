@@ -8,8 +8,10 @@ using std;
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Groups tests for the time library behavior. */
   module time_tests {
+
     /**
      * A Duration converts between seconds, milliseconds, microseconds and
      * nanoseconds consistently, keeping the sub-second remainder.

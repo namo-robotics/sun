@@ -2,6 +2,7 @@ using std;
 
 /** Checks SIMD lane arithmetic and checked storage access. */
 public module std.simd_tests {
+
   /** Checks the zero-initializing constructor. */
   test_function default_constructor() {
     var value = std.simd.F32x4();

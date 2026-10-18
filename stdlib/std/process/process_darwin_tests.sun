@@ -1,7 +1,9 @@
 /** macOS timebase and native argument-record regressions. */
 public module std.process {
+
   /** Exercise the macOS inspection record decoders. */
   module inspection_tests {
+
     /** Native libproc writes match the generated record's named fields. */
     test_function generated_process_record_fields() {
       var alloc = make_heap_allocator();

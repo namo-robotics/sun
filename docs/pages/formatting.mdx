@@ -15,6 +15,49 @@ directories (`.git`, `.cache`, …) are skipped. Paths that are not `.sun` files
 are ignored, and files that fail to parse are reported and left untouched
 (exit code 2).
 
+## Ignoring files
+
+Use `sun_fmt.ignore` in `sun-config.json` to exclude generated code, dependencies,
+or other files from formatting:
+
+```json
+{
+  "root": true,
+  "sun_fmt": {
+    "ignore": ["/build/", "/third_party/", "/tmp/"]
+  }
+}
+```
+
+Patterns are relative to the config file's directory. Ancestor configurations
+apply first, nearer configurations apply last, and `"root": true` stops the
+upward search. Within an array, the last matching rule wins. An absent setting
+or empty array adds no exclusions and does not clear inherited rules.
+
+Patterns use gitignore-style matching:
+
+- `/build/` matches the directory at the config root; `build/` matches directories
+  with that name at any depth. A trailing `/` restricts a pattern to directories.
+- `*.generated.sun` matches filenames at any depth. `*` and `?` do not cross `/`;
+  character classes such as `[ab]` are supported.
+- `src/**/generated.sun` matches zero or more intermediate directories.
+  `build/**` excludes the contents of `build`, leaving the directory itself open.
+- `!keep.sun` re-includes a matching file. Files inside an excluded directory stay
+  excluded unless the directory is also re-included. For example, use
+  `["/build/**", "!/build/keep.sun"]` to keep one file selected.
+- A leading `#` marks a comment entry. Backslashes escape pattern characters;
+  write two backslashes in JSON. Spaces in a pattern are literal.
+
+The same rules apply to `sun fmt`, `sun fmt --check`, and explicitly named files
+or directories, even when running from a subdirectory. Explicit ignored inputs
+are reported as skipped. Excluded directories are not traversed. `.gitignore`
+is not read.
+
+Use `sun fmt --no-ignore path` to bypass configured exclusions. This does not
+change the existing hidden-directory and `.inja.sun` template exclusions during
+directory scans. These settings control file selection for the command; they do
+not change formatting style or the editor's single-document formatting request.
+
 ## Style
 
 - 2-space indentation, K&R braces (`function f() i32 {`).
@@ -22,8 +65,14 @@ are ignored, and files that fail to parse are reported and left untouched
 - Comments are preserved: own-line comments keep their position, trailing
   comments stay on their line (two spaces before `//`).
 - Blank lines between statements are preserved, collapsed to at most one.
-- Consecutive functions and methods are separated by a blank line, placed
-  before any leading documentation comments.
+- Non-empty modules have one blank line after the opening brace, before any
+  leading comments. Empty modules remain `{}`.
+- A group of `using` declarations is separated from a following function, class,
+  interface, enum, or module by a blank line before its documentation comments.
+- Adjacent function, class, interface, enum, and module declarations are
+  separated by a blank line, placed before any leading documentation comments.
+  Methods, constructors, and destructors are also separated from each other
+  and from fields. Consecutive fields stay together.
 - Bracketed lists (call arguments, array literals) stay on one line if they
   were written on one line; multi-line lists get one element per line.
 - Parentheses are never added or removed.

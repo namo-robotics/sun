@@ -28,6 +28,7 @@
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Owns a growable contiguous sequence and explicitly moves values into and out of storage. */
   public class Vec<T> implements IIterable<ref T, Vec<T>> {
     var data: ContiguousBuffer<T>;  // Element storage (bounds-checked, auto-freed)

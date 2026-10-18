@@ -6,8 +6,10 @@ using std;
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Groups tests for the option library behavior. */
   module option_tests {
+
     /**
      * Classifies an i32 for the _Result tests: negative values are an error.
      */
@@ -132,9 +134,11 @@ public module std {
       /** Returns the payload used to check interface or generic method dispatch. */
       method get() i32;
     }
+
     /** A numeric fixture implementing the interface used by option-payload tests. */
     class Num implements IValue {
       var n: i32;
+
       /** Initializes the fixture fields used by this example or regression test. */
       init(v: i32) {
         this.n = v;

@@ -1,5 +1,6 @@
 /** Regression coverage for nonblocking server TLS. */
 public module tls {
+
   using std;
 
   /** Checks that unloaded contexts reject sockets instead of calling OpenSSL. */
@@ -42,8 +43,10 @@ public module tls {
 
 /** Local OpenSSL peers and credentials used only by the server tests. */
 public module tls {
+
   /** Fixtures and loopback integration tests for TLS servers. */
   module server_tests {
+
     using std;
     using tls;
 

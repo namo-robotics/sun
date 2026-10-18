@@ -1,5 +1,6 @@
 /** macOS kqueue boundary with portable readiness flags. */
 public module std.io {
+
   /** Native kevent layout on the supported 64-bit macOS targets. */
   class Kevent {
     var ident: u64;

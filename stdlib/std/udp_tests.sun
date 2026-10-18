@@ -5,8 +5,10 @@ using std;
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Groups tests for the udp library behavior. */
   module udp_tests {
+
     /** Checks roundtrip loopback. */
     test_function roundtrip_loopback() {
       var alloc = make_heap_allocator();

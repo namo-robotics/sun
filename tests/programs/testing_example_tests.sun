@@ -3,6 +3,7 @@ using std;
 
 /** Groups declarations used by this compiler regression test. */
 module arithmetic {
+
   /** Checks quadruples. */
   test_function quadruples() {
     std.test.assert_eq(arithmetic.quadruple(1), 4);

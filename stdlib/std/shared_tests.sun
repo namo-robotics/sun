@@ -7,13 +7,16 @@ using std.thread;
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Groups tests for the shared library behavior. */
   module shared_tests {
+
     /**
      * A small value to put behind a Shared handle.
      */
     class Res {
       public var v: i32;
+
       /** Initializes the fixture fields used by this example or regression test. */
       init(v: i32) {
         this.v = v;
@@ -29,6 +32,7 @@ public module std {
      */
     class DropRes {
       public var v: i32;
+
       /** Initializes the fixture fields used by this example or regression test. */
       init(v: i32) {
         this.v = v;
@@ -45,6 +49,7 @@ public module std {
      */
     class Counter {
       public var n: i64;
+
       /** Initializes the fixture fields used by this example or regression test. */
       init() {
         this.n = 0;

@@ -1,5 +1,6 @@
 /** Linux procfs inspection and pidfd process ownership. */
 public module std.process {
+
   /** Build a procfs path with an explicitly supplied allocator. */
   function process_path(alloc: ref HeapAllocator, target: i32, leaf: static_ptr<u8>) String {
     var path = String(alloc, "/proc/");

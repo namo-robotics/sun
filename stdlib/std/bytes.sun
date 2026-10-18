@@ -1,5 +1,6 @@
 /** Bounded borrowed byte storage for I/O and binary decoding. */
 public module std {
+
   /** Checks a byte range without overflowing when given very large bounds. */
   function valid_byte_range(size: i64, start: i64, count: i64) bool {
     return start >= 0 and count >= 0 and start <= size and count <= size - start;

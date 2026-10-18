@@ -5,8 +5,10 @@ using std;
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Groups tests for the contiguous buffer library behavior. */
   module contiguous_buffer_tests {
+
     /** Checks basic allocation and size. */
     test_function basic_allocation_and_size() {
       var alloc = make_heap_allocator();

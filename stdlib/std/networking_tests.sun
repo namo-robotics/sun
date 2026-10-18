@@ -7,8 +7,10 @@ using std;
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Groups tests for the networking library behavior. */
   module networking_tests {
+
     /** Check socket ownership with stdin closed in an isolated process. */
     test_function sockets_can_own_descriptor_zero() {
       var pid: i32 = try std.test.expect_system(std.process.fork());

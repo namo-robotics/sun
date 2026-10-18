@@ -5,6 +5,7 @@ using std;
 // tests reach the module's private items too.
 /** Groups declarations used by this compiler regression test. */
 module distance {
+
   /** Checks midpoint of equal points is that point. */
   test_function midpointOfEqualPointsIsThatPoint() {
     try std.test.assert_eq(distance.midpoint(4, 4), 4);

@@ -2,6 +2,7 @@ using std;
 
 /** Regression coverage for kernel readiness queues and their portable interface. */
 public module std.event_loop_tests {
+
   /** Assert that a rejected operation reports the expected system error. */
   function expect_error(result: SystemResult<void>, code: i32) std.test.AssertionResult<void> {
     match result {

@@ -5,8 +5,10 @@ using std;
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Groups tests for the string library behavior. */
   module string_tests {
+
     /** Combines assertion failures with errors from borrowed reads. */
     enum TestResult { Ok, Assertion(std.test.AssertionError), Read(IndexOutOfBoundsError) }
 

@@ -1,5 +1,6 @@
 /** Checked descriptor and socket configuration shared by portable server code. */
 public module std {
+
   /** Recognize an interrupted system operation without exposing a platform errno constant. */
   public function is_interrupted(code: i32) bool {
     return code == INTERRUPTED_ERRNO;

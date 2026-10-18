@@ -1,5 +1,6 @@
 /** Provides private C declarations for the synchronous NVIDIA backend. */
 public module cuda {
+
   /** Calls the native open operation; handles stay private. */
   extern "C" function c_open(ordinal: i32, output: raw_ptr<raw_ptr<u8>>) i32 as "sun_cuda_open";
 

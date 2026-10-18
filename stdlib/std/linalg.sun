@@ -1,5 +1,6 @@
 /** Provides allocation-free operations on owning, row-major matrices. */
 public module std.linalg {
+
   /** Selects the logical orientation of an input without copying it. */
   public enum Transpose { None, Transpose }
 

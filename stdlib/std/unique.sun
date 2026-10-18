@@ -6,6 +6,7 @@
 //        var p = Unique<Point>(ptr);
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Owns a heap value and releases its allocation when its lifetime ends. */
   public class Unique<T> {
     var data: raw_ptr<T>;

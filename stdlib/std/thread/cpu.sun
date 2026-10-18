@@ -1,5 +1,6 @@
 /** Queries of host CPU availability. */
 public module std.thread {
+
   /**
    * Return online logical CPUs, not affinity, container quota, or recommended worker count.
    * Query on each call. Failure is an error with no silent fallback; callers may choose one.

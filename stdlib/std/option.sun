@@ -16,6 +16,7 @@
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Contains an owned value when present, or records that no value is available. */
   public enum Option<T> {
     Some(T),

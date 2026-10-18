@@ -1,6 +1,7 @@
 // Simple math library for testing sunlib
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /**
    * Return the sum of two 32-bit integers.
    */

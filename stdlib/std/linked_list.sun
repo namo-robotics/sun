@@ -24,6 +24,7 @@
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Owns one list element and links it to its neighboring nodes. */
   public class LinkedListNode<T> {
     var value: T;

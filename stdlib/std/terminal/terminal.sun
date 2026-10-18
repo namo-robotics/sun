@@ -26,6 +26,7 @@
 
 /** Put a terminal into raw or cbreak mode for a scope, query its size, and read keys. */
 public module std.terminal {
+
   using std.io;
 
   /** tcsetattr timing: apply at once, keeping any input already typed. */

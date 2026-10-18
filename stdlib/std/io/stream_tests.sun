@@ -1,5 +1,6 @@
 /** Exercises bounded descriptor I/O with real pipes and borrowed handles. */
 public module std.io.stream_tests {
+
   /** Requires a successful complete write of the expected size. */
   function expect_write(result: std.io.WriteResult, count: i64) std.test.AssertionResult<void> {
     match result {

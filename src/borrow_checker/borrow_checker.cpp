@@ -356,6 +356,10 @@ void BorrowChecker::checkVariableCreation(
     while (true) {
       if (init->getType() == ASTNodeType::PAREN_EXPR) {
         init = static_cast<const ParenExprAST&>(*init).getInner();
+      } else if (init->getType() == ASTNodeType::MATCH &&
+                 static_cast<const sun::ast::MatchExprAST&>(*init).isPropagation()) {
+        // Propagation retains the successful reference's original owner.
+        init = static_cast<const sun::ast::MatchExprAST&>(*init).getDiscriminant();
       } else if (init->getType() == ASTNodeType::UNSAFE_BLOCK) {
         const auto& body =
             static_cast<const UnsafeBlockAST&>(*init).getBody().getBody();
@@ -538,7 +542,26 @@ void BorrowChecker::borrowRefCallInputs(const std::string& refName,
   bool tracked = false;
 
   auto borrowInput = [&](const ExprAST& input) {
-    const std::string* base = getBaseVariableName(input);
+    const ExprAST* source = &input;
+    const std::string* base = getBaseVariableName(*source);
+    // Stored references must retain owners through borrowed method chains.
+    // Do not extend temporary expression loans merely for chained reads.
+    while (!base) {
+      if (source->getType() == ASTNodeType::PAREN_EXPR) {
+        source = static_cast<const ParenExprAST&>(*source).getInner();
+      } else if (source->getType() == ASTNodeType::MATCH &&
+                 static_cast<const sun::ast::MatchExprAST&>(*source).isPropagation()) {
+        source = static_cast<const sun::ast::MatchExprAST&>(*source).getDiscriminant();
+      } else if (source->getType() == ASTNodeType::CALL &&
+                 classStoresRefs(source->getResolvedType())) {
+        const auto* callee = static_cast<const CallExprAST&>(*source).getCallee();
+        if (!callee || callee->getType() != ASTNodeType::MEMBER_ACCESS) break;
+        source = static_cast<const MemberAccessAST&>(*callee).getObject();
+      } else {
+        break;
+      }
+      base = getBaseVariableName(*source);
+    }
     if (!base) return;
     // Raw pointers are the unsafe escape hatch: storage the checker cannot see
     if (rawPointerLocals_.count(*base)) return;
@@ -546,7 +569,16 @@ void BorrowChecker::borrowRefCallInputs(const std::string& refName,
     if (inputType && inputType->isRawPointer()) return;
 
     auto targetInfo = resolveRefTarget(*base);
-    if (!targetInfo.isRebind) {
+    // Result values already hold a loan established while checking this
+    // initializer. Reuse that exact loan instead of borrowing it twice.
+    const auto& sourcePos = source->getLocation();
+    const std::string holder = "$refholder@" + std::to_string(sourcePos.line) +
+                               ":" + std::to_string(sourcePos.column);
+    bool existingResultLoan = false;
+    for (const auto& loan : state_.getActiveLoans(targetInfo.actualTarget)) {
+      existingResultLoan |= loan.refName == holder;
+    }
+    if (!targetInfo.isRebind && !existingResultLoan) {
       auto result = state_.addBorrow(targetInfo.actualTarget, refName, kind,
                                      currentScope_, refPos);
       if (!result.allowed) {

@@ -2,6 +2,7 @@
 // class another file imports with a file-level `using`.
 /** Groups declarations used by this compiler regression test. */
 public module lib {
+
   /** Owns a generic payload used to verify imported type and method resolution. */
   public class Box<T> {
     var v: T;

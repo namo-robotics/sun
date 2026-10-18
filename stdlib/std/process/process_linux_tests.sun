@@ -1,7 +1,9 @@
 /** Linux-specific native and procfs parser regressions. */
 public module std.process {
+
   /** Tests for Linux process data and descriptor ownership. */
   module inspection_tests {
+
     /** Construct a stat fixture with a command name containing spaces and parentheses. */
     function stat_fixture(alloc: ref HeapAllocator) String {
       var text = String(alloc, "42 (name ) with (parens)) S");

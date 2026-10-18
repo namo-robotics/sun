@@ -2,6 +2,7 @@ using std;
 
 /** Portable server primitive regression tests. */
 public module std.server_os_tests {
+
   /** Online CPUs must be a positive host count. */
   test_function online_cpus() {
     try std.test.assert((try std.test.expect_system(std.thread.online_cpu_count())) > 0, "online CPU count is positive");
@@ -31,6 +32,7 @@ public module std.server_os_tests {
 
 /** Concurrency and socket behavior using private native checks only inside stdlib tests. */
 public module std.server_os_tests {
+
   /** Notify repeatedly from a worker while the main thread drains the same source. */
   function send_wakeups(wake: std.io.Wakeup) i32 {
     for (var i: i64 = 0; i < 10000; i = i + 1) {
@@ -119,6 +121,10 @@ public module std.server_os_tests {
     };
     var client = TcpStream();
     try std.test.expect_system_success(client.connect_local(try std.test.expect_system(listener.local_port())));
+    // Client connect can finish before the listener has a pending connection.
+    var accept_poll = std.io.Poller(alloc);
+    accept_poll.add_read(listener.get_fd());
+    try std.test.assert_eq(try std.test.expect_system(accept_poll.wait(1000)), 1);
     var server = match listener.try_accept() {
       AcceptResult.Accepted(stream) => stream,
       _ => {
@@ -196,6 +202,7 @@ public module std.server_os_tests {
 
 /** Additional socket backpressure and registration reuse regressions. */
 public module std.server_os_tests {
+
   /** A bounded native send buffer forces a partial nonblocking write with a resumable prefix. */
   test_function tcp_partial_write() {
     var alloc = make_heap_allocator();
@@ -205,6 +212,10 @@ public module std.server_os_tests {
     try std.test.expect_system_success(listener.set_nonblocking(true));
     var client = TcpStream();
     try std.test.expect_system_success(client.connect_local(try std.test.expect_system(listener.local_port())));
+    // Client connect can finish before the listener has a pending connection.
+    var accept_poll = std.io.Poller(alloc);
+    accept_poll.add_read(listener.get_fd());
+    try std.test.assert_eq(try std.test.expect_system(accept_poll.wait(1000)), 1);
     var server = match listener.try_accept() {
       AcceptResult.Accepted(stream) => stream,
       _ => {
@@ -254,6 +265,7 @@ public module std.server_os_tests {
 
 /** Metadata and ownership with the first available descriptor. */
 public module std.server_os_tests {
+
   /** Open a real file at descriptor zero and verify metadata and cleanup after moving. */
   function metadata_at_zero() std.test.AssertionResult<void> {
     unsafe { c_close(0); };

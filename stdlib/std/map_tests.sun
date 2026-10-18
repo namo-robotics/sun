@@ -5,8 +5,10 @@ using std;
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Groups tests for the map library behavior. */
   module map_tests {
+
     /** Checks create empty map. */
     test_function create_empty_map() {
       var allocator = make_heap_allocator();

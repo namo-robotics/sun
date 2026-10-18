@@ -30,6 +30,7 @@
 
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
+
   /** Produces successive items from a borrowed container until iteration is exhausted. */
   public interface IIterator<T, Container> {
     /**
