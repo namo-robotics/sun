@@ -34,6 +34,7 @@ public module std {
   public class XmlReader {
     var alloc: HeapAllocator;
     var input: const ref String;
+    var filename: Option<String> = Option.None;
     var pos: i64 = 0;
     var stack: Vec<XmlFrame>;
     var initialized: bool = false;
@@ -50,6 +51,25 @@ public module std {
       this.alloc = alloc.copy();
       this.input = input;
       this.stack = Vec<XmlFrame>(alloc, 4);
+    }
+
+    /** Borrows input and takes ownership of a diagnostic filename; performs no file I/O. */
+    init(alloc: ref HeapAllocator, input: const ref String, filename: String) {
+      this.alloc = alloc.copy();
+      this.input = input;
+      this.stack = Vec<XmlFrame>(alloc, 4);
+      this.filename = Option.Some(filename);
+    }
+
+    /** Copies the optional filename into an independently owned returned diagnostic. */
+    method named_error(error: XmlError) XmlError {
+      match this.filename {
+        Option.Some(value) => {
+          error.filename_ = Option.Some(value.clone(this.alloc));
+        },
+        Option.None => {}
+      };
+      return error;
     }
 
     /** Reports a position in the original, unmodified input. */
@@ -423,7 +443,7 @@ public module std {
     /** Advances the parser, retaining the first failure on subsequent calls. */
     public method next() XmlResult<Option<XmlEvent>> {
       if (this.failed) {
-        return XmlResult.Error(XmlError(this.failure_message, this.failure_offset, this.failure_line, this.failure_column));
+        return XmlResult.Error(this.named_error(XmlError(this.failure_message, this.failure_offset, this.failure_line, this.failure_column)));
       }
       return match this.next_impl() {
         XmlResult.Ok(event) => XmlResult.Ok(event),
@@ -434,7 +454,7 @@ public module std {
           this.failure_offset = located.offset_;
           this.failure_line = located.line_;
           this.failure_column = located.column_;
-          return XmlResult.Error(located);
+          return XmlResult.Error(this.named_error(located));
         }
       };
     }
@@ -630,5 +650,22 @@ public module std {
   public function parse_xml(alloc: ref HeapAllocator, input: static_ptr<u8>) XmlResult<XmlDocument> {
     var text = String(alloc, input);
     return parse_xml(alloc, text);
+  }
+
+  /** Parses borrowed input and moves the diagnostic filename into any returned error. */
+  public function parse_xml(alloc: ref HeapAllocator, input: const ref String, filename: String) XmlResult<XmlDocument> {
+    return match parse_xml(alloc, input) {
+      XmlResult.Ok(document) => XmlResult.Ok(document),
+      XmlResult.Error(error) => {
+        error.filename_ = Option.Some(filename);
+        return XmlResult.Error(error);
+      }
+    };
+  }
+
+  /** Parses literal input with an owned diagnostic filename; performs no file I/O. */
+  public function parse_xml(alloc: ref HeapAllocator, input: static_ptr<u8>, filename: String) XmlResult<XmlDocument> {
+    var text = String(alloc, input);
+    return parse_xml(alloc, text, filename);
   }
 }

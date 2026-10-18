@@ -7,6 +7,7 @@ public module std {
     var offset_: i64;
     var line_: i64;
     var column_: i64;
+    var filename_: Option<String> = Option.None;
 
     /** Creates a diagnostic; negative coordinates mean no source location. */
     init(message: static_ptr<u8>, offset: i64, line: i64, column: i64) {
@@ -14,6 +15,17 @@ public module std {
       this.offset_ = offset;
       this.line_ = line;
       this.column_ = column;
+    }
+
+    /** Borrows the owned source filename, or None for unnamed input and API errors. */
+    public const method filename() Option<const ref String> {
+      match this.filename_ {
+        Option.Some(value) => {
+          return Option.Some(value);
+        },
+        Option.None => {}
+      };
+      return Option.None;
     }
 
     /** Identifies the XML error category. */

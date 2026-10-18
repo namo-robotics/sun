@@ -551,4 +551,86 @@ public module xml_tests {
     };
     return TestResult.Ok;
   }
+
+  /** Returns a reader error after its input and reader have been destroyed. */
+  function detached_reader_error(alloc: ref HeapAllocator) XmlResult<void> {
+    var input = String(alloc, "<r>\r\né</r>!");
+    var reader = XmlReader(alloc, input, String(alloc, "metadata.gir"));
+    while (true) {
+      var event = try reader.next();
+    }
+    return XmlResult.Ok;
+  }
+
+  /** Checks filename ownership, unnamed input, and both named parsing overloads. */
+  test_function source_filenames() TestResult {
+    var alloc = make_heap_allocator();
+    match detached_reader_error(alloc) {
+      XmlResult.Error(error) => {
+        try std.test.assert(
+          match error.filename() {
+            Option.Some(value) => value.equals_literal("metadata.gir"),
+            Option.None => false
+          },
+          "filename survives reader destruction"
+        );
+        try std.test.assert_eq(error.offset(), 11);
+        try std.test.assert_eq(error.line(), 2);
+        try std.test.assert_eq(error.column(), 6);
+      },
+      XmlResult.Ok => {
+        try std.test.assert(false, "trailing text must fail");
+      }
+    };
+    match parse_xml(alloc, "<r>", String(alloc, "literal.xml")) {
+      XmlResult.Error(error) => {
+        try std.test.assert(
+          match error.filename() {
+            Option.Some(value) => value.equals_literal("literal.xml"),
+            Option.None => false
+          },
+          "literal input has a filename"
+        );
+      },
+      XmlResult.Ok(_) => {
+        try std.test.assert(false, "unclosed root must fail");
+      }
+    };
+    match parse_xml(alloc, "<r>") {
+      XmlResult.Error(error) => {
+        try std.test.assert(
+          match error.filename() {
+            Option.Some(_) => false,
+            Option.None => true
+          },
+          "unnamed input has no filename"
+        );
+      },
+      XmlResult.Ok(_) => {
+        try std.test.assert(false, "unclosed root must fail");
+      }
+    };
+    var input = String(alloc, "<r>\xc0");
+    var reader = XmlReader(alloc, input, String(alloc, "invalid.xml"));
+    for (var attempt: i64 = 0; attempt < 2; attempt += 1) {
+      match reader.next() {
+        XmlResult.Error(error) => {
+          try std.test.assert(
+            match error.filename() {
+              Option.Some(value) => value.equals_literal("invalid.xml"),
+              Option.None => false
+            },
+            "sticky UTF-8 errors retain the filename"
+          );
+          try std.test.assert_eq(error.offset(), 3);
+          try std.test.assert_eq(error.line(), 1);
+          try std.test.assert_eq(error.column(), 4);
+        },
+        XmlResult.Ok(_) => {
+          try std.test.assert(false, "invalid UTF-8 must fail");
+        }
+      };
+    }
+    return TestResult.Ok;
+  }
 }

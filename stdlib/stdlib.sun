@@ -69,6 +69,7 @@ manifest {
     "std/server_os_tests.sun",
     "std/json_tests.sun",
     "std/xml/xml_tests.sun",
+    "std/xml/xml_fixture_tests.sun",
     "std/linked_list_tests.sun",
     "std/map_tests.sun",
     "std/math_tests.sun",
