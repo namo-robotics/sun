@@ -46,6 +46,10 @@ manifest {
     "std/http.sun",
     "std/proto_wire.sun",
     "std/json.sun",
+    "std/xml/common.sun",
+    "std/xml/tree.sun",
+    "std/xml/reader.sun",
+    "std/xml/writer.sun",
     "std/bigint.sun"
   ],
   test_files: [
@@ -64,6 +68,7 @@ manifest {
     "std/io/event_loop_tests.sun",
     "std/server_os_tests.sun",
     "std/json_tests.sun",
+    "std/xml/xml_tests.sun",
     "std/linked_list_tests.sun",
     "std/map_tests.sun",
     "std/math_tests.sun",

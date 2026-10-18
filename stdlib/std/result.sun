@@ -15,6 +15,7 @@ public module std {
     Overflow(OverflowError),
     Arithmetic(ArithmeticError),
     Json(JsonError),
+    Xml(XmlError),
     Decode(ProtoDecodeError)
   }
 

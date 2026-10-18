@@ -1759,3 +1759,137 @@ eprint("error code: ");
 eprintln(42);
 eprintln(`giving up after ${attempts} tries`);
 ```
+
+## XML
+
+Sun provides an in-memory UTF-8 XML reader, an editable owned tree, and a writer.
+The library has no native XML dependency. It supports the XML 1.0 Fifth Edition
+name and character rules and XML namespaces, but deliberately rejects DTDs,
+custom entities, XML 1.1, and encodings other than UTF-8. It is not a validating
+XML processor or a complete implementation of every XML encoding requirement.
+
+### Parsing and ownership
+
+```sun
+var alloc = make_heap_allocator();
+var document = try parse_xml(alloc, "<p>Hello <b>Sun</b>!</p>");
+var bold = try (try document.root().child(1)).element();
+println(bold.name().local());
+```
+
+`parse_xml(alloc, input)` accepts a borrowed `String` or a literal and returns
+`XmlResult<XmlDocument>`. The resulting document owns its names, attributes, and
+ordered content independently of the input. It preserves whitespace, comments,
+processing instructions, and the order of text around child elements. CDATA and
+character references become decoded text. XML line endings and attribute
+whitespace are normalized; the original input is never modified.
+
+`XmlReader(alloc, input)` borrows a complete `String`. Call `next()` until it returns
+`XmlResult.Ok(Option.None)` to validate the entire document. Each preceding call
+returns an owned `XmlEvent`: `Start(XmlElement)`, `End(XmlName)`, `Text(String)`,
+`Comment(String)`, or `Instruction(XmlInstruction)`. Start elements have attributes
+and declarations but no children. Empty elements produce Start and End events.
+Events can outlive the reader; the reader cannot outlive its input. The first
+call validates input UTF-8 before returning an event. A reader retains its first
+error and never resumes normal parsing after failure.
+
+All storage uses the supplied `HeapAllocator`. Reader events allocate their owned
+payloads; parsing a tree also allocates its child collections. Getters borrow
+rather than clone. `clone(alloc)` explicitly copies a name, node, element, or
+document. Owned arguments move into constructors and editing operations.
+
+### Names and editing
+
+`XmlName(uri, local, prefix)` owns three `String` values. URI and local name define
+identity; the prefix is a serialization preference, with an empty string meaning
+no preference. Use empty URI and prefix strings for an unqualified name.
+`uri()`, `local()`, and `prefix()` borrow the components; `equals(other)` compares
+expanded identity. Constructors store components, while `validate()` and the
+operations consuming names check their validity.
+
+| API | Behavior |
+| --- | --- |
+| `document.root()` | Borrow the editable root element |
+| `document.replace_root(root)` | Validate and move in a root, returning the old owned root |
+| `element.name()` / `set_name(name)` | Borrow or replace the expanded element name |
+| `element.attribute(name)` | Return `Option<const ref String>`; absent differs from empty |
+| `element.set_attribute(name, value)` | Insert or replace by expanded name, retaining insertion order |
+| `element.remove_attribute(name)` | Return the removed owned value, or `None` |
+| `element.attribute_count()` / `attribute_name(index)` | Enumerate attribute names, then look up their values |
+| `element.namespace_count()` / `namespace_at(index)` | Inspect declarations present on the parsed element |
+| `element.child_count()` / `child(index)` | Enumerate all ordered nodes, including whitespace |
+| `element.find_child(name)` | Borrow the first direct element matching an expanded name |
+| `element.append(node)` / `insert(index, node)` | Move in a validated child; insertion also accepts the end position |
+| `element.replace(index, node)` / `remove(index)` | Return the replaced or detached owned node |
+| `node.element()` / `text()` | Borrow the requested content or return a kind error |
+| `node.set_text(text)` | Replace decoded text after validation |
+
+Build nodes using `XmlNode(XmlNodeValue.Element(element))`, `Text(text)`,
+`Comment(text)`, or `Instruction(XmlInstruction(target, data))`. Comments and
+instructions are validated when attached or written. Processing instructions
+expose borrowed `target_name()` and `content()` getters. Namespace declarations
+expose `declared_prefix()` and `namespace_uri()` getters.
+
+Elements recursively own their children. There are no persistent IDs or parent
+pointers. Detach a subtree with `remove` before attaching it elsewhere; ordinary
+Sun borrowing rules prevent using references invalidated by editing or moving
+storage. Names, indices, node kinds, and depth are checked before mutation.
+The maximum element depth is 256, including edits through borrowed descendants.
+
+### Writing
+
+```sun
+var output = String(alloc, "");
+try document.write(alloc, output);
+```
+
+`document.write(alloc, output)` appends an XML declaration and the complete
+document. Alternatively, `XmlWriter(alloc, output)` borrows a `String` for direct
+construction. Its operations return `XmlResult<void>`:
+
+| Operation | Contract |
+| --- | --- |
+| `declaration()` | Optional; must precede all other output |
+| `start_element(name)` | Open an element by expanded name |
+| `attribute(name, value)` | Add a unique attribute before content or another element |
+| `text(value)` | Escape decoded text; only whitespace is allowed outside the root |
+| `comment(value)` | Write validated comment content |
+| `instruction(target, data)` | Write a validated processing instruction |
+| `end_element()` | Close the innermost element |
+| `finish()` | Require exactly one root and no unclosed elements; stop further writes |
+
+The writer escapes text and attributes and preserves referenced carriage returns
+and attribute tabs/newlines. Start tags are buffered until content or closure.
+Every operation validates before appending its output. Failure permanently stops
+the writer: previously appended output may be incomplete and must be discarded.
+Release the writer's borrow before reading or otherwise modifying the output.
+There is no raw-markup insertion or automatic pretty printing.
+
+Namespace declarations are managed automatically. Parsed declarations and preferred
+prefixes are retained where compatible. Conflicts generate deterministic `ns1`,
+`ns2`, and subsequent prefixes; namespaced attributes always use a prefix. An
+unqualified element beneath a default namespace gets a namespace reset. Moving
+subtrees preserves expanded element and attribute names. Text and attribute values
+are opaque: the library does not repair QName-valued content or XPath expressions.
+
+Round trips preserve semantic names and ordered decoded content, not original
+prefix spelling, quote style, declaration placement, CDATA boundaries, or entity
+spelling. Adjacent text events may merge when serialized and parsed again.
+
+### Errors and examples
+
+`XmlResult<T>` contains `Ok(T)` or `Error(XmlError)`. The general `Result<T>` also
+accepts XML errors through its `Xml` alternative. `XmlError.code()` is 61;
+`message()` allocates an owned explanation under the existing `IError` contract.
+Syntax errors expose the original zero-based byte `offset()` and one-based
+`line()` and Unicode character `column()`, counting CRLF as one line ending.
+Errors without an input location return -1 for all three coordinates.
+
+Run the standalone SVG example from the repository root after building:
+
+```sh
+build/sun examples/105-xml/svg.sun
+```
+
+The SVG example generates escaped vector markup without requiring GTK. Incremental input, file adapters,
+XPath, schemas, and migrations of external consumers are outside this release.

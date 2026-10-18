@@ -1,0 +1,39 @@
+using std;
+/** Produces a small SVG with namespace declarations and escaped text. */
+function draw(alloc: ref HeapAllocator, output: ref String) XmlResult<void> {
+  var writer = XmlWriter(alloc, output);
+  try writer.declaration();
+  var svg = XmlName(String(alloc, "http://www.w3.org/2000/svg"), String(alloc, "svg"), String(alloc, ""));
+  try writer.start_element(svg);
+  var view_box = XmlName(String(alloc, ""), String(alloc, "viewBox"), String(alloc, ""));
+  var bounds = String(alloc, "0 0 300 60");
+  try writer.attribute(view_box, bounds);
+  var text = XmlName(String(alloc, "http://www.w3.org/2000/svg"), String(alloc, "text"), String(alloc, ""));
+  try writer.start_element(text);
+  var y = XmlName(String(alloc, ""), String(alloc, "y"), String(alloc, ""));
+  var baseline = String(alloc, "30");
+  try writer.attribute(y, baseline);
+  var label = String(alloc, "Sun <XML> & SVG");
+  try writer.text(label);
+  try writer.end_element();
+  try writer.end_element();
+  return writer.finish();
+}
+
+/** Prints a complete SVG document that can be redirected to a file. */
+function main() i32 {
+  var alloc = make_heap_allocator();
+  var output = String(alloc, "");
+  match draw(alloc, output) {
+    XmlResult.Ok => {},
+    XmlResult.Error(error) => {
+      println(error.message());
+      return 1;
+    }
+  };
+  println(output);
+  return 0;
+}
+
+/** Uses only the standard library. */
+manifest { libraries: ["stdlib.moon"] }

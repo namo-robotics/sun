@@ -1159,3 +1159,99 @@ TEST(MemorySafety_BorrowChecker, constructor_argument_by_value_moves) {
   )"),
                                 "Borrow check failed");
 }
+
+/** Rejects returning an XML reader that borrows a destroyed local input. */
+TEST(MemorySafety_BorrowChecker, xml_reader_cannot_escape_input) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using std;
+    /** Attempts to return a reader beyond its input's lifetime. */
+    function dangling(alloc: ref HeapAllocator) XmlReader {
+      var input = String(alloc, "<r/>");
+      return XmlReader(alloc, input);
+    }
+    /** Instantiates the invalid borrowing path. */
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var reader = dangling(alloc);
+      return 0;
+    }
+  )"), SunError);
+}
+
+/** Rejects modifying input that a live XML reader still borrows. */
+TEST(MemorySafety_BorrowChecker, xml_reader_prevents_input_mutation) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using std;
+    /** Attempts to invalidate input before advancing its reader. */
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var input = String(alloc, "<r/>");
+      var reader = XmlReader(alloc, input);
+      input.clear();
+      var event = match reader.next() { XmlResult.Ok(value) => value, XmlResult.Error(_) => { return 1; } };
+      return 0;
+    }
+  )"), SunError);
+}
+
+/** Rejects destroying an XML document while a child borrow remains live. */
+TEST(MemorySafety_BorrowChecker, xml_child_prevents_document_move) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using std;
+    /** Consumes the complete owned document. */
+    function consume(document: XmlDocument) void {}
+    /** Attempts to use a child after consuming its owner. */
+    function main() XmlResult<i32> {
+      var alloc = make_heap_allocator();
+      var document = match parse_xml(alloc, "<r>text</r>") {
+        XmlResult.Ok(d) => d, XmlResult.Error(_) => { return XmlResult.Ok(1); }
+      };
+      var child: ref XmlNode = try document.root().child(0);
+      consume(document);
+      var text = try child.text();
+      return XmlResult.Ok(0);
+    }
+  )"), SunError);
+}
+
+/** Rejects invalidating child storage while a borrowed child is still used. */
+TEST(MemorySafety_BorrowChecker, xml_child_prevents_removal) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using std;
+    /** Attempts to use a child after removing it from its owning element. */
+    function main() XmlResult<i32> {
+      var alloc = make_heap_allocator();
+      var document = match parse_xml(alloc, "<r>text</r>") {
+        XmlResult.Ok(d) => d, XmlResult.Error(_) => { return XmlResult.Ok(1); }
+      };
+      var child: ref XmlNode = try document.root().child(0);
+      var removed = try document.root().remove(0);
+      var text = try child.text();
+      return XmlResult.Ok(0);
+    }
+  )"), SunError);
+}
+
+/** Allows chained child borrows while their document remains alive. */
+TEST(MemorySafety_BorrowChecker, xml_child_valid_borrow) {
+  auto value = executeStringWithStdlib(R"(
+    using std;
+    /** Reads a child through a reference carrying its document's lifetime. */
+    function inspect(document: ref XmlDocument) XmlResult<i64> {
+      var child: ref XmlNode = try document.root().child(0);
+      return XmlResult.Ok((try child.text()).length());
+    }
+    /** Creates the owner before borrowing its contents. */
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var document = match parse_xml(alloc, "<r>text</r>") {
+        XmlResult.Ok(d) => d, XmlResult.Error(_) => { return 1; }
+      };
+      return match inspect(document) {
+        XmlResult.Ok(size) => _convert<i32>(size),
+        XmlResult.Error(_) => -1
+      };
+    }
+  )");
+  EXPECT_EQ(value, 4);
+}

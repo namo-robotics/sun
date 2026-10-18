@@ -1,0 +1,626 @@
+/** Event-based parsing of complete UTF-8 XML input. */
+public module std {
+  /** Owns a reader event; empty elements emit both Start and End. */
+  public enum XmlEvent { Start(XmlElement), End(XmlName), Text(String), Comment(String), Instruction(XmlInstruction) }
+  /** Keeps lexical names and namespace declarations for an open element. */
+  class XmlFrame {
+    var raw: String;
+    var name: XmlName;
+    var namespaces: Vec<XmlNamespace>;
+    /** Moves one open element's state into the stack. */
+    init(raw: String, name: XmlName, namespaces: Vec<XmlNamespace>) {
+      this.raw = raw;
+      this.name = name;
+      this.namespaces = namespaces;
+    }
+  }
+  /** Temporarily owns an unresolved attribute. */
+  class XmlRawAttribute {
+    var name: String;
+    var value: String;
+    /** Moves lexical attribute data into temporary storage. */
+    init(name: String, value: String) {
+      this.name = name;
+      this.value = value;
+    }
+  }
+  /** Borrows input and owns only parser state and returned event payloads. */
+  public class XmlReader {
+    var alloc: HeapAllocator;
+    var input: const ref String;
+    var pos: i64 = 0;
+    var stack: Vec<XmlFrame>;
+    var initialized: bool = false;
+    var roots: i64 = 0;
+    var pending_end: bool = false;
+    var failed: bool = false;
+    var failure_message: static_ptr<u8> = "XML reader failed";
+    var failure_offset: i64 = -1;
+    var failure_line: i64 = -1;
+    var failure_column: i64 = -1;
+    /** Borrows complete input until the reader is destroyed. */
+    init(alloc: ref HeapAllocator, input: const ref String) {
+      this.alloc = alloc.copy();
+      this.input = input;
+      this.stack = Vec<XmlFrame>(alloc, 4);
+    }
+
+    /** Reports a position in the original, unmodified input. */
+    method error(message: static_ptr<u8>) XmlError {
+      var line: i64 = 1;
+      var column: i64 = 1;
+      var i: i64 = 0;
+      while (i < this.pos) {
+        var c = xml_byte(this.input, i);
+        if (c == 13) {
+          line += 1;
+          column = 1;
+          if (xml_byte(this.input, i + 1) == 10 and i + 1 < this.pos) {
+            i += 1;
+          }
+        } else if (c == 10) {
+          line += 1;
+          column = 1;
+        } else if (c < 128 or c >= 192) {
+          column += 1;
+        }
+        i += 1;
+      }
+      return XmlError(message, this.pos, line, column);
+    }
+
+    /** Tests a literal at the current byte position. */
+    method starts(literal: static_ptr<u8>) bool {
+      if (literal.length() > this.input.length() - this.pos) {
+        return false;
+      }
+      var end = this.pos + literal.length();
+      var view = this.input[this.pos:end];
+      return view.equals_literal(literal);
+    }
+
+    /** Consumes XML whitespace. */
+    method space() void {
+      while (xml_space(xml_byte(this.input, this.pos))) {
+        this.pos += 1;
+      }
+    }
+
+    /** Consumes a required delimiter. */
+    method expect(c: i64) XmlResult<void> {
+      if (xml_byte(this.input, this.pos) != c) {
+        return XmlResult.Error(this.error("unexpected XML delimiter"));
+      }
+      this.pos += 1;
+      return XmlResult.Ok;
+    }
+
+    /** Reads a lexical XML Name; QName restrictions are checked during resolution. */
+    method raw_name() XmlResult<String> {
+      var start = this.pos;
+      while (this.pos < this.input.length()) {
+        var scalar = try xml_scalar(this.input, this.pos);
+        if (scalar.value != 58 and not xml_name_char(scalar.value)) {
+          break;
+        }
+        if (this.pos == start and scalar.value != 58 and not xml_name_start(scalar.value)) {
+          break;
+        }
+        this.pos += scalar.width;
+      }
+      if (this.pos == start) {
+        return XmlResult.Error(this.error("expected XML name"));
+      }
+      return XmlResult.Ok(xml_slice(this.alloc, this.input, start, this.pos));
+    }
+
+    /** Decodes a character reference directly into an output buffer. */
+    method entity(out: ref String) XmlResult<void> {
+      try this.expect(38);
+      var start = this.pos;
+      while (this.pos < this.input.length() and xml_byte(this.input, this.pos) != 59) {
+        this.pos += 1;
+      }
+      if (this.pos == this.input.length()) {
+        return XmlResult.Error(this.error("unterminated character reference"));
+      }
+      var name = xml_slice(this.alloc, this.input, start, this.pos);
+      this.pos += 1;
+      if (name.equals_literal("amp")) {
+        out.append("&");
+      } else if (name.equals_literal("lt")) {
+        out.append("<");
+      } else if (name.equals_literal("gt")) {
+        out.append(">");
+      } else if (name.equals_literal("quot")) {
+        out.append("\"");
+      } else if (name.equals_literal("apos")) {
+        out.append("'");
+      } else {
+        if (xml_byte(name, 0) != 35) {
+          return XmlResult.Error(this.error("unknown entity; custom entities are unsupported"));
+        }
+        var base: i64 = 10;
+        var i: i64 = 1;
+        var code: i64 = 0;
+        if (xml_byte(name, i) == 120) {
+          base = 16;
+          i += 1;
+        }
+        if (i == name.length()) {
+          return XmlResult.Error(this.error("empty character reference"));
+        }
+        while (i < name.length()) {
+          var c = xml_byte(name, i);
+          var digit: i64 = -1;
+          if (c >= 48 and c <= 57) {
+            digit = c - 48;
+          } else if (c >= 65 and c <= 70) {
+            digit = c - 55;
+          } else if (c >= 97 and c <= 102) {
+            digit = c - 87;
+          }
+          if (digit < 0 or digit >= base or code > (1114111 - digit) / base) {
+            return XmlResult.Error(this.error("invalid character reference"));
+          }
+          code = code * base + digit;
+          i += 1;
+        }
+        if (not xml_character(code)) {
+          return XmlResult.Error(this.error("invalid referenced XML character"));
+        }
+        for (var j: i64 = 0; j < compute_utf8_len(code); j += 1) {
+          out.append_char(encode_utf8_byte(code, j));
+        }
+      }
+      return XmlResult.Ok;
+    }
+
+    /** Appends a source character with XML line-ending normalization. */
+    method character(out: ref String, attribute: bool) void {
+      var c = xml_byte(this.input, this.pos);
+      this.pos += 1;
+      if (c == 13) {
+        if (xml_byte(this.input, this.pos) == 10) {
+          this.pos += 1;
+        }
+        c = 10;
+      }
+      if (attribute and xml_space(c)) {
+        c = 32;
+      }
+      out.append_char(_convert<u8>(c));
+    }
+
+    /** Reads a quoted attribute value and decodes references. */
+    method quoted() XmlResult<String> {
+      var quote = xml_byte(this.input, this.pos);
+      if (quote != 34 and quote != 39) {
+        return XmlResult.Error(this.error("attribute must be quoted"));
+      }
+      this.pos += 1;
+      var out = String(this.alloc, "");
+      while (xml_byte(this.input, this.pos) != quote) {
+        var c = xml_byte(this.input, this.pos);
+        if (c < 0 or c == 60) {
+          return XmlResult.Error(this.error("invalid or unterminated attribute"));
+        }
+        if (c == 38) {
+          try this.entity(out);
+        } else {
+          this.character(out, true);
+        }
+      }
+      this.pos += 1;
+      return XmlResult.Ok(out);
+    }
+
+    /** Reads normalized content through a literal terminator. */
+    method until(end: static_ptr<u8>) XmlResult<String> {
+      var out = String(this.alloc, "");
+      while (not this.starts(end)) {
+        if (this.pos >= this.input.length()) {
+          return XmlResult.Error(this.error("unterminated XML construct"));
+        }
+        this.character(out, false);
+      }
+      this.pos += end.length();
+      return XmlResult.Ok(out);
+    }
+
+    /** Validates the optional XML declaration and supported encoding. */
+    method declaration() XmlResult<void> {
+      this.pos += 5;
+      var index: i64 = 0;
+      var encoding = false;
+      var standalone = false;
+      while (true) {
+        var before = this.pos;
+        this.space();
+        if (this.starts("?>")) {
+          this.pos += 2;
+          break;
+        }
+        if (before == this.pos) {
+          return XmlResult.Error(this.error("declaration fields require whitespace"));
+        }
+        var name = try this.raw_name();
+        this.space();
+        try this.expect(61);
+        this.space();
+        // Declaration values cannot contain references or normalized whitespace.
+        var quote = xml_byte(this.input, this.pos);
+        if (quote != 34 and quote != 39) {
+          return XmlResult.Error(this.error("declaration value must be quoted"));
+        }
+        this.pos += 1;
+        var start = this.pos;
+        while (xml_byte(this.input, this.pos) != quote) {
+          if (xml_byte(this.input, this.pos) < 0) {
+            return XmlResult.Error(this.error("unterminated declaration"));
+          }
+          this.pos += 1;
+        }
+        var value = xml_slice(this.alloc, this.input, start, this.pos);
+        this.pos += 1;
+        if (index == 0) {
+          if (not name.equals_literal("version")) {
+            return XmlResult.Error(this.error("XML declaration requires version first"));
+          }
+          if (not value.equals_literal("1.0")) {
+            return XmlResult.Error(this.error("only XML 1.0 is supported"));
+          }
+        } else if (name.equals_literal("encoding") and not encoding and not standalone) {
+          value.to_lower();
+          if (not value.equals_literal("utf-8")) {
+            return XmlResult.Error(this.error("only UTF-8 XML is supported"));
+          }
+          encoding = true;
+        } else if (name.equals_literal("standalone") and not standalone) {
+          if (not value.equals_literal("yes") and not value.equals_literal("no")) {
+            return XmlResult.Error(this.error("invalid standalone declaration"));
+          }
+          standalone = true;
+        } else {
+          return XmlResult.Error(this.error("invalid XML declaration field"));
+        }
+        index += 1;
+      }
+      if (index == 0) {
+        return XmlResult.Error(this.error("XML declaration requires version"));
+      }
+      return XmlResult.Ok;
+    }
+
+    /** Resolves a prefix in the open element stack. */
+    method namespace_uri(prefix: const ref String) XmlResult<String> {
+      if (prefix.equals_literal("xml")) {
+        return XmlResult.Ok(String(this.alloc, "http://www.w3.org/XML/1998/namespace"));
+      }
+      for (var n = this.stack.size() - 1; n >= 0; n -= 1) {
+        for (var i: i64 = 0; i < this.stack[n].namespaces.size(); i += 1) {
+          if (this.stack[n].namespaces[i].prefix.equals(prefix)) {
+            return XmlResult.Ok(this.stack[n].namespaces[i].uri.clone(this.alloc));
+          }
+        }
+      }
+      if (prefix.is_empty()) {
+        return XmlResult.Ok(String(this.alloc, ""));
+      }
+      return XmlResult.Error(this.error("unbound namespace prefix"));
+    }
+
+    /** Expands a QName; default namespaces do not apply to attributes. */
+    method resolve(raw: const ref String, attribute: bool) XmlResult<XmlName> {
+      var colon: i64 = -1;
+      for (var i: i64 = 0; i < raw.length(); i += 1) {
+        if (xml_byte(raw, i) == 58) {
+          if (colon >= 0) {
+            return XmlResult.Error(this.error("multiple QName colons"));
+          }
+          colon = i;
+        }
+      }
+      var prefix = xml_slice(this.alloc, raw, 0, colon < 0 ? 0 : colon);
+      var local = xml_slice(this.alloc, raw, colon + 1, raw.length());
+      if (colon >= 0) {
+        try xml_validate_ncname(prefix);
+      }
+      try xml_validate_ncname(local);
+      var uri = String(this.alloc, "");
+      if (colon >= 0 or not attribute) {
+        uri = try this.namespace_uri(prefix);
+      }
+      var name = XmlName(uri, local, prefix);
+      try name.validate();
+      return XmlResult.Ok(name);
+    }
+
+    /** Parses a start tag and establishes its namespace scope. */
+    method start_element() XmlResult<XmlEvent> {
+      this.pos += 1;
+      var raw = try this.raw_name();
+      if (this.stack.size() >= 256) {
+        return XmlResult.Error(this.error("XML nesting too deep"));
+      }
+      if (this.stack.is_empty()) {
+        this.roots += 1;
+        if (this.roots > 1) {
+          return XmlResult.Error(this.error("multiple root elements"));
+        }
+      }
+      var attributes = Vec<XmlRawAttribute>(this.alloc, 4);
+      var namespaces = Vec<XmlNamespace>(this.alloc, 4);
+      while (true) {
+        var before = this.pos;
+        this.space();
+        var c = xml_byte(this.input, this.pos);
+        if (c == 47 or c == 62) {
+          break;
+        }
+        if (this.pos == before) {
+          return XmlResult.Error(this.error("attributes require whitespace"));
+        }
+        var key = try this.raw_name();
+        this.space();
+        try this.expect(61);
+        this.space();
+        var value = try this.quoted();
+        for (var i: i64 = 0; i < attributes.size(); i += 1) {
+          if (attributes[i].name.equals(key)) {
+            return XmlResult.Error(this.error("duplicate attribute"));
+          }
+        }
+        if (key.equals_literal("xmlns") or key.starts_with("xmlns:")) {
+          var prefix = xml_slice(this.alloc, key, key.equals_literal("xmlns") ? key.length() : 6, key.length());
+          if (not prefix.is_empty()) {
+            try xml_validate_ncname(prefix);
+          } else if (not key.equals_literal("xmlns")) {
+            return XmlResult.Error(this.error("empty namespace prefix"));
+          }
+          if (prefix.equals_literal("xmlns") or value.equals_literal("http://www.w3.org/2000/xmlns/") or (prefix.equals_literal("xml") != value.equals_literal("http://www.w3.org/XML/1998/namespace")) or (not prefix.is_empty() and value.is_empty())) {
+            return XmlResult.Error(this.error("invalid reserved namespace binding"));
+          }
+          namespaces.push(XmlNamespace(prefix, value.clone(this.alloc)));
+        }
+        attributes.push(XmlRawAttribute(key, value));
+      }
+      var empty = xml_byte(this.input, this.pos) == 47;
+      if (empty) {
+        this.pos += 1;
+      }
+      try this.expect(62);
+      this.stack.push(XmlFrame(raw.clone(this.alloc), XmlName(String(this.alloc, ""), String(this.alloc, ""), String(this.alloc, "")), namespaces));
+      var name = try this.resolve(raw, false);
+      this.stack[this.stack.size() - 1].name = name.clone(this.alloc);
+      var element = XmlElement(this.alloc, name);
+      for (var i: i64 = 0; i < this.stack[this.stack.size() - 1].namespaces.size(); i += 1) {
+        element.namespaces.push(this.stack[this.stack.size() - 1].namespaces[i].clone(this.alloc));
+      }
+      for (var i: i64 = 0; i < attributes.size(); i += 1) {
+        if (attributes[i].name.equals_literal("xmlns") or attributes[i].name.starts_with("xmlns:")) {
+          continue;
+        }
+        var key = try this.resolve(attributes[i].name, true);
+        for (var j: i64 = 0; j < element.attributes.size(); j += 1) {
+          if (element.attributes[j].name.equals(key)) {
+            return XmlResult.Error(this.error("duplicate expanded attribute"));
+          }
+        }
+        element.attributes.push(XmlAttribute(key, attributes[i].value.clone(this.alloc)));
+      }
+      this.pending_end = empty;
+      return XmlResult.Ok(XmlEvent.Start(element));
+    }
+
+    /** Advances the parser, retaining the first failure on subsequent calls. */
+    public method next() XmlResult<Option<XmlEvent>> {
+      if (this.failed) {
+        return XmlResult.Error(XmlError(this.failure_message, this.failure_offset, this.failure_line, this.failure_column));
+      }
+      return match this.next_impl() {
+        XmlResult.Ok(event) => XmlResult.Ok(event),
+        XmlResult.Error(error) => {
+          var located = this.error(error.explanation);
+          this.failed = true;
+          this.failure_message = error.explanation;
+          this.failure_offset = located.offset_;
+          this.failure_line = located.line_;
+          this.failure_column = located.column_;
+          return XmlResult.Error(located);
+        }
+      };
+    }
+
+    /** Implements event decoding after the sticky-error check. */
+    method next_impl() XmlResult<Option<XmlEvent>> {
+      if (not this.initialized) {
+        this.initialized = true;
+        while (this.pos < this.input.length()) {
+          var scalar = try xml_scalar(this.input, this.pos);
+          this.pos += scalar.width;
+        }
+        this.pos = 0;
+        if (this.starts("\xef\xbb\xbf")) {
+          this.pos = 3;
+        }
+        if (this.starts("<?xml") and xml_space(xml_byte(this.input, this.pos + 5))) {
+          try this.declaration();
+        }
+      }
+      if (this.pending_end) {
+        this.pending_end = false;
+        var frame = match this.stack.pop() {
+          Option.Some(f) => f,
+          Option.None => {
+            return XmlResult.Error(this.error("unexpected closing tag"));
+          }
+        };
+        return XmlResult.Ok(Option.Some(XmlEvent.End(frame.name)));
+      }
+      if (this.pos == this.input.length()) {
+        if (not this.stack.is_empty() or this.roots != 1) {
+          return XmlResult.Error(this.error("incomplete XML document"));
+        }
+        return XmlResult.Ok(Option.None);
+      }
+      if (this.starts("<!--")) {
+        this.pos += 4;
+        var text = try this.until("-->");
+        try xml_validate_comment(text);
+        return XmlResult.Ok(Option.Some(XmlEvent.Comment(text)));
+      }
+      if (this.starts("<?")) {
+        this.pos += 2;
+        var target = try this.raw_name();
+        var data = String(this.alloc, "");
+        if (not this.starts("?>")) {
+          if (not xml_space(xml_byte(this.input, this.pos))) {
+            return XmlResult.Error(this.error("processing instruction requires whitespace"));
+          }
+          this.space();
+          data = try this.until("?>");
+        } else {
+          this.pos += 2;
+        }
+        try xml_validate_instruction(target, data);
+        return XmlResult.Ok(Option.Some(XmlEvent.Instruction(XmlInstruction(target, data))));
+      }
+      if (this.starts("<![CDATA[")) {
+        if (this.stack.is_empty()) {
+          return XmlResult.Error(this.error("CDATA outside root"));
+        }
+        this.pos += 9;
+        return XmlResult.Ok(Option.Some(XmlEvent.Text(try this.until("]]>"))));
+      }
+      if (this.starts("<!")) {
+        return XmlResult.Error(this.error("DTD and declarations are unsupported"));
+      }
+      if (this.starts("</")) {
+        this.pos += 2;
+        var raw = try this.raw_name();
+        this.space();
+        try this.expect(62);
+        var frame = match this.stack.pop() {
+          Option.Some(f) => f,
+          Option.None => {
+            return XmlResult.Error(this.error("unexpected closing tag"));
+          }
+        };
+        if (not frame.raw.equals(raw)) {
+          return XmlResult.Error(this.error("mismatched closing tag"));
+        }
+        return XmlResult.Ok(Option.Some(XmlEvent.End(frame.name)));
+      }
+      if (this.starts("<")) {
+        return XmlResult.Ok(Option.Some(try this.start_element()));
+      }
+      var text = String(this.alloc, "");
+      while (this.pos < this.input.length() and xml_byte(this.input, this.pos) != 60) {
+        if (this.stack.is_empty() and not xml_space(xml_byte(this.input, this.pos))) {
+          return XmlResult.Error(this.error("text outside root"));
+        }
+        if (this.starts("]]>")) {
+          return XmlResult.Error(this.error("CDATA terminator in text"));
+        }
+        if (xml_byte(this.input, this.pos) == 38) {
+          try this.entity(text);
+        } else {
+          this.character(text, false);
+        }
+      }
+      return XmlResult.Ok(Option.Some(XmlEvent.Text(text)));
+    }
+  }
+  /** Builds one owned subtree exclusively from validated reader events. */
+  function xml_read_element(reader: ref XmlReader, element: XmlElement) XmlResult<XmlElement> {
+    var result = element;
+    while (true) {
+      var event = match (try reader.next()) {
+        Option.Some(e) => e,
+        Option.None => {
+          return XmlResult.Error(xml_error("incomplete XML element"));
+        }
+      };
+      match event {
+        XmlEvent.Start(e) => {
+          result.children.push(XmlNode(XmlNodeValue.Element(try xml_read_element(reader, e))));
+        },
+        XmlEvent.End(_) => {
+          return XmlResult.Ok(result);
+        },
+        XmlEvent.Text(t) => {
+          result.children.push(XmlNode(XmlNodeValue.Text(t)));
+        },
+        XmlEvent.Comment(t) => {
+          result.children.push(XmlNode(XmlNodeValue.Comment(t)));
+        },
+        XmlEvent.Instruction(p) => {
+          result.children.push(XmlNode(XmlNodeValue.Instruction(p)));
+        }
+      };
+    }
+    return XmlResult.Error(xml_error("incomplete XML element"));
+  }
+
+  /** Parses complete input into an independent editable document. */
+  public function parse_xml(alloc: ref HeapAllocator, input: const ref String) XmlResult<XmlDocument> {
+    var reader = XmlReader(alloc, input);
+    var before = Vec<XmlNode>(alloc, 4);
+    while (true) {
+      var event = match (try reader.next()) {
+        Option.Some(e) => e,
+        Option.None => {
+          return XmlResult.Error(xml_error("missing XML root"));
+        }
+      };
+      match event {
+        XmlEvent.Start(e) => {
+          var document = XmlDocument(alloc, try xml_read_element(reader, e));
+          document.before = std.replace(before, Vec<XmlNode>(alloc, 4));
+          while (true) {
+            var tail = match (try reader.next()) {
+              Option.Some(t) => t,
+              Option.None => {
+                return XmlResult.Ok(document);
+              }
+            };
+            match tail {
+              XmlEvent.Text(t) => {
+                document.after.push(XmlNode(XmlNodeValue.Text(t)));
+              },
+              XmlEvent.Comment(t) => {
+                document.after.push(XmlNode(XmlNodeValue.Comment(t)));
+              },
+              XmlEvent.Instruction(p) => {
+                document.after.push(XmlNode(XmlNodeValue.Instruction(p)));
+              },
+              _ => {
+                return XmlResult.Error(xml_error("unexpected XML root"));
+              }
+            };
+          }
+        },
+        XmlEvent.Text(t) => {
+          before.push(XmlNode(XmlNodeValue.Text(t)));
+        },
+        XmlEvent.Comment(t) => {
+          before.push(XmlNode(XmlNodeValue.Comment(t)));
+        },
+        XmlEvent.Instruction(p) => {
+          before.push(XmlNode(XmlNodeValue.Instruction(p)));
+        },
+        _ => {
+          return XmlResult.Error(xml_error("unexpected closing tag"));
+        }
+      };
+    }
+    return XmlResult.Error(xml_error("missing XML root"));
+  }
+
+  /** Parses literal input, releasing the temporary input after the tree is built. */
+  public function parse_xml(alloc: ref HeapAllocator, input: static_ptr<u8>) XmlResult<XmlDocument> {
+    var text = String(alloc, input);
+    return parse_xml(alloc, text);
+  }
+}

@@ -1,0 +1,299 @@
+/** Shared XML names, diagnostics, and Unicode validation. */
+public module std {
+  /** Reports XML syntax, unsupported features, limits, or invalid API operations. */
+  public class XmlError implements IError {
+    var explanation: static_ptr<u8>;
+    var offset_: i64;
+    var line_: i64;
+    var column_: i64;
+    /** Creates a diagnostic; negative coordinates mean no source location. */
+    init(message: static_ptr<u8>, offset: i64, line: i64, column: i64) {
+      this.explanation = message;
+      this.offset_ = offset;
+      this.line_ = line;
+      this.column_ = column;
+    }
+
+    /** Identifies the XML error category. */
+    public const method code() i32 {
+      return 61;
+    }
+
+    /** Returns an owned description, as required by IError. */
+    public const method message() String {
+      return String(this.explanation);
+    }
+
+    /** Returns the original input byte offset, or -1. */
+    public const method offset() i64 {
+      return this.offset_;
+    }
+
+    /** Returns the one-based source line, or -1. */
+    public const method line() i64 {
+      return this.line_;
+    }
+
+    /** Returns the one-based Unicode character column, or -1. */
+    public const method column() i64 {
+      return this.column_;
+    }
+  }
+  /** Returns a value or an XML diagnostic. */
+  public enum XmlResult<T> { Ok(T), Error(XmlError) }
+  /** Creates a diagnostic for operations without an input position. */
+  function xml_error(message: static_ptr<u8>) XmlError {
+    return XmlError(message, -1, -1, -1);
+  }
+
+  /** Reads a byte, using -1 for end of input. */
+  function xml_byte(text: const ref String, pos: i64) i64 {
+    return match text.at(pos) {
+      AccessResult.Ok(c) => _convert<i64>(c),
+      AccessResult.OutOfBounds(_) => -1
+    };
+  }
+
+  /** Recognizes XML whitespace. */
+  function xml_space(c: i64) bool {
+    return c == 32 or c == 9 or c == 10 or c == 13;
+  }
+
+  /** Recognizes legal XML 1.0 characters. */
+  function xml_character(c: i64) bool {
+    return c == 9 or c == 10 or c == 13 or (c >= 32 and c <= 55295) or (c >= 57344 and c <= 65533) or (c >= 65536 and c <= 1114111);
+  }
+  /** Holds a decoded Unicode scalar and its UTF-8 width. */
+  class XmlScalar {
+    var value: i64;
+    var width: i64;
+    /** Records a validated scalar. */
+    init(value: i64, width: i64) {
+      this.value = value;
+      this.width = width;
+    }
+  }
+  /** Validates one UTF-8 sequence and XML character. */
+  function xml_scalar(text: const ref String, pos: i64) XmlResult<XmlScalar> {
+    var lead = xml_byte(text, pos);
+    var count: i64 = 1;
+    var code = lead;
+    var minimum: i64 = 0;
+    if (lead >= 128) {
+      if (lead >= 194 and lead <= 223) {
+        count = 2;
+        code = lead & 31;
+        minimum = 128;
+      } else if (lead >= 224 and lead <= 239) {
+        count = 3;
+        code = lead & 15;
+        minimum = 2048;
+      } else if (lead >= 240 and lead <= 244) {
+        count = 4;
+        code = lead & 7;
+        minimum = 65536;
+      } else {
+        return XmlResult.Error(xml_error("invalid UTF-8"));
+      }
+      for (var i: i64 = 1; i < count; i += 1) {
+        var c = xml_byte(text, pos + i);
+        if (c < 128 or c > 191) {
+          return XmlResult.Error(xml_error("invalid UTF-8 continuation"));
+        }
+        code = code * 64 + (c & 63);
+      }
+    }
+    if (code < minimum or not xml_character(code)) {
+      return XmlResult.Error(xml_error("invalid XML character"));
+    }
+    return XmlResult.Ok(XmlScalar(code, count));
+  }
+
+  /** Validates an entire string as XML character data. */
+  function xml_validate_text(text: const ref String) XmlResult<void> {
+    var pos: i64 = 0;
+    while (pos < text.length()) {
+      var scalar = try xml_scalar(text, pos);
+      pos += scalar.width;
+    }
+    return XmlResult.Ok;
+  }
+
+  /** Recognizes an XML name's first character, excluding namespace separators. */
+  function xml_name_start(c: i64) bool {
+    return (c >= 65 and c <= 90) or c == 95 or (c >= 97 and c <= 122) or (c >= 192 and c <= 214) or (c >= 216 and c <= 246) or (c >= 248 and c <= 767) or (c >= 880 and c <= 893) or (c >= 895 and c <= 8191) or (c >= 8204 and c <= 8205) or (c >= 8304 and c <= 8591) or (c >= 11264 and c <= 12271) or (c >= 12289 and c <= 55295) or (c >= 63744 and c <= 64975) or (c >= 65008 and c <= 65533) or (c >= 65536 and c <= 983039);
+  }
+
+  /** Recognizes subsequent XML name characters, excluding colons. */
+  function xml_name_char(c: i64) bool {
+    return xml_name_start(c) or c == 45 or c == 46 or (c >= 48 and c <= 57) or c == 183 or (c >= 768 and c <= 879) or (c >= 8255 and c <= 8256);
+  }
+
+  /** Validates a local name or prefix. */
+  function xml_validate_ncname(text: const ref String) XmlResult<void> {
+    if (text.is_empty()) {
+      return XmlResult.Error(xml_error("empty XML name"));
+    }
+    var pos: i64 = 0;
+    while (pos < text.length()) {
+      var scalar = try xml_scalar(text, pos);
+      if ((pos == 0 and not xml_name_start(scalar.value)) or not xml_name_char(scalar.value)) {
+        return XmlResult.Error(xml_error("invalid XML name"));
+      }
+      pos += scalar.width;
+    }
+    return XmlResult.Ok;
+  }
+
+  /** Copies a byte range using the caller's allocator. */
+  function xml_slice(alloc: ref HeapAllocator, text: const ref String, start: i64, end: i64) String {
+    var result = String(alloc, "");
+    for (var i = start; i < end; i += 1) {
+      result.append_char(_convert<u8>(xml_byte(text, i)));
+    }
+    return result;
+  }
+  /** Stores expanded name identity independently of the preferred prefix. */
+  public class XmlName {
+    var uri_: String;
+    var local_: String;
+    var prefix_: String;
+    /** Moves name components into storage; consumers validate them before use. */
+    init(uri: String, local: String, prefix: String) {
+      this.uri_ = uri;
+      this.local_ = local;
+      this.prefix_ = prefix;
+    }
+
+    /** Borrows the namespace URI. */
+    public const method uri() const ref String {
+      return this.uri_;
+    }
+
+    /** Borrows the local name. */
+    public const method local() const ref String {
+      return this.local_;
+    }
+
+    /** Borrows the preferred prefix; empty means no preference. */
+    public const method prefix() const ref String {
+      return this.prefix_;
+    }
+
+    /** Explicitly copies this name. */
+    public const method clone(alloc: ref HeapAllocator) XmlName {
+      return XmlName(this.uri_.clone(alloc), this.local_.clone(alloc), this.prefix_.clone(alloc));
+    }
+
+    /** Compares expanded names without considering prefixes. */
+    public const method equals(other: const ref XmlName) bool {
+      return this.uri_.equals(other.uri_) and this.local_.equals(other.local_);
+    }
+
+    /** Validates expanded identity and reserved namespace names. */
+    public const method validate() XmlResult<void> {
+      try xml_validate_ncname(this.local_);
+      try xml_validate_text(this.uri_);
+      if (not this.prefix_.is_empty()) {
+        try xml_validate_ncname(this.prefix_);
+      }
+      if (this.prefix_.equals_literal("xmlns") or this.uri_.equals_literal("http://www.w3.org/2000/xmlns/")) {
+        return XmlResult.Error(xml_error("reserved xmlns name"));
+      }
+      if (this.prefix_.equals_literal("xml") and not this.uri_.equals_literal("http://www.w3.org/XML/1998/namespace")) {
+        return XmlResult.Error(xml_error("xml prefix requires its reserved namespace"));
+      }
+      if (not this.prefix_.is_empty() and this.uri_.is_empty()) {
+        return XmlResult.Error(xml_error("prefix requires a namespace"));
+      }
+      return XmlResult.Ok;
+    }
+  }
+  /** Owns a namespace declaration. */
+  public class XmlNamespace {
+    var prefix: String;
+    var uri: String;
+    /** Moves a declaration into storage. */
+    init(prefix: String, uri: String) {
+      this.prefix = prefix;
+      this.uri = uri;
+    }
+
+    /** Borrows the declared prefix; empty means the default namespace. */
+    public const method declared_prefix() const ref String {
+      return this.prefix;
+    }
+
+    /** Borrows the declared namespace URI. */
+    public const method namespace_uri() const ref String {
+      return this.uri;
+    }
+
+    /** Explicitly copies a declaration. */
+    public const method clone(alloc: ref HeapAllocator) XmlNamespace {
+      return XmlNamespace(this.prefix.clone(alloc), this.uri.clone(alloc));
+    }
+  }
+  /** Owns one expanded attribute name and decoded value. */
+  public class XmlAttribute {
+    var name: XmlName;
+    var value: String;
+    /** Moves an attribute into storage. */
+    init(name: XmlName, value: String) {
+      this.name = name;
+      this.value = value;
+    }
+  }
+  /** Owns the target and content of a processing instruction. */
+  public class XmlInstruction {
+    var target: String;
+    var data: String;
+    /** Borrows the instruction target. */
+    public const method target_name() const ref String {
+      return this.target;
+    }
+
+    /** Borrows the uninterpreted instruction content. */
+    public const method content() const ref String {
+      return this.data;
+    }
+
+    /** Moves processing instruction text into storage. */
+    init(target: String, data: String) {
+      this.target = target;
+      this.data = data;
+    }
+  }
+  /** Validates processing instructions without interpreting their content. */
+  function xml_validate_instruction(target: const ref String, data: const ref String) XmlResult<void> {
+    // XML permits colons in processing instruction targets.
+    if (target.is_empty()) {
+      return XmlResult.Error(xml_error("empty processing instruction target"));
+    }
+    var pos: i64 = 0;
+    while (pos < target.length()) {
+      var scalar = try xml_scalar(target, pos);
+      if (scalar.value != 58 and ((pos == 0 and not xml_name_start(scalar.value)) or not xml_name_char(scalar.value))) {
+        return XmlResult.Error(xml_error("invalid processing instruction target"));
+      }
+      pos += scalar.width;
+    }
+    if (target.length() == 3 and (xml_byte(target, 0) | 32) == 120 and (xml_byte(target, 1) | 32) == 109 and (xml_byte(target, 2) | 32) == 108) {
+      return XmlResult.Error(xml_error("reserved processing instruction target"));
+    }
+    try xml_validate_text(data);
+    if (data.contains("?>")) {
+      return XmlResult.Error(xml_error("processing instruction contains terminator"));
+    }
+    return XmlResult.Ok;
+  }
+
+  /** Validates comment text. */
+  function xml_validate_comment(text: const ref String) XmlResult<void> {
+    try xml_validate_text(text);
+    if (text.contains("--") or text.ends_with("-")) {
+      return XmlResult.Error(xml_error("invalid XML comment"));
+    }
+    return XmlResult.Ok;
+  }
+}
