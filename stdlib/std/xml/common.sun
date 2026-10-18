@@ -1,12 +1,30 @@
 /** Shared XML names, diagnostics, and Unicode validation. */
 public module std {
 
+  /** Identifies a half-open byte range in the original XML input. */
+  public class XmlSourceSpan {
+    public var start: i64;
+    public var end: i64;
+
+    /** Records original input offsets; decoded text may have a different length. */
+    init(start: i64, end: i64) {
+      this.start = start;
+      this.end = end;
+    }
+
+    /** Copies location metadata without allocating. */
+    public const method copy() XmlSourceSpan {
+      return XmlSourceSpan(this.start, this.end);
+    }
+  }
+
   /** Reports XML syntax, unsupported features, limits, or invalid API operations. */
   public class XmlError implements IError {
     var explanation: static_ptr<u8>;
     var offset_: i64;
     var line_: i64;
     var column_: i64;
+    var filename_: Option<String> = Option.None;
 
     /** Creates a diagnostic; negative coordinates mean no source location. */
     init(message: static_ptr<u8>, offset: i64, line: i64, column: i64) {
@@ -14,6 +32,17 @@ public module std {
       this.offset_ = offset;
       this.line_ = line;
       this.column_ = column;
+    }
+
+    /** Borrows the owned source filename, or None for unnamed input and API errors. */
+    public const method filename() Option<const ref String> {
+      match this.filename_ {
+        Option.Some(value) => {
+          return Option.Some(value);
+        },
+        Option.None => {}
+      };
+      return Option.None;
     }
 
     /** Identifies the XML error category. */
@@ -250,6 +279,7 @@ public module std {
   public class XmlAttribute {
     var name: XmlName;
     var value: String;
+    var source_span: Option<XmlSourceSpan> = Option.None;
 
     /** Moves an attribute into storage. */
     init(name: XmlName, value: String) {

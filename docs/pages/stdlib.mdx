@@ -1885,6 +1885,36 @@ Syntax errors expose the original zero-based byte `offset()` and one-based
 `line()` and Unicode character `column()`, counting CRLF as one line ending.
 Errors without an input location return -1 for all three coordinates.
 
+For source diagnostics, pass an owned filename as the third argument to
+`parse_xml(alloc, input, filename)` or `XmlReader(alloc, input, filename)`.
+The filename is a label; neither API opens a file. `XmlError.filename()` returns
+`Option<const ref String>`, with `None` for unnamed input and editing/writing
+errors. Named tree parsing moves the filename into an error. A named reader owns
+its filename and clones it with the supplied allocator into each returned error,
+including repeated failures. Errors can therefore outlive the input and reader.
+
+### Migrating a GIR reader
+
+The fixtures from `namo-robotics/sun_gobject` are covered by
+`stdlib/std/xml/xml_fixture_tests.sun`, including valid XML, GIR metadata,
+selection files, malformed UTF-8, namespace errors, and external DTD rejection.
+To replace a local parser, use `parse_xml` for an owned tree, or consume
+`XmlReader.next()` to build an existing indexed model:
+
+- On `Start`, append an element and push its index onto a parent stack.
+- On `End`, pop the stack; empty elements emit both events.
+- On `Text`, append decoded content to the current element's text.
+- Handle or discard `Comment` and `Instruction` according to the model.
+- Continue through `None` so malformed content after the root is rejected.
+
+Use `XmlName.uri()` and `local()` for element and attribute identity. GIR core
+names use `http://www.gtk.org/introspection/core/1.0`; C attributes use
+`http://www.gtk.org/introspection/c/1.0`. Prefix spelling may change without
+changing identity. Namespace declarations are available separately from ordinary
+attributes. Return `XmlResult.Error` to the caller and format its filename,
+line, column, and message at the CLI boundary. The parser never exits the process
+or resolves external entities.
+
 Run the standalone SVG example from the repository root after building:
 
 ```sh

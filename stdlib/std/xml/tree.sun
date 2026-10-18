@@ -165,6 +165,19 @@ public module std {
       return XmlResult.Ok(this.attributes[index].name);
     }
 
+    /** Returns the original attribute range, absent for newly created attributes. */
+    public const method attribute_source_span(index: i64) XmlResult<Option<XmlSourceSpan>> {
+      if (index < 0 or index >= this.attributes.size()) {
+        return XmlResult.Error(xml_error("attribute index out of range"));
+      }
+      return XmlResult.Ok(
+        match this.attributes[index].source_span {
+          Option.Some(span) => Option.Some(span.copy()),
+          Option.None => Option.None
+        }
+      );
+    }
+
     /** Inserts or replaces an attribute by expanded name, preserving its position. */
     public method set_attribute(name: XmlName, value: String) XmlResult<void> {
       try name.validate();
