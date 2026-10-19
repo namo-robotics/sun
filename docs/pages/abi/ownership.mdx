@@ -1,0 +1,34 @@
+# Ownership & Allocation
+
+Part of the [Sun ABI draft](/abi). Requirements are proposed, not guarantees of
+current releases. **MUST**, **MUST NOT**, and **SHOULD** express draft requirements.
+Unresolved decisions must be completed before stabilization.
+
+## Ownership, borrowing, and allocation
+
+The ABI MUST preserve Sun's prohibition on implicit copies. Representation-level
+loads and stores do not grant permission to duplicate ownership.
+
+A successful ownership transfer MUST leave exactly one owner responsible for
+cleanup. The call contract MUST define the transfer point and responsibility
+when argument evaluation, construction, or the call fails. Partially initialized
+values MUST be destroyed only for the portions that were initialized.
+
+Borrow metadata MUST preserve mutability, lifetime relationships, and aliasing
+constraints needed by the consumer's safety checks. Machine pointers alone do
+not encode these guarantees. A producer and consumer MUST NOT attach conflicting
+optimizer assumptions to the same borrowed storage.
+
+An allocation crossing a boundary MUST be released by a compatible deallocation
+operation, with the required alignment and allocator state. Destruction of the
+value and release of its storage are distinct obligations. Runtime services
+needed for either operation MUST remain available for the allocation's lifetime.
+
+For example, current `Unique<T>` stores a pointer and destroys `T` before calling
+`_free`. It carries no allocator identity. Crossing a boundary with that type
+therefore requires a compatible allocation/free family; arbitrary custom allocator
+interchangeability cannot be inferred from the pointer layout.
+
+**Unresolved:** document exact transfer and failure rules for every parameter
+mode, construction, return, and cleanup path. Specify the system allocation
+contract and runtime linkage policy before promising cross-version ownership.

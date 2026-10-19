@@ -1,0 +1,62 @@
+# Conformance & Implementation
+
+Part of the [Sun ABI draft](/abi). Requirements are proposed, not guarantees of
+current releases. **MUST**, **MUST NOT**, and **SHOULD** express draft requirements.
+Unresolved decisions must be completed before stabilization.
+
+## Implementation baseline and release criteria
+
+The current compiler has portable declaration keys, a C ABI lowering layer,
+serialized Moon declarations and generic bodies, and a single Moon format-version
+check. The linker also checks architecture and OS family. These mechanisms are
+foundations, not implementation of the full contract above.
+
+Relevant implementation areas are `src/semantic_analysis/portable_declaration_key.cpp`,
+`src/codegen/llvm_type_resolver.cpp`, `src/codegen/functions/functions_lambdas.cpp`,
+`src/codegen/abi/`, `include/moon_bundling/moon.proto`, and
+`src/moon_bundling/module_linker.cpp`. See [Code Generation](/architecture/codegen).
+
+An ABI revision MUST NOT be marked stable until its supported target profiles,
+all reachable type categories, call lowering, ownership rules, symbol encoding,
+and runtime contracts have normative definitions and compatibility tests.
+Unsupported categories MUST be diagnosed rather than implicitly admitted.
+
+Compatibility tests MUST retain real artifacts built by older compiler releases.
+Rebuilding both producer and consumer with the new compiler does not test the
+promised guarantee. The suite must include:
+
+- Old producer with new consumer, including transitive and diamond dependencies.
+- Scalar and aggregate arguments and returns, enums, arrays, and alignment cases.
+- Indirect calls, closures, interface methods, and callback ownership.
+- Moves, destruction counts, allocation/free pairing, and exceptional cleanup.
+- Old generic bodies specialized with newly introduced concrete types.
+- Precompiled specializations and conflicting specialization rejection.
+- Global initialization, shared runtime state, and supported error propagation.
+- Rejection of incompatible targets, formats, ABI revisions, and capabilities.
+- Supported optimization levels and LLVM upgrades for each target profile.
+- Older compatible dependencies warning once per artifact, including diamonds.
+- Incompatible and unverifiable dependencies failing with nonzero exit status.
+- Newer compatible producers and divergent development-build provenance.
+- Structural and semantic contract changes detected without manual version bumps.
+- Unrelated compiler changes preserving unaffected generated contracts.
+- Cache invalidation after contract, target, artifact, or option changes.
+- Missing legacy manifests, retained old implementations, and transitive provenance.
+
+Golden layout and signature fixtures supplement executable tests. ABI-affecting
+changes MUST be detected by generated contracts and regression checks; keeping
+a version number unchanged is not evidence that a change is safe. Passing tests
+alone MUST NOT override an unsupported contract.
+
+## Suggested implementation sequence
+
+1. Audit current representations and runtime calls; select initial target profiles.
+2. Resolve layout and calling-convention decisions and write normative algorithms.
+3. Centralize Sun lowering and add layout/signature fixtures.
+4. Generate contract manifests and implement automatic validation, warnings, and errors.
+5. Define generic semantic compatibility and imported-layout preservation.
+6. Add archived cross-version fixtures and publish the generated supported-contract inventory.
+7. Declare the first stable revision only after its release criteria are met.
+
+Library replacement, resilient layouts, and runtime type-erased generics remain
+separate proposals. For comparison, Swift describes the additional guarantees
+and costs of [library evolution](https://www.swift.org/blog/library-evolution/).

@@ -1,0 +1,30 @@
+# Declarations & Symbols
+
+Part of the [Sun ABI draft](/abi). Requirements are proposed, not guarantees of
+current releases. **MUST**, **MUST NOT**, and **SHOULD** express draft requirements.
+Unresolved decisions must be completed before stabilization.
+
+## Declaration and symbol identity
+
+The initial design retains exact artifact identity. A declaration's identity
+MUST include its defining artifact and its portable declaration identity.
+Aliases, import order, and local names MUST NOT change that identity.
+
+Two nominal types from distinct artifacts MUST NOT become interchangeable merely
+because they have the same name or layout. Rebuilding a dependency does not
+implicitly authorize substituting it for the exact dependency an old bundle
+references.
+
+An importer MUST reproduce or read the producer's exported symbol names rather
+than derive them using incompatible current defaults. A specialization's identity
+MUST account for its generic declaration, enclosing specialization when present,
+and ordered concrete arguments. The ABI and generic semantics under which it
+was produced MUST be compatible before duplicate definitions can be merged.
+
+Private declarations referenced by exported generic bodies remain part of the
+bundle's import contract, even though ordinary source cannot name them. Global
+storage reached through multiple dependency paths MUST retain one identity.
+
+**Unresolved:** freeze the portable-key encoding, symbol spelling, specialization
+encoding, and collision handling. Content hashes isolate artifacts; they do not
+by themselves prove compatible types, layouts, or behavior.

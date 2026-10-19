@@ -34,3 +34,6 @@ use the target platform's calling convention.
 The resulting LLVM IR is optimized, then either executed through the JIT or
 compiled to object files and linked into a native executable. Moon bundles keep
 compiled code together with the metadata needed by later importers.
+
+The proposed cross-version contract is described in the [ABI draft](/abi). It
+separates machine-level compatibility from Moon metadata and generic semantics.

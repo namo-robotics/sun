@@ -1,0 +1,35 @@
+# Function Calls
+
+Part of the [Sun ABI draft](/abi). Requirements are proposed, not guarantees of
+current releases. **MUST**, **MUST NOT**, and **SHOULD** express draft requirements.
+Unresolved decisions must be completed before stabilization.
+
+## Function calls
+
+A Sun ABI revision MUST define one lowering procedure used consistently by
+function definitions, declarations, direct calls, indirect calls, interface
+methods, callbacks, and returns.
+
+For each signature, lowering MUST specify:
+
+- Parameter order, including receiver, closure, and result-storage arguments.
+- Scalar extension rules and the handling of Boolean values.
+- Whether each aggregate travels directly, as scalar pieces, or through storage.
+- Alignment and aliasing requirements for indirect arguments and results.
+- Empty parameters and results, and expansion of specialized parameter packs.
+- Ownership and lifetime obligations on both normal and exceptional exits.
+- The target calling convention and all ABI-relevant function attributes.
+
+**Proposed approach:** introduce a dedicated Sun signature-lowering layer, parallel
+to the existing C ABI layer. It should describe semantic passing rules before
+translating them into LLVM types and attributes.
+
+**Unresolved:** select and specify aggregate classification for each initial
+CPU target. Candidate approaches are platform C classification for lowered Sun
+representations, or an explicitly defined Sun convention using indirect storage
+for aggregates. Neither is adopted by this draft. Passing raw LLVM structures
+without defining their machine-level convention is not a sufficient specification.
+
+Indirect passing MUST NOT introduce an implicit language-level copy or hidden
+heap allocation. Caller-provided storage can implement a move or return value,
+but the ownership contract must identify its owner and lifetime.

@@ -1,0 +1,46 @@
+# Data Layout
+
+Part of the [Sun ABI draft](/abi). Requirements are proposed, not guarantees of
+current releases. **MUST**, **MUST NOT**, and **SHOULD** express draft requirements.
+Unresolved decisions must be completed before stabilization.
+
+## Data layout
+
+Every type crossing a compiled boundary MUST have a layout defined by its ABI
+revision and target profile. Consumers MUST preserve that layout, including
+private fields needed to determine the size of a public value type.
+
+The layout contract MUST specify size, alignment, field offsets, array stride,
+valid value representations, and any padding. Padding MUST NOT be treated as
+initialized application data or used for semantic equality.
+
+An implementation may record layouts in metadata or derive them from versioned
+rules. It MUST reject inconsistent metadata rather than silently recompute the
+layout using a newer algorithm. Layout fingerprints may detect mismatches, but
+MUST NOT replace nominal identity or a defined layout algorithm.
+
+The current implementation provides the following starting points. This table
+records observations, **not frozen layouts**:
+
+| Category | Current representation or design obligation |
+| --- | --- |
+| Class values | LLVM structures; field layout needs a normative algorithm |
+| Raw pointers and ordinary references | Pointer representation; validity and borrowing rules still apply |
+| Named function values | Direct function pointers |
+| Closures | Function pointer and environment pointer |
+| Interface values | Data pointer and method-table pointer |
+| Static pointers | Data pointer and an `i64` length |
+| Builtin `slice` | Two `i64` bounds; this is an indexing range, not a data view |
+| Unsized array references | Data pointer, `i32` dimension count, and dimensions pointer |
+| Payload enums | Tagged storage whose size and alignment depend on variants |
+
+Before stabilization, target profiles MUST define scalar widths and alignment,
+Boolean storage and valid values, character representation, floating-point
+formats, aggregate field order and tail padding, empty values, arrays and
+shapes, enum discriminants and payload offsets, and vector alignment. They MUST
+also state whether any niche or spare-bit representations are allowed.
+
+Changing field order, enum encoding, or alignment under an existing ABI revision
+is forbidden unless the change is proven unobservable at every supported
+boundary. Types used only internally may be optimized when their representation
+does not escape through calls, fields, callbacks, generic bodies, or metadata.

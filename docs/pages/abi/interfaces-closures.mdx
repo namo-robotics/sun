@@ -1,0 +1,23 @@
+# Interfaces & Closures
+
+Part of the [Sun ABI draft](/abi). Requirements are proposed, not guarantees of
+current releases. **MUST**, **MUST NOT**, and **SHOULD** express draft requirements.
+Unresolved decisions must be completed before stabilization.
+
+## Interfaces and closures
+
+Interface dispatch MUST define method-slot identity, ordering, signatures,
+receiver adjustment, and any metadata or destruction entries. Adding or reordering
+methods is not automatically compatible. Generic interface methods MUST have a
+specified specialization strategy; a fixed method table cannot be assumed to
+contain every future specialization.
+
+Closure calls MUST define whether the hidden argument points to an environment
+or a closure record. Environment layout may remain private only if consumers
+never inspect it and all invocation and cleanup operations use compatible
+interfaces. Borrowed captures MUST NOT outlive their referents.
+
+**Unresolved:** audit and formalize method-table generation, interface reference
+passing versus returning, and closure capture destruction. Current interface
+borrow parameters and return values do not use identical lowering, so a uniform
+fat-pointer description alone is insufficient.
