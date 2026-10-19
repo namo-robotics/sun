@@ -20,12 +20,16 @@ reader or writer.
 The implementation is defined by `include/moon_bundling/moon.h` and
 `src/moon_bundling/moon.cpp`. The writer emits the following logical structure:
 
+<div className="moon-packet-diagram">
+
 ```mermaid
 ---
 title: Moon library container
 config:
   packet:
     bitsPerRow: 64
+    bitWidth: 10
+    rowHeight: 48
     showBits: false
 ---
 packet
@@ -39,6 +43,8 @@ packet
 384-447: "Native archive count (u64)"
 448-511: "Native archive index entries (variable length)"
 ```
+
+</div>
 
 The header fields show their integer widths. Each variable-length region is
 compressed into one schematic row; its drawn width is not its stored size.
