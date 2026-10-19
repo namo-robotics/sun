@@ -735,42 +735,16 @@ TEST(Ffi_Abi_StaticLink,
   EXPECT_EQ(WEXITSTATUS(rc), 42);
 }
 
-TEST(Ffi_Abi_StaticLink, cross_musl_stdlib_binary_runs_under_qemu) {
-  // Bundles resolve by exact name, so the cross build names the per-target
-  // bundle explicitly. The aarch64-gnu bundle serves the musl target: the
-  // bitcode is libc-agnostic (portable POSIX symbols), and the linker's
-  // triple check compares architectures. The parser's pick and the linker's
-  // pick must also agree, or symbol hashes diverge.
-  if (!haveAarch64MuslToolchain()) {
-    GTEST_SKIP() << "aarch64-linux-musl-gcc / qemu-aarch64 not installed";
-  }
-
-  auto driver =
-      Driver::createForAOT("musl_stdlib_module", "aarch64-linux-musl");
+/** GNU runtime requirements cannot authorize a musl consumer's platform ABI. */
+TEST(Ffi_Abi_StaticLink, cross_musl_rejects_gnu_stdlib_contract) {
+  auto driver = Driver::createForAOT("musl_stdlib_module", "aarch64-linux-musl");
   driver->setExecutable(true);
   driver->setMoonImports(
       {sun::moon_bundling::MoonImport("build/aarch64-linux-gnu/stdlib.moon")});
-  driver->compileString(R"(
+  EXPECT_THROW(driver->compileString(R"(
     using std;
-    function main() i32 {
-        println("hello from musl");
-        return 42;
-    }
-  )");
-
-  std::string binary = ::testing::TempDir() + "sun_musl_stdlib_test";
-  std::string errorMsg;
-  LinkOptions linkOpts;
-  linkOpts.targetTriple = "aarch64-linux-musl";
-  linkOpts.staticLink = true;
-  ASSERT_TRUE(
-      sun::driver::compileToExecutable(driver->getModule(), binary, errorMsg,
-                                       /*keepObjectFile=*/false, linkOpts))
-      << errorMsg;
-
-  EXPECT_TRUE(isStaticBinary(binary));
-  int rc = std::system(("qemu-aarch64 " + binary + " >/dev/null 2>&1").c_str());
-  EXPECT_EQ(WEXITSTATUS(rc), 42);
+    function main() i32 { return 42; }
+  )"), sun::support::SunError);
 }
 
 /** Tail padding disqualifies an otherwise homogeneous float aggregate. */

@@ -13,93 +13,63 @@ semantics, machine ABI, and embedded dependencies. Its requirements are defined 
 The sections below describe the current format and proposed changes. The draft
 does not yet specify every byte needed to implement a reader or writer.
 
-## Proposed container structure
-
-The proposal keeps the existing header, data regions, and indexes. It adds one
-bundle compatibility hash and its description to metadata, alongside the bundle
-producer's identity. Embedded artifacts need no separate compatibility manifests.
-The metadata schema still needs to define where these bundle-wide fields are
-stored when a bundle contains several modules. Bundles may also embed complete
-source inputs for optional consumer recompilation, described below.
-
-Both tables use byte offsets from the start of the file. `H` is the header size,
-`D` is the total size of bitcode and metadata, `I` is `indexOffset`, and `M` is the
-total size of module index entries. Added metadata increases `D` and shifts later
-regions; the indexes already record their offsets.
-
-| Byte offset | Size in bytes | Region | Proposed contents |
-| --- | --- | --- | --- |
-| `0` | `4` | Magic | Existing Moon magic value |
-| `4` | `4` | Format version | Container encoding revision; optional metadata additions alone do not change it |
-| `8` | `8` | Index offset | Offset `I` |
-| `H` | `D` | Module data | Bitcode and existing metadata, extended with one bundle contract hash, its description, bundle producer metadata, and optional embedded source inputs |
-| `H + D` | `I - H - D` | Native archive data | Existing optional archive bytes |
-| `I` | `8` | Module count | Existing entry count |
-| `I + 8` | `M` | Module entries | Existing keys, bitcode ranges, and metadata ranges |
-| `I + 8 + M` | `8` | Native archive count | Existing entry count |
-| `I + 16 + M` | Variable | Native archive entries | Existing archive identities, names, offsets, and sizes |
-
-The table preserves the usual current header layout. A portable encoding with
-fixed-width little-endian integers remains proposed; its exact specification and
-migration are separate from adding the bundle contract. No new section index or
-payload format is needed for the compatibility metadata. The table places optional
-source inputs within module data; their encoding and metadata references remain
-undecided. They increase `D` without requiring fixed offsets in the header.
-
 ## Current container structure
 
-The current implementation in `include/moon_bundling/moon.h` and
-`src/moon_bundling/moon.cpp` writes the records below. It does not yet implement
-the proposed structure above. Several module entries can share one bitcode blob.
+The container contains a small header, compiled payload bytes, and one
+`MoonLibrary` protobuf. The library record owns the module and archive indexes;
+there are no separate custom index tables. Several modules may reference the
+same bitcode image.
 
-Offsets are measured in bytes from the start of the file. Variable-length regions
-use these symbols:
-
-- `H`: header size, `sizeof(MoonHeader)`.
-- `D`: total bytes of bitcode and module metadata.
-- `I`: the header's `indexOffset`, after module data and native archive bytes.
-- `M`: total module-entry bytes; each entry uses `36 + key byte length` bytes.
-
-The header offsets below show the usual native layout (`H = 16`). The writer uses
-C++ structure layout, so these offsets are not a host-independent format guarantee.
-Empty lists still have count fields.
-
-| Byte offset | Size in bytes | Region | Current contents |
-| --- | --- | --- | --- |
-| `0` | `4` | Magic | `uint32` value `0x53554E4C` |
-| `4` | `4` | Format version | `uint32` version |
-| `8` | `8` | Index offset | `uint64` offset `I` |
-| `H` | `D` | Module data | Bitcode blobs and module metadata |
-| `H + D` | `I - H - D` | Native archive data | Optional archive bytes |
-| `I` | `8` | Module count | `uint64` entry count; start of the index |
-| `I + 8` | `M` | Module entries | For each entry: `uint32` key byte length, key bytes, then `uint64` bitcode offset, bitcode size, metadata offset, and metadata size |
-| `I + 8 + M` | `8` | Native archive count | `uint64` entry count |
-| `I + 16 + M` | Variable | Native archive entries | For each entry: `uint32` hash byte length, hash bytes, `uint32` name byte length, name bytes, then `uint64` offset and size; `24 + hash byte length + name byte length` bytes per entry |
-
-Offsets are positions from the start of the file. Sizes describe byte ranges.
-The current writer writes the header as a native C++ structure and index integers
-using their native in-memory representation. The resulting encoding
-can depend on the host byte order and structure padding. The magic
-is an integer constant; its displayed hexadecimal spelling does not define the
-order of bytes in the file.
-
-The reader currently requires an exact match with `MoonHeader::VERSION`.
-That single check is not the separate compatibility negotiation proposed here.
-
-## What changes in the proposal
-
-Both formats keep the same physical regions. The main addition is compatibility
-information inside metadata.
-
-| Area | Current format | Proposed format |
+| Byte offset | Size in bytes | Contents |
 | --- | --- | --- |
-| Container and indexes | Header, module data, archive data, module index, archive index | Same regions and index fields; metadata grows |
-| Compatibility | Format-version and existing target checks | One generated contract and compatibility hash covering the whole bundle, including embedded dependencies |
-| Producer metadata | No bundle-age policy as specified by this draft | Producer build and ordering for the bundle; no per-embedded-artifact requirement |
-| Declaration identities | Exact artifact and declaration references | Preserved; independent of compatibility hashes |
-| Encoding | Native C++ header and host-order integers | Portable integer encoding remains a separate proposed change |
-| Compiled code | LLVM bitcode and carried native archives | Unchanged; native Sun objects remain a future option |
-| Complete source | Retained generic bodies, without all ordinary function bodies | Optional complete source inputs so a consumer can rebuild the bundle |
+| `0` | `4` | Moon magic, `0x53554E4C` |
+| `4` | `4` | Container revision |
+| `8` | `8` | Offset of the `MoonLibrary` protobuf |
+| `16` | `8` | Length of the `MoonLibrary` protobuf |
+| `H` | Variable | LLVM bitcode and native archive payloads |
+| Library offset | Library length | Complete `MoonLibrary` protobuf, ending at the end of the file |
+
+`H` is `sizeof(MoonHeader)`, normally 24 bytes. Header integers still use native
+byte order and C++ structure layout. A portable header encoding remains separate
+work; protobuf encoding does not make the existing header portable.
+
+Container revision 15 introduces the complete library record. The reader requires
+an exact match with `MoonHeader::VERSION`; earlier bundles must be rebuilt.
+A matching container revision does not authorize semantic import: compatibility
+validation still precedes use of declarations or compiled code.
+
+## Library record
+
+`include/moon_bundling/moon.proto` defines the following structure:
+
+| Message | Contents |
+| --- | --- |
+| `MoonLibrary` | Library content identity, bundle compatibility contract, ordered module records, and ordered native archive records |
+| `LibraryModule` | Complete `ModuleMetadata`, bitcode offset, and bitcode length |
+| `LibraryArchive` | Archive-set identity, archive name, byte offset, and byte length |
+
+Offsets refer to positions in the container file. Large bitcode and archive bytes
+remain outside protobuf. Module metadata is nested directly in the library
+record, so declarations and the payload references describing the library are
+available through one schema.
+
+The reader bounds the library protobuf before parsing, then checks record counts,
+identities, duplicate keys, archive names, and payload ranges before authorizing
+semantic use. Exact shared bitcode ranges are allowed; unrelated overlapping
+ranges and payload references into the library protobuf are rejected. Module
+content identities must agree with the library identity. A missing contract is
+an error; the former module contract field remains reserved.
+
+Producer identity remains inside the contract message as diagnostic metadata,
+excluded from the compatibility hash. The library content identity is separate
+from that hash and continues to identify the artifact used for symbol isolation.
+
+## Remaining format proposals
+
+Portable header integers, optional complete source inputs, and native Sun object
+packaging remain separate work. The compatibility model still requires complete
+semantic and runtime requirements; changing the container does not establish
+stable ABI support.
 
 ## Module metadata
 
@@ -164,8 +134,9 @@ part of the [runtime](/abi/runtime) and [ownership](/abi/ownership) contracts.
 
 The metadata stores one [bundle contract hash](/abi/compatibility#computed-abi-hashes)
 and the information needed to derive its complete contract. Existing type,
-declaration, and target metadata can supply part of that description. The exact
-schema and location of bundle-wide fields remain undecided.
+declaration, and target metadata can supply part of that description. The experimental schema is `include/abi/compatibility.proto`, referenced once
+through `MoonLibrary.bundle_contract`. The container header references that
+bundle metadata directly.
 
 | Subject | Level | Requirement |
 | --- | --- | --- |

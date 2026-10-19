@@ -1,0 +1,20 @@
+# Validate release provenance before embedding it in generated C++ identities.
+if(NOT DEFINED SUN_RELEASE_ORDER)
+    set(SUN_RELEASE_ORDER "0")
+endif()
+if(NOT DEFINED SUN_RELEASE_SERIES)
+    set(SUN_RELEASE_SERIES "")
+endif()
+string(LENGTH "${SUN_RELEASE_ORDER}" order_length)
+if(NOT SUN_RELEASE_ORDER MATCHES "^(0|[1-9][0-9]*)$" OR
+   order_length GREATER 20 OR
+   (order_length EQUAL 20 AND SUN_RELEASE_ORDER STRGREATER "18446744073709551615"))
+    message(FATAL_ERROR "SUN_RELEASE_ORDER must be a canonical unsigned 64-bit integer")
+endif()
+if(SUN_RELEASE_ORDER STREQUAL "0")
+    if(NOT SUN_RELEASE_SERIES STREQUAL "")
+        message(FATAL_ERROR "SUN_RELEASE_SERIES requires a nonzero SUN_RELEASE_ORDER")
+    endif()
+elseif(NOT SUN_RELEASE_SERIES MATCHES "^[A-Za-z0-9][A-Za-z0-9._-]*$")
+    message(FATAL_ERROR "Official release ordering requires an alphanumeric SUN_RELEASE_SERIES")
+endif()

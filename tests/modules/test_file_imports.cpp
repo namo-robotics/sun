@@ -1218,11 +1218,8 @@ TEST_F(MoonExactTypes, malformed_bundle_digest_is_rejected) {
   std::ofstream output(path, std::ios::binary);
   output.write(bytes.data(), bytes.size());
   output.close();
-  auto malformed = MoonReader::open(path);
-  ASSERT_TRUE(malformed);
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      malformed->getMetadata(malformed->listModules()[0]),
-      "full lowercase SHA-256 digest");
+  EXPECT_SUN_ERROR_WITH_MESSAGE(MoonReader::open(path),
+                                "full lowercase SHA-256 digest");
 }
 
 TEST_F(MoonExactTypes,

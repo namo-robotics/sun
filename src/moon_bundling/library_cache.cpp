@@ -1,4 +1,5 @@
 #include "moon_bundling/library_cache.h"
+#include "abi/abi_compatibility_checker.h"
 
 #include <llvm/TargetParser/Host.h>
 #include <llvm/TargetParser/Triple.h>
@@ -77,6 +78,7 @@ void LibraryCache::invalidateBundle(const std::filesystem::path& bundlePath) {
 void LibraryCache::setTargetTriple(const std::string& triple) {
   std::lock_guard<std::mutex> lock(mutex_);
   targetTriple_ = triple;
+  abi::AbiCompatibilityChecker::current().beginCompilation(triple);
 }
 
 MoonReader* LibraryCache::selectBundle(
@@ -215,6 +217,7 @@ std::vector<std::string> LibraryCache::extractNativeArchives(
     if (bundle->getNativeArchives().empty()) continue;
     if (!seenBundles.insert(bundle).second) continue;  // one visit per bundle
 
+    abi::AbiCompatibilityChecker::current().validate(*bundle, targetTriple_);
     for (const auto& entry : bundle->getNativeArchives()) {
       std::vector<char> data;
       if (!bundle->readNativeArchive(entry, data)) continue;
@@ -255,6 +258,7 @@ const moon::ModuleMetadata* LibraryCache::getMetadata(
     return nullptr;
   }
 
+  abi::AbiCompatibilityChecker::current().validate(*bundle, targetTriple_);
   return bundle->getMetadata(moduleKey);
 }
 
@@ -267,6 +271,7 @@ std::unique_ptr<llvm::Module> LibraryCache::loadModule(
     return nullptr;
   }
 
+  abi::AbiCompatibilityChecker::current().validate(*bundle, targetTriple_);
   return bundle->loadModule(moduleKey, context);
 }
 

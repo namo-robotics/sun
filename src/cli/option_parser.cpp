@@ -1,6 +1,7 @@
 // option_parser.cpp — turn `sun` command-line arguments into option structs.
 
 #include "cli/option_parser.h"
+#include "abi/support_inventory.h"
 
 #include "cli/command_support.h"
 #include "cli/usage.h"
@@ -174,6 +175,8 @@ std::optional<EarlyExit> parseBuildRunArguments(
       options.githubToken = value;
     } else if (arg == "-h" || arg == "--help") {
       return EarlyExit{0, EarlyExit::Stream::Err, renderUsage(programName)};
+    } else if (arg == "--abi-info") {
+      return EarlyExit{0, EarlyExit::Stream::RawOut, sun::abi::compatibilitySupportJson()};
     } else if (arg == "--version") {
       return EarlyExit{0, EarlyExit::Stream::Out, renderVersionLine()};
     } else if (looksLikeOption(arg)) {

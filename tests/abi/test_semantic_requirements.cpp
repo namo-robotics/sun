@@ -1,0 +1,126 @@
+/** Exercises independently reconstructed declarations and retained generic bodies. */
+#include <gtest/gtest.h>
+#include <google/protobuf/unknown_field_set.h>
+#include <llvm/IR/Module.h>
+#include <fstream>
+#include <unistd.h>
+
+#include "abi/abi_compatibility_checker.h"
+#include "abi/semantic_requirements.h"
+#include "moon_bundling/moon.h"
+#include "support/error.h"
+
+/** Diagnostic changes and declaration-map traversal do not change semantics. */
+TEST(ABI_Compatibility, SemanticEncodingExcludesDiagnosticsAndSortsDeclarations) {
+  sun::moon::ModuleMetadata metadata;
+  metadata.set_module_name("example");
+  metadata.add_declarations()->set_key("first");
+  metadata.add_declarations()->set_key("second");
+  auto* variable = metadata.add_globals();
+  variable->set_name("value");
+  variable->mutable_type_annotation()->set_base_name("i32");
+  const auto original = sun::abi::describeSemantics(metadata);
+  metadata.mutable_declarations()->SwapElements(0, 1);
+  metadata.set_source_path("/another/source.sun");
+  variable->set_source_file_id(99);
+  variable->set_doc("New documentation");
+  metadata.GetReflection()->MutableUnknownFields(&metadata)->AddVarint(1000, 7);
+  EXPECT_EQ(original, sun::abi::describeSemantics(metadata));
+  variable->mutable_type_annotation()->set_base_name("i64");
+  EXPECT_NE(original, sun::abi::describeSemantics(metadata));
+}
+
+/** Retained statements remain ordered, and private generic body changes are recorded. */
+TEST(ABI_Compatibility, SemanticEncodingPreservesRetainedBodyOrder) {
+  sun::moon::ModuleMetadata metadata;
+  auto* function = metadata.add_functions();
+  function->mutable_proto()->set_name("private_generic");
+  auto* body = function->mutable_body();
+  body->add_body()->mutable_bool_literal()->set_value(true);
+  body->add_body()->mutable_bool_literal()->set_value(false);
+  const auto original = sun::abi::describeSemantics(metadata);
+  function->mutable_location()->set_file_path("ignored.sun");
+  function->set_source_text("optional source text");
+  EXPECT_EQ(original, sun::abi::describeSemantics(metadata));
+  body->mutable_body()->SwapElements(0, 1);
+  EXPECT_NE(original, sun::abi::describeSemantics(metadata));
+  body->add_body();
+  EXPECT_THROW(sun::abi::describeSemantics(metadata), sun::support::SunError);
+}
+
+/** Altered type metadata is rejected even when LLVM code and the supplied hash match. */
+TEST(ABI_Compatibility, AlteredDeclarationMetadataIsRejectedBeforeImport) {
+  llvm::LLVMContext context;
+  llvm::Module module("metadata", context);
+  module.setTargetTriple("x86_64-linux-gnu");
+  module.setDataLayout(sun::abi::compatibilityTarget(module.getTargetTriple()).data_layout());
+  sun::moon::ModuleMetadata metadata;
+  metadata.set_source_hash("metadata");
+  auto* variable = metadata.add_globals();
+  variable->set_name("value");
+  variable->mutable_type_annotation()->set_base_name("i32");
+  sun::moon_bundling::MoonWriter writer(std::string(64, 'a'));
+  writer.addModule(module, metadata);
+  std::filesystem::create_directories("tmp");
+  const auto path = std::filesystem::path("tmp") /
+      ("abi_metadata_" + std::to_string(getpid()) + ".moon");
+  ASSERT_TRUE(writer.write(path));
+  auto reader = sun::moon_bundling::MoonReader::open(path);
+  ASSERT_NE(reader, nullptr);
+  sun::abi::AbiCompatibilityChecker checker("x86_64-linux-gnu");
+  EXPECT_NO_THROW(checker.validate(*reader));
+  auto changed = *reader->getMetadata("metadata");
+  const auto before = changed.SerializeAsString();
+  changed.mutable_globals(0)->mutable_type_annotation()->set_base_name("i64");
+  const auto after = changed.SerializeAsString();
+  ASSERT_EQ(before.size(), after.size());
+  auto bytes = *reader->getBytes();
+  const auto offset = bytes.find(before);
+  ASSERT_NE(offset, std::string::npos);
+  bytes.replace(offset, before.size(), after);
+  { std::ofstream output(path, std::ios::binary); output.write(bytes.data(), bytes.size()); }
+  auto altered = sun::moon_bundling::MoonReader::open(path);
+  ASSERT_NE(altered, nullptr);
+  try {
+    checker.validate(*altered);
+    FAIL() << "Accepted altered semantic metadata";
+  } catch (const sun::support::SunError& error) {
+    EXPECT_NE(std::string(error.what()).find("declarations or retained bodies differ"), std::string::npos);
+  }
+  EXPECT_EQ(checker.importedContracts().size(), 1u);
+  std::filesystem::remove(path);
+}
+
+/** Ownership is checked before declarations can populate the consumer's tables. */
+TEST(ABI_Compatibility, DeclarationGraphRejectsDuplicatesMissingOwnersAndCycles) {
+  sun::moon::ModuleMetadata metadata;
+  auto* module = metadata.add_declarations();
+  module->set_key("module");
+  module->set_kind(sun::moon::MODULE);
+  auto* function = metadata.add_declarations();
+  function->set_key("function");
+  function->set_kind(sun::moon::FUNCTION);
+  function->set_owner("module");
+  function->set_module("module");
+  metadata.add_module_declarations("module");
+  EXPECT_NO_THROW(sun::abi::validateDeclarationGraph({&metadata}));
+  function->set_owner("missing");
+  EXPECT_THROW(sun::abi::validateDeclarationGraph({&metadata}), sun::support::SunError);
+  function->set_owner("function");
+  EXPECT_THROW(sun::abi::validateDeclarationGraph({&metadata}), sun::support::SunError);
+  function->set_owner("module");
+  *metadata.add_declarations() = *function;
+  EXPECT_THROW(sun::abi::validateDeclarationGraph({&metadata}), sun::support::SunError);
+}
+
+/** An unchanged old artifact cannot be authorized merely by its producer version. */
+TEST(ABI_Compatibility, HistoricalExperimentalBundleRemainsUnchangedAndUnsupported) {
+  const auto path = "tests/abi/fixtures/experimental-v1.moon";
+  std::ifstream input(path, std::ios::binary);
+  ASSERT_TRUE(input);
+  const std::string bytes((std::istreambuf_iterator<char>(input)),
+                          std::istreambuf_iterator<char>());
+  EXPECT_EQ(sun::moon_bundling::computeSha256Hex(bytes),
+            "1df3009fa8a5e9d0052a7903391681b63ec2e08d21c9f332eed019b147c9b650");
+  EXPECT_THROW(sun::moon_bundling::MoonReader::open(path), sun::support::SunError);
+}

@@ -1,4 +1,5 @@
 #include "driver/driver.h"
+#include "abi/abi_compatibility_checker.h"
 
 #include <llvm/IR/DebugInfo.h>
 #include <llvm/IR/IRBuilder.h>
@@ -197,6 +198,7 @@ static uint32_t computeStaticInitOrder(
   for (const auto& moonImport : moonImports) {
     auto reader = sun::moon_bundling::MoonReader::open(moonImport.path);
     if (!reader) continue;
+    sun::abi::AbiCompatibilityChecker::current().validate(*reader);
     for (const auto& moduleKey : reader->listModules()) {
       if (const auto* metadata = reader->getMetadata(moduleKey))
         order = std::max(order, metadata->static_init_order() + 1);

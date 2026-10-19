@@ -68,6 +68,7 @@ const char* const kUsageBody =
     "[\"$NAME/util.sun\"]\n"
     "                    (undefined names fall back to the environment)\n"
     "  -h, --help        Show this help message\n"
+    "  --abi-info        Print experimental ABI profiles and supported rules as JSON\n"
     "  --version         Print version and git commit hash\n"
     "\n"
     "Subcommands:\n"

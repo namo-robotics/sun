@@ -1,0 +1,87 @@
+# Experimental Implementation
+
+Part of the [Sun ABI draft](/abi). This page summarizes the current implementation
+and its limitations; it does not establish stable compatibility guarantees.
+
+Compatibility code lives in `include/abi/` and `src/abi/`, in the `sun::abi`
+namespace. The wire descriptions live in `include/abi/compatibility.proto`
+(`sun::abi::proto`). Moon code owns container parsing and delegates compatibility
+encoding, requirement merging, target checks, and producer diagnostics to this
+subsystem. `AbiCompatibilityChecker` owns validation, byte-based cache keys,
+compilation-scoped authorization, inherited requirements, and producer warnings.
+`MoonReader` only decodes immutable container data; semantic import paths request
+checker authorization before using it. Validated handles own their contract and
+remain readable after a reader is destroyed or the checker starts a new compilation.
+ABI tests live in `tests/abi/`; implementation fingerprint generation
+lives in `cmake/abi/`.
+
+The implementation writes a complete `MoonLibrary` protobuf containing the
+library identity, contract, module metadata and bitcode references, and native
+archive records. The container header locates this record; compiled payload
+bytes remain outside protobuf. The reader
+checks it before parser imports and payload loading, and rejects contractless
+bundles. It records emitted LLVM layouts and call boundaries and conservatively
+retains embedded dependency requirements. Reader snapshots prevent replacement
+of a file from changing bytes after validation. Before authorizing an import,
+the checker materializes and verifies LLVM payloads and requires their generated
+CPU-feature, implementation-rule, and boundary requirements to be present in the
+supplied contract. A supported feature omitted from the contract is still an error;
+checking the description against its own hash alone cannot authorize a payload.
+Boundary records use bounded decoding and reject unknown required record kinds.
+Merging deduplicates identical records and rejects conflicting descriptions of a
+named LLVM layout or shared symbol; failed merges leave the destination unchanged.
+Equivalent named and literal aggregate shapes share the same machine signature.
+LLVM constructor, destructor, and retention lists may carry different lengths,
+because linking combines those lists; their inherited records are retained.
+These emitted names are experimental implementation details, not a replacement
+for the model's stable Sun declaration identities.
+
+Semantic and bitcode support currently use experimental implementation
+fingerprints. These cover compiler source and build inputs, external headers,
+and the compiler's startup shared-library dependencies. Libraries loaded later
+by application code do not change the compiler fingerprint. This can reject
+harmless implementation changes and is not a stable cross-release ABI promise.
+Dependency discovery currently requires a Linux compiler host.
+
+Producer diagnostics use generated build identities. Release automation can supply
+`SUN_RELEASE_SERIES` and a positive `SUN_RELEASE_ORDER` through CMake; the order
+must increase within that series. Both default to unknown (empty series and zero
+order). Different series, equal orders from different builds, and development
+builds without comparable provenance have unknown ordering. No timestamps or
+version-string comparisons are used. After compatibility passes, the checker
+warns once per exact imported bundle for an older producer or unknown ordering;
+it does not warn for the same build or a known newer producer. Release labels
+are excluded from both contract hashing and the experimental build fingerprint.
+Development ancestry comparison is not yet implemented.
+
+The `moon.metadata` rule records canonical declarations and retained generic
+bodies, including private semantic inputs. Consumers reconstruct those records
+from decoded metadata before importing it, and reject changed types or bodies,
+duplicate declaration identities, missing ownership links, and ownership cycles.
+Source locations, documentation, optional source text, and producer diagnostics
+are excluded. Ordered fields, parameters, and statements remain ordered.
+
+Native archive authorization is currently limited to Linux x86-64 GNU ELF code
+with an audited baseline integer instruction set. The checker independently
+decodes instructions, checks relocations and symbol namespaces, and rejects
+unestablished runtime references, TLS, and native initialization arrays. The
+supported `atexit` service is recorded only when referenced and is implemented by
+the JIT's cleanup handler or the executable's C runtime. The repository's prebuilt
+musl OpenSSL archives are outside this profile, so TLS bundle packaging currently
+fails closed. This is a missing general native profile, not an OpenSSL exception.
+
+`sun --abi-info` emits the current experimental target profile, supported rule
+implementations, producer identity, and rebuild guidance as JSON for release
+publication. Experimental support has no fixed support window; removals need
+release notes and rebuild guidance.
+
+The unchanged historical artifact in `tests/abi/fixtures/` exercises rejection of
+an earlier unsupported experimental implementation. It does not establish stable
+cross-release acceptance or replace tests using retained older readers.
+
+Precise stable semantic rules, complete native-runtime requirement descriptions,
+centralized Sun lowering descriptors, and positive cross-release conformance
+remain work before stabilization. Optional source rebuilding is not implemented.
+The [compatibility model](/abi/compatibility) describes the complete proposed
+requirements, including those remaining stages.
+

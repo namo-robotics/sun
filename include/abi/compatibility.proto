@@ -1,0 +1,42 @@
+// Serialized ABI requirements shared by bundle producers and consumers.
+syntax = "proto3";
+
+/** Groups ABI compatibility descriptions independently of the Moon container. */
+package sun.abi.proto;
+
+/** Effective machine properties, independent of target triple spelling. */
+message TargetProfile {
+  string architecture = 1;
+  string platform_abi = 2;
+  string data_layout = 3;
+  uint32 pointer_bits = 4;
+  bool little_endian = 5;
+  repeated string cpu_features = 6;
+}
+
+/** A required implementation rule, or an experimental implementation closure. */
+message ContractRequirement {
+  string name = 1;
+  string implementation = 2;
+}
+
+/** Diagnostic build provenance; never authorizes compatibility. */
+message ProducerIdentity {
+  string build = 1;
+  // Zero means unknown; comparable only within the same nonempty release series.
+  uint64 release_order = 2;
+  string release_series = 3;
+}
+
+/** One complete experimental contract for all code embedded in the bundle. */
+message BundleContract {
+  uint32 encoding_schema = 1;
+  TargetProfile target = 2;
+  repeated ContractRequirement requirements = 3;
+  repeated bytes boundary_records = 4;
+  string compatibility_hash = 5;
+  ProducerIdentity producer = 6;
+  bool experimental = 7;
+  // Canonical declarations and retained bodies, including private semantic inputs.
+  repeated bytes semantic_records = 8;
+}

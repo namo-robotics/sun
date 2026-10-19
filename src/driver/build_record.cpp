@@ -1,6 +1,7 @@
 // build_record.cpp — see build_record.h
 
 #include "driver/build_record.h"
+#include "abi/abi_compatibility_checker.h"
 
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/GlobalVariable.h>
@@ -110,6 +111,10 @@ std::optional<std::string> readMoonInputHash(const std::string& path) {
   std::unique_ptr<sun::moon_bundling::MoonReader> reader;
   try {
     reader = sun::moon_bundling::MoonReader::open(path);
+    if (reader) {
+      sun::abi::AbiCompatibilityChecker checker(reader->getTargetTriple());
+      checker.validate(*reader);
+    }
   } catch (const sun::support::SunError&) {
     return std::nullopt;
   }

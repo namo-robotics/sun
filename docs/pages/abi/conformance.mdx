@@ -14,10 +14,16 @@ also summarizes what is implemented and what remains before declaring a stable A
 ## Implementation baseline and release criteria
 
 The compiler currently has portable declaration keys, C ABI lowering, serialized
-Moon declarations and generic bodies, and a single Moon format-version check.
-The linker checks architecture and OS family. These cover only part of this draft.
+Moon declarations and generic bodies, and an experimental bundle contract.
+The ABI subsystem checks target profiles and implementation requirements before
+semantic import; the reader also checks container ranges and immutable payload
+snapshots. Experimental fingerprints are not stable semantic specifications.
+These cover only part of this draft.
 
-Relevant code is in `src/semantic_analysis/portable_declaration_key.cpp`,
+Compatibility interfaces, implementation, and tests are in `include/abi/`,
+`src/abi/`, and `tests/abi/`, respectively.
+
+Other relevant code is in `src/semantic_analysis/portable_declaration_key.cpp`,
 `src/codegen/llvm_type_resolver.cpp`, `src/codegen/functions/functions_lambdas.cpp`,
 `src/codegen/abi/`, `include/moon_bundling/moon.proto`, and
 `src/moon_bundling/module_linker.cpp`. See [Code Generation](/architecture/codegen).

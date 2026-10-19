@@ -32,6 +32,8 @@ extensions/vscode-sun/out/
 extensions/vscode-sun/*.vsix
 extensions/vscode-sun/.vscode-test/
 *.moon
+# Historical ABI artifacts must remain unchanged across compiler builds.
+!tests/abi/fixtures/*.moon
 tmp
 *.dot
 *.ll

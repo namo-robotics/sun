@@ -23,7 +23,7 @@ namespace sun::cli {
  */
 struct EarlyExit {
   /** Selects the output stream used for an early-exit message. */
-  enum class Stream { Out, Err };
+  enum class Stream { Out, Err, RawOut };
 
   int exitCode = 0;
   Stream stream = Stream::Err;

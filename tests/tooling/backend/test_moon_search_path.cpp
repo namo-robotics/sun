@@ -164,10 +164,10 @@ TEST_P(MoonSearchPath, cross_target_selects_installed_bundle) {
                 quote(dependencyPath) + " " + quote(dir / "dependency.sun")),
             0)
       << readFile(dir / "log");
-  // The three spellings name one target, so from the second round on the
+  // The spellings name one target, so from the second round on the
   // bundle would be up to date and the build would not name its imports;
   // force it so each spelling is seen to select the installed bundle.
-  for (const char* target : {"aarch64-linux-gnu", "aarch64-linux-musl",
+  for (const char* target : {"aarch64-linux-gnu",
                              "aarch64-unknown-linux-gnu"}) {
     const std::string flags =
         std::string("--force-rebuild --target ") + target + " ";

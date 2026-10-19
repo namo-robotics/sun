@@ -98,6 +98,10 @@ void applyBuildRunSettings(const BuildRunOptions& options) {
 
 /** Prints an early-exit message to its selected output stream. */
 int reportEarlyExit(const EarlyExit& earlyExit) {
+  if (earlyExit.stream == EarlyExit::Stream::RawOut) {
+    llvm::outs() << earlyExit.text;
+    return earlyExit.exitCode;
+  }
   auto& stream =
       earlyExit.stream == EarlyExit::Stream::Out ? llvm::outs() : llvm::errs();
   const std::string prefix = sun::support::messagePrefix(

@@ -21,6 +21,7 @@ add_executable(sun_tests)
 
 # Must come after add_executable: target_sources() needs the target to exist.
 # Order among the groups themselves does not matter.
+add_subdirectory(abi)
 add_subdirectory(builtins)
 add_subdirectory(classes)
 add_subdirectory(constants)
@@ -114,6 +115,7 @@ if(SUN_TEST_SHARDS GREATER 1)
     # Stateful FFI tests need fresh processes. Slow integration tests stay
     # separate so CTest can schedule them without holding up an entire shard.
     set(sun_isolated_tests
+        "ABI_Compatibility.*"
         "*Modules_NestedTypeArguments*.*" "*Errors_Arithmetic*.*"
         "EndToEnd_*.*" "Modules_GenericRegressions.*" "Tooling_Bindgen.*"
         "Ffi_Link.*" "Tooling_Backend_InputHash.*" "Modules_ProtoImport.*"

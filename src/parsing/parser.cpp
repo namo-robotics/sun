@@ -1,5 +1,6 @@
 // src/parsing/parser.cpp
 #include "parsing/parser.h"
+#include "abi/abi_compatibility_checker.h"
 
 #include <chrono>
 #include <cstdio>
@@ -3549,6 +3550,7 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
     logAndThrowError("Failed to open moon: " + resolvedStr);
     return nullptr;
   }
+  sun::abi::AbiCompatibilityChecker::current().validate(*reader);
   PARSER_TIMER_END(open_moon);
 
   // Process each module in the bundle, grouping by module name
