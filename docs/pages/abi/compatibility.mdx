@@ -1,0 +1,256 @@
+# Compatibility Model
+
+Part of the [Sun ABI draft](/abi). Requirements are proposed, not guarantees of
+current releases. **MUST**, **MUST NOT**, and **SHOULD** express draft requirements.
+Unresolved decisions must be completed before stabilization.
+
+## Compatibility model
+
+A compiler version identifies the producer. It MUST NOT, by itself, determine
+whether two artifacts are compatible. Each bundle MUST describe the following
+requirements; these are conceptual fields, not a finalized serialization schema.
+
+| Requirement | Meaning |
+| --- | --- |
+| Producer identity | Exact compiler build identity and reproducible release ordering information, used for diagnostics |
+| Container format | How to locate and decode bundle sections |
+| Interface schema | How declarations, types, ownership, and references are encoded |
+| Generic semantics revision | How exported generic bodies are interpreted and specialized |
+| Sun ABI revision | Layout, call, identity, and ownership rules at compiled boundaries |
+| Target profile | Architecture, byte order, pointer model, platform ABI, and data layout |
+| Runtime requirements | Required runtime interfaces and compatible revisions |
+| Required capabilities | Features the consumer must understand |
+| Payload requirements | Object format or LLVM bitcode requirements, and required CPU features |
+| Artifact and dependency identities | Exact declarations and dependencies referenced by the bundle |
+
+Format changes MUST NOT automatically imply ABI changes, or vice versa. A reader
+may support multiple format or ABI revisions. Unknown optional metadata may be
+ignored only when the schema explicitly defines it as optional. Unknown required
+capabilities MUST cause rejection.
+
+The consumer MUST validate compatibility before using imported layouts or
+emitting calls. Validation MUST cover all reachable bundled dependencies, not
+only the top-level import. Unsupported combinations MUST produce a compilation
+error identifying the artifact and the unmet requirement. Successful decoding
+alone is not evidence of semantic or ABI compatibility.
+
+Target compatibility MUST be decided by a defined profile compatibility relation,
+not merely matching architecture and operating-system names. Different target
+triple spellings may be equivalent; different runtime environments, CPU features,
+or ABI-affecting options may be incompatible even on the same architecture.
+
+## Automatic compatibility decision
+
+Compatibility MUST be computed from the dependency's actual requirements and the
+consumer's available implementations. Semantic version numbers, a manually
+maintained compiler-version compatibility table, and a human declaration that a
+release is compatible MUST NOT authorize an import. Compatibility is directional
+and target-specific, not a single property of two compiler releases.
+
+Names such as ABI revision and generic semantics revision in this draft identify
+contracts; they MUST NOT be manually bumped compatibility promises. The proposed
+implementation derives contract identifiers from canonical, machine-readable
+descriptions and, where semantics cannot be represented completely, conservative
+implementation fingerprints.
+
+The producer MUST emit a requirement manifest derived from the compilation:
+
+- Canonical layouts for exposed types, including size, alignment, offsets,
+  discriminants, valid representations, and referenced nominal identities.
+- Lowered signatures, calling conventions, required attributes, ownership
+  transfer modes, and indirect-call contracts.
+- Required runtime symbols and their structural and semantic contracts.
+- Required format decoders, generic semantics, intrinsic behavior, target
+  features, and payload-reader capabilities.
+- Exact dependencies and the contracts needed transitively by compiled code or
+  exported generic bodies, including private declarations those bodies use.
+
+The manifest MUST describe the contracts actually used by code generation.
+Maintaining an independent handwritten description of what code generation is
+supposed to do is insufficient. Canonical encoding MUST exclude incidental
+paths, timestamps, declaration traversal order, and other irrelevant build data.
+It MUST preserve semantically significant order and identities.
+
+The consumer MUST generate its supported-contract manifest from the decoders,
+lowering implementations, runtime implementations, and generic interpreters it
+actually ships. Supporting an old contract requires an implementation of that
+contract, not an entry in an allowlist. A retained decoder or lowering path may
+support an older artifact without weakening the comparison.
+
+The automatic decision procedure is:
+
+1. Decode and validate the bundle's requirements using a supported decoder.
+2. Expand requirements over the reachable dependency graph and exported generic
+   bodies, retaining exact artifact identities.
+3. Resolve each requirement to an available consumer implementation and target
+   capability. Required capabilities must be a subset of those provided.
+4. Compare structural contracts exactly under their canonical encoding. Check
+   target compatibility using the implemented profile rules, rather than raw
+   triple-string equality.
+5. Require matching semantic contracts or a retained implementation of the
+   producer's contract for operations whose meaning is not captured by layout.
+6. Accept only if every required contract is satisfied. Otherwise report the
+   first useful mismatch and fail compilation with a nonzero exit status.
+
+Digests may index and cache canonical contracts, but a digest of the entire
+compiler executable is too coarse to be the ABI identity. An unrelated optimizer
+change should not invalidate an otherwise identical boundary contract. Conversely,
+equal layouts alone do not establish compatible cleanup or exception behavior.
+
+Compatibility results MUST be cached using artifact identity, consumer contract
+identity, target profile, and relevant build options. A cache hit MUST NOT bypass
+checks after any of those inputs change. Passing checks for the same producer
+version MUST NOT exempt a different bundle from validation.
+
+## Computed ABI hashes
+
+The proposed ABI version identifier is a content hash of the effective contract,
+not a manually assigned release number or a hash of the compiler binary. SHA-256
+is the proposed digest algorithm. Conceptually:
+
+```text
+contract_hash = SHA256(canonical_encode(
+    domain = "sun.abi.contract",
+    encoding_schema,
+    contract_kind,
+    effective_target_properties,
+    contract_description
+))
+
+requirements_hash = SHA256(canonical_encode(
+    domain = "sun.abi.requirements",
+    encoding_schema,
+    sorted_required_contract_keys_and_hashes
+))
+```
+
+These expressions describe inputs, not a finalized byte encoding. The encoding
+MUST be unambiguous, with defined field tags, lengths, integer representation,
+ordering, defaults, and schema identification. Raw C++ memory and incidental protobuf serialization bytes MUST NOT be used
+as the canonical encoding.
+
+Each type layout, lowered callable signature, runtime service, and semantic
+contract has its own hash. A bundle also carries an aggregate requirements hash
+for indexing and caching. Its manifest MUST retain the underlying descriptions
+so a failure can report, for example, a changed field offset rather than merely
+two different hashes.
+
+For a class, the layout description includes its nominal identity, field layouts,
+offsets, size, alignment, and valid representations. For a function, the call
+description includes parameter and result lowering, hidden parameters, register
+or indirect passing rules, extension and aliasing requirements, and ownership
+obligations. Interface slots, closure invocation, error propagation, and runtime
+operations have corresponding contracts. A layout hash alone is not a complete
+ABI hash.
+
+The consumer MUST derive the corresponding contract for each imported declaration
+using a supported lowering implementation, or use a retained implementation that
+honors the producer's description. It MUST NOT simply trust and echo the hash
+from the bundle. User-defined types are checked when imported; the compiler
+cannot precompute hashes for every future type at compiler build time.
+
+Recursive type graphs MUST use stable declaration references and a canonical graph
+encoding rather than recursively expanding pointee layouts indefinitely. The
+exact graph and reference encoding remains to be specified. Hash equality MUST
+NOT erase nominal identity or replace validation of the referenced contracts.
+
+A different aggregate requirements hash does not, by itself, imply incompatibility.
+A compiler may support more contracts than a dependency requires. The decision is
+whether every required contract is satisfied, not whether a bundle's requirements
+hash equals a hash of everything the compiler supports.
+
+| Change | Expected decision |
+| --- | --- |
+| Optimizer changes, emitted boundary contracts unchanged | Same required hashes; compatible if remaining checks pass |
+| Consumer adds support for a new type or calling convention | Existing requirements remain satisfiable |
+| Required field offset or argument-passing rule changes | Required hash differs; reject unless the old contract is supported |
+| Cleanup semantics change without a layout change | Semantic contract changes; matching layout hashes are insufficient |
+| Diagnostic wording changes | No ABI contract change |
+
+Compiler provenance remains separate: equal ABI contracts can occur across
+several compiler releases, and a hash has no chronological ordering. Successful
+contract checks plus older producer provenance trigger the warning described
+below. The hash algorithm and contract schema are protocol definitions; changing
+them requires supported decoding or migration, not a human compatibility vote.
+
+## Semantic fingerprints and conservative rejection
+
+There is no general algorithm that can prove arbitrary compiler implementations
+behave equivalently. Automatic compatibility therefore means mechanically
+checking defined contracts and rejecting combinations it cannot establish as
+compatible, rather than inferring compatibility from arbitrary source changes.
+
+For semantics not yet captured in a declarative contract, the proposed fallback
+is a content fingerprint of the responsible implementation and its transitive
+implementation dependencies, relevant configuration, and tools that affect its
+behavior. A changed fingerprint MUST be rejected unless the consumer retains
+an implementation of the original contract. Merely updating a stored expected
+hash or marking a release compatible MUST NOT override the rejection.
+
+This fallback may reject a harmless refactor. That is an explicit conservative
+tradeoff. Fine-grained contracts and retained old implementations can reduce
+unnecessary rejection over time. Fingerprints MUST NOT cover only a manually
+chosen source file while omitting helpers or configuration that influence its
+semantics. Determining this dependency closure is an implementation prerequisite;
+if it cannot be established, the fingerprint must conservatively include more
+inputs or the feature must remain unsupported.
+
+Executable compatibility tests provide evidence and catch contract omissions;
+they are not a proof of equivalence for all programs and MUST NOT alone authorize
+an otherwise unsupported semantic contract. This design assumes a conforming
+producer; it does not prove that arbitrary supplied machine code obeys its manifest.
+
+## Warnings and errors
+
+The consumer MUST finish compatibility validation before deciding whether to warn
+about compiler age. The following policy applies to direct and transitive
+compiled dependencies, including dependency code carried inside another bundle:
+
+| Compatibility result | Producer relationship | Diagnostic and action |
+| --- | --- | --- |
+| All requirements satisfied | Older compiler | Warning; continue compiling |
+| All requirements satisfied | Same compiler build | Continue without a compiler-age warning |
+| All requirements satisfied | Newer compiler | Continue; age alone does not imply incompatibility |
+| All requirements satisfied | Different build with unknown ordering | Warn that producer ordering is unknown; continue |
+| Mismatch or compatibility cannot be established | Any compiler | Error; terminate compilation with a nonzero status |
+
+Warnings MUST identify the artifact and producer and consumer compiler builds,
+and state that compatibility was checked successfully. Emit at most one age
+warning per exact dependency artifact per compilation, even if several imports
+reach it. Incompatibility errors MUST identify the failing contract and, when
+relevant, the dependency path that introduced it. They MUST NOT merely report
+that the compiler versions differ. No executable may be run or published as a
+successful result of a failed compilation.
+
+Compiler age is diagnostic metadata only. Official builds should carry an ordered
+release identifier generated by release automation. Development builds may use
+recorded source ancestry; divergent histories or missing provenance have unknown
+ordering. Local build timestamps MUST NOT establish compiler age. Neither release
+ordering nor ancestry authorizes ABI compatibility.
+
+Illustrative diagnostic text:
+
+```text
+warning: dependency geometry.moon was produced by an older Sun compiler
+  producer: <producer build identity>
+  consumer: <consumer build identity>
+  required contracts verified; continuing
+
+error: dependency geometry.moon is incompatible with this compilation
+  contract: layout of geometry.Point
+  dependency requires: size 24, alignment 8
+  available lowering: size 32, alignment 16
+  compilation stopped
+```
+
+Legacy bundles without enough contract information MUST be rejected as
+"compatibility cannot be established", unless a supported legacy decoder can
+derive all missing requirements reliably. Assuming compatibility from the old
+Moon format number is forbidden.
+
+## Remaining design work
+
+The canonical manifest schema, semantic dependency-closure algorithm, producer
+ordering representation, and integration with payload readers still need concrete
+specifications. The warning/error policy and automatic acceptance criteria above
+are design requirements, not behavior implemented by this documentation change.

@@ -1,0 +1,12 @@
+{
+  "compatibility": "Compatibility Model",
+  "identity": "Declarations & Symbols",
+  "data-layout": "Data Layout",
+  "function-calls": "Function Calls",
+  "ownership": "Ownership & Allocation",
+  "interfaces-closures": "Interfaces & Closures",
+  "generics": "Generic Specialization",
+  "runtime": "Runtime & Errors",
+  "moon-format": "Moon Library Format",
+  "conformance": "Conformance & Implementation"
+}

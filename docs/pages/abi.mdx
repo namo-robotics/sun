@@ -1,0 +1,60 @@
+# Sun ABI — Draft
+
+import { Callout } from 'nextra/components'
+
+<Callout type="warning">
+  This is a design draft, not a compatibility guarantee provided by current Sun
+  releases. Proposed requirements use **MUST**, **MUST NOT**, and **SHOULD**.
+  Unresolved sections must be specified and tested before an ABI revision is
+  declared stable. This draft does not assign a stable ABI revision to existing
+  Moon bundles.
+</Callout>
+
+## Purpose and scope
+
+The initial compatibility goal is:
+
+> A newer Sun compiler can consume an unchanged library produced by an older
+> supported Sun compiler, on a compatible target, without rebuilding the
+> library's existing compiled implementations.
+
+Generic bodies may still be specialized by the consuming compiler. Their
+compatibility contract is specified separately below.
+
+This draft covers Sun-to-Sun boundaries in programs and libraries, including
+functions, types, global storage, callbacks, and compiler runtime services.
+[C interoperability](/c-ffi) continues to follow the selected platform C ABI.
+A stable Sun ABI does not make arbitrary C calls safe.
+
+| Scenario | Proposed guarantee |
+| --- | --- |
+| New compiler imports an older supported bundle | Warn and continue when generated contract checks pass |
+| Old compiler imports a newer bundle | Supported only if its formats, semantics, ABI, and required capabilities are understood |
+| Library rebuilt with changed implementation or API | A distinct artifact; interchangeability is not promised |
+| Replace a library beneath an existing executable | Outside the initial guarantee |
+| Import code for a different architecture or platform ABI | Rejected unless a compatible payload exists |
+| Arbitrary future compiler imports every historical bundle | No unlimited support commitment; supported revisions must be published |
+
+Cross-compiler compatibility and library evolution are different promises.
+Library evolution would additionally specify which changes to an existing
+library preserve compatibility with its already compiled consumers.
+
+## Topics
+
+- [Compatibility Model](/abi/compatibility): Automatic contract checks, compiler-age warnings, and rejection of incompatible artifacts.
+- [Declarations & Symbols](/abi/identity): Exact artifact identity, nominal types, exported symbols, and specializations.
+- [Data Layout](/abi/data-layout): Sizes, alignment, field offsets, enums, arrays, and value representations.
+- [Function Calls](/abi/function-calls): Arguments, returns, hidden parameters, and target calling conventions.
+- [Ownership & Allocation](/abi/ownership): Moves, borrows, destruction, allocation, and failure cleanup.
+- [Interfaces & Closures](/abi/interfaces-closures): Method tables, environments, captures, and indirect invocation.
+- [Generic Specialization](/abi/generics): Serialized bodies, semantic revisions, and concrete type specialization.
+- [Runtime & Errors](/abi/runtime): Runtime entry points, unwinding, initialization, and shared state.
+- [Moon Library Format](/abi/moon-format): The current container, metadata, bitcode, native archives, and proposed format requirements.
+- [Conformance & Implementation](/abi/conformance): Implementation baseline, release criteria, compatibility tests, and delivery sequence.
+
+## Status
+
+This draft retains compile-time specialization and exact dependency identity.
+Machine-level calling conventions and runtime contracts remain unresolved.
+The [conformance page](/abi/conformance) defines the work required before a stable
+revision can be published.
