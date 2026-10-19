@@ -6,7 +6,10 @@ of current releases. Open decisions must be resolved before stabilization.
 ## Generic specialization
 
 The design keeps compile-time specialization. It does not require runtime
-type-erased generics.
+type-erased generics. Retaining generic bodies is separate from optionally
+[embedding complete source](/abi/moon-format#optional-complete-source): complete
+source also contains ordinary implementations and inputs needed to rebuild the
+bundle. Specialization alone does not rebuild its existing compiled code.
 
 | Subject | Level | Requirement |
 | --- | --- | --- |

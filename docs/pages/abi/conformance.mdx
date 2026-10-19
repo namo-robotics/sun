@@ -3,6 +3,14 @@
 Part of the [Sun ABI draft](/abi). These are proposed requirements, not guarantees
 of current releases. Open decisions must be resolved before stabilization.
 
+ABI conformance means that a compiler and runtime follow the ABI rules they
+claim to support: they produce code with the specified layouts and calling
+conventions, accept supported Moon bundles, and reject unsupported ones.
+
+This page defines the release criteria and tests used to check those claims,
+including tests that import real bundles built by other compiler versions. It
+also summarizes what is implemented and what remains before declaring a stable ABI.
+
 ## Implementation baseline and release criteria
 
 The compiler currently has portable declaration keys, C ABI lowering, serialized
@@ -21,15 +29,18 @@ Relevant code is in `src/semantic_analysis/portable_declaration_key.cpp`,
 | Historical artifacts | MUST | Test real artifacts built by older compiler releases. Rebuilding both sides with the new compiler does not test compatibility with old output. |
 | ABI changes | MUST | Detect changes through generated contracts and regression checks. An unchanged version number is insufficient. |
 | Passing tests | MUST NOT | Override an unsupported contract. |
+| Stable behavior | MUST | Specify stable semantic rules instead of relying on hashes of compiler implementation files. |
 
 ## Required test coverage
 
-The suite must cover every row below. Saved layout and signature fixtures
+The suite must cover every row below. Source-recompilation cases apply when that
+optional feature is supported. Saved layout and signature fixtures
 supplement executable tests.
 
 | Area | Level | Cases |
 | --- | --- | --- |
-| Dependency graphs | MUST | Old producer with new consumer; transitive and diamond dependencies. |
+| Dependency graphs | MUST | Old producer with new consumer; transitive and diamond dependencies; inherited requirements folded into one bundle contract. |
+| Bundle acceptance | MUST | Reject a complete bundle if an embedded dependency needs unsupported behavior, even when the consumer supports the outer producer’s own code. Accept supported bundles without per-artifact compatibility manifests. |
 | Values and calls | MUST | Scalar and aggregate arguments and returns, enums, arrays, and alignment. |
 | Indirect calls | MUST | Closures, interface methods, and callback ownership. |
 | Cleanup | MUST | Moves, destruction counts, allocation/free pairing, and exceptional cleanup. |
@@ -37,19 +48,27 @@ supplement executable tests.
 | Runtime | MUST | Global initialization, shared state, and supported error propagation. |
 | Unsupported inputs | MUST | Reject incompatible targets, formats, ABI revisions, and capabilities. |
 | Toolchain changes | MUST | Supported optimization levels and LLVM upgrades for each target profile. |
-| Age warnings | MUST | Warn once per older compatible artifact, including diamond dependencies. |
-| Failed validation | MUST | Exit with a nonzero status for incompatible or unverifiable dependencies. |
+| Age warnings | MUST | Warn once per older compatible imported bundle, including diamond imports; do not require warnings for embedded artifacts. |
+| Failed validation | MUST | Exit with a nonzero status when a compiled dependency is unsupported and no selected source rebuild succeeds and passes validation. |
 | Producer ordering | MUST | Newer compatible producers and divergent development-build histories. |
+| Forward and backward imports | MUST | Test newer consumers with old artifacts and retained older readers with new bundles using supported rules. |
+| Optional extensions | MUST | Accept unknown skippable fields, preserve omitted-field defaults, and reject unknown required semantics. |
+| Unrelated additions | MUST | Preserve a bundle's compiled contract when adding unused compiler or runtime features, diagnostic metadata, or optional source. |
+| Shared runtime support | MUST | Test old service interfaces implemented by current code or adapters without duplicating process-wide state. |
 | Contract changes | MUST | Detect structural and semantic changes without manual version bumps; preserve unaffected contracts after unrelated changes. |
 | Cached results | MUST | Invalidate after contract, target, artifact, or relevant option changes. |
-| Legacy support | MUST | Missing manifests, retained old implementations, and transitive producer metadata. |
+| Legacy support | MUST | Missing bundle contracts and retained implementations of complete old bundle contracts. |
+| Optional source embedding | MUST | Test bundles with and without source, private implementations, initializers, embedded dependencies, and missing build inputs. |
+| Consumer recompilation | MUST | Test explicit rebuilding of compatible bundles, selected fallback for unsupported compiled contracts, and no rebuild when source is merely present. |
+| Rebuilt artifacts | MUST | Test new identities and contracts, rebuilding dependent code when needed, retained native binary checks, and rebuild-cache invalidation. |
+| Source failures | MUST | Reject unsupported source semantics and incomplete rebuilds; never use an unsupported original payload after a failed rebuild. |
 
 ## Suggested implementation sequence
 
 1. Audit current representations and runtime calls; choose initial targets.
 2. Specify layout and calling-convention algorithms.
 3. Centralize Sun lowering and add layout and signature fixtures.
-4. Generate manifests and implement validation, warnings, and errors.
+4. Generate one contract and hash per bundle; implement validation, warnings, and errors.
 5. Define generic compatibility and preserve imported layouts.
 6. Add archived cross-version fixtures and publish the supported-contract inventory.
 7. Declare a stable revision after meeting the release criteria.

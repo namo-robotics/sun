@@ -5,9 +5,17 @@ of current releases. Open decisions must be resolved before stabilization.
 
 ## Runtime, errors, and global state
 
+Runtime requirements are part of the single bundle contract. Adding a runtime
+service does not affect bundles that do not call it. A runtime implementation
+can be refactored or optimized while preserving its existing interface and
+behavior. An incompatible change needs a distinct service identity or an adapter
+that implements the old behavior during its supported lifetime.
+
 | Subject | Level | Requirement |
 | --- | --- | --- |
-| Runtime entry points | MUST | Version the contracts used by compiled code, including argument and result representations, ownership, and failure behavior. |
+| Runtime entry points | MUST | Include the runtime interfaces actually required by compiled code in the bundle contract, covering argument and result representations, ownership, and failure behavior. |
+| Runtime evolution | MUST NOT | Change the calling rules or specified behavior of an existing runtime service identity. Use a distinct identity for incompatible behavior. |
+| Shared implementations | SHOULD | Reuse the current runtime implementation or a small adapter when it can satisfy an older supported interface. |
 | Symbol resolution | MUST NOT | Silently select an incompatible implementation when bundles use the same runtime symbol. |
 | Error propagation | MUST | Define exception objects, type identification, matching, cleanup, and unwinding. |
 | Unwinding | MUST | Allow unwinding across a boundary only when both sides support its contract. |

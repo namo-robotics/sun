@@ -6,61 +6,75 @@ of current releases. Open decisions must be resolved before stabilization.
 ## Role of a Moon bundle
 
 A `.moon` file packages compiled code with the declarations needed to import it.
-The container format, interface schema, generic semantics, and machine ABI are
-separate contracts. Their compatibility requirements are defined in the
+One bundle contract covers the container format, interface schema, generic
+semantics, machine ABI, and embedded dependencies. Its requirements are defined in the
 [compatibility model](/abi/compatibility).
 
 The sections below describe the current format and proposed changes. The draft
 does not yet specify every byte needed to implement a reader or writer.
 
+## Proposed container structure
+
+The proposal keeps the existing header, data regions, and indexes. It adds one
+bundle compatibility hash and its description to metadata, alongside the bundle
+producer's identity. Embedded artifacts need no separate compatibility manifests.
+The metadata schema still needs to define where these bundle-wide fields are
+stored when a bundle contains several modules. Bundles may also embed complete
+source inputs for optional consumer recompilation, described below.
+
+Both tables use byte offsets from the start of the file. `H` is the header size,
+`D` is the total size of bitcode and metadata, `I` is `indexOffset`, and `M` is the
+total size of module index entries. Added metadata increases `D` and shifts later
+regions; the indexes already record their offsets.
+
+| Byte offset | Size in bytes | Region | Proposed contents |
+| --- | --- | --- | --- |
+| `0` | `4` | Magic | Existing Moon magic value |
+| `4` | `4` | Format version | Container encoding revision; optional metadata additions alone do not change it |
+| `8` | `8` | Index offset | Offset `I` |
+| `H` | `D` | Module data | Bitcode and existing metadata, extended with one bundle contract hash, its description, bundle producer metadata, and optional embedded source inputs |
+| `H + D` | `I - H - D` | Native archive data | Existing optional archive bytes |
+| `I` | `8` | Module count | Existing entry count |
+| `I + 8` | `M` | Module entries | Existing keys, bitcode ranges, and metadata ranges |
+| `I + 8 + M` | `8` | Native archive count | Existing entry count |
+| `I + 16 + M` | Variable | Native archive entries | Existing archive identities, names, offsets, and sizes |
+
+The table preserves the usual current header layout. A portable encoding with
+fixed-width little-endian integers remains proposed; its exact specification and
+migration are separate from adding the bundle contract. No new section index or
+payload format is needed for the compatibility metadata. The table places optional
+source inputs within module data; their encoding and metadata references remain
+undecided. They increase `D` without requiring fixed offsets in the header.
+
 ## Current container structure
 
-The implementation is defined by `include/moon_bundling/moon.h` and
-`src/moon_bundling/moon.cpp`. The writer emits the following logical structure:
+The current implementation in `include/moon_bundling/moon.h` and
+`src/moon_bundling/moon.cpp` writes the records below. It does not yet implement
+the proposed structure above. Several module entries can share one bitcode blob.
 
-<div className="moon-packet-diagram">
+Offsets are measured in bytes from the start of the file. Variable-length regions
+use these symbols:
 
-```mermaid
----
-title: Moon library container
-config:
-  packet:
-    bitsPerRow: 64
-    bitWidth: 10
-    rowHeight: 48
-    showBits: false
----
-packet
-0-31: "Magic (u32)"
-32-63: "Format version (u32)"
-64-127: "Index offset (u64)"
-128-191: "Bitcode blobs + module metadata (variable length)"
-192-255: "Native archive bytes (optional, variable length)"
-256-319: "Module count (u64) — indexOffset points here"
-320-383: "Module index entries (variable length)"
-384-447: "Native archive count (u64)"
-448-511: "Native archive index entries (variable length)"
-```
+- `H`: header size, `sizeof(MoonHeader)`.
+- `D`: total bytes of bitcode and module metadata.
+- `I`: the header's `indexOffset`, after module data and native archive bytes.
+- `M`: total module-entry bytes; each entry uses `36 + key byte length` bytes.
 
-</div>
+The header offsets below show the usual native layout (`H = 16`). The writer uses
+C++ structure layout, so these offsets are not a host-independent format guarantee.
+Empty lists still have count fields.
 
-The header fields show their integer widths. Each variable-length region is
-compressed into one schematic row; its drawn width is not its stored size.
-Bit labels are hidden because rows after the header do not represent fixed file
-offsets. Empty entry lists occupy no bytes, while their count fields remain.
-The header's `indexOffset` locates the module count at the start of the index.
-This diagram shows record order, not a portable byte-order or padding guarantee.
-
-Several module entries can share one bitcode blob; there is not necessarily a
-separate blob for each module.
-
-| Record | Current contents |
-| --- | --- |
-| Header | `uint32` magic value `0x53554E4C`, `uint32` format version, `uint64` index offset |
-| Module index | `uint64` entry count followed by module entries |
-| Module entry | `uint32` key byte length, key bytes, then `uint64` bitcode offset, bitcode size, metadata offset, and metadata size |
-| Native archive index | `uint64` entry count followed by archive entries |
-| Archive entry | `uint32` hash byte length, hash bytes, `uint32` name byte length, name bytes, then `uint64` offset and size |
+| Byte offset | Size in bytes | Region | Current contents |
+| --- | --- | --- | --- |
+| `0` | `4` | Magic | `uint32` value `0x53554E4C` |
+| `4` | `4` | Format version | `uint32` version |
+| `8` | `8` | Index offset | `uint64` offset `I` |
+| `H` | `D` | Module data | Bitcode blobs and module metadata |
+| `H + D` | `I - H - D` | Native archive data | Optional archive bytes |
+| `I` | `8` | Module count | `uint64` entry count; start of the index |
+| `I + 8` | `M` | Module entries | For each entry: `uint32` key byte length, key bytes, then `uint64` bitcode offset, bitcode size, metadata offset, and metadata size |
+| `I + 8 + M` | `8` | Native archive count | `uint64` entry count |
+| `I + 16 + M` | Variable | Native archive entries | For each entry: `uint32` hash byte length, hash bytes, `uint32` name byte length, name bytes, then `uint64` offset and size; `24 + hash byte length + name byte length` bytes per entry |
 
 Offsets are positions from the start of the file. Sizes describe byte ranges.
 The current writer writes the header as a native C++ structure and index integers
@@ -72,6 +86,21 @@ order of bytes in the file.
 The reader currently requires an exact match with `MoonHeader::VERSION`.
 That single check is not the separate compatibility negotiation proposed here.
 
+## What changes in the proposal
+
+Both formats keep the same physical regions. The main addition is compatibility
+information inside metadata.
+
+| Area | Current format | Proposed format |
+| --- | --- | --- |
+| Container and indexes | Header, module data, archive data, module index, archive index | Same regions and index fields; metadata grows |
+| Compatibility | Format-version and existing target checks | One generated contract and compatibility hash covering the whole bundle, including embedded dependencies |
+| Producer metadata | No bundle-age policy as specified by this draft | Producer build and ordering for the bundle; no per-embedded-artifact requirement |
+| Declaration identities | Exact artifact and declaration references | Preserved; independent of compatibility hashes |
+| Encoding | Native C++ header and host-order integers | Portable integer encoding remains a separate proposed change |
+| Compiled code | LLVM bitcode and carried native archives | Unchanged; native Sun objects remain a future option |
+| Complete source | Retained generic bodies, without all ordinary function bodies | Optional complete source inputs so a consumer can rebuild the bundle |
+
 ## Module metadata
 
 `include/moon_bundling/moon.proto` defines the current protobuf metadata, reusing
@@ -80,7 +109,7 @@ portable references, artifact identities, dependencies, target triple, static
 initialization order, declarations, retained generic bodies, globals, and C
 binding assertions.
 
-Ordinary compiled function bodies are not exported as generic source bodies.
+Currently, ordinary compiled function bodies are not exported as generic source bodies.
 Global initializers are omitted from declaration metadata; their compiled storage
 and initialization code reside in the payload. Private declarations may still
 be needed by generic bodies and must preserve their identities and visibility.
@@ -88,6 +117,35 @@ be needed by generic bodies and must preserve their identities and visibility.
 Reading a protobuf field does not mean the consumer understands its meaning.
 The proposed reader checks required language features as well as field encoding;
 see [generic semantics](/abi/generics).
+
+## Optional complete source
+
+A producer may embed all source code so a consumer can choose to rebuild the
+bundle with its own compiler and target settings. This can make a library usable
+when its existing compiled contract is unsupported. Source embedding and consumer
+recompilation are both optional; bundles containing only compiled code and the
+usual import metadata remain supported.
+
+Complete source means more than exported generic bodies. It includes private
+implementations, global initializers, and source for embedded dependencies, plus
+the inputs needed to build them. The consumer still needs a toolchain that
+understands the recorded source language and can satisfy external requirements.
+Recompilation does not promise that arbitrary future compilers accept old source
+or produce identical behavior.
+
+| Subject | Level | Requirement when offering complete source recompilation |
+| --- | --- | --- |
+| Source coverage | MUST | Include all source needed to rebuild the claimed scope, including private code, initializers, and embedded dependency code. Identify any binary-only components rather than describe them as rebuildable. |
+| Build inputs | MUST | Record source language versions, module paths, exact dependency identities, relevant build settings, generated inputs or their reproducible generation recipe, resources, and required external tools or libraries. |
+| Source selection | MUST | Let the consumer choose recompilation, including when the existing compiled contract is supported. |
+| Import behavior | MUST NOT | Recompile merely because source is present. A consumer may explicitly configure recompilation as a fallback after compiled-contract rejection. |
+| Source validation | MUST | Check source and build requirements independently of the old compiled ABI. Reject missing inputs or unsupported source semantics with a clear error. |
+| Native components | MUST | Rebuild native components when their source and toolchain are available, or check the compatibility of any retained binaries. |
+| Build result | MUST | Produce a distinct artifact with one newly generated bundle contract and hash covering rebuilt code and any retained binaries. Preserve the original bundle. |
+
+The source-package encoding, build-description schema, and consumer options remain
+to be specified. Source files and build metadata do not introduce per-artifact ABI
+contracts; the resulting compiled bundle still has one contract.
 
 ## Dependency and native archive handling
 
@@ -102,23 +160,25 @@ deduplicated. This isolates names; it does not establish compatible C runtimes,
 allocation families, process-wide state, or platform requirements. Those remain
 part of the [runtime](/abi/runtime) and [ownership](/abi/ownership) contracts.
 
-## Compiler provenance and contract manifests
+## Bundle producer and compatibility contract
 
-The proposed manifest stores compiler provenance separately from compatibility
-contracts. It contains [contract hashes](/abi/compatibility#computed-abi-hashes),
-their canonical descriptions, and an aggregate requirements hash. Its binary
-encoding is still undecided.
+The metadata stores one [bundle contract hash](/abi/compatibility#computed-abi-hashes)
+and the information needed to derive its complete contract. Existing type,
+declaration, and target metadata can supply part of that description. The exact
+schema and location of bundle-wide fields remain undecided.
 
 | Subject | Level | Requirement |
 | --- | --- | --- |
-| Producer metadata | MUST | Store the producer's build identity and ordering metadata separately from generated compatibility requirements. |
-| Embedded dependencies | MUST | Preserve each dependency's producer and requirements; do not assign the outer bundle's producer to all embedded code. |
+| Bundle contract | MUST | Cover the bundle's code, generic bodies, and all embedded dependency requirements with one contract and hash. |
+| Producer metadata | MUST | Store the bundle producer's build identity and ordering separately from the contract. |
+| Embedded dependencies | MUST NOT | Require separate compatibility manifests, hashes, or compiler-age metadata for embedded artifacts. |
+| Dependency identity | MUST | Preserve exact identities and references needed by declarations and generic bodies. |
 
 The [compatibility procedure](/abi/compatibility#automatic-compatibility-decision)
-checks each requirement against an available implementation. Older compatible
-dependencies produce warnings. Incompatible or unverifiable dependencies stop
-compilation. A compiler version string or assigned ABI number cannot authorize
-an import.
+accepts or rejects the complete bundle contract. Older compatible bundles produce
+warnings. Unsupported or unverifiable contracts reject use of the compiled
+payload. If the consumer selects source recompilation, it validates the rebuilt
+artifact instead. The producer's version does not authorize an import.
 
 ## Proposed encoding requirements
 
@@ -129,8 +189,13 @@ this proposal. Target payload byte order is a separate property.
 | Subject | Level | Requirement |
 | --- | --- | --- |
 | Wire encoding | MUST | Define an encoding independent of C++ padding and producer host byte order. |
-| Format specification | MUST | Define header bytes, section identifiers, required and optional sections, indexes, shared ranges, strings, resource limits, and integrity checks. |
+| Format specification | MUST | Define header bytes, existing indexes, bundle metadata fields, shared ranges, strings, resource limits, and integrity checks. |
 | Capabilities | MUST | Provide a way to mark required capabilities without making every unknown field mandatory. |
+| Optional extensions | MUST | Use tagged, skippable metadata fields with stable defaults. Older readers may ignore an unknown optional field only when doing so leaves import and execution behavior unchanged. |
+| Required extensions | MUST | Mark new semantics as required when ignoring them would change interpretation or behavior. Readers that cannot satisfy those requirements must reject the bundle. |
+| Field identity | MUST NOT | Reuse a field identifier for a different meaning or change an existing field's meaning. |
+| Format revisions | MUST NOT | Require a new container revision solely for additive optional metadata that existing readers can safely skip. |
+| Optional source | MUST | Allow compiled-code consumers to skip an unsupported optional source package without changing the compiled contract. |
 | Language features | MUST | Reject unknown required features under the generic semantics contract. |
 | Lengths and counts | MUST | Validate them before allocation. |
 | Ranges and references | MUST | Check ranges without integer overflow; reject truncation, invalid references, and conflicting duplicate identities. |
@@ -142,28 +207,30 @@ A digest does not prove that an untrusted producer followed Sun's safety rules.
 
 ## Import validation order
 
-The proposed reader performs these checks before generated code uses the bundle:
+For compiled-code imports, the proposed reader performs these checks before
+generated code uses the bundle:
 
 1. Validate the header, container version, index bounds, and record encoding.
 2. Decode supported metadata and reject missing required capabilities.
 3. Validate declaration references, exact dependencies, and duplicate identities.
-4. Check target, ABI, generic semantics, runtime, and payload requirements.
-5. Validate imported layout and signature contracts before lowering dependent code.
+4. Validate the complete bundle contract and its hash against supported implementations and the target.
+5. Validate imported declarations, layouts, and signatures under that contract before lowering dependent code.
 6. Load or link supported payloads and specialize supported generic bodies.
 
 | Subject | Level | Requirement |
 | --- | --- | --- |
-| Validation timing | MUST | Complete the checks above before generated code uses the bundle. Lazy loading must reject incompatible data before use. |
+| Validation timing | MUST | Complete the checks above before using the compiled bundle. For selected source recompilation, validate the source inputs and resulting artifact before use. Lazy loading must reject incompatible data before use. |
 | Parsing | MUST NOT | Run startup code merely because the container is being parsed. |
 
 ## Format decisions still required
 
 - Exact byte-level specification and migration from native header encoding.
-- Placement and encoding of separate compatibility requirements.
+- Placement and encoding of the single bundle contract, its hash, and producer metadata.
 - Bounds, resource limits, overlap rules, and integrity coverage.
 - Whether future bundles carry native Sun objects, optional bitcode, or both.
-- Rules for optional sections, older readers, and supported revision lifetimes.
+- Stable field identifiers, extension defaults, older readers, and supported revision lifetimes.
 - Versioned interface and generic-body schemas with reference validation.
+- Optional source-package encoding, completeness rules, build descriptions, and consumer recompilation options.
 
 | Subject | Level | Required tests |
 | --- | --- | --- |
@@ -177,7 +244,7 @@ design can keep this model.
 
 | Subject | Level | Requirement |
 | --- | --- | --- |
-| Payload compatibility | MUST | Check bitcode reader compatibility, Sun ABI compatibility, and generic semantics separately. |
+| Payload compatibility | MUST | Cover bitcode reader compatibility, Sun ABI compatibility, and generic semantics in the single bundle contract; matching one alone is insufficient. |
 
 LLVM's backward bitcode compatibility helps newer consumers load older code;
 it does not define Sun layouts or permit older readers to consume arbitrary

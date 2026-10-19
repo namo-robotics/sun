@@ -20,7 +20,10 @@ Requirements appear in tables throughout these pages:
 
 The goal is for a newer compiler to import an unchanged library built by an older
 supported compiler on a compatible target, without rebuilding its compiled code.
-The consumer may still specialize exported generic bodies.
+The consumer may still specialize exported generic bodies. Each bundle has one
+compatibility contract and hash covering its code and all embedded dependencies.
+A bundle may also embed complete source inputs so consumers can optionally rebuild
+it with their own compiler. This is a separate path from importing compiled code.
 
 The draft covers Sun functions, types, globals, callbacks, and compiler runtime
 services across compiled boundaries. [C interoperability](/c-ffi) follows the
@@ -32,7 +35,8 @@ platform C ABI; a stable Sun ABI does not make arbitrary C calls safe.
 | Old compiler imports a newer bundle | Accept only if it supports the required formats, semantics, ABI, and capabilities. |
 | Library is rebuilt with changed code or API | Treat it as a distinct artifact; replacement compatibility is not promised. |
 | Library is replaced beneath an existing executable | Outside the initial guarantee. |
-| Bundle targets another architecture or platform ABI | Reject unless a compatible payload exists. |
+| Bundle targets another architecture or platform ABI | Use a compatible payload, or rebuild from complete source when selected and supported; otherwise reject. |
+| Consumer selects recompilation from embedded source | Build a new artifact and validate its contract; source and build requirements still apply. |
 | Future compiler imports a historical bundle | Support is limited to published supported revisions. |
 
 Compiler compatibility means accepting code built by another compiler version.
@@ -44,6 +48,11 @@ compatible with programs already compiled against it.
 | Stabilization | MUST | Resolve open decisions and test the specified behavior before declaring an ABI revision stable. |
 | Support policy | MUST | Publish which revisions are supported. |
 
+The [evolution rules](/abi/compatibility#compiler-evolution) keep unused features
+and optional metadata out of the compiled compatibility hash. Newer and older
+compilers can exchange bundles when they support the required rules. Unknown
+semantics and retired contracts still need rejection or a supported rebuild path.
+
 ## Topics
 
 - [Compatibility Model](/abi/compatibility): Automatic contract checks, compiler-age warnings, and rejection of incompatible artifacts.
@@ -54,7 +63,7 @@ compatible with programs already compiled against it.
 - [Interfaces & Closures](/abi/interfaces-closures): Method tables, environments, captures, and indirect invocation.
 - [Generic Specialization](/abi/generics): Serialized bodies, semantic revisions, and concrete type specialization.
 - [Runtime & Errors](/abi/runtime): Runtime entry points, unwinding, initialization, and shared state.
-- [Moon Library Format](/abi/moon-format): The current container, metadata, bitcode, native archives, and proposed format requirements.
+- [Moon Library Format](/abi/moon-format): The current container, metadata, bitcode, native archives, optional complete source, and proposed format requirements.
 - [Conformance & Implementation](/abi/conformance): Implementation baseline, release criteria, compatibility tests, and delivery sequence.
 
 ## Status
