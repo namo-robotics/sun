@@ -11,3 +11,12 @@
   font-weight: var(--sun-dark-weight);
   text-decoration: var(--sun-dark-decoration);
 }
+
+/* Keeps packet labels readable on narrow screens by allowing horizontal scrolling. */
+.moon-packet-diagram {
+  overflow-x: auto;
+}
+
+.moon-packet-diagram svg {
+  min-width: 640px;
+}
