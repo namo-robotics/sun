@@ -1,8 +1,7 @@
 # Moon Library Format
 
-Part of the [Sun ABI draft](/abi). Requirements are proposed, not guarantees of
-current releases. **MUST**, **MUST NOT**, and **SHOULD** express draft requirements.
-Unresolved decisions must be completed before stabilization.
+Part of the [Sun ABI draft](/abi). These are proposed requirements, not guarantees
+of current releases. Open decisions must be resolved before stabilization.
 
 ## Role of a Moon bundle
 
@@ -11,9 +10,8 @@ The container format, interface schema, generic semantics, and machine ABI are
 separate contracts. Their compatibility requirements are defined in the
 [compatibility model](/abi/compatibility).
 
-This page distinguishes the current implementation from proposed durable format
-rules. It is not yet a complete byte-level specification for an independent
-reader or writer.
+The sections below describe the current format and proposed changes. The draft
+does not yet specify every byte needed to implement a reader or writer.
 
 ## Current container structure
 
@@ -53,8 +51,8 @@ offsets. Empty entry lists occupy no bytes, while their count fields remain.
 The header's `indexOffset` locates the module count at the start of the index.
 This diagram shows record order, not a portable byte-order or padding guarantee.
 
-Multiple module entries may point to the same bitcode blob. Data regions must
-therefore not be assumed to have one owner or to occur once per module.
+Several module entries can share one bitcode blob; there is not necessarily a
+separate blob for each module.
 
 | Record | Current contents |
 | --- | --- |
@@ -66,8 +64,8 @@ therefore not be assumed to have one owner or to occur once per module.
 
 Offsets are positions from the start of the file. Sizes describe byte ranges.
 The current writer writes the header as a native C++ structure and index integers
-using their native in-memory representation. Consequently this implementation
-must not be mistaken for a canonical, host-independent wire encoding. The magic
+using their native in-memory representation. The resulting encoding
+can depend on the host byte order and structure padding. The magic
 is an integer constant; its displayed hexadecimal spelling does not define the
 order of bytes in the file.
 
@@ -87,9 +85,9 @@ Global initializers are omitted from declaration metadata; their compiled storag
 and initialization code reside in the payload. Private declarations may still
 be needed by generic bodies and must preserve their identities and visibility.
 
-A protobuf reader accepting a field is not evidence that it understands the
-field's semantics. Unknown required language features MUST be rejected under the
-proposed [generic semantics contract](/abi/generics).
+Reading a protobuf field does not mean the consumer understands its meaning.
+The proposed reader checks required language features as well as field encoding;
+see [generic semantics](/abi/generics).
 
 ## Dependency and native archive handling
 
@@ -106,44 +104,41 @@ part of the [runtime](/abi/runtime) and [ownership](/abi/ownership) contracts.
 
 ## Compiler provenance and contract manifests
 
-The proposed format MUST retain the producing compiler build identity and
-ordering metadata separately from its generated compatibility requirements.
-It MUST preserve provenance and requirements for carried dependencies rather
-than assigning the outer bundle's compiler identity to all embedded code.
+The proposed manifest stores compiler provenance separately from compatibility
+contracts. It contains [contract hashes](/abi/compatibility#computed-abi-hashes),
+their canonical descriptions, and an aggregate requirements hash. Its binary
+encoding is still undecided.
 
-The [automatic compatibility procedure](/abi/compatibility#automatic-compatibility-decision)
-compares those requirements with the consumer's available implementations.
-Older compatible dependencies produce warnings. Incompatible dependencies, or
-those whose compatibility cannot be established, stop compilation with an error.
-A compiler version string or manually assigned ABI number cannot authorize an
-import. The manifest stores [computed contract hashes](/abi/compatibility#computed-abi-hashes),
-their canonical descriptions, and an aggregate requirements hash. Compiler
-provenance and artifact identity are separate from those hashes. The manifest's
-exact binary encoding remains unresolved.
+| Subject | Level | Requirement |
+| --- | --- | --- |
+| Producer metadata | MUST | Store the producer's build identity and ordering metadata separately from generated compatibility requirements. |
+| Embedded dependencies | MUST | Preserve each dependency's producer and requirements; do not assign the outer bundle's producer to all embedded code. |
+
+The [compatibility procedure](/abi/compatibility#automatic-compatibility-decision)
+checks each requirement against an available implementation. Older compatible
+dependencies produce warnings. Incompatible or unverifiable dependencies stop
+compilation. A compiler version string or assigned ABI number cannot authorize
+an import.
 
 ## Proposed encoding requirements
 
-A stable container revision MUST define an explicit wire encoding independent of
-C++ structure padding and producer host byte order. The proposed direction is
-fixed-width little-endian container integers, byte-counted UTF-8 textual fields,
-and explicitly defined offsets. This is a proposal for a future version, not a
-claim that current files already conform. Target payload byte order remains a
-separate property.
+The proposed encoding uses fixed-width little-endian container integers,
+byte-counted UTF-8 text, and defined offsets. Current files do not yet follow
+this proposal. Target payload byte order is a separate property.
 
-The final format MUST specify header bytes, section identifiers, required versus
-optional sections, index encoding, allowed shared ranges, string encoding,
-resource limits, and integrity checks. It MUST reserve a mechanism for required
-capabilities without treating every unknown field as mandatory.
+| Subject | Level | Requirement |
+| --- | --- | --- |
+| Wire encoding | MUST | Define an encoding independent of C++ padding and producer host byte order. |
+| Format specification | MUST | Define header bytes, section identifiers, required and optional sections, indexes, shared ranges, strings, resource limits, and integrity checks. |
+| Capabilities | MUST | Provide a way to mark required capabilities without making every unknown field mandatory. |
+| Language features | MUST | Reject unknown required features under the generic semantics contract. |
+| Lengths and counts | MUST | Validate them before allocation. |
+| Ranges and references | MUST | Check ranges without integer overflow; reject truncation, invalid references, and conflicting duplicate identities. |
+| Overlapping records | MUST NOT | Accept arbitrary overlap between unrelated records. Shared bitcode ranges are allowed; exact overlap rules still need a specification. |
+| Artifact identity | MUST NOT | Treat build-input identity as a checksum of serialized bytes. |
+| Integrity digests | MUST | Define payload-integrity digests separately from artifact identity. |
 
-A reader MUST validate lengths and counts before allocation, check ranges without
-integer overflow, reject truncation and invalid references, and reject conflicting
-duplicate identities. Shared bitcode ranges are permitted; arbitrary overlap
-between unrelated records MUST NOT be accepted implicitly. Exact overlap and
-uniqueness rules remain to be specified.
-
-An artifact's build-input identity MUST NOT be confused with a checksum of its
-serialized bytes. The format must define any payload-integrity digests separately.
-A digest is not proof that an untrusted producer honored Sun's safety rules.
+A digest does not prove that an untrusted producer followed Sun's safety rules.
 
 ## Import validation order
 
@@ -156,9 +151,10 @@ The proposed reader performs these checks before generated code uses the bundle:
 5. Validate imported layout and signature contracts before lowering dependent code.
 6. Load or link supported payloads and specialize supported generic bodies.
 
-These are logical validation stages; lazy loading is permitted only when it
-preserves the requirement to reject incompatible data before use. Merely parsing
-a container MUST NOT run its startup code.
+| Subject | Level | Requirement |
+| --- | --- | --- |
+| Validation timing | MUST | Complete the checks above before generated code uses the bundle. Lazy loading must reject incompatible data before use. |
+| Parsing | MUST NOT | Run startup code merely because the container is being parsed. |
 
 ## Format decisions still required
 
@@ -169,16 +165,19 @@ a container MUST NOT run its startup code.
 - Rules for optional sections, older readers, and supported revision lifetimes.
 - Versioned interface and generic-body schemas with reference validation.
 
-The [conformance suite](/abi/conformance) must retain historical bundles. Container
-tests must additionally cover malformed offsets, overflowing lengths, truncation,
-shared blobs, duplicate records, unknown capabilities, and unsupported payloads.
+| Subject | Level | Required tests |
+| --- | --- | --- |
+| Historical bundles | MUST | Retain old artifacts in the [conformance suite](/abi/conformance). |
+| Container validation | MUST | Cover malformed offsets, overflowing lengths, truncation, shared blobs, duplicate records, unknown capabilities, and unsupported payloads. |
 
 ## Compiled payloads
 
-Moon currently carries LLVM bitcode together with declarations and generic
-bodies. The initial design may retain that model. Bitcode reader compatibility,
-Sun ABI compatibility, and generic semantic compatibility MUST be checked as
-separate requirements.
+Moon currently carries LLVM bitcode, declarations, and generic bodies. The initial
+design can keep this model.
+
+| Subject | Level | Requirement |
+| --- | --- | --- |
+| Payload compatibility | MUST | Check bitcode reader compatibility, Sun ABI compatibility, and generic semantics separately. |
 
 LLVM's backward bitcode compatibility helps newer consumers load older code;
 it does not define Sun layouts or permit older readers to consume arbitrary

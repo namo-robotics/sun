@@ -1,26 +1,23 @@
 # Generic Specialization
 
-Part of the [Sun ABI draft](/abi). Requirements are proposed, not guarantees of
-current releases. **MUST**, **MUST NOT**, and **SHOULD** express draft requirements.
-Unresolved decisions must be completed before stabilization.
+Part of the [Sun ABI draft](/abi). These are proposed requirements, not guarantees
+of current releases. Open decisions must be resolved before stabilization.
 
 ## Generic specialization
 
-The initial design retains compile-time specialization. Runtime type-erased
-generics are not required and are not introduced by this proposal.
+The design keeps compile-time specialization. It does not require runtime
+type-erased generics.
 
-An importer specializing an exported body MUST use its declared semantic revision
-and exact referenced declarations. It MUST NOT silently reinterpret old bodies
-under changed name lookup, overload selection, ownership, intrinsic, or layout
-rules. A precompiled specialization may be reused only when its identity and
-contracts match the requested specialization.
+| Subject | Level | Requirement |
+| --- | --- | --- |
+| Imported bodies | MUST | Specialize an exported body using its declared semantic revision and exact referenced declarations. |
+| Changed language rules | MUST NOT | Silently apply changed name lookup, overload selection, ownership, intrinsic, or layout rules to an old body. |
+| Precompiled specialization | MUST | Reuse it only when its identity and contracts match the requested specialization. |
+| New concrete types | MUST | Generate a compatible specialization using the new type's declared layout and operations, or reject the combination. |
+| Existing layouts | MUST NOT | Change a new type's layout to satisfy an old generic's ABI. |
 
-For an old generic that receives a newly defined concrete type, the compiler
-MUST either generate a compatible specialization using that type's declared
-layout and operations, or reject the unsupported combination. Selecting the
-producer's ABI does not authorize changing the new type's existing layout.
+## Open decisions
 
-Initially, a versioned serialized AST with explicit compatibility handling is a
-possible implementation. A versioned representation with resolved declarations
-and types is a longer-term option. Either approach needs documented semantics;
-protobuf field compatibility alone does not supply them.
+A versioned serialized AST with explicit compatibility checks is one starting
+point. A representation with resolved declarations and types is a later option.
+Both need defined semantics; compatible protobuf fields alone are insufficient.

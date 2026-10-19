@@ -1,112 +1,87 @@
 # Compatibility Model
 
-Part of the [Sun ABI draft](/abi). Requirements are proposed, not guarantees of
-current releases. **MUST**, **MUST NOT**, and **SHOULD** express draft requirements.
-Unresolved decisions must be completed before stabilization.
+Part of the [Sun ABI draft](/abi). These are proposed requirements, not guarantees
+of current releases. Open decisions must be resolved before stabilization.
 
 ## Compatibility model
 
-A compiler version identifies the producer. It MUST NOT, by itself, determine
-whether two artifacts are compatible. Each bundle MUST describe the following
-requirements; these are conceptual fields, not a finalized serialization schema.
+Compatibility depends on the contracts a bundle needs and the implementations a
+consumer provides. A compiler version identifies who built the bundle; it does
+not decide whether the bundle can be imported. Compatibility has a direction and
+a target: compiler A accepting B's output does not mean B accepts A's output.
 
-| Requirement | Meaning |
+Each bundle describes these requirements. Field encodings are still undecided.
+
+| Requirement | Contents |
 | --- | --- |
-| Producer identity | Exact compiler build identity and reproducible release ordering information, used for diagnostics |
-| Container format | How to locate and decode bundle sections |
-| Interface schema | How declarations, types, ownership, and references are encoded |
-| Generic semantics revision | How exported generic bodies are interpreted and specialized |
+| Producer identity | Exact compiler build and reproducible release ordering, for diagnostics |
+| Container format | Rules for locating and decoding sections |
+| Interface schema | Encoding of declarations, types, ownership, and references |
+| Generic semantics revision | Rules for interpreting and specializing exported generic bodies |
 | Sun ABI revision | Layout, call, identity, and ownership rules at compiled boundaries |
 | Target profile | Architecture, byte order, pointer model, platform ABI, and data layout |
 | Runtime requirements | Required runtime interfaces and compatible revisions |
-| Required capabilities | Features the consumer must understand |
-| Payload requirements | Object format or LLVM bitcode requirements, and required CPU features |
-| Artifact and dependency identities | Exact declarations and dependencies referenced by the bundle |
+| Required capabilities | Features the consumer needs to understand |
+| Payload requirements | Object or LLVM bitcode format and required CPU features |
+| Artifact and dependency identities | Exact declarations and dependencies used by the bundle |
 
-Format changes MUST NOT automatically imply ABI changes, or vice versa. A reader
-may support multiple format or ABI revisions. Unknown optional metadata may be
-ignored only when the schema explicitly defines it as optional. Unknown required
-capabilities MUST cause rejection.
+| Subject | Level | Requirement |
+| --- | --- | --- |
+| Bundle metadata | MUST | Describe every requirement listed above. |
+| Compiler versions | MUST NOT | Authorize an import from version numbers, a compiler-version table, or a human compatibility declaration. |
+| Format and ABI | MUST NOT | Treat a format change as an automatic ABI change, or vice versa. |
+| Unknown metadata | MUST | Ignore unknown metadata only when the schema marks it optional; reject unknown required capabilities. |
+| Validation timing | MUST | Check compatibility before using imported layouts or emitting calls. |
+| Dependencies | MUST | Check all reachable bundled dependencies, including transitive dependencies. |
+| Unsupported combinations | MUST | Report a compilation error naming the artifact and unmet requirement. |
+| Target matching | MUST | Apply defined target-profile compatibility rules, rather than compare architecture and OS names or raw target triples. |
 
-The consumer MUST validate compatibility before using imported layouts or
-emitting calls. Validation MUST cover all reachable bundled dependencies, not
-only the top-level import. Unsupported combinations MUST produce a compilation
-error identifying the artifact and the unmet requirement. Successful decoding
-alone is not evidence of semantic or ABI compatibility.
-
-Target compatibility MUST be decided by a defined profile compatibility relation,
-not merely matching architecture and operating-system names. Different target
-triple spellings may be equivalent; different runtime environments, CPU features,
-or ABI-affecting options may be incompatible even on the same architecture.
+A reader can support several format or ABI revisions. Decoding a bundle does not
+prove that its semantics or ABI are compatible. Different target triple spellings
+can describe equivalent targets; the same architecture can have incompatible
+runtime environments, CPU features, or ABI options.
 
 ## Automatic compatibility decision
 
-Compatibility MUST be computed from the dependency's actual requirements and the
-consumer's available implementations. Semantic version numbers, a manually
-maintained compiler-version compatibility table, and a human declaration that a
-release is compatible MUST NOT authorize an import. Compatibility is directional
-and target-specific, not a single property of two compiler releases.
+The producer records the contracts used during compilation. The consumer compares
+them with contracts supported by its installed implementations. Supporting an old
+contract requires working code, such as a retained decoder or lowering path.
 
-Names such as ABI revision and generic semantics revision in this draft identify
-contracts; they MUST NOT be manually bumped compatibility promises. The proposed
-implementation derives contract identifiers from canonical, machine-readable
-descriptions and, where semantics cannot be represented completely, conservative
-implementation fingerprints.
+| Manifest | Level | Required contents |
+| --- | --- | --- |
+| Producer: layouts | MUST | Canonical size, alignment, offsets, discriminants, valid representations, and referenced nominal identities. |
+| Producer: calls | MUST | Lowered signatures, calling conventions, attributes, ownership transfer modes, and indirect-call contracts. |
+| Producer: runtime | MUST | Required symbols and their structure and behavior. |
+| Producer: readers and semantics | MUST | Required format decoders, generic semantics, intrinsic behavior, target features, and payload readers. |
+| Producer: dependencies | MUST | Exact dependencies and contracts used by compiled code or exported generic bodies, including private declarations those bodies use. |
+| Producer: source of truth | MUST | Derive the manifest from contracts actually used by code generation. A separate handwritten description is insufficient. |
+| Consumer | MUST | Derive supported contracts from the decoders, lowering code, runtime implementations, and generic interpreters it ships. |
+| Contract identifiers | MUST NOT | Use manually bumped revisions as compatibility promises. |
+| Canonical encoding | MUST | Preserve meaningful order and identities; exclude incidental paths, timestamps, traversal order, and other irrelevant build data. |
 
-The producer MUST emit a requirement manifest derived from the compilation:
+Contract identifiers are derived from canonical descriptions. Where a description
+cannot fully express behavior, the design uses implementation fingerprints as
+explained below.
 
-- Canonical layouts for exposed types, including size, alignment, offsets,
-  discriminants, valid representations, and referenced nominal identities.
-- Lowered signatures, calling conventions, required attributes, ownership
-  transfer modes, and indirect-call contracts.
-- Required runtime symbols and their structural and semantic contracts.
-- Required format decoders, generic semantics, intrinsic behavior, target
-  features, and payload-reader capabilities.
-- Exact dependencies and the contracts needed transitively by compiled code or
-  exported generic bodies, including private declarations those bodies use.
+| Step | Level | Consumer action |
+| --- | --- | --- |
+| 1. Decode | MUST | Read and validate requirements with a supported decoder. |
+| 2. Expand | MUST | Collect requirements from reachable dependencies and exported generic bodies, keeping exact artifact identities. |
+| 3. Resolve | MUST | Find an implementation and target capability for each requirement. All required capabilities must be available. |
+| 4. Compare structure | MUST | Compare canonical structural contracts exactly and apply target-profile compatibility rules. |
+| 5. Compare behavior | MUST | Require matching semantic contracts or a retained implementation of the producer's contract. |
+| 6. Decide | MUST | Accept only if every requirement is satisfied. Otherwise report a useful mismatch and fail compilation with a nonzero exit status. |
+| Cache key | MUST | Include artifact identity, consumer contract identity, target profile, and relevant build options. |
+| Cache reuse | MUST NOT | Reuse a compatibility result after any key input changes, or skip validation because another bundle from the same producer passed. |
 
-The manifest MUST describe the contracts actually used by code generation.
-Maintaining an independent handwritten description of what code generation is
-supposed to do is insufficient. Canonical encoding MUST exclude incidental
-paths, timestamps, declaration traversal order, and other irrelevant build data.
-It MUST preserve semantically significant order and identities.
-
-The consumer MUST generate its supported-contract manifest from the decoders,
-lowering implementations, runtime implementations, and generic interpreters it
-actually ships. Supporting an old contract requires an implementation of that
-contract, not an entry in an allowlist. A retained decoder or lowering path may
-support an older artifact without weakening the comparison.
-
-The automatic decision procedure is:
-
-1. Decode and validate the bundle's requirements using a supported decoder.
-2. Expand requirements over the reachable dependency graph and exported generic
-   bodies, retaining exact artifact identities.
-3. Resolve each requirement to an available consumer implementation and target
-   capability. Required capabilities must be a subset of those provided.
-4. Compare structural contracts exactly under their canonical encoding. Check
-   target compatibility using the implemented profile rules, rather than raw
-   triple-string equality.
-5. Require matching semantic contracts or a retained implementation of the
-   producer's contract for operations whose meaning is not captured by layout.
-6. Accept only if every required contract is satisfied. Otherwise report the
-   first useful mismatch and fail compilation with a nonzero exit status.
-
-Digests may index and cache canonical contracts, but a digest of the entire
-compiler executable is too coarse to be the ABI identity. An unrelated optimizer
-change should not invalidate an otherwise identical boundary contract. Conversely,
-equal layouts alone do not establish compatible cleanup or exception behavior.
-
-Compatibility results MUST be cached using artifact identity, consumer contract
-identity, target profile, and relevant build options. A cache hit MUST NOT bypass
-checks after any of those inputs change. Passing checks for the same producer
-version MUST NOT exempt a different bundle from validation.
+Digests can index and cache contracts. Hashing the entire compiler executable is
+too broad: an optimizer change need not affect the ABI. Layout checks alone are
+too narrow: identical layouts can have different cleanup or exception behavior.
 
 ## Computed ABI hashes
 
-The proposed ABI version identifier is a content hash of the effective contract,
-not a manually assigned release number or a hash of the compiler binary. SHA-256
-is the proposed digest algorithm. Conceptually:
+The proposed ABI identifier hashes a contract, rather than a release number or
+compiler binary. SHA-256 is the proposed algorithm:
 
 ```text
 contract_hash = SHA256(canonical_encode(
@@ -124,111 +99,101 @@ requirements_hash = SHA256(canonical_encode(
 ))
 ```
 
-These expressions describe inputs, not a finalized byte encoding. The encoding
-MUST be unambiguous, with defined field tags, lengths, integer representation,
-ordering, defaults, and schema identification. Raw C++ memory and incidental protobuf serialization bytes MUST NOT be used
-as the canonical encoding.
+These expressions list inputs; they do not specify a byte encoding. Each layout,
+call signature, runtime service, and semantic contract has its own hash. A bundle
+also has an aggregate requirements hash for indexing and caching.
 
-Each type layout, lowered callable signature, runtime service, and semantic
-contract has its own hash. A bundle also carries an aggregate requirements hash
-for indexing and caching. Its manifest MUST retain the underlying descriptions
-so a failure can report, for example, a changed field offset rather than merely
-two different hashes.
+| Subject | Level | Requirement |
+| --- | --- | --- |
+| Encoding | MUST | Define unambiguous field tags, lengths, integer representation, ordering, defaults, and schema identification. |
+| Encoding shortcuts | MUST NOT | Use raw C++ memory or incidental protobuf serialization bytes as canonical encoding. |
+| Descriptions | MUST | Keep the underlying contracts so errors can report a changed field offset instead of just different hashes. |
+| Imported declarations | MUST | Derive each contract with supported lowering code, or use a retained implementation that honors the producer's description. |
+| Hash verification | MUST NOT | Simply trust and echo the bundle's hash. |
+| Recursive types | MUST | Use stable declaration references and a canonical graph encoding, rather than expand pointee layouts indefinitely. |
+| Equal hashes | MUST NOT | Erase nominal identity or replace validation of referenced contracts. |
 
-For a class, the layout description includes its nominal identity, field layouts,
-offsets, size, alignment, and valid representations. For a function, the call
-description includes parameter and result lowering, hidden parameters, register
-or indirect passing rules, extension and aliasing requirements, and ownership
-obligations. Interface slots, closure invocation, error propagation, and runtime
-operations have corresponding contracts. A layout hash alone is not a complete
-ABI hash.
+A class contract includes nominal identity, field layouts and offsets, size,
+alignment, and valid representations. A call contract includes parameter and
+result lowering, hidden parameters, register or indirect passing, extension and
+aliasing rules, and ownership. Interface slots, closure calls, error propagation,
+and runtime operations also need contracts.
 
-The consumer MUST derive the corresponding contract for each imported declaration
-using a supported lowering implementation, or use a retained implementation that
-honors the producer's description. It MUST NOT simply trust and echo the hash
-from the bundle. User-defined types are checked when imported; the compiler
-cannot precompute hashes for every future type at compiler build time.
+User-defined types are checked on import; the compiler cannot precompute hashes
+for future types. The recursive graph encoding still needs a specification.
 
-Recursive type graphs MUST use stable declaration references and a canonical graph
-encoding rather than recursively expanding pointee layouts indefinitely. The
-exact graph and reference encoding remains to be specified. Hash equality MUST
-NOT erase nominal identity or replace validation of the referenced contracts.
-
-A different aggregate requirements hash does not, by itself, imply incompatibility.
-A compiler may support more contracts than a dependency requires. The decision is
-whether every required contract is satisfied, not whether a bundle's requirements
-hash equals a hash of everything the compiler supports.
+An aggregate requirements hash can differ from the consumer's aggregate hash
+without a conflict: the consumer may support more contracts than the bundle
+needs. Each required contract is checked separately.
 
 | Change | Expected decision |
 | --- | --- |
-| Optimizer changes, emitted boundary contracts unchanged | Same required hashes; compatible if remaining checks pass |
-| Consumer adds support for a new type or calling convention | Existing requirements remain satisfiable |
-| Required field offset or argument-passing rule changes | Required hash differs; reject unless the old contract is supported |
-| Cleanup semantics change without a layout change | Semantic contract changes; matching layout hashes are insufficient |
+| Optimizer changes but boundary contracts stay the same | Same required hashes; accept if other checks pass |
+| Consumer adds a type or calling convention | Existing requirements can still be satisfied |
+| Required field offset or argument-passing rule changes | Reject unless the consumer supports the old contract |
+| Cleanup behavior changes but layout stays the same | Check the changed semantic contract; matching layouts are insufficient |
 | Diagnostic wording changes | No ABI contract change |
 
-Compiler provenance remains separate: equal ABI contracts can occur across
-several compiler releases, and a hash has no chronological ordering. Successful
-contract checks plus older producer provenance trigger the warning described
-below. The hash algorithm and contract schema are protocol definitions; changing
-them requires supported decoding or migration, not a human compatibility vote.
+Equal contracts can occur in different compiler releases. Hashes do not order
+releases; producer metadata controls the age warning below. Changing the hash
+algorithm or schema requires decoder support or migration.
 
 ## Semantic fingerprints and conservative rejection
 
-There is no general algorithm that can prove arbitrary compiler implementations
-behave equivalently. Automatic compatibility therefore means mechanically
-checking defined contracts and rejecting combinations it cannot establish as
-compatible, rather than inferring compatibility from arbitrary source changes.
+No general algorithm can prove that arbitrary compiler implementations behave
+identically. The compatibility check accepts defined, supported contracts and
+rejects combinations it cannot verify.
 
-For semantics not yet captured in a declarative contract, the proposed fallback
-is a content fingerprint of the responsible implementation and its transitive
-implementation dependencies, relevant configuration, and tools that affect its
-behavior. A changed fingerprint MUST be rejected unless the consumer retains
-an implementation of the original contract. Merely updating a stored expected
-hash or marking a release compatible MUST NOT override the rejection.
+For behavior not fully described by a contract, the proposed fallback hashes the
+responsible implementation, all implementation dependencies, relevant
+configuration, and tools that affect its behavior. This can reject a harmless
+refactor. More precise contracts and retained implementations can reduce those
+rejections.
 
-This fallback may reject a harmless refactor. That is an explicit conservative
-tradeoff. Fine-grained contracts and retained old implementations can reduce
-unnecessary rejection over time. Fingerprints MUST NOT cover only a manually
-chosen source file while omitting helpers or configuration that influence its
-semantics. Determining this dependency closure is an implementation prerequisite;
-if it cannot be established, the fingerprint must conservatively include more
-inputs or the feature must remain unsupported.
+| Subject | Level | Requirement |
+| --- | --- | --- |
+| Changed fingerprint | MUST | Reject it unless the consumer retains an implementation of the original contract. |
+| Manual overrides | MUST NOT | Bypass rejection by updating an expected hash or declaring a release compatible. |
+| Fingerprint coverage | MUST NOT | Hash a selected source file while omitting helpers or configuration that affect its behavior. |
+| Unknown dependencies | MUST | Include more inputs conservatively, or leave the feature unsupported, when the complete implementation dependency set cannot be established. |
+| Compatibility tests | MUST NOT | Use passing tests alone to authorize an unsupported semantic contract. |
 
-Executable compatibility tests provide evidence and catch contract omissions;
-they are not a proof of equivalence for all programs and MUST NOT alone authorize
-an otherwise unsupported semantic contract. This design assumes a conforming
-producer; it does not prove that arbitrary supplied machine code obeys its manifest.
+Tests catch missing contract details but do not prove equivalence for all
+programs. The design assumes the producer follows the contracts; it does not
+prove that arbitrary supplied machine code obeys its manifest.
 
 ## Warnings and errors
 
-The consumer MUST finish compatibility validation before deciding whether to warn
-about compiler age. The following policy applies to direct and transitive
-compiled dependencies, including dependency code carried inside another bundle:
+Check compatibility before deciding whether to warn about compiler age. Apply
+this policy to direct and transitive compiled dependencies, including code
+embedded in another bundle.
 
-| Compatibility result | Producer relationship | Diagnostic and action |
+| Compatibility result | Producer | Required action (MUST) |
 | --- | --- | --- |
-| All requirements satisfied | Older compiler | Warning; continue compiling |
-| All requirements satisfied | Same compiler build | Continue without a compiler-age warning |
-| All requirements satisfied | Newer compiler | Continue; age alone does not imply incompatibility |
-| All requirements satisfied | Different build with unknown ordering | Warn that producer ordering is unknown; continue |
-| Mismatch or compatibility cannot be established | Any compiler | Error; terminate compilation with a nonzero status |
+| All requirements satisfied | Older compiler | Warn and continue. |
+| All requirements satisfied | Same compiler build | Continue without an age warning. |
+| All requirements satisfied | Newer compiler | Continue; age alone does not imply incompatibility. |
+| All requirements satisfied | Different build, unknown ordering | Warn that ordering is unknown and continue. |
+| Mismatch or unverifiable compatibility | Any compiler | Report an error and terminate compilation with a nonzero status. |
 
-Warnings MUST identify the artifact and producer and consumer compiler builds,
-and state that compatibility was checked successfully. Emit at most one age
-warning per exact dependency artifact per compilation, even if several imports
-reach it. Incompatibility errors MUST identify the failing contract and, when
-relevant, the dependency path that introduced it. They MUST NOT merely report
-that the compiler versions differ. No executable may be run or published as a
-successful result of a failed compilation.
+| Subject | Level | Requirement |
+| --- | --- | --- |
+| Diagnostic order | MUST | Finish compatibility validation before deciding on an age warning. |
+| Age warning | MUST | Name the artifact and both compiler builds, and state that compatibility checks passed. |
+| Duplicate warnings | MUST NOT | Emit more than one age warning per exact dependency artifact per compilation. |
+| Compatibility error | MUST | Identify the failing contract and, when relevant, the dependency path that introduced it. |
+| Error detail | MUST NOT | Report only that compiler versions differ. |
+| Failed compilation | MUST NOT | Run or publish an executable as a successful compilation result. |
+| Official build ordering | SHOULD | Use an ordered release identifier generated by release automation. |
+| Local timestamps | MUST NOT | Use them to establish compiler age. |
+| Legacy bundles | MUST | Reject bundles missing contract information as “compatibility cannot be established”, unless a supported legacy decoder can reliably derive every missing requirement. |
+| Legacy format number | MUST NOT | Use an old Moon format number as evidence of compatibility. |
 
-Compiler age is diagnostic metadata only. Official builds should carry an ordered
-release identifier generated by release automation. Development builds may use
-recorded source ancestry; divergent histories or missing provenance have unknown
-ordering. Local build timestamps MUST NOT establish compiler age. Neither release
-ordering nor ancestry authorizes ABI compatibility.
+Development builds can use recorded source ancestry for age ordering. Divergent
+histories or missing provenance have unknown ordering. Neither release order nor
+ancestry authorizes an import.
 
-Illustrative diagnostic text:
+Example diagnostics:
 
 ```text
 warning: dependency geometry.moon was produced by an older Sun compiler
@@ -243,14 +208,8 @@ error: dependency geometry.moon is incompatible with this compilation
   compilation stopped
 ```
 
-Legacy bundles without enough contract information MUST be rejected as
-"compatibility cannot be established", unless a supported legacy decoder can
-derive all missing requirements reliably. Assuming compatibility from the old
-Moon format number is forbidden.
-
 ## Remaining design work
 
-The canonical manifest schema, semantic dependency-closure algorithm, producer
-ordering representation, and integration with payload readers still need concrete
-specifications. The warning/error policy and automatic acceptance criteria above
-are design requirements, not behavior implemented by this documentation change.
+Specify the manifest encoding, the algorithm for finding all semantic
+implementation dependencies, producer ordering metadata, and payload-reader
+integration. The checks and diagnostics above are proposed behavior.

@@ -1,23 +1,24 @@
 # Interfaces & Closures
 
-Part of the [Sun ABI draft](/abi). Requirements are proposed, not guarantees of
-current releases. **MUST**, **MUST NOT**, and **SHOULD** express draft requirements.
-Unresolved decisions must be completed before stabilization.
+Part of the [Sun ABI draft](/abi). These are proposed requirements, not guarantees
+of current releases. Open decisions must be resolved before stabilization.
 
 ## Interfaces and closures
 
-Interface dispatch MUST define method-slot identity, ordering, signatures,
-receiver adjustment, and any metadata or destruction entries. Adding or reordering
-methods is not automatically compatible. Generic interface methods MUST have a
-specified specialization strategy; a fixed method table cannot be assumed to
-contain every future specialization.
+Adding or reordering interface methods can break compatibility. A fixed method
+table cannot contain every future specialization of a generic method.
 
-Closure calls MUST define whether the hidden argument points to an environment
-or a closure record. Environment layout may remain private only if consumers
-never inspect it and all invocation and cleanup operations use compatible
-interfaces. Borrowed captures MUST NOT outlive their referents.
+| Subject | Level | Requirement |
+| --- | --- | --- |
+| Interface dispatch | MUST | Define method-slot identity, order, signatures, receiver adjustment, and metadata or destruction entries. |
+| Generic methods | MUST | Define how interface methods are specialized. |
+| Closure calls | MUST | Define whether the hidden argument points to the environment or to a closure record. |
+| Private environments | MUST | Keep an environment layout private only when consumers never inspect it and invocation and cleanup use compatible interfaces. |
+| Borrowed captures | MUST NOT | Let a capture outlive the value it borrows. |
 
-**Unresolved:** audit and formalize method-table generation, interface reference
-passing versus returning, and closure capture destruction. Current interface
-borrow parameters and return values do not use identical lowering, so a uniform
-fat-pointer description alone is insufficient.
+## Open decisions
+
+Specify method-table generation, interface reference passing and returning, and
+closure capture destruction. Interface borrow parameters and return values
+currently use different lowering rules; describing both as fat pointers is
+insufficient.

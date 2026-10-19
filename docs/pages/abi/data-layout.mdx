@@ -1,46 +1,47 @@
 # Data Layout
 
-Part of the [Sun ABI draft](/abi). Requirements are proposed, not guarantees of
-current releases. **MUST**, **MUST NOT**, and **SHOULD** express draft requirements.
-Unresolved decisions must be completed before stabilization.
+Part of the [Sun ABI draft](/abi). These are proposed requirements, not guarantees
+of current releases. Open decisions must be resolved before stabilization.
 
 ## Data layout
 
-Every type crossing a compiled boundary MUST have a layout defined by its ABI
-revision and target profile. Consumers MUST preserve that layout, including
-private fields needed to determine the size of a public value type.
+| Subject | Level | Requirement |
+| --- | --- | --- |
+| Boundary types | MUST | Define each type's layout for its ABI revision and target profile. |
+| Imported layouts | MUST | Preserve the producer's layout, including private fields that determine a public value's size. |
+| Layout contract | MUST | Specify size, alignment, field offsets, array stride, valid representations, and padding. |
+| Padding | MUST NOT | Treat padding as initialized application data or use it for semantic equality. |
+| Inconsistent metadata | MUST | Reject it instead of silently recomputing a layout with a newer algorithm. |
+| Layout fingerprints | MUST NOT | Use them in place of nominal identity or a defined layout algorithm. |
+| Layout changes | MUST NOT | Change field order, enum encoding, or alignment within an ABI revision unless the change is unobservable at every supported boundary. |
 
-The layout contract MUST specify size, alignment, field offsets, array stride,
-valid value representations, and any padding. Padding MUST NOT be treated as
-initialized application data or used for semantic equality.
+Layouts can be stored in metadata or derived from versioned rules. Internal types
+can be optimized when their representation does not escape through calls,
+fields, callbacks, generic bodies, or metadata.
 
-An implementation may record layouts in metadata or derive them from versioned
-rules. It MUST reject inconsistent metadata rather than silently recompute the
-layout using a newer algorithm. Layout fingerprints may detect mismatches, but
-MUST NOT replace nominal identity or a defined layout algorithm.
+## Current representations
 
-The current implementation provides the following starting points. This table
-records observations, **not frozen layouts**:
+These are implementation observations, not stable layout guarantees.
 
-| Category | Current representation or design obligation |
+| Category | Current representation |
 | --- | --- |
-| Class values | LLVM structures; field layout needs a normative algorithm |
-| Raw pointers and ordinary references | Pointer representation; validity and borrowing rules still apply |
+| Class values | LLVM structures; field layout still needs a defined algorithm |
+| Raw pointers and ordinary references | Pointers; validity and borrowing rules still apply |
 | Named function values | Direct function pointers |
 | Closures | Function pointer and environment pointer |
 | Interface values | Data pointer and method-table pointer |
 | Static pointers | Data pointer and an `i64` length |
-| Builtin `slice` | Two `i64` bounds; this is an indexing range, not a data view |
+| Builtin `slice` | Two `i64` bounds; an indexing range, not a data view |
 | Unsized array references | Data pointer, `i32` dimension count, and dimensions pointer |
-| Payload enums | Tagged storage whose size and alignment depend on variants |
+| Payload enums | Tagged storage with size and alignment determined by variants |
 
-Before stabilization, target profiles MUST define scalar widths and alignment,
-Boolean storage and valid values, character representation, floating-point
-formats, aggregate field order and tail padding, empty values, arrays and
-shapes, enum discriminants and payload offsets, and vector alignment. They MUST
-also state whether any niche or spare-bit representations are allowed.
+## Target profile requirements
 
-Changing field order, enum encoding, or alignment under an existing ABI revision
-is forbidden unless the change is proven unobservable at every supported
-boundary. Types used only internally may be optimized when their representation
-does not escape through calls, fields, callbacks, generic bodies, or metadata.
+Before stabilization, each target profile needs the following definitions.
+
+| Category | Level | Required definitions |
+| --- | --- | --- |
+| Scalars | MUST | Widths and alignment, Boolean storage and valid values, character representation, and floating-point formats. |
+| Aggregates | MUST | Field order, tail padding, empty values, arrays and shapes, and vector alignment. |
+| Enums | MUST | Discriminants and payload offsets. |
+| Spare representations | MUST | Whether layouts may use spare bits or otherwise invalid values to encode variants. |
