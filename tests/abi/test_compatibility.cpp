@@ -617,9 +617,9 @@ TEST(ABI_Compatibility, AuditedNativeRuleIsNotDeclaredNativeTrust) {
                sun::support::SunError);
 }
 
-/** Native symbol declarations are canonical sets and survive embedded
- * dependency merging. */
-TEST(ABI_Compatibility, NativeSymbolsAreCanonicalAndInherited) {
+/** Native symbol diagnostics survive merging without affecting compatibility.
+ */
+TEST(ABI_Compatibility, NativeSymbolDiagnosticsAreInherited) {
   auto first = contract();
   first.add_native_link_symbols("malloc");
   first.add_native_link_symbols("free");
@@ -632,23 +632,17 @@ TEST(ABI_Compatibility, NativeSymbolsAreCanonicalAndInherited) {
   inherited.add_native_link_symbols("__errno_location");
   sun::abi::mergeContractRequirements(first, inherited);
   EXPECT_EQ(first.native_link_symbols_size(), 3);
-  EXPECT_NE(sun::abi::hashBundleContract(first),
+  EXPECT_EQ(sun::abi::hashBundleContract(first),
             sun::abi::hashBundleContract(reordered));
 }
 
-/** Symbol records cannot be accepted without an implementation of their
- * resolution rule. */
-TEST(ABI_Compatibility, NativeSymbolsRequireLinkerRule) {
+/** Diagnostic symbol names do not impose additional compatibility requirements.
+ */
+TEST(ABI_Compatibility, NativeSymbolDiagnosticsDoNotRequireLinkerRule) {
   auto native = contract();
+  const auto hash = native.compatibility_hash();
   native.add_native_link_symbols("__errno_location");
-  native.set_compatibility_hash(sun::abi::hashBundleContract(native));
-  EXPECT_THROW(sun::abi::AbiCompatibilityChecker::current().validateContract(
-                   native, "native.moon", "x86_64-linux-gnu"),
-               sun::support::SunError);
-  auto* rule = native.add_requirements();
-  rule->set_name("native.runtime.linker");
-  rule->set_implementation(sun::abi::emissionImplementation(rule->name()));
-  native.set_compatibility_hash(sun::abi::hashBundleContract(native));
+  EXPECT_EQ(sun::abi::hashBundleContract(native), hash);
   EXPECT_NO_THROW(sun::abi::AbiCompatibilityChecker::current().validateContract(
       native, "native.moon", "x86_64-linux-gnu"));
 }

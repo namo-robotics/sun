@@ -137,9 +137,9 @@ and the information needed to derive its complete contract. Existing type,
 declaration, and target metadata can supply part of that description. The experimental schema is `include/abi/compatibility.proto`, referenced once
 through `MoonLibrary.bundle_contract`. The container header references that
 bundle metadata directly. External native symbol references are part of this
-same contract (`native_link_symbols`), canonically encoded as a sorted unique set.
-Embedded dependency references are retained; no per-archive compatibility hash
-is introduced.
+same protobuf (`native_link_symbols`) as diagnostic metadata, excluded from the
+compatibility hash and import authorization. Embedded dependency diagnostics are
+retained; no per-archive compatibility hash is introduced.
 
 | Subject | Level | Requirement |
 | --- | --- | --- |

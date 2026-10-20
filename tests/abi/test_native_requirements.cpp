@@ -215,9 +215,9 @@ TEST(ABI_Compatibility, NativeELFSupportsDeclaredMuslTarget) {
             "native.elf.aarch64.declared");
 }
 
-/** Rehashing an altered native declaration cannot hide the archive's actual
- * references. */
-TEST(ABI_Compatibility, NativeSymbolDeclarationsAreCheckedBeforeImport) {
+/** Native symbol diagnostics do not gate imports or replace linker resolution.
+ */
+TEST(ABI_Compatibility, NativeSymbolDiagnosticsDoNotGateImport) {
   llvm::LLVMContext context;
   llvm::Module module("native", context);
   module.setTargetTriple("x86_64-linux-gnu");
@@ -257,14 +257,7 @@ TEST(ABI_Compatibility, NativeSymbolDeclarationsAreCheckedBeforeImport) {
   }
   auto changed = sun::moon_bundling::MoonReader::open(path);
   ASSERT_NE(changed, nullptr);
-  try {
-    checker.validate(*changed);
-    FAIL() << "Accepted a missing native symbol declaration";
-  } catch (const sun::support::SunError& error) {
-    EXPECT_NE(std::string(error.what())
-                  .find("missing native linker symbol requirement: atexit"),
-              std::string::npos);
-  }
+  EXPECT_NO_THROW(checker.validate(*changed));
   std::filesystem::remove(path);
 }
 

@@ -83,11 +83,10 @@ names imply compatible C interfaces. A dedicated build-configuration interface
 for additional native CPU/provenance declarations remains unfinished.
 
 External native references are recorded in `BundleContract.native_link_symbols`
-under `native.runtime.linker`. They participate in the canonical compatibility
-hash as a sorted, deduplicated set and are retained when embedding dependencies.
-Consumers reconstruct external references from the archive symbol tables and
-reject omitted declarations before import. The selected native or JIT linker
-resolves them using the actual link environment; unresolved strong references
+as diagnostic metadata and are retained when embedding dependencies. They are
+excluded from compatibility hashing and are not checked for completeness at
+import. The `native.runtime.linker` rule records use of external resolution;
+the selected native or JIT linker resolves references from the actual objects using the actual link environment; unresolved strong references
 remain link errors. Weak-reference behavior stays in the ELF objects. The
 linker-provided GOT base is excluded from runtime references. `atexit` also retains
 its lifecycle rule because the JIT registers cleanup callbacks for execution

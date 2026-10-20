@@ -138,16 +138,8 @@ ValidatedBundle AbiCompatibilityChecker::validate(
                    llvm::StringRef(bytes.data(), bytes.size()), entry.name),
                "$" + entry.archiveSetHash + "$_"});
         }
-        std::set<std::string> runtimeServices, linkSymbols;
-        validateNativeArchives(archives, contract.target(), &runtimeServices,
-                               &linkSymbols);
-        const std::set<std::string> declaredSymbols(
-            contract.native_link_symbols().begin(),
-            contract.native_link_symbols().end());
-        for (const auto& symbol : linkSymbols)
-          if (!declaredSymbols.count(symbol))
-            sun::support::logAndThrowError(
-                "missing native linker symbol requirement: " + symbol);
+        std::set<std::string> runtimeServices;
+        validateNativeArchives(archives, contract.target(), &runtimeServices);
         for (const auto& service : runtimeServices) {
           bool recorded = false;
           for (const auto& rule : contract.requirements())
@@ -233,18 +225,10 @@ void AbiCompatibilityChecker::validateContract(
     fail(
         "native initialization or thread-local storage requires native "
         "linking; the JIT does not implement it");
-  if (!contract.native_link_symbols().empty() &&
-      !seen.count("native.runtime.linker"))
-    fail("missing native.runtime.linker requirement");
   for (const auto& rule : contract.requirements())
     if (rule.name().starts_with("native.elf.") &&
         rule.name() != nativeArchiveRule(contract.target()))
       fail("native object rule does not match the target");
-  for (const auto& symbol : contract.native_link_symbols()) {
-    if (symbol.empty() || symbol.find('\0') != std::string::npos)
-      fail("invalid native linker symbol requirement");
-    derived.add_native_link_symbols(symbol);
-  }
   // Boundary records are checked against decoded payloads by this checker. The
   // exact semantics closure supplies interpretation of retained generic ASTs.
   BoundaryRequirements boundaries;

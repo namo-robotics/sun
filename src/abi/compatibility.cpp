@@ -199,8 +199,7 @@ std::string encodeBundleContract(const BundleContract& contract) {
          field(3, encodeTarget(contract.target())) + sortedFields(4, rules) +
          sortedFields(5, contract.boundary_records()) +
          field(6, integer(contract.experimental())) +
-         sortedFields(7, contract.semantic_records()) +
-         sortedFields(8, contract.native_link_symbols());
+         sortedFields(7, contract.semantic_records());
 }
 
 std::string hashBundleContract(const BundleContract& contract) {
