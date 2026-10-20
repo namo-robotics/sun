@@ -539,6 +539,7 @@ add_custom_target(sun_compatibility_fingerprint
         -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
         -DBINARY_DIR=${CMAKE_BINARY_DIR}
         -DCOMPILER=${CMAKE_CXX_COMPILER}
+        "-DTOOLS=${CMAKE_C_COMPILER};${CMAKE_LINKER};${CMAKE_AR};${CMAKE_RANLIB};${CMAKE_COMMAND};$<TARGET_FILE:protobuf::protoc>"
         "-DEXTERNAL_INCLUDES=${LLVM_INCLUDE_DIRS};${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES}"
         -P ${CMAKE_SOURCE_DIR}/cmake/abi/CompatibilityFingerprint.cmake
     DEPENDS ${PROTO_SRCS} ${PROTO_HDRS}

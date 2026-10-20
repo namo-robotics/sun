@@ -23,13 +23,15 @@ check_release("1" "unsafe\"series" FALSE)
 
 file(WRITE "${fixture}/source/CMakeLists.txt" "# Fixture implementation\n")
 file(WRITE "${fixture}/compiler" "compiler fixture")
+file(WRITE "${fixture}/linker" "linker fixture")
 file(WRITE "${fixture}/build/generated/sun_abi_support.h" "embedded support fixture")
 # Run the real fingerprint script with a small complete fixture input closure.
 function(fingerprint order series implementation output)
     file(WRITE "${fixture}/build/CMakeCache.txt"
-        "SUN_RELEASE_ORDER:STRING=${order}\nSUN_RELEASE_SERIES:STRING=${series}\nIMPLEMENTATION:STRING=${implementation}\n")
+        "SUN_RELEASE_ORDER:STRING=${order}\nSUN_RELEASE_SERIES:STRING=${series}\nIMPLEMENTATION:STRING=${implementation}\nSOURCE:PATH=${fixture}/source\nBUILD:PATH=${fixture}/build\n")
     execute_process(COMMAND "${CMAKE_COMMAND}" "-DSOURCE_DIR=${fixture}/source"
         "-DBINARY_DIR=${fixture}/build" "-DCOMPILER=${fixture}/compiler"
+        "-DTOOLS=${fixture}/linker"
         -P "${SOURCE_DIR}/cmake/abi/CompatibilityFingerprint.cmake"
         RESULT_VARIABLE result)
     if(NOT result EQUAL 0)
@@ -52,5 +54,29 @@ file(WRITE "${fixture}/build/generated/sun_abi_support.h" "changed embedded supp
 fingerprint("18" "next-series" "two" changed_support)
 if(changed STREQUAL changed_support)
     message(FATAL_ERROR "Embedded compiler support was omitted from compatibility")
+endif()
+file(WRITE "${fixture}/linker" "changed linker bytes")
+fingerprint("18" "next-series" "two" changed_linker)
+if(changed_support STREQUAL changed_linker)
+    message(FATAL_ERROR "Linker implementation was omitted from compatibility")
+endif()
+# Relocating an otherwise identical workspace must not change cache semantics.
+set(original_fixture "${fixture}")
+file(COPY "${fixture}/" DESTINATION "${fixture}_relocated")
+set(fixture "${fixture}_relocated")
+fingerprint("18" "next-series" "two" relocated)
+if(NOT changed_linker STREQUAL relocated)
+    message(FATAL_ERROR "Workspace location changed the implementation identity")
+endif()
+file(REMOVE_RECURSE "${fixture}")
+set(fixture "${original_fixture}")
+file(REMOVE "${fixture}/linker")
+execute_process(COMMAND "${CMAKE_COMMAND}" "-DSOURCE_DIR=${fixture}/source"
+    "-DBINARY_DIR=${fixture}/build" "-DCOMPILER=${fixture}/compiler"
+    "-DTOOLS=${fixture}/linker"
+    -P "${SOURCE_DIR}/cmake/abi/CompatibilityFingerprint.cmake"
+    RESULT_VARIABLE missing_tool OUTPUT_QUIET ERROR_QUIET)
+if(missing_tool EQUAL 0)
+    message(FATAL_ERROR "Missing implementation tool was silently accepted")
 endif()
 file(REMOVE_RECURSE "${fixture}")

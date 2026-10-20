@@ -50,7 +50,11 @@ for the model's stable Sun declaration identities.
 
 Semantic and bitcode support currently use experimental implementation
 fingerprints. These cover compiler source and build inputs, external headers,
-and the compiler's startup shared-library dependencies. Libraries loaded later
+the C/C++ compiler, linker, archive tools, CMake and protobuf generator,
+and the compiler's startup shared-library dependencies. Workspace roots and
+comments in the CMake cache are normalized; other cache values remain inputs.
+Missing declared tools and broken input symlinks fail fingerprint generation.
+Transitive runtime dependencies of build tools still need a complete audit. Libraries loaded later
 by application code do not change the compiler fingerprint. This can reject
 harmless implementation changes and is not a stable cross-release ABI promise.
 Dependency discovery currently requires a Linux compiler host.
@@ -70,6 +74,13 @@ The `moon.metadata` rule records canonical declarations and retained generic
 bodies, including private semantic inputs. Consumers reconstruct those records
 from decoded metadata before importing it, and reject changed types or bodies,
 duplicate declaration identities, missing ownership links, and ownership cycles.
+The checker also walks private bodies and nested types to reject dangling local
+references and invalid module or parameter reference kinds. Built-in identities
+come from the same registry used by semantic analysis. External source references
+are resolved by the exact-dependency import pass after explicit imports are
+loaded, preserving import-order independence. Compiled specializations introduce
+derived identities rather than references to source declaration records.
+Independent metadata-to-payload layout validation remains unfinished.
 Source locations, documentation, optional source text, and producer diagnostics
 are excluded. Ordered fields, parameters, and statements remain ordered.
 
@@ -98,7 +109,16 @@ native linking, where the executable's runtime supplies their lifecycle. The
 current JIT rejects these rules before import. The compatibility checker records
 native-link versus JIT execution in its compilation context and cache key, and
 changing modes clears authorizations. Build-cache checks use an isolated native-link
-context; they do not authorize execution by the JIT.
+context; they do not authorize execution by the JIT. Input hashing also uses
+native-link validation, so preflight does not reject otherwise supported native
+constructors or thread-local storage.
+
+Cross-architecture CPU checks use LLVM's generic subtarget features for the
+selected target, rather than rejecting all feature declarations or borrowing
+host features. Same-architecture checks still use host capabilities. Modeling
+configured destination CPUs and runtime-dispatched LLVM kernels remains
+unfinished: function-local AVX attributes currently become unconditional bundle
+requirements even when callers use runtime dispatch.
 
 The native runtime work remains experimental. Shared-state and allocation-family
 contracts, explicit native build provenance, and complete compilation-option

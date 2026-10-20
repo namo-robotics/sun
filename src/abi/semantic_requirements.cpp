@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <deque>
 #include <map>
+#include <set>
 #include <vector>
 
 #include "semantic_analysis/analysis_results.h"
@@ -175,7 +176,7 @@ const std::vector<moon::DeclarationRecord>& builtinDeclarations() {
 void validateReferences(
     const google::protobuf::Message& message,
     const std::map<std::string, const moon::DeclarationRecord*>& records,
-    unsigned depth) {
+    const std::set<std::string>& bundleScopes, unsigned depth) {
   if (depth > 128)
     sun::support::logAndThrowError(
         "Unsupported retained metadata nesting depth");
@@ -202,7 +203,7 @@ void validateReferences(
         validateReferences(
             repeated ? reflection->GetRepeatedMessage(message, field, i)
                      : reflection->GetMessage(message, field),
-            records, depth + 1);
+            records, bundleScopes, depth + 1);
       } else if (field->cpp_type() ==
                      google::protobuf::FieldDescriptor::CPPTYPE_STRING &&
                  (identity || field->name() == "declaration_key" ||
@@ -211,6 +212,15 @@ void validateReferences(
                              ? reflection->GetRepeatedString(message, field, i)
                              : reflection->GetString(message, field);
         const auto found = records.find(key);
+        // External source declarations are resolved by the semantic import
+        // pass after every explicit dependency has been loaded. Import order
+        // must not turn a reference to another bundle into a dangling local.
+        if (found == records.end() && key.size() > 67 && key[0] == '$' &&
+            key.substr(65, 2) == "$_" &&
+            key.substr(1, 64).find_first_not_of("0123456789abcdef") ==
+                std::string::npos &&
+            !bundleScopes.count(key.substr(0, 67)))
+          continue;
         if (found == records.end())
           sun::support::logAndThrowError(
               "Missing retained declaration reference in " +
@@ -250,7 +260,12 @@ void validateDeclarationGraph(
                                        record.key());
     }
   }
-  for (const auto* module : modules) validateReferences(*module, records, 0);
+  std::set<std::string> bundleScopes;
+  for (const auto& [key, record] : records)
+    if (key.size() > 67 && key[0] == '$' && key.substr(65, 2) == "$_")
+      bundleScopes.insert(key.substr(0, 67));
+  for (const auto* module : modules)
+    validateReferences(*module, records, bundleScopes, 0);
   std::map<std::string, size_t> pending;
   std::map<std::string, std::vector<std::string>> dependents;
   std::deque<std::string> ready;

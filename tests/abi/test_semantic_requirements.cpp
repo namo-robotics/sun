@@ -173,3 +173,22 @@ TEST(ABI_Compatibility,
   EXPECT_THROW(sun::abi::validateDeclarationGraph({&owner, &user}),
                sun::support::SunError);
 }
+
+/** Local dangling keys fail while explicit external imports remain order
+ * independent. */
+TEST(ABI_Compatibility, LocalReferencesCannotHideAsExternalDependencies) {
+  sun::moon::ModuleMetadata metadata;
+  const std::string localScope = "$" + std::string(64, 'a') + "$_";
+  auto* record = metadata.add_declarations();
+  record->set_key(localScope + "1");
+  record->set_kind(sun::moon::CLASS);
+  auto* reference = metadata.add_globals()->mutable_type_annotation();
+  reference->set_declaration_key(localScope + "2");
+  EXPECT_THROW(sun::abi::validateDeclarationGraph({&metadata}),
+               sun::support::SunError);
+  reference->set_declaration_key("$" + std::string(64, 'b') + "$_1");
+  EXPECT_NO_THROW(sun::abi::validateDeclarationGraph({&metadata}));
+  reference->set_declaration_key("$" + std::string(64, 'z') + "$_1");
+  EXPECT_THROW(sun::abi::validateDeclarationGraph({&metadata}),
+               sun::support::SunError);
+}
