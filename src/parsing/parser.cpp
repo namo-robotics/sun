@@ -3065,11 +3065,56 @@ std::vector<ManifestArchiveDependency> Parser::parseManifestArchives() {
   std::vector<ManifestArchiveDependency> archives;
 
   while (curTok.kind != TokenKind::BRACKET_CLOSE) {
-    expectCurrentTokenKind(TokenKind::STRING,
-                           "expected string path in archives array");
     ManifestArchiveDependency dep;
-    dep.path = curTok.getString().value();
-    getNextToken();  // eat string
+    if (curTok.kind == TokenKind::STRING) {
+      dep.path = curTok.getString().value();
+      getNextToken();
+    } else if (curTok.kind == TokenKind::BRACE_OPEN) {
+      getNextToken();
+      std::set<std::string> fields;
+      while (curTok.kind != TokenKind::BRACE_CLOSE) {
+        expectCurrentTokenKind(TokenKind::IDENTIFIER, "expected archive field");
+        const auto field = curTok.getIdentifier().value();
+        if (!fields.insert(field).second)
+          parsingError("duplicate archive field '" + field + "'");
+        getNextToken();
+        expectCurrentTokenKind(TokenKind::COLON,
+                               "expected ':' after archive field");
+        getNextToken();
+        if (field == "path") {
+          expectCurrentTokenKind(TokenKind::STRING, "expected archive path");
+          dep.path = curTok.getString().value();
+          getNextToken();
+        } else if (field == "cpu_features" || field == "runtime") {
+          auto& values =
+              field == "cpu_features" ? dep.cpuFeatures : dep.runtimeServices;
+          expectCurrentTokenKind(TokenKind::BRACKET_OPEN,
+                                 "expected requirement list");
+          getNextToken();
+          while (curTok.kind != TokenKind::BRACKET_CLOSE) {
+            expectCurrentTokenKind(TokenKind::STRING,
+                                   "expected requirement name");
+            values.push_back(curTok.getString().value());
+            getNextToken();
+            if (curTok.kind == TokenKind::COMMA)
+              getNextToken();
+            else if (curTok.kind != TokenKind::BRACKET_CLOSE)
+              parsingError("expected ',' or ']' in requirements");
+          }
+          getNextToken();
+        } else {
+          parsingError("unknown archive field '" + field + "'");
+        }
+        if (curTok.kind == TokenKind::COMMA)
+          getNextToken();
+        else if (curTok.kind != TokenKind::BRACE_CLOSE)
+          parsingError("expected ',' or '}' in archive declaration");
+      }
+      getNextToken();
+    } else {
+      parsingError("expected archive path or declaration");
+    }
+    if (dep.path.empty()) parsingError("archive declaration requires a path");
     archives.push_back(std::move(dep));
 
     if (curTok.kind == TokenKind::COMMA) {

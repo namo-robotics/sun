@@ -1,11 +1,14 @@
 #include "abi/native_requirements.h"
 
 #include <llvm/BinaryFormat/ELF.h>
+#include <llvm/MC/MCSubtargetInfo.h>
+#include <llvm/MC/TargetRegistry.h>
 #include <llvm/Object/Archive.h>
 #include <llvm/Object/ELFObjectFile.h>
 
 #include <set>
 
+#include "abi/support_inventory.h"
 #include "support/error.h"
 
 /** Checks native archive structure and referenced runtime services. */
@@ -27,6 +30,49 @@ std::string nativeArchiveRule(const TargetProfile& profile) {
       profile.pointer_bits() != 64 || !profile.little_endian())
     unsupported("expected a Linux x86-64 or AArch64 GNU/musl profile");
   return "native.elf." + profile.architecture() + ".declared";
+}
+
+void addNativeRequirements(BundleContract& contract,
+                           const std::vector<std::string>& cpuFeatures,
+                           const std::vector<std::string>& runtimeServices) {
+  if (cpuFeatures.empty() && runtimeServices.empty()) return;
+  const auto nativeRule = nativeArchiveRule(contract.target());
+  const auto triple =
+      contract.target().architecture() + "-unknown-linux-" +
+      (contract.target().platform_abi() == "linux:musl" ? "musl" : "gnu");
+  compatibilityTarget(triple);
+  std::string error;
+  const auto* target = llvm::TargetRegistry::lookupTarget(triple, error);
+  if (!target) unsupported(error);
+  std::unique_ptr<llvm::MCSubtargetInfo> subtarget(
+      target->createMCSubtargetInfo(triple, "generic", ""));
+  if (!subtarget) unsupported("cannot determine CPU feature names");
+  std::set<std::string> knownFeatures;
+  for (const auto& feature : subtarget->getAllProcessorFeatures())
+    knownFeatures.insert(feature.Key);
+  auto declared = contract;
+  for (const auto& feature : cpuFeatures) {
+    if (!knownFeatures.count(feature))
+      unsupported("unknown declared CPU feature '" + feature + "'");
+    declared.mutable_target()->add_cpu_features(feature);
+  }
+  std::set<std::string> names{nativeRule};
+  for (const auto& service : runtimeServices)
+    names.insert("native.runtime." + service);
+  const auto supported = supportedRules();
+  for (const auto& name : names) {
+    if (!supported.count(name))
+      unsupported("unknown declared runtime rule '" + name + "'");
+    bool present = false;
+    for (const auto& rule : declared.requirements())
+      if (rule.name() == name) present = true;
+    if (!present) {
+      auto* rule = declared.add_requirements();
+      rule->set_name(name);
+      rule->set_implementation(emissionImplementation(name));
+    }
+  }
+  mergeContractRequirements(contract, declared);
 }
 
 void validateNativeArchives(const std::vector<NativeArchiveInput>& archives,

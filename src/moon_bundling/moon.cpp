@@ -123,6 +123,12 @@ void MoonWriter::inheritContract(const abi::BundleContract& contract) {
   abi::mergeContractRequirements(contract_, contract);
 }
 
+void MoonWriter::declareNativeRequirements(
+    const std::vector<std::string>& cpuFeatures,
+    const std::vector<std::string>& runtimeServices) {
+  abi::addNativeRequirements(contract_, cpuFeatures, runtimeServices);
+}
+
 void MoonWriter::addNativeArchive(std::string archiveSetHash, std::string name,
                                   std::string data) {
   nativeArchives_.push_back(

@@ -13,8 +13,8 @@ For example, an x86-64 program cannot import a library built for AArch64.
 Likewise, a library requiring an unsupported compiler rule is rejected with
 rebuild guidance.
 
-The compiler's supported rules come from a checked-in manifest embedded during
-its build. Editing that manifest afterward cannot change an installed compiler.
+The compiler's supported rules come from `src/abi/compiler_support.textproto`,
+validated and embedded during its build. Editing that manifest afterward cannot change an installed compiler.
 
 ## What Sun checks
 
@@ -44,10 +44,20 @@ For example, an archive calling `malloc` is allowed; an unresolved required symb
 still fails at link time. Archives with constructors or thread-local storage work
 with native linking, but are rejected by the JIT, which does not yet support that lifecycle.
 
-An interface for producers to declare additional native CPU requirements and
-build provenance remains unfinished. CPU checks also need better handling of
-selected destination CPUs and runtime dispatch—for example, an optional AVX2
-kernel should not imply that the whole library requires AVX2.
+Producers can add requirements to an archive entry:
+
+```sun
+archives: [{
+  path: "libmath.a",
+  cpu_features: ["avx2"],
+  runtime: ["thread_local"]
+}]
+```
+
+These requirements are added to detected and inherited requirements. Unknown
+names fail packaging. Native build provenance is not yet recorded. CPU checks
+still need better handling of destination CPUs and runtime dispatch: an optional
+AVX2 kernel should not imply that the whole library requires AVX2.
 
 ## Why compatible-looking builds can be rejected
 
@@ -74,7 +84,7 @@ after validation; its version cannot make an incompatible library acceptable.
 
 - Share layout and call descriptions with code generation, and finish metadata-to-code checks.
 - Use one complete compilation context for targets, options, authorization, and warnings.
-- Finish native declarations and transitive fingerprint coverage.
+- Finish native build provenance and transitive fingerprint coverage.
 - Test successful compatibility across historical compilers and libraries; current historical coverage only proves rejection.
 
 Run `sun --abi-info` to inspect supported rules and profiles. Implementation lives

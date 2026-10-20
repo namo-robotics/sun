@@ -90,6 +90,11 @@ class MoonWriter {
 
   /** Retains all requirements of code embedded from a validated dependency. */
   void inheritContract(const abi::BundleContract& contract);
+  /** Records additional producer-declared requirements for packaged archives.
+   */
+  void declareNativeRequirements(
+      const std::vector<std::string>& cpuFeatures,
+      const std::vector<std::string>& runtimeServices);
 
   /**
    * Carry a native static library inside the bundle

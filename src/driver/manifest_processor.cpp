@@ -258,6 +258,12 @@ ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
         for (const auto& archiveDep : archives) {
           out.archiveFiles.push_back(resolvePath(
               expandPathVariables(archiveDep.path, config), baseDir, config));
+          out.nativeCPUFeatures.insert(out.nativeCPUFeatures.end(),
+                                       archiveDep.cpuFeatures.begin(),
+                                       archiveDep.cpuFeatures.end());
+          out.nativeRuntimeServices.insert(out.nativeRuntimeServices.end(),
+                                           archiveDep.runtimeServices.begin(),
+                                           archiveDep.runtimeServices.end());
         }
       };
 

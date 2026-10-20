@@ -175,9 +175,9 @@ target_link_libraries(sun_embed_abi_support PRIVATE protobuf::libprotobuf)
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/sun_abi_support.h
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/generated
-    COMMAND sun_embed_abi_support ${CMAKE_CURRENT_SOURCE_DIR}/cmake/abi/compiler_support.textproto
+    COMMAND sun_embed_abi_support ${CMAKE_CURRENT_SOURCE_DIR}/src/abi/compiler_support.textproto
         ${CMAKE_CURRENT_BINARY_DIR}/generated/sun_abi_support.h
-    DEPENDS sun_embed_abi_support cmake/abi/compiler_support.textproto
+    DEPENDS sun_embed_abi_support src/abi/compiler_support.textproto
     COMMENT "Validating and embedding compiler ABI support"
     VERBATIM)
 add_custom_target(sun_abi_support DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/generated/sun_abi_support.h)

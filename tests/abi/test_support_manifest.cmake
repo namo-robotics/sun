@@ -1,7 +1,7 @@
 # Verify the production manifest parser rejects malformed or unsupported input.
 set(fixture "${SOURCE_DIR}/tmp/abi_support_manifest")
 file(MAKE_DIRECTORY "${fixture}")
-file(READ "${SOURCE_DIR}/cmake/abi/compiler_support.textproto" valid)
+file(READ "${SOURCE_DIR}/src/abi/compiler_support.textproto" valid)
 
 # Run the build tool and ensure failures preserve the previous generated output.
 function(check_manifest content accepted)

@@ -14,8 +14,11 @@
 #include "abi/native_requirements.h"
 #include "driver/compiler.h"
 #include "driver/input_hash.h"
+#include "driver/manifest_processor.h"
 #include "moon_bundling/archive_symbols.h"
 #include "moon_bundling/moon.h"
+#include "moon_bundling/moon_builder.h"
+#include "parsing/parser.h"
 #include "support/error.h"
 
 /** Reads the linked PIC fixture to verify the linker resolved its GOT
@@ -355,4 +358,105 @@ TEST(ABI_Compatibility, MissingNativeRuntimeSymbolFailsAtLinkTime) {
   EXPECT_FALSE(error.empty());
   EXPECT_FALSE(std::filesystem::exists(dir / "program"));
   std::filesystem::remove_all(dir);
+}
+
+/** Explicit archive requirements survive packaging and govern import behavior.
+ */
+TEST(ABI_Compatibility, ManifestNativeRequirementsReachTheBundleContract) {
+  const auto directory =
+      std::filesystem::path("tmp") /
+      ("abi_native_declarations_" + std::to_string(getpid()));
+  std::filesystem::create_directories(directory);
+  const auto source = directory / "library.sun";
+  const auto output = directory / "library.moon";
+  /** Writes one archive declaration without changing its native object bytes.
+   */
+  const auto writeSource = [&](const std::string& runtime) {
+    std::ofstream file(source);
+    file << "manifest { archives: [{ path: \"" << SUN_FFI_TESTLIB_DIR
+         << "/libsun_abi_relocations.a\", "
+         << "cpu_features: [\"sse2\"], runtime: [" << runtime << "] }] }\n"
+         << "/** Exports a scalar function. */\npublic module native_decl {\n"
+         << "/** Returns the fixture value. */\n"
+         << "public function value() i32 { return 42; } }\n";
+  };
+  writeSource("\"thread_local\"");
+  sun::moon_bundling::MoonBuildOptions options;
+  options.targetTriple = "x86_64-linux-gnu";
+  ASSERT_NO_THROW(
+      sun::moon_bundling::MoonBuilder::build(source.string(), output, options));
+  auto reader = sun::moon_bundling::MoonReader::open(output);
+  ASSERT_NE(reader, nullptr);
+  const auto originalHash =
+      reader->getLibrary().bundle_contract().compatibility_hash();
+  const auto& features =
+      reader->getLibrary().bundle_contract().target().cpu_features();
+  EXPECT_NE(std::find(features.begin(), features.end(), "sse2"),
+            features.end());
+  sun::abi::AbiCompatibilityChecker checker(
+      options.targetTriple, sun::abi::NativeExecution::NativeLink);
+  EXPECT_NO_THROW(checker.validate(*reader));
+  checker.beginCompilation(options.targetTriple,
+                           sun::abi::NativeExecution::JIT);
+  EXPECT_THROW(checker.validate(*reader), sun::support::SunError);
+  writeSource("");
+  const auto report =
+      sun::moon_bundling::MoonBuilder::build(source.string(), output, options);
+  EXPECT_FALSE(report.upToDate);
+  auto revised = sun::moon_bundling::MoonReader::open(output);
+  ASSERT_NE(revised, nullptr);
+  EXPECT_NE(originalHash,
+            revised->getLibrary().bundle_contract().compatibility_hash());
+  EXPECT_NO_THROW(checker.validate(*revised));
+  std::filesystem::remove_all(directory);
+}
+
+/** Invalid producer declarations cannot partially modify an existing contract.
+ */
+TEST(ABI_Compatibility, UnknownNativeDeclarationsFailAtomically) {
+  llvm::LLVMContext context;
+  llvm::Module module("native", context);
+  module.setTargetTriple("x86_64-linux-gnu");
+  auto contract = sun::abi::describeContract(module);
+  const auto original = contract.SerializeAsString();
+  EXPECT_THROW(
+      sun::abi::addNativeRequirements(contract, {"sse2"}, {"unknown-runtime"}),
+      sun::support::SunError);
+  EXPECT_EQ(original, contract.SerializeAsString());
+  EXPECT_THROW(sun::abi::addNativeRequirements(contract, {"unknown-cpu"}, {}),
+               sun::support::SunError);
+  EXPECT_EQ(original, contract.SerializeAsString());
+}
+
+/** Malformed archive declarations fail before paths are resolved or code runs.
+ */
+TEST(ABI_Compatibility, MalformedArchiveDeclarationsAreRejected) {
+  for (const auto* declaration : {"{ cpu_features: [\"avx2\"] }",
+                                  "{ path: \"lib.a\", path: \"other.a\" }",
+                                  "{ path: \"lib.a\", cpu_features: \"avx2\" }",
+                                  "{ path: \"lib.a\", unknown: [] }"}) {
+    auto parser = sun::parsing::Parser::createStringParser(
+        std::string("manifest { archives: [") + declaration + "] }");
+    EXPECT_THROW(parser.parseProgram(), sun::support::SunError);
+  }
+}
+
+/** Requirements from inactive target blocks must not leak into a bundle. */
+TEST(ABI_Compatibility, NativeDeclarationsFollowManifestTargetSelection) {
+  auto parser = sun::parsing::Parser::createStringParser(R"(
+    manifest { target: {
+      linux: { archives: [{ path: "linux.a", cpu_features: ["sse2"] }] },
+      macos: { archives: [{ path: "mac.a", runtime: ["thread_local"] }] }
+    } }
+  )");
+  auto program = parser.parseProgram();
+  const auto* manifest = sun::driver::ManifestProcessor::findManifest(*program);
+  ASSERT_NE(manifest, nullptr);
+  const auto resolved = sun::driver::ManifestProcessor::process(
+      *manifest, ".", "x86_64-linux-gnu");
+  EXPECT_EQ(resolved.nativeCPUFeatures, std::vector<std::string>{"sse2"});
+  EXPECT_TRUE(resolved.nativeRuntimeServices.empty());
+  ASSERT_EQ(resolved.archiveFiles.size(), 1u);
+  EXPECT_EQ(std::filesystem::path(resolved.archiveFiles[0]).filename(),
+            "linux.a");
 }

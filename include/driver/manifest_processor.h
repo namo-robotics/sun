@@ -31,6 +31,8 @@ struct ResolvedManifest {
       moonImports;                        // resolved .moon imports
   std::vector<std::string> protoFiles;    // resolved .proto paths
   std::vector<std::string> archiveFiles;  // resolved native .a archives
+  std::vector<std::string> nativeCPUFeatures;
+  std::vector<std::string> nativeRuntimeServices;
   // resolved `test_files:` paths; merged into the source set only when
   // compiling the test binary, never for production builds
   std::vector<std::string> testSunFiles;

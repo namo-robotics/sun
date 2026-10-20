@@ -38,6 +38,8 @@ struct ManifestProtoDependency {
  */
 struct ManifestArchiveDependency {
   std::string path;
+  std::vector<std::string> cpuFeatures;
+  std::vector<std::string> runtimeServices;
 };
 
 /**
