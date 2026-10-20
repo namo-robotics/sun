@@ -34,8 +34,16 @@ set(CMAKE_PCH_INSTANTIATE_TEMPLATES ON)
 # lld links debug binaries much faster than the default bfd linker
 # (clang-only, like the -Xclang PCH flags below — GCC configures still work).
 # Not on macOS: Apple's clang has no bundled lld and ld64 is fine.
+set(SUN_BUILD_LINKER "${CMAKE_LINKER}")
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT APPLE)
-    add_link_options(-fuse-ld=lld)
+    execute_process(COMMAND "${CMAKE_CXX_COMPILER}" -print-prog-name=ld.lld
+        OUTPUT_VARIABLE SUN_BUILD_LINKER OUTPUT_STRIP_TRAILING_WHITESPACE
+        COMMAND_ERROR_IS_FATAL ANY)
+    if(NOT IS_ABSOLUTE "${SUN_BUILD_LINKER}")
+        find_program(SUN_LLD_EXECUTABLE NAMES "${SUN_BUILD_LINKER}" REQUIRED)
+        set(SUN_BUILD_LINKER "${SUN_LLD_EXECUTABLE}")
+    endif()
+    add_link_options("-fuse-ld=${SUN_BUILD_LINKER}")
 endif()
 
 # Allow Debug/Release selection via command line or IDE (don't hardcode)
@@ -539,7 +547,7 @@ add_custom_target(sun_compatibility_fingerprint
         -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
         -DBINARY_DIR=${CMAKE_BINARY_DIR}
         -DCOMPILER=${CMAKE_CXX_COMPILER}
-        "-DTOOLS=${CMAKE_C_COMPILER};${CMAKE_LINKER};${CMAKE_AR};${CMAKE_RANLIB};${CMAKE_COMMAND};$<TARGET_FILE:protobuf::protoc>"
+        "-DTOOLS=${CMAKE_C_COMPILER};${SUN_BUILD_LINKER};${CMAKE_AR};${CMAKE_RANLIB};${CMAKE_COMMAND};$<TARGET_FILE:protobuf::protoc>"
         "-DEXTERNAL_INCLUDES=${LLVM_INCLUDE_DIRS};${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES}"
         -P ${CMAKE_SOURCE_DIR}/cmake/abi/CompatibilityFingerprint.cmake
     DEPENDS ${PROTO_SRCS} ${PROTO_HDRS}

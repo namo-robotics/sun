@@ -11,6 +11,37 @@ endforeach()
 file(GLOB generated "${BINARY_DIR}/*.pb.h" "${BINARY_DIR}/*.pb.cc")
 list(APPEND inputs "${BINARY_DIR}/generated/sun_abi_support.h" ${generated} "${SOURCE_DIR}/CMakeLists.txt"
      "${BINARY_DIR}/CMakeCache.txt" "${COMPILER}" ${TOOLS})
+# Inspect ELF dependency tables without running the tools. CMake follows the
+# shared-library dependency graph and reports any missing runtime libraries.
+if(NOT CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
+    message(FATAL_ERROR "Experimental tool dependency discovery requires Linux")
+endif()
+# Loader overrides can select libraries other than the ELF search paths below.
+foreach(variable IN ITEMS LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT)
+    if(DEFINED ENV{${variable}} AND NOT "$ENV{${variable}}" STREQUAL "")
+        message(FATAL_ERROR "Cannot establish tool runtime coverage with ${variable} set")
+    endif()
+endforeach()
+find_program(dependency_inspector NAMES objdump REQUIRED)
+set(CMAKE_GET_RUNTIME_DEPENDENCIES_PLATFORM "linux+elf")
+set(CMAKE_GET_RUNTIME_DEPENDENCIES_TOOL "objdump")
+set(CMAKE_GET_RUNTIME_DEPENDENCIES_COMMAND "${dependency_inspector}")
+set(tool_roots "${COMPILER}" ${TOOLS} "${dependency_inspector}")
+list(REMOVE_DUPLICATES tool_roots)
+foreach(tool IN LISTS tool_roots)
+    if(NOT EXISTS "${tool}" OR IS_DIRECTORY "${tool}")
+        message(FATAL_ERROR "Cannot fingerprint implementation tool: ${tool}")
+    endif()
+endforeach()
+file(GET_RUNTIME_DEPENDENCIES
+    EXECUTABLES ${tool_roots}
+    RESOLVED_DEPENDENCIES_VAR tool_libraries
+    UNRESOLVED_DEPENDENCIES_VAR unresolved_libraries
+    CONFLICTING_DEPENDENCIES_PREFIX conflicting_libraries)
+if(unresolved_libraries OR conflicting_libraries_FILENAMES)
+    message(FATAL_ERROR "Incomplete tool runtime dependencies: ${unresolved_libraries}; conflicting: ${conflicting_libraries_FILENAMES}")
+endif()
+list(APPEND inputs "${dependency_inspector}" ${tool_libraries})
 list(REMOVE_DUPLICATES inputs)
 list(SORT inputs)
 set(digests "sun.experimental.implementation.v1")

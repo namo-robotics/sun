@@ -2,9 +2,11 @@
  * bodies. */
 #include <google/protobuf/unknown_field_set.h>
 #include <gtest/gtest.h>
+#include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
 #include <unistd.h>
 
+#include <cstring>
 #include <fstream>
 
 #include "abi/abi_compatibility_checker.h"
@@ -191,4 +193,72 @@ TEST(ABI_Compatibility, LocalReferencesCannotHideAsExternalDependencies) {
   reference->set_declaration_key("$" + std::string(64, 'z') + "$_1");
   EXPECT_THROW(sun::abi::validateDeclarationGraph({&metadata}),
                sun::support::SunError);
+}
+
+/** Rehashed specialization claims must still match their shared LLVM payload.
+ */
+TEST(ABI_Compatibility, RehashedSpecializationCannotInventMethodBodies) {
+  llvm::LLVMContext context;
+  llvm::Module module("specialization", context);
+  module.setTargetTriple("x86_64-linux-gnu");
+  module.setDataLayout(
+      sun::abi::compatibilityTarget(module.getTargetTriple()).data_layout());
+  llvm::IRBuilder<> builder(context);
+  auto* function = llvm::Function::Create(
+      llvm::FunctionType::get(builder.getVoidTy(), false),
+      llvm::GlobalValue::ExternalLinkage, "present_method", module);
+  builder.SetInsertPoint(llvm::BasicBlock::Create(context, "entry", function));
+  builder.CreateRetVoid();
+  sun::moon::ModuleMetadata first, second;
+  first.set_source_hash("first");
+  second.set_source_hash("second");
+  auto* shape = second.add_classes()->add_compiled_specializations();
+  shape->set_declaration_key("shape");
+  shape->add_method_symbols("present_method");
+  sun::moon_bundling::MoonWriter writer(std::string(64, 'a'));
+  writer.addModule(module, first);
+  writer.addModule(module, second);
+  std::filesystem::create_directories("tmp");
+  const auto path =
+      std::filesystem::path("tmp") /
+      ("abi_specialization_" + std::to_string(getpid()) + ".moon");
+  ASSERT_TRUE(writer.write(path));
+  auto reader = sun::moon_bundling::MoonReader::open(path);
+  ASSERT_NE(reader, nullptr);
+  sun::abi::AbiCompatibilityChecker checker("x86_64-linux-gnu");
+  EXPECT_NO_THROW(checker.validate(*reader));
+  auto library = reader->getLibrary();
+  auto* changed = library.mutable_modules(1)->mutable_metadata();
+  const auto oldRecord = sun::abi::describeSemantics(*changed);
+  changed->mutable_classes(0)
+      ->mutable_compiled_specializations(0)
+      ->set_method_symbols(0, "missing_method");
+  auto* contract = library.mutable_bundle_contract();
+  for (auto& record : *contract->mutable_semantic_records())
+    if (record == oldRecord) record = sun::abi::describeSemantics(*changed);
+  contract->set_compatibility_hash(sun::abi::hashBundleContract(*contract));
+  auto bytes = *reader->getBytes();
+  sun::moon_bundling::MoonHeader header;
+  std::memcpy(&header, bytes.data(), sizeof(header));
+  const auto encoded = library.SerializeAsString();
+  bytes.replace(header.bundleMetadataOffset, header.bundleMetadataSize,
+                encoded);
+  header.bundleMetadataSize = encoded.size();
+  std::memcpy(bytes.data(), &header, sizeof(header));
+  {
+    std::ofstream output(path, std::ios::binary);
+    output.write(bytes.data(), bytes.size());
+  }
+  auto altered = sun::moon_bundling::MoonReader::open(path);
+  ASSERT_NE(altered, nullptr);
+  try {
+    checker.validate(*altered);
+    FAIL() << "Accepted specialization without its promised method body";
+  } catch (const sun::support::SunError& error) {
+    EXPECT_NE(std::string(error.what()).find("missing_method"),
+              std::string::npos);
+    EXPECT_NE(std::string(error.what()).find(contract->compatibility_hash()),
+              std::string::npos);
+  }
+  std::filesystem::remove(path);
 }

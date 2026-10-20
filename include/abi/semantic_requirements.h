@@ -1,5 +1,7 @@
 #pragma once
 
+#include <llvm/IR/Module.h>
+
 #include <string>
 #include <vector>
 
@@ -15,4 +17,8 @@ std::string describeSemantics(const moon::ModuleMetadata& metadata);
  * compiler-provided identities before import. */
 void validateDeclarationGraph(
     const std::vector<const moon::ModuleMetadata*>& modules);
+/** Checks that advertised precompiled specialization methods have definitions.
+ */
+void validateSpecializationPayload(const moon::ModuleMetadata& metadata,
+                                   const llvm::Module& module);
 }  // namespace sun::abi

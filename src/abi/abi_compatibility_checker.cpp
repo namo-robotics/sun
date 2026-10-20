@@ -83,8 +83,13 @@ ValidatedBundle AbiCompatibilityChecker::validate(
           contract.compatibility_hash() +
           ": missing moon.metadata requirement");
     std::vector<const moon::ModuleMetadata*> declarationModules;
-    for (const auto& moduleKey : modules)
-      declarationModules.push_back(reader.getMetadata(moduleKey));
+    std::map<std::string, std::vector<const moon::ModuleMetadata*>>
+        payloadMetadata;
+    for (const auto& moduleKey : modules) {
+      const auto* metadata = reader.getMetadata(moduleKey);
+      declarationModules.push_back(metadata);
+      payloadMetadata[reader.getBitcodeId(moduleKey)].push_back(metadata);
+    }
     try {
       validateDeclarationGraph(declarationModules);
     } catch (const sun::support::SunError& error) {
@@ -118,6 +123,15 @@ ValidatedBundle AbiCompatibilityChecker::validate(
             llvm::toString(std::move(error)));
       validatePayload(contract, *module, reader.getPath().string(),
                       targetTriple);
+      try {
+        for (const auto* metadata :
+             payloadMetadata.at(reader.getBitcodeId(moduleKey)))
+          validateSpecializationPayload(*metadata, *module);
+      } catch (const sun::support::SunError& error) {
+        sun::support::logAndThrowError(
+            "Dependency '" + reader.getPath().string() + "', contract " +
+            contract.compatibility_hash() + ": " + error.what());
+      }
     }
     if (!reader.getNativeArchives().empty()) {
       bool nativeRule = false;

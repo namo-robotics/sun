@@ -304,4 +304,16 @@ void validateDeclarationGraph(
             "Missing or invalid indexed module declaration: " + key);
     }
 }
+void validateSpecializationPayload(const moon::ModuleMetadata& metadata,
+                                   const llvm::Module& module) {
+  for (const auto& cls : metadata.classes())
+    for (const auto& specialization : cls.compiled_specializations())
+      for (const auto& symbol : specialization.method_symbols()) {
+        const auto* function = module.getFunction(symbol);
+        if (!function || function->isDeclaration())
+          sun::support::logAndThrowError(
+              "Compiled specialization '" + specialization.declaration_key() +
+              "' has no method definition for '" + symbol + "'");
+      }
+}
 }  // namespace sun::abi

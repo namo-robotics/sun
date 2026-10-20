@@ -1,141 +1,82 @@
 # Experimental Implementation
 
-Part of the [Sun ABI draft](/abi). This page summarizes the current implementation
-and its limitations; it does not establish stable compatibility guarantees.
+Part of the [Sun ABI draft](/abi). Compatibility is experimental: compiler changes
+may require rebuilding `.moon` libraries. There is no stable compatibility promise yet.
 
-Compatibility code lives in `include/abi/` and `src/abi/`, in the `sun::abi`
-namespace. The wire descriptions live in `include/abi/compatibility.proto`
-(`sun::abi::proto`). Moon code owns container parsing and delegates compatibility
-encoding, requirement merging, target checks, and producer diagnostics to this
-subsystem. `AbiCompatibilityChecker` owns validation, byte-based cache keys,
-compilation-scoped authorization, inherited requirements, and producer warnings.
-`MoonReader` only decodes immutable container data; semantic import paths request
-checker authorization before using it. Validated handles own their contract and
-remain readable after a reader is destroyed or the checker starts a new compilation.
-ABI tests live in `tests/abi/`; implementation fingerprint generation
-lives in `cmake/abi/`.
+## How it works
 
-Compiler capabilities use a distinct `CompilerAbiSupport` protobuf message.
-The checked-in `cmake/abi/compiler_support.textproto` is parsed and validated by a
-build tool, then embedded as binary protobuf in the compiler. Unknown bindings,
-duplicate rule versions, missing rules, and invalid emission defaults fail the
-build. Runtime compilation reads only the embedded descriptor; editing an external
-manifest cannot change an existing compiler. Requirement emission and support
-reporting resolve this descriptor against the compiled implementation registry.
-Experimental versions still resolve to the implementation fingerprint, not a
-configurable compatibility identity. The manifest and generated descriptor are
-fingerprint inputs. Each rule currently has one implemented version; multiple
-version selection and shared lowering descriptors remain unfinished.
+Each `.moon` library carries one **contract** describing its target, required
+compiler behavior, compiled layouts and calls, and retained generic code.
+Sun checks this contract before importing the library.
 
-The implementation writes a complete `MoonLibrary` protobuf containing the
-library identity, contract, module metadata and bitcode references, and native
-archive records. The container header locates this record; compiled payload
-bytes remain outside protobuf. The reader
-checks it before parser imports and payload loading, and rejects contractless
-bundles. It records emitted LLVM layouts and call boundaries and conservatively
-retains embedded dependency requirements. Reader snapshots prevent replacement
-of a file from changing bytes after validation. Before authorizing an import,
-the checker materializes and verifies LLVM payloads and requires their generated
-CPU-feature, implementation-rule, and boundary requirements to be present in the
-supplied contract. A supported feature omitted from the contract is still an error;
-checking the description against its own hash alone cannot authorize a payload.
-Boundary records use bounded decoding and reject unknown required record kinds.
-Merging deduplicates identical records and rejects conflicting descriptions of a
-named LLVM layout or shared symbol; failed merges leave the destination unchanged.
-Equivalent named and literal aggregate shapes share the same machine signature.
-LLVM constructor, destructor, and retention lists may carry different lengths,
-because linking combines those lists; their inherited records are retained.
-These emitted names are experimental implementation details, not a replacement
-for the model's stable Sun declaration identities.
+For example, an x86-64 program cannot import a library built for AArch64.
+Likewise, a library requiring an unsupported compiler rule is rejected with
+rebuild guidance.
 
-Semantic and bitcode support currently use experimental implementation
-fingerprints. These cover compiler source and build inputs, external headers,
-the C/C++ compiler, linker, archive tools, CMake and protobuf generator,
-and the compiler's startup shared-library dependencies. Workspace roots and
-comments in the CMake cache are normalized; other cache values remain inputs.
-Missing declared tools and broken input symlinks fail fingerprint generation.
-Transitive runtime dependencies of build tools still need a complete audit. Libraries loaded later
-by application code do not change the compiler fingerprint. This can reject
-harmless implementation changes and is not a stable cross-release ABI promise.
-Dependency discovery currently requires a Linux compiler host.
+The compiler's supported rules come from a checked-in manifest embedded during
+its build. Editing that manifest afterward cannot change an installed compiler.
 
-Producer diagnostics use generated build identities. Release automation can supply
-`SUN_RELEASE_SERIES` and a positive `SUN_RELEASE_ORDER` through CMake; the order
-must increase within that series. Both default to unknown (empty series and zero
-order). Different series, equal orders from different builds, and development
-builds without comparable provenance have unknown ordering. No timestamps or
-version-string comparisons are used. After compatibility passes, the checker
-warns once per exact imported bundle for an older producer or unknown ordering;
-it does not warn for the same build or a known newer producer. Release labels
-are excluded from both contract hashing and the experimental build fingerprint.
-Development ancestry comparison is not yet implemented.
+## What Sun checks
 
-The `moon.metadata` rule records canonical declarations and retained generic
-bodies, including private semantic inputs. Consumers reconstruct those records
-from decoded metadata before importing it, and reject changed types or bodies,
-duplicate declaration identities, missing ownership links, and ownership cycles.
-The checker also walks private bodies and nested types to reject dangling local
-references and invalid module or parameter reference kinds. Built-in identities
-come from the same registry used by semantic analysis. External source references
-are resolved by the exact-dependency import pass after explicit imports are
-loaded, preserving import-order independence. Compiled specializations introduce
-derived identities rather than references to source declaration records.
-Independent metadata-to-payload layout validation remains unfinished.
-Source locations, documentation, optional source text, and producer diagnostics
-are excluded. Ordered fields, parameters, and statements remain ordered.
+- The target and required compiler rules are supported.
+- Decoded LLVM code matches the contract's recorded layouts, calls, and CPU requirements.
+- Retained declarations and generic bodies match their recorded descriptions.
+- Local declaration references exist, and advertised precompiled methods have bodies.
+- Embedded dependencies retain their requirements.
 
-Native archive authorization supports declared Linux x86-64 and AArch64 GNU/musl
-ELF profiles. The `native.elf.<architecture>.declared` rules use normal
-native-linking trust: the checker validates object headers, section bounds, and
-symbol namespaces, without instruction or relocation allowlists. Native producers
-remain responsible for accurate CPU and runtime declarations. The packager does
-not infer libc compatibility from archive filenames or prove that matching symbol
-names imply compatible C interfaces. A dedicated build-configuration interface
-for additional native CPU/provenance declarations remains unfinished.
+For example, if metadata claims a precompiled method exists but its body is
+missing, import fails—even if someone recomputes the contract hash.
 
-External native references are recorded in `BundleContract.native_link_symbols`
-as diagnostic metadata and are retained when embedding dependencies. They are
-excluded from compatibility hashing and are not checked for completeness at
-import. The `native.runtime.linker` rule records use of external resolution;
-the selected native or JIT linker resolves references from the actual objects using the actual link environment; unresolved strong references
-remain link errors. Weak-reference behavior stays in the ELF objects. The
-linker-provided GOT base is excluded from runtime references. `atexit` also retains
-its lifecycle rule because the JIT registers cleanup callbacks for execution
-before unloading code.
+Declaration identity also matters: two libraries defining `Point { x: i32 }`
+still define different Sun types. Matching memory layouts do not make them interchangeable.
 
-Native initializer/finalizer arrays and thread-local storage are recorded as
-`native.runtime.initializers` and `native.runtime.thread_local`. These require
-native linking, where the executable's runtime supplies their lifecycle. The
-current JIT rejects these rules before import. The compatibility checker records
-native-link versus JIT execution in its compilation context and cache key, and
-changing modes clears authorizations. Build-cache checks use an isolated native-link
-context; they do not authorize execution by the JIT. Input hashing also uses
-native-link validation, so preflight does not reject otherwise supported native
-constructors or thread-local storage.
+These checks are incomplete: Sun does not yet independently verify every
+relationship between source-level type metadata and compiled layouts.
 
-Cross-architecture CPU checks use LLVM's generic subtarget features for the
-selected target, rather than rejecting all feature declarations or borrowing
-host features. Same-architecture checks still use host capabilities. Modeling
-configured destination CPUs and runtime-dispatched LLVM kernels remains
-unfinished: function-local AVX attributes currently become unconditional bundle
-requirements even when callers use runtime dispatch.
+## Native archives
 
-The native runtime work remains experimental. Shared-state and allocation-family
-contracts, explicit native build provenance, and complete compilation-option
-modeling still need implementation and conformance coverage.
+The draft accepts Linux x86-64 and AArch64 GNU/musl ELF archives using normal
+linker trust. Sun checks readable objects, matching targets, isolated symbols,
+and declared requirements. It does not audit instructions or maintain instruction,
+relocation, or external-symbol allowlists. The linker resolves native references.
 
-`sun --abi-info` emits the current experimental target profile, supported rule
-implementations, producer identity, and rebuild guidance as JSON for release
-publication. Experimental support has no fixed support window; removals need
-release notes and rebuild guidance.
+For example, an archive calling `malloc` is allowed; an unresolved required symbol
+still fails at link time. Archives with constructors or thread-local storage work
+with native linking, but are rejected by the JIT, which does not yet support that lifecycle.
 
-The unchanged historical artifact in `tests/abi/fixtures/` exercises rejection of
-an earlier unsupported experimental implementation. It does not establish stable
-cross-release acceptance or replace tests using retained older readers.
+An interface for producers to declare additional native CPU requirements and
+build provenance remains unfinished. CPU checks also need better handling of
+selected destination CPUs and runtime dispatch—for example, an optional AVX2
+kernel should not imply that the whole library requires AVX2.
 
-Precise stable semantic rules, complete native-runtime requirement descriptions,
-centralized Sun lowering descriptors, and positive cross-release conformance
-remain work before stabilization. Optional source rebuilding is not implemented.
-The [compatibility model](/abi/compatibility) describes the complete proposed
-requirements, including those remaining stages.
+## Why compatible-looking builds can be rejected
 
+Unspecified compiler behavior is protected by an **implementation fingerprint**:
+a hash of compiler sources, build settings, tools, and relevant libraries.
+A changed fingerprint can require rebuilding dependencies, even after a harmless change.
+
+Coverage must include indirect dependencies. For example:
+
+```text
+compiler tool → libLLVM.so
+```
+
+Changing `libLLVM.so` can change generated code without changing the tool's own
+executable. Fingerprints now follow these linked shared-library dependencies
+recursively, and fail if one is missing or ambiguous. Discovery requires Linux
+and no `LD_LIBRARY_PATH`, `LD_PRELOAD`, or `LD_AUDIT` overrides. Dynamically
+loaded build-tool plugins and other undeclared build inputs still need coverage.
+
+Producer versions are diagnostic only. An older producer may trigger a warning
+after validation; its version cannot make an incompatible library acceptable.
+
+## Remaining work
+
+- Share layout and call descriptions with code generation, and finish metadata-to-code checks.
+- Use one complete compilation context for targets, options, authorization, and warnings.
+- Finish native declarations and transitive fingerprint coverage.
+- Test successful compatibility across historical compilers and libraries; current historical coverage only proves rejection.
+
+Run `sun --abi-info` to inspect supported rules and profiles. Implementation lives
+in `include/abi/`, `src/abi/`, and `cmake/abi/`; tests live in `tests/abi/`.
+See the [compatibility model](/abi/compatibility) for the full proposed design.

@@ -22,8 +22,24 @@ check_release("0" "official" FALSE)
 check_release("1" "unsafe\"series" FALSE)
 
 file(WRITE "${fixture}/source/CMakeLists.txt" "# Fixture implementation\n")
-file(WRITE "${fixture}/compiler" "compiler fixture")
-file(WRITE "${fixture}/linker" "linker fixture")
+# Use real ELF tools with a two-level runtime dependency, outside source inputs.
+find_program(fixture_cc NAMES cc REQUIRED)
+file(WRITE "${fixture}/leaf.c" "/** Supplies the indirect runtime behavior. */\nint leaf(void) { return 1; }\n")
+file(WRITE "${fixture}/middle.c" "/** Imports the indirect runtime entry point. */\nextern int leaf(void);\n/** Calls the indirect library. */\nint middle(void) { return leaf(); }\n")
+file(WRITE "${fixture}/tool.c" "/** Imports the direct runtime entry point. */\nextern int middle(void);\n/** Runs the fixture tool. */\nint main(void) { return middle(); }\n")
+# Stop immediately if fixture compilation fails.
+function(compile_fixture)
+    execute_process(COMMAND "${fixture_cc}" ${ARGN} RESULT_VARIABLE result)
+    if(NOT result EQUAL 0)
+        message(FATAL_ERROR "Could not compile fingerprint fixture")
+    endif()
+endfunction()
+compile_fixture(-shared -fPIC "${fixture}/leaf.c" -o "${fixture}/libleaf.so")
+compile_fixture(-shared -fPIC "${fixture}/middle.c" "-L${fixture}" -lleaf
+    "-Wl,-rpath,$ORIGIN" -o "${fixture}/libmiddle.so")
+compile_fixture("${fixture}/tool.c" "-L${fixture}" -lmiddle
+    "-Wl,-rpath,$ORIGIN" -o "${fixture}/compiler")
+file(COPY_FILE "${fixture}/compiler" "${fixture}/linker")
 file(WRITE "${fixture}/build/generated/sun_abi_support.h" "embedded support fixture")
 # Run the real fingerprint script with a small complete fixture input closure.
 function(fingerprint order series implementation output)
@@ -55,21 +71,48 @@ fingerprint("18" "next-series" "two" changed_support)
 if(changed STREQUAL changed_support)
     message(FATAL_ERROR "Embedded compiler support was omitted from compatibility")
 endif()
-file(WRITE "${fixture}/linker" "changed linker bytes")
+file(APPEND "${fixture}/linker" "changed linker bytes")
 fingerprint("18" "next-series" "two" changed_linker)
 if(changed_support STREQUAL changed_linker)
     message(FATAL_ERROR "Linker implementation was omitted from compatibility")
+endif()
+# Only an indirect dependency changes; executable and direct library stay fixed.
+file(APPEND "${fixture}/libleaf.so" "changed indirect implementation")
+fingerprint("18" "next-series" "two" changed_leaf)
+if(changed_linker STREQUAL changed_leaf)
+    message(FATAL_ERROR "Indirect tool runtime was omitted from compatibility")
 endif()
 # Relocating an otherwise identical workspace must not change cache semantics.
 set(original_fixture "${fixture}")
 file(COPY "${fixture}/" DESTINATION "${fixture}_relocated")
 set(fixture "${fixture}_relocated")
 fingerprint("18" "next-series" "two" relocated)
-if(NOT changed_linker STREQUAL relocated)
+if(NOT changed_leaf STREQUAL relocated)
     message(FATAL_ERROR "Workspace location changed the implementation identity")
 endif()
 file(REMOVE_RECURSE "${fixture}")
 set(fixture "${original_fixture}")
+# Loader environment overrides must not silently bypass dependency discovery.
+execute_process(COMMAND "${CMAKE_COMMAND}" -E env "LD_LIBRARY_PATH=${fixture}"
+    "${CMAKE_COMMAND}" "-DSOURCE_DIR=${fixture}/source"
+    "-DBINARY_DIR=${fixture}/build" "-DCOMPILER=${fixture}/compiler"
+    "-DTOOLS=${fixture}/linker"
+    -P "${SOURCE_DIR}/cmake/abi/CompatibilityFingerprint.cmake"
+    RESULT_VARIABLE loader_override OUTPUT_QUIET ERROR_QUIET)
+if(loader_override EQUAL 0)
+    message(FATAL_ERROR "Unmodeled loader environment was silently accepted")
+endif()
+# A missing indirect runtime must fail even when the tool itself still exists.
+file(RENAME "${fixture}/libleaf.so" "${fixture}/hidden-leaf.so")
+execute_process(COMMAND "${CMAKE_COMMAND}" "-DSOURCE_DIR=${fixture}/source"
+    "-DBINARY_DIR=${fixture}/build" "-DCOMPILER=${fixture}/compiler"
+    "-DTOOLS=${fixture}/linker"
+    -P "${SOURCE_DIR}/cmake/abi/CompatibilityFingerprint.cmake"
+    RESULT_VARIABLE missing_runtime OUTPUT_QUIET ERROR_QUIET)
+if(missing_runtime EQUAL 0)
+    message(FATAL_ERROR "Missing indirect tool runtime was silently accepted")
+endif()
+file(RENAME "${fixture}/hidden-leaf.so" "${fixture}/libleaf.so")
 file(REMOVE "${fixture}/linker")
 execute_process(COMMAND "${CMAKE_COMMAND}" "-DSOURCE_DIR=${fixture}/source"
     "-DBINARY_DIR=${fixture}/build" "-DCOMPILER=${fixture}/compiler"
