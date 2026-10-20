@@ -1,7 +1,6 @@
 // moon_builder.cpp — see moon_builder.h
 
 #include "moon_bundling/moon_builder.h"
-#include "abi/abi_compatibility_checker.h"
 
 #include <llvm/Support/MemoryBufferRef.h>
 #include <llvm/Support/raw_ostream.h>
@@ -10,6 +9,7 @@
 #include <map>
 #include <set>
 
+#include "abi/abi_compatibility_checker.h"
 #include "driver/build_record.h"
 #include "driver/driver.h"
 #include "driver/git_source.h"
@@ -251,7 +251,8 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
     metadata.set_source_hash(inputHash);
     writer.addModule(driver->getModule(), metadata);
   }
-  for (const auto& [identity, contract] : abi::AbiCompatibilityChecker::current().importedContracts())
+  for (const auto& [identity, contract] :
+       abi::AbiCompatibilityChecker::current().importedContracts())
     writer.inheritContract(contract);
   // Native archives travel inside the bundle, so importers link against them
   // without naming -l flags. The manifest's own `archives:` come first, with

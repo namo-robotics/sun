@@ -1,9 +1,11 @@
-/** Exercises independently reconstructed declarations and retained generic bodies. */
-#include <gtest/gtest.h>
+/** Exercises independently reconstructed declarations and retained generic
+ * bodies. */
 #include <google/protobuf/unknown_field_set.h>
+#include <gtest/gtest.h>
 #include <llvm/IR/Module.h>
-#include <fstream>
 #include <unistd.h>
+
+#include <fstream>
 
 #include "abi/abi_compatibility_checker.h"
 #include "abi/semantic_requirements.h"
@@ -11,7 +13,8 @@
 #include "support/error.h"
 
 /** Diagnostic changes and declaration-map traversal do not change semantics. */
-TEST(ABI_Compatibility, SemanticEncodingExcludesDiagnosticsAndSortsDeclarations) {
+TEST(ABI_Compatibility,
+     SemanticEncodingExcludesDiagnosticsAndSortsDeclarations) {
   sun::moon::ModuleMetadata metadata;
   metadata.set_module_name("example");
   metadata.add_declarations()->set_key("first");
@@ -30,7 +33,8 @@ TEST(ABI_Compatibility, SemanticEncodingExcludesDiagnosticsAndSortsDeclarations)
   EXPECT_NE(original, sun::abi::describeSemantics(metadata));
 }
 
-/** Retained statements remain ordered, and private generic body changes are recorded. */
+/** Retained statements remain ordered, and private generic body changes are
+ * recorded. */
 TEST(ABI_Compatibility, SemanticEncodingPreservesRetainedBodyOrder) {
   sun::moon::ModuleMetadata metadata;
   auto* function = metadata.add_functions();
@@ -48,12 +52,14 @@ TEST(ABI_Compatibility, SemanticEncodingPreservesRetainedBodyOrder) {
   EXPECT_THROW(sun::abi::describeSemantics(metadata), sun::support::SunError);
 }
 
-/** Altered type metadata is rejected even when LLVM code and the supplied hash match. */
+/** Altered type metadata is rejected even when LLVM code and the supplied hash
+ * match. */
 TEST(ABI_Compatibility, AlteredDeclarationMetadataIsRejectedBeforeImport) {
   llvm::LLVMContext context;
   llvm::Module module("metadata", context);
   module.setTargetTriple("x86_64-linux-gnu");
-  module.setDataLayout(sun::abi::compatibilityTarget(module.getTargetTriple()).data_layout());
+  module.setDataLayout(
+      sun::abi::compatibilityTarget(module.getTargetTriple()).data_layout());
   sun::moon::ModuleMetadata metadata;
   metadata.set_source_hash("metadata");
   auto* variable = metadata.add_globals();
@@ -63,7 +69,7 @@ TEST(ABI_Compatibility, AlteredDeclarationMetadataIsRejectedBeforeImport) {
   writer.addModule(module, metadata);
   std::filesystem::create_directories("tmp");
   const auto path = std::filesystem::path("tmp") /
-      ("abi_metadata_" + std::to_string(getpid()) + ".moon");
+                    ("abi_metadata_" + std::to_string(getpid()) + ".moon");
   ASSERT_TRUE(writer.write(path));
   auto reader = sun::moon_bundling::MoonReader::open(path);
   ASSERT_NE(reader, nullptr);
@@ -78,21 +84,28 @@ TEST(ABI_Compatibility, AlteredDeclarationMetadataIsRejectedBeforeImport) {
   const auto offset = bytes.find(before);
   ASSERT_NE(offset, std::string::npos);
   bytes.replace(offset, before.size(), after);
-  { std::ofstream output(path, std::ios::binary); output.write(bytes.data(), bytes.size()); }
+  {
+    std::ofstream output(path, std::ios::binary);
+    output.write(bytes.data(), bytes.size());
+  }
   auto altered = sun::moon_bundling::MoonReader::open(path);
   ASSERT_NE(altered, nullptr);
   try {
     checker.validate(*altered);
     FAIL() << "Accepted altered semantic metadata";
   } catch (const sun::support::SunError& error) {
-    EXPECT_NE(std::string(error.what()).find("declarations or retained bodies differ"), std::string::npos);
+    EXPECT_NE(std::string(error.what())
+                  .find("declarations or retained bodies differ"),
+              std::string::npos);
   }
   EXPECT_EQ(checker.importedContracts().size(), 1u);
   std::filesystem::remove(path);
 }
 
-/** Ownership is checked before declarations can populate the consumer's tables. */
-TEST(ABI_Compatibility, DeclarationGraphRejectsDuplicatesMissingOwnersAndCycles) {
+/** Ownership is checked before declarations can populate the consumer's tables.
+ */
+TEST(ABI_Compatibility,
+     DeclarationGraphRejectsDuplicatesMissingOwnersAndCycles) {
   sun::moon::ModuleMetadata metadata;
   auto* module = metadata.add_declarations();
   module->set_key("module");
@@ -105,16 +118,21 @@ TEST(ABI_Compatibility, DeclarationGraphRejectsDuplicatesMissingOwnersAndCycles)
   metadata.add_module_declarations("module");
   EXPECT_NO_THROW(sun::abi::validateDeclarationGraph({&metadata}));
   function->set_owner("missing");
-  EXPECT_THROW(sun::abi::validateDeclarationGraph({&metadata}), sun::support::SunError);
+  EXPECT_THROW(sun::abi::validateDeclarationGraph({&metadata}),
+               sun::support::SunError);
   function->set_owner("function");
-  EXPECT_THROW(sun::abi::validateDeclarationGraph({&metadata}), sun::support::SunError);
+  EXPECT_THROW(sun::abi::validateDeclarationGraph({&metadata}),
+               sun::support::SunError);
   function->set_owner("module");
   *metadata.add_declarations() = *function;
-  EXPECT_THROW(sun::abi::validateDeclarationGraph({&metadata}), sun::support::SunError);
+  EXPECT_THROW(sun::abi::validateDeclarationGraph({&metadata}),
+               sun::support::SunError);
 }
 
-/** An unchanged old artifact cannot be authorized merely by its producer version. */
-TEST(ABI_Compatibility, HistoricalExperimentalBundleRemainsUnchangedAndUnsupported) {
+/** An unchanged old artifact cannot be authorized merely by its producer
+ * version. */
+TEST(ABI_Compatibility,
+     HistoricalExperimentalBundleRemainsUnchangedAndUnsupported) {
   const auto path = "tests/abi/fixtures/experimental-v1.moon";
   std::ifstream input(path, std::ios::binary);
   ASSERT_TRUE(input);
@@ -122,5 +140,6 @@ TEST(ABI_Compatibility, HistoricalExperimentalBundleRemainsUnchangedAndUnsupport
                           std::istreambuf_iterator<char>());
   EXPECT_EQ(sun::moon_bundling::computeSha256Hex(bytes),
             "1df3009fa8a5e9d0052a7903391681b63ec2e08d21c9f332eed019b147c9b650");
-  EXPECT_THROW(sun::moon_bundling::MoonReader::open(path), sun::support::SunError);
+  EXPECT_THROW(sun::moon_bundling::MoonReader::open(path),
+               sun::support::SunError);
 }

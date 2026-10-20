@@ -9,8 +9,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "moon.pb.h"
 #include "abi/compatibility.h"
+#include "moon.pb.h"
 
 /** Builds and loads compiled Moon libraries and their declaration metadata. */
 namespace sun::moon_bundling {
@@ -138,7 +138,8 @@ class MoonWriter {
   std::string error_;
 };
 
-/** Decodes immutable Moon container bytes; semantic use requires an ABI checker. */
+/** Decodes immutable Moon container bytes; semantic use requires an ABI
+ * checker. */
 class MoonReader {
  public:
   /**
@@ -148,7 +149,8 @@ class MoonReader {
    */
   static std::unique_ptr<MoonReader> open(const std::filesystem::path& path);
 
-  /** Shares immutable container bytes without granting permission to execute them. */
+  /** Shares immutable container bytes without granting permission to execute
+   * them. */
   const std::shared_ptr<const std::string>& getBytes() const { return bytes_; }
 
   /** Returns bundle metadata for inspection, without semantic authorization. */
@@ -177,8 +179,8 @@ class MoonReader {
   const moon::ModuleMetadata* getMetadata(const std::string& moduleKey);
 
   /**
-   * Decode a module's LLVM bitcode for inspection. Semantic consumers must first
-   * obtain authorization from AbiCompatibilityChecker.
+   * Decode a module's LLVM bitcode for inspection. Semantic consumers must
+   * first obtain authorization from AbiCompatibilityChecker.
    * @param moduleKey The module key (source hash)
    * @param context LLVM context to create module in
    * @return LLVM module, or nullptr on failure

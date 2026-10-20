@@ -296,7 +296,8 @@ static void refreshEntrypoints() {
       for (auto& entry : config.entrypoints) {
         // Project discovery never fetches remote source repositories.
         if (!entry.git.empty()) continue;
-        entry.path = ManifestProcessor::expandPathVariables(entry.path, &config);
+        entry.path =
+            ManifestProcessor::expandPathVariables(entry.path, &config);
         entry.testBinaryName = ManifestProcessor::expandPathVariables(
             entry.testBinaryName, &config);
         combined.push_back(entry.path);

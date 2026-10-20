@@ -1,7 +1,6 @@
 // build_record.cpp — see build_record.h
 
 #include "driver/build_record.h"
-#include "abi/abi_compatibility_checker.h"
 
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/GlobalVariable.h>
@@ -12,6 +11,7 @@
 #include <filesystem>
 #include <sstream>
 
+#include "abi/abi_compatibility_checker.h"
 #include "moon_bundling/moon.h"
 
 /** Coordinates compilation, dependency loading, linking, and program execution.

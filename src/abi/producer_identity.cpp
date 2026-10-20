@@ -14,7 +14,7 @@ ProducerIdentity currentProducerIdentity() {
 }
 
 ProducerOrdering compareProducerIdentity(const ProducerIdentity& producer,
-                                        const ProducerIdentity& consumer) {
+                                         const ProducerIdentity& consumer) {
   if (!producer.build().empty() && producer.build() == consumer.build())
     return ProducerOrdering::SameBuild;
   if (producer.build().empty() || consumer.build().empty() ||
@@ -22,8 +22,10 @@ ProducerOrdering compareProducerIdentity(const ProducerIdentity& producer,
       producer.release_series().empty() ||
       producer.release_series() != consumer.release_series())
     return ProducerOrdering::Unknown;
-  if (producer.release_order() < consumer.release_order()) return ProducerOrdering::Older;
-  if (producer.release_order() > consumer.release_order()) return ProducerOrdering::Newer;
+  if (producer.release_order() < consumer.release_order())
+    return ProducerOrdering::Older;
+  if (producer.release_order() > consumer.release_order())
+    return ProducerOrdering::Newer;
   return ProducerOrdering::Unknown;
 }
 }  // namespace sun::abi

@@ -1,7 +1,6 @@
 // input_hash.cpp — see input_hash.h
 
 #include "driver/input_hash.h"
-#include "abi/abi_compatibility_checker.h"
 
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/Config/llvm-config.h>
@@ -13,6 +12,7 @@
 #include <algorithm>
 #include <map>
 
+#include "abi/abi_compatibility_checker.h"
 #include "driver/c_bindings.h"
 #include "generated/sun_version.h"
 #include "moon_bundling/moon.h"
@@ -59,7 +59,9 @@ std::string digestBytes(llvm::StringRef bytes) {
  * One imported bundle's part of the hash: the hash it was built from, which
  * already covers everything inside it, and how its modules are renamed here.
  */
-std::string hashMoonImport(const sun::moon_bundling::MoonImport& import, const std::string& target, sun::abi::AbiCompatibilityChecker& checker) {
+std::string hashMoonImport(const sun::moon_bundling::MoonImport& import,
+                           const std::string& target,
+                           sun::abi::AbiCompatibilityChecker& checker) {
   auto reader = sun::moon_bundling::MoonReader::open(import.path);
   if (!reader) fail("Cannot open imported moon: " + import.path);
   checker.validate(*reader, target);
@@ -67,7 +69,8 @@ std::string hashMoonImport(const sun::moon_bundling::MoonImport& import, const s
   const auto* first =
       modules.empty() ? nullptr : reader->getMetadata(modules[0]);
   if (!first) fail("Imported moon has no modules: " + import.path);
-  std::string dependency = hashField("digest", first->content_hash()) + hashField("bytes", checker.bytesHash(*reader));
+  std::string dependency = hashField("digest", first->content_hash()) +
+                           hashField("bytes", checker.bytesHash(*reader));
   // An alias changes which symbols the importing code refers to
   for (const auto& [from, to] : std::map<std::string, std::string>(
            import.moduleRemap.begin(), import.moduleRemap.end())) {
@@ -142,7 +145,8 @@ std::string computeInputHash(const BuildInputs& inputs) {
 
   std::vector<std::string> dependencies;
   for (const auto& import : inputs.moonImports) {
-    dependencies.push_back(hashMoonImport(import, inputs.targetTriple, checker));
+    dependencies.push_back(
+        hashMoonImport(import, inputs.targetTriple, checker));
   }
   std::sort(dependencies.begin(), dependencies.end());
   for (const auto& dependency : dependencies)

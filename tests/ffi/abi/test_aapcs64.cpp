@@ -737,14 +737,16 @@ TEST(Ffi_Abi_StaticLink,
 
 /** GNU runtime requirements cannot authorize a musl consumer's platform ABI. */
 TEST(Ffi_Abi_StaticLink, cross_musl_rejects_gnu_stdlib_contract) {
-  auto driver = Driver::createForAOT("musl_stdlib_module", "aarch64-linux-musl");
+  auto driver =
+      Driver::createForAOT("musl_stdlib_module", "aarch64-linux-musl");
   driver->setExecutable(true);
   driver->setMoonImports(
       {sun::moon_bundling::MoonImport("build/aarch64-linux-gnu/stdlib.moon")});
   EXPECT_THROW(driver->compileString(R"(
     using std;
     function main() i32 { return 42; }
-  )"), sun::support::SunError);
+  )"),
+               sun::support::SunError);
 }
 
 /** Tail padding disqualifies an otherwise homogeneous float aggregate. */

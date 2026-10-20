@@ -23,6 +23,7 @@ check_release("1" "unsafe\"series" FALSE)
 
 file(WRITE "${fixture}/source/CMakeLists.txt" "# Fixture implementation\n")
 file(WRITE "${fixture}/compiler" "compiler fixture")
+file(WRITE "${fixture}/build/generated/sun_abi_support.h" "embedded support fixture")
 # Run the real fingerprint script with a small complete fixture input closure.
 function(fingerprint order series implementation output)
     file(WRITE "${fixture}/build/CMakeCache.txt"
@@ -46,5 +47,10 @@ if(NOT development STREQUAL release OR NOT release STREQUAL next_release)
 endif()
 if(next_release STREQUAL changed)
     message(FATAL_ERROR "Implementation configuration was omitted from compatibility")
+endif()
+file(WRITE "${fixture}/build/generated/sun_abi_support.h" "changed embedded support")
+fingerprint("18" "next-series" "two" changed_support)
+if(changed STREQUAL changed_support)
+    message(FATAL_ERROR "Embedded compiler support was omitted from compatibility")
 endif()
 file(REMOVE_RECURSE "${fixture}")

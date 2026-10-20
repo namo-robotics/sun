@@ -307,7 +307,8 @@ SunConfig parse(const Object& root, const std::filesystem::path& file,
     if (auto* ignore = fmt.get("ignore")) {
       stringsValue(*ignore);
       for (const auto& pattern : *ignore->getAsArray())
-        config.fmtIgnore.push_back({config.configDir, pattern.getAsString()->str()});
+        config.fmtIgnore.push_back(
+            {config.configDir, pattern.getAsString()->str()});
     }
   }
   if (auto* value = root.get("sun_path"))
@@ -461,7 +462,8 @@ std::optional<SunConfig> SunConfig::findFrom(
         merged = std::move(config);
       else {
         merged->fmtIgnore.insert(merged->fmtIgnore.begin(),
-                                 config.fmtIgnore.begin(), config.fmtIgnore.end());
+                                 config.fmtIgnore.begin(),
+                                 config.fmtIgnore.end());
         for (const auto& [name, value] : config.pathVariables)
           merged->pathVariables.emplace(name, value);
         for (const auto& [name, value] : config.dependencies)

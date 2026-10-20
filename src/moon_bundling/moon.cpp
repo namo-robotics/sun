@@ -1,8 +1,6 @@
 // moon.cpp — .moon bundle format reader/writer with protobuf metadata
 
 #include "moon_bundling/moon.h"
-#include "abi/semantic_requirements.h"
-#include "abi/native_requirements.h"
 
 #include <google/protobuf/util/json_util.h>
 #include <llvm/Bitcode/BitcodeReader.h>
@@ -15,14 +13,17 @@
 #include <llvm/Support/raw_ostream.h>
 
 #include <algorithm>
-#include <fstream>
-#include <map>
 #include <cstring>
+#include <fstream>
 #include <limits>
+#include <map>
 #include <mutex>
 #include <set>
 #include <sstream>
 
+#include "abi/native_requirements.h"
+#include "abi/semantic_requirements.h"
+#include "abi/support_inventory.h"
 #include "support/error.h"
 #include "support/terminal.h"
 
@@ -76,8 +77,10 @@ void MoonWriter::addModule(llvm::Module& module,
     data.blobIndex = cached->second;
   } else {
     auto generated = abi::describeContract(module);
-    if (contract_.encoding_schema() == 0) contract_ = std::move(generated);
-    else abi::mergeContractRequirements(contract_, generated);
+    if (contract_.encoding_schema() == 0)
+      contract_ = std::move(generated);
+    else
+      abi::mergeContractRequirements(contract_, generated);
     std::string bitcode;
     llvm::raw_string_ostream bitcodeStream(bitcode);
     llvm::WriteBitcodeToFile(module, bitcodeStream);
@@ -115,7 +118,8 @@ void MoonWriter::addModule(llvm::Module& module,
 
 void MoonWriter::inheritContract(const abi::BundleContract& contract) {
   if (contract_.encoding_schema() == 0)
-    sun::support::logAndThrowError("Add emitted code before inherited contracts");
+    sun::support::logAndThrowError(
+        "Add emitted code before inherited contracts");
   abi::mergeContractRequirements(contract_, contract);
 }
 
@@ -145,16 +149,16 @@ bool MoonWriter::write(const std::filesystem::path& outputPath) {
       if (!present) {
         auto* rule = contract_.add_requirements();
         rule->set_name(name);
-        rule->set_implementation(abi::compatibilityImplementation());
+        rule->set_implementation(abi::emissionImplementation(rule->name()));
       }
     }
     bool nativeRule = false;
     for (const auto& rule : contract_.requirements())
-      if (rule.name() == "native.elf.x86_64.baseline") nativeRule = true;
+      if (rule.name() == "native.elf.x86_64.declared") nativeRule = true;
     if (!nativeRule) {
       auto* rule = contract_.add_requirements();
-      rule->set_name("native.elf.x86_64.baseline");
-      rule->set_implementation(abi::compatibilityImplementation());
+      rule->set_name("native.elf.x86_64.declared");
+      rule->set_implementation(abi::emissionImplementation(rule->name()));
     }
   }
   bool metadataRule = false;
@@ -163,7 +167,7 @@ bool MoonWriter::write(const std::filesystem::path& outputPath) {
   if (!metadataRule) {
     auto* rule = contract_.add_requirements();
     rule->set_name("moon.metadata");
-    rule->set_implementation("1");
+    rule->set_implementation(abi::emissionImplementation("moon.metadata"));
   }
   std::set<std::string> semantics(contract_.semantic_records().begin(),
                                   contract_.semantic_records().end());
@@ -228,12 +232,14 @@ bool MoonWriter::write(const std::filesystem::path& outputPath) {
     entry->set_name(archive.name);
     entry->set_offset(static_cast<uint64_t>(out.tellp()));
     entry->set_size(archive.data.size());
-    out.write(archive.data.data(), static_cast<std::streamsize>(archive.data.size()));
+    out.write(archive.data.data(),
+              static_cast<std::streamsize>(archive.data.size()));
   }
   const auto bundleBytes = bundleMetadata.SerializeAsString();
   header.bundleMetadataOffset = static_cast<uint64_t>(out.tellp());
   header.bundleMetadataSize = bundleBytes.size();
-  out.write(bundleBytes.data(), static_cast<std::streamsize>(bundleBytes.size()));
+  out.write(bundleBytes.data(),
+            static_cast<std::streamsize>(bundleBytes.size()));
 
   // Locate the complete library record from the header.
   out.seekp(headerPos);
@@ -257,15 +263,18 @@ std::unique_ptr<MoonReader> MoonReader::open(
   if (!file) return nullptr;
   constexpr uint64_t maxBundleBytes = uint64_t{2} * 1024 * 1024 * 1024;
   if ((*file)->getBufferSize() > maxBundleBytes)
-    sun::support::logAndThrowError("Moon bundle exceeds reader resource limit: " + path.string());
+    sun::support::logAndThrowError(
+        "Moon bundle exceeds reader resource limit: " + path.string());
   auto reader = std::unique_ptr<MoonReader>(new MoonReader());
   reader->path_ = path;
-  reader->bytes_ = std::make_shared<const std::string>((*file)->getBuffer().str());
+  reader->bytes_ =
+      std::make_shared<const std::string>((*file)->getBuffer().str());
   const uint64_t size = reader->bytes_->size();
   uint64_t cursor = 0;
   /** Stops parsing malformed bytes before allocation or semantic use. */
   auto malformed = [&]() {
-    sun::support::logAndThrowError("Malformed Moon container: " + path.string());
+    sun::support::logAndThrowError("Malformed Moon container: " +
+                                   path.string());
   };
   /** Reads the legacy host-order envelope without unaligned memory access. */
   auto read = [&](auto& value) {
@@ -278,7 +287,8 @@ std::unique_ptr<MoonReader> MoonReader::open(
   read(header.version);
   if (header.magic != MoonHeader::MAGIC) malformed();
   if (header.version != MoonHeader::VERSION)
-    sun::support::logAndThrowError("Unsupported moon bundle format version " +
+    sun::support::logAndThrowError(
+        "Unsupported moon bundle format version " +
         std::to_string(header.version) + " in '" + path.string() +
         "': compatibility cannot be established; rebuild the bundle");
   read(header.bundleMetadataOffset);
@@ -286,55 +296,77 @@ std::unique_ptr<MoonReader> MoonReader::open(
   if (header.bundleMetadataOffset < sizeof(MoonHeader) ||
       header.bundleMetadataOffset > size || !header.bundleMetadataSize ||
       header.bundleMetadataSize > 64 * 1024 * 1024 ||
-      header.bundleMetadataSize != size - header.bundleMetadataOffset) malformed();
+      header.bundleMetadataSize != size - header.bundleMetadataOffset)
+    malformed();
   if (!reader->bundleMetadata_.ParseFromArray(
           reader->bytes_->data() + header.bundleMetadataOffset,
-          static_cast<int>(header.bundleMetadataSize))) malformed();
+          static_cast<int>(header.bundleMetadataSize)))
+    malformed();
   const auto& library = reader->bundleMetadata_;
   validateBundleHash(library.content_hash());
   if (!library.has_bundle_contract())
-    sun::support::logAndThrowError("Dependency '" + path.string() +
-        "': compatibility cannot be established; missing bundle contract; rebuild the bundle");
+    sun::support::logAndThrowError(
+        "Dependency '" + path.string() +
+        "': compatibility cannot be established; missing bundle contract; "
+        "rebuild the bundle");
   if (library.modules_size() == 0 || library.modules_size() > 1000000 ||
-      library.native_archives_size() > 1000000) malformed();
+      library.native_archives_size() > 1000000)
+    malformed();
   /** Records regions so unrelated overlapping records cannot be accepted. */
-  struct Region { uint64_t start; uint64_t size; bool bitcode; };
+  struct Region {
+    uint64_t start;
+    uint64_t size;
+    bool bitcode;
+  };
   std::vector<Region> regions;
   /** Validates offsets with subtraction to avoid integer overflow. */
   auto region = [&](uint64_t offset, uint64_t length, bool bitcode) {
     if (offset < sizeof(MoonHeader) || offset > header.bundleMetadataOffset ||
-        length > header.bundleMetadataOffset - offset) malformed();
+        length > header.bundleMetadataOffset - offset)
+      malformed();
     regions.push_back({offset, length, bitcode});
   };
   for (const auto& module : library.modules()) {
     if (!module.has_metadata()) malformed();
     const auto& metadata = module.metadata();
-    if (metadata.source_hash().empty() || metadata.source_hash().size() > 1024 * 1024 ||
-        metadata.content_hash() != library.content_hash()) malformed();
-    ModuleIndexEntry entry{metadata.source_hash(), module.bitcode_offset(), module.bitcode_size()};
+    if (metadata.source_hash().empty() ||
+        metadata.source_hash().size() > 1024 * 1024 ||
+        metadata.content_hash() != library.content_hash())
+      malformed();
+    ModuleIndexEntry entry{metadata.source_hash(), module.bitcode_offset(),
+                           module.bitcode_size()};
     region(entry.bitcodeOffset, entry.bitcodeSize, true);
-    if (!reader->indexMap_.emplace(entry.moduleKey, reader->index_.size()).second) malformed();
+    if (!reader->indexMap_.emplace(entry.moduleKey, reader->index_.size())
+             .second)
+      malformed();
     reader->index_.push_back(std::move(entry));
   }
   std::set<std::pair<std::string, std::string>> archives;
   for (const auto& archive : library.native_archives()) {
-    NativeArchiveEntry entry{archive.archive_set_hash(), archive.name(), archive.offset(), archive.size()};
+    NativeArchiveEntry entry{archive.archive_set_hash(), archive.name(),
+                             archive.offset(), archive.size()};
     if (entry.name.empty() || entry.name.size() > 1024 * 1024 ||
         std::filesystem::path(entry.name).filename() != entry.name ||
         entry.name == "." || entry.name == ".." ||
-        entry.archiveSetHash.empty() || entry.archiveSetHash.size() > 1024 * 1024 ||
-        entry.archiveSetHash.find_first_not_of("0123456789abcdef") != std::string::npos ||
-        !archives.emplace(entry.archiveSetHash, entry.name).second) malformed();
+        entry.archiveSetHash.empty() ||
+        entry.archiveSetHash.size() > 1024 * 1024 ||
+        entry.archiveSetHash.find_first_not_of("0123456789abcdef") !=
+            std::string::npos ||
+        !archives.emplace(entry.archiveSetHash, entry.name).second)
+      malformed();
     region(entry.offset, entry.size, false);
     reader->nativeArchives_.push_back(std::move(entry));
   }
-  std::sort(regions.begin(), regions.end(), [](const Region& a, const Region& b) {
-    return std::tie(a.start, a.size) < std::tie(b.start, b.size);
-  });
+  std::sort(regions.begin(), regions.end(),
+            [](const Region& a, const Region& b) {
+              return std::tie(a.start, a.size) < std::tie(b.start, b.size);
+            });
   for (size_t i = 1; i < regions.size(); ++i) {
-    const auto& a = regions[i - 1]; const auto& b = regions[i];
+    const auto& a = regions[i - 1];
+    const auto& b = regions[i];
     if (b.start < a.start + a.size &&
-        !(a.bitcode && b.bitcode && a.start == b.start && a.size == b.size)) malformed();
+        !(a.bitcode && b.bitcode && a.start == b.start && a.size == b.size))
+      malformed();
   }
   return reader;
 }
@@ -403,11 +435,13 @@ bool MoonReader::writeDebugJson(const std::filesystem::path& outputPath) {
 
 bool MoonReader::readNativeArchive(const NativeArchiveEntry& entry,
                                    std::vector<char>& out) {
-  const auto found = std::find_if(nativeArchives_.begin(), nativeArchives_.end(),
-      [&](const NativeArchiveEntry& own) {
-        return own.offset == entry.offset && own.size == entry.size &&
-               own.name == entry.name && own.archiveSetHash == entry.archiveSetHash;
-      });
+  const auto found =
+      std::find_if(nativeArchives_.begin(), nativeArchives_.end(),
+                   [&](const NativeArchiveEntry& own) {
+                     return own.offset == entry.offset &&
+                            own.size == entry.size && own.name == entry.name &&
+                            own.archiveSetHash == entry.archiveSetHash;
+                   });
   if (found == nativeArchives_.end()) return false;
   return readBytes(entry.offset, entry.size, out);
 }

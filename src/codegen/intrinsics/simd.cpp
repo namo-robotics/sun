@@ -121,8 +121,8 @@ llvm::Value* IntrinsicsGenerator::codegenCpuAvx2Fma(const CallExprAST& expr) {
   return ctx.builder->CreateCall(fn);
 }
 
-llvm::Value* IntrinsicsGenerator::codegenGemmAvx2Fma(
-    const CallExprAST& expr, bool block) {
+llvm::Value* IntrinsicsGenerator::codegenGemmAvx2Fma(const CallExprAST& expr,
+                                                     bool block) {
   if (expr.getArgs().size() != (block ? 8 : 6))
     sun::support::logAndThrowError("Invalid packed GEMM argument count");
   llvm::SmallVector<llvm::Value*, 8> args;

@@ -126,7 +126,7 @@ struct SunConfig {
   std::string targetTriple;  // resolved compilation triple, retaining vendor
                              // and OS version
   std::vector<ConfigFmtIgnore> fmtIgnore;  // ancestor rules first, nearest last
-  bool root = false;         // stop the upward search at this file
+  bool root = false;  // stop the upward search at this file
 
   /**
    * The merged view of every sun-config.json in startDir and its parents

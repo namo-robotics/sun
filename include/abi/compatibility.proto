@@ -40,3 +40,23 @@ message BundleContract {
   // Canonical declarations and retained bodies, including private semantic inputs.
   repeated bytes semantic_records = 8;
 }
+
+/** One implemented rule version available to the compiler. */
+message SupportedRule {
+  string name = 1;
+  string version = 2;
+  string binding = 3;
+}
+
+/** Selects the rule version used when the compiler emits a requirement. */
+message EmissionDefault {
+  string name = 1;
+  string version = 2;
+}
+
+/** Build-validated compiler capabilities, separate from bundle requirements. */
+message CompilerAbiSupport {
+  uint32 schema = 1;
+  repeated SupportedRule rules = 2;
+  repeated EmissionDefault emission_defaults = 3;
+}

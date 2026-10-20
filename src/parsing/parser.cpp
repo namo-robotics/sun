@@ -1,6 +1,5 @@
 // src/parsing/parser.cpp
 #include "parsing/parser.h"
-#include "abi/abi_compatibility_checker.h"
 
 #include <chrono>
 #include <cstdio>
@@ -15,6 +14,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "abi/abi_compatibility_checker.h"
 #include "llvm/Support/raw_ostream.h"
 #include "moon.pb.h"
 #include "moon_bundling/library_cache.h"

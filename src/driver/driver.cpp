@@ -1,5 +1,4 @@
 #include "driver/driver.h"
-#include "abi/abi_compatibility_checker.h"
 
 #include <llvm/IR/DebugInfo.h>
 #include <llvm/IR/IRBuilder.h>
@@ -16,6 +15,7 @@
 #include <inja/inja.hpp>
 #include <sstream>
 
+#include "abi/abi_compatibility_checker.h"
 #include "ast/ast_children.h"
 #include "ast/manifest_ast.h"
 #include "borrow_checker/borrow_checker.h"

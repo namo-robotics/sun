@@ -7,7 +7,8 @@
 
 /** Validates the emitted boundaries retained in bundle contracts. */
 namespace sun::abi {
-/** Decodes bounded canonical fields without allocating from supplied lengths. */
+/** Decodes bounded canonical fields without allocating from supplied lengths.
+ */
 namespace {
 /** Holds a borrowed canonical field after its frame has been checked. */
 struct Field {
@@ -17,7 +18,8 @@ struct Field {
 
 /** Rejects unsupported or malformed required boundary descriptions. */
 [[noreturn]] void malformed() {
-  sun::support::logAndThrowError("Malformed or unsupported bundle boundary record");
+  sun::support::logAndThrowError(
+      "Malformed or unsupported bundle boundary record");
 }
 
 /** Consumes one fixed-width little-endian integer from a bounded view. */
@@ -47,7 +49,8 @@ std::string_view required(std::string_view& bytes, uint64_t tag) {
   return next.value;
 }
 
-/** Requires an integer-valued field to have exactly the fixed canonical width. */
+/** Requires an integer-valued field to have exactly the fixed canonical width.
+ */
 uint64_t number(std::string_view& bytes, uint64_t tag) {
   auto value = required(bytes, tag);
   const auto result = integer(value);
@@ -62,7 +65,8 @@ std::string_view text(std::string_view& bytes, uint64_t tag) {
   return value;
 }
 
-/** Checks framing for the ordered attribute entries emitted by LLVM lowering. */
+/** Checks framing for the ordered attribute entries emitted by LLVM lowering.
+ */
 void attributes(std::string_view bytes) {
   while (!bytes.empty()) {
     const auto attribute = field(bytes);
@@ -121,7 +125,8 @@ void BoundaryRequirements::add(const std::string& record) {
   if (!key.empty()) {
     const auto found = named_.find(key);
     if (found != named_.end() && found->second != record)
-      sun::support::logAndThrowError("Conflicting bundle boundary for '" + name + "'");
+      sun::support::logAndThrowError("Conflicting bundle boundary for '" +
+                                     name + "'");
     named_.emplace(std::move(key), record);
   }
   records_.insert(record);

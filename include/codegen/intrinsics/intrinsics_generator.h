@@ -141,7 +141,7 @@ class IntrinsicsGenerator {
   /** Emits fixed-width float operations on caller-provided storage aligned to
    * f32. */
   llvm::Value* codegenSimdF32(const CallExprAST& expr, unsigned lanes,
-                             const std::string& operation);
+                              const std::string& operation);
 
   /** Checks CPU and OS support for an isolated AVX2/FMA kernel at runtime. */
   llvm::Value* codegenCpuAvx2Fma(const CallExprAST& expr);

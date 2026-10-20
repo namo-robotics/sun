@@ -158,6 +158,22 @@ foreach(PROTO_FILE ${BUNDLE_PROTO_FILES})
     )
 endforeach()
 
+# Validate and embed support before compiling any ABI consumer.
+add_executable(sun_embed_abi_support
+    cmake/abi/embed_support.cpp src/abi/support_manifest.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/compatibility.pb.cc)
+target_include_directories(sun_embed_abi_support PRIVATE include ${CMAKE_CURRENT_BINARY_DIR})
+target_link_libraries(sun_embed_abi_support PRIVATE protobuf::libprotobuf)
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/sun_abi_support.h
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/generated
+    COMMAND sun_embed_abi_support ${CMAKE_CURRENT_SOURCE_DIR}/cmake/abi/compiler_support.textproto
+        ${CMAKE_CURRENT_BINARY_DIR}/generated/sun_abi_support.h
+    DEPENDS sun_embed_abi_support cmake/abi/compiler_support.textproto
+    COMMENT "Validating and embedding compiler ABI support"
+    VERBATIM)
+add_custom_target(sun_abi_support DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/generated/sun_abi_support.h)
+
 message(STATUS "Proto sources: ${PROTO_SRCS}")
 message(STATUS "Proto headers: ${PROTO_HDRS}")
 
@@ -324,6 +340,7 @@ add_library(sun_lib
     src/abi/semantic_requirements.cpp
     src/abi/native_requirements.cpp
     src/abi/support_inventory.cpp
+    src/abi/support_manifest.cpp
     src/abi/boundary_requirements.cpp
     src/abi/producer_identity.cpp
     src/abi/abi_compatibility_checker.cpp
@@ -528,7 +545,8 @@ add_custom_target(sun_compatibility_fingerprint
     BYPRODUCTS ${CMAKE_BINARY_DIR}/generated/sun_compatibility.h
     COMMENT "Updating experimental compatibility implementation fingerprint"
     VERBATIM)
-add_dependencies(sun_lib sun_compatibility_fingerprint)
+add_dependencies(sun_compatibility_fingerprint sun_abi_support)
+add_dependencies(sun_lib sun_compatibility_fingerprint sun_abi_support)
 
 add_executable(sun src/cli/main.cpp)
 find_package(LibArchive REQUIRED)

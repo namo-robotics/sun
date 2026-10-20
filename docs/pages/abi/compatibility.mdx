@@ -99,6 +99,23 @@ bundle's hash with a hash of every feature the compiler supports. Target matchin
 uses defined profile rules, since different triple spellings can describe the
 same target. A readable payload alone does not establish ABI compatibility.
 
+## Native archives
+
+Native archives follow normal native-linking trust. Their producers are responsible
+for declaring the target, minimum CPU features, and runtime requirements. Those
+requirements join the bundle's single contract and are checked by the consumer.
+An empty CPU-feature set declares the target baseline; it is not evidence obtained
+by disassembling the archive.
+
+The compiler checks object architecture, format, symbol resolution, and runtime
+references where available. The selected native or JIT linker checks relocation
+support and applies relocations; link failures remain compilation errors. It does not maintain an
+instruction allowlist, infer every requirement from machine code, or prove that
+native code obeys its declarations. Indirect calls and runtime CPU dispatch are
+allowed under this trust model. Runtime-dispatched optional instructions need not
+raise the declared minimum if the native library guards them correctly. Unsupported
+declared requirements still cause rejection before import or linking.
+
 ## Optional source recompilation
 
 A consumer can choose to rebuild a bundle that contains

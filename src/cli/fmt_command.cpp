@@ -58,8 +58,8 @@ bool matchesPattern(const std::string& pattern, const std::string& path) {
     auto glob = llvm::GlobPattern::create(part);
     if (!glob)
       sun::support::logAndThrowError("sun_fmt.ignore: invalid pattern '" +
-                                    pattern + "': " +
-                                    llvm::toString(glob.takeError()));
+                                     pattern +
+                                     "': " + llvm::toString(glob.takeError()));
     for (size_t i = parts.size(); i > 0; --i)
       matched[i] = matched[i - 1] && glob->match(parts[i - 1]);
     matched[0] = false;
@@ -70,19 +70,22 @@ bool matchesPattern(const std::string& pattern, const std::string& path) {
 /** Caches inherited project settings and evaluates ordered ignore patterns. */
 class FormatIgnores {
  public:
-  /** Enables configured exclusions unless the caller explicitly bypasses them. */
+  /** Enables configured exclusions unless the caller explicitly bypasses them.
+   */
   explicit FormatIgnores(bool disabled) : disabled_(disabled) {}
 
-  /** Checks a path and its ancestors; excluded directories cannot be re-entered. */
+  /** Checks a path and its ancestors; excluded directories cannot be
+   * re-entered. */
   bool ignores(const std::filesystem::path& path, bool directory) {
     if (disabled_) return false;
     const auto absolute = std::filesystem::absolute(path).lexically_normal();
     const auto configDir = directory ? absolute : absolute.parent_path();
     auto found = configs_.find(configDir);
     if (found == configs_.end())
-      found = configs_
-                  .emplace(configDir, sun::driver::SunConfig::findFrom(configDir))
-                  .first;
+      found =
+          configs_
+              .emplace(configDir, sun::driver::SunConfig::findFrom(configDir))
+              .first;
     if (!found->second) return false;
     const auto& rules = found->second->fmtIgnore;
     for (auto candidate = absolute; candidate != candidate.parent_path();
@@ -114,7 +117,8 @@ class FormatIgnores {
 
  private:
   bool disabled_;
-  std::map<std::filesystem::path, std::optional<sun::driver::SunConfig>> configs_;
+  std::map<std::filesystem::path, std::optional<sun::driver::SunConfig>>
+      configs_;
 };
 
 /**
@@ -168,7 +172,8 @@ bool expandInputs(const std::vector<std::string>& inputs,
   for (const auto& input : inputs) {
     std::error_code ec;
     const bool directory = std::filesystem::is_directory(input, ec);
-    if (std::filesystem::exists(input, ec) && ignores.ignores(input, directory)) {
+    if (std::filesystem::exists(input, ec) &&
+        ignores.ignores(input, directory)) {
       sun::support::messageStream("info")
           << input << ": skipped (sun_fmt.ignore)\n";
     } else if (directory) {

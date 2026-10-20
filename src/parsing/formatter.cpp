@@ -632,8 +632,9 @@ class Formatter {
     int savedLast = lastLine_;
     lastLine_ = -1;
 
-    std::vector<Member<sun::ast::InterfaceFieldDecl,
-                       sun::ast::InterfaceMethodDecl>> members;
+    std::vector<
+        Member<sun::ast::InterfaceFieldDecl, sun::ast::InterfaceMethodDecl>>
+        members;
     for (const auto& f : n.getFields()) {
       members.push_back({f.location.offset, f.location.line,
                          endLineOf(f.location), &f, nullptr});

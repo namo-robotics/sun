@@ -9,7 +9,7 @@ foreach(directory IN LISTS EXTERNAL_INCLUDES)
     list(APPEND inputs ${headers})
 endforeach()
 file(GLOB generated "${BINARY_DIR}/*.pb.h" "${BINARY_DIR}/*.pb.cc")
-list(APPEND inputs ${generated} "${SOURCE_DIR}/CMakeLists.txt"
+list(APPEND inputs "${BINARY_DIR}/generated/sun_abi_support.h" ${generated} "${SOURCE_DIR}/CMakeLists.txt"
      "${BINARY_DIR}/CMakeCache.txt" "${COMPILER}")
 list(REMOVE_DUPLICATES inputs)
 list(SORT inputs)

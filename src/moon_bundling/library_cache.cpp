@@ -1,5 +1,4 @@
 #include "moon_bundling/library_cache.h"
-#include "abi/abi_compatibility_checker.h"
 
 #include <llvm/TargetParser/Host.h>
 #include <llvm/TargetParser/Triple.h>
@@ -7,6 +6,7 @@
 #include <algorithm>
 #include <fstream>
 
+#include "abi/abi_compatibility_checker.h"
 #include "support/error.h"
 #include "support/sun_path.h"
 

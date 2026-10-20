@@ -15,6 +15,18 @@ remain readable after a reader is destroyed or the checker starts a new compilat
 ABI tests live in `tests/abi/`; implementation fingerprint generation
 lives in `cmake/abi/`.
 
+Compiler capabilities use a distinct `CompilerAbiSupport` protobuf message.
+The checked-in `cmake/abi/compiler_support.textproto` is parsed and validated by a
+build tool, then embedded as binary protobuf in the compiler. Unknown bindings,
+duplicate rule versions, missing rules, and invalid emission defaults fail the
+build. Runtime compilation reads only the embedded descriptor; editing an external
+manifest cannot change an existing compiler. Requirement emission and support
+reporting resolve this descriptor against the compiled implementation registry.
+Experimental versions still resolve to the implementation fingerprint, not a
+configurable compatibility identity. The manifest and generated descriptor are
+fingerprint inputs. Each rule currently has one implemented version; multiple
+version selection and shared lowering descriptors remain unfinished.
+
 The implementation writes a complete `MoonLibrary` protobuf containing the
 library identity, contract, module metadata and bitcode references, and native
 archive records. The container header locates this record; compiled payload
@@ -61,14 +73,24 @@ duplicate declaration identities, missing ownership links, and ownership cycles.
 Source locations, documentation, optional source text, and producer diagnostics
 are excluded. Ordered fields, parameters, and statements remain ordered.
 
-Native archive authorization is currently limited to Linux x86-64 GNU ELF code
-with an audited baseline integer instruction set. The checker independently
-decodes instructions, checks relocations and symbol namespaces, and rejects
-unestablished runtime references, TLS, and native initialization arrays. The
-supported `atexit` service is recorded only when referenced and is implemented by
-the JIT's cleanup handler or the executable's C runtime. The repository's prebuilt
-musl OpenSSL archives are outside this profile, so TLS bundle packaging currently
-fails closed. This is a missing general native profile, not an OpenSSL exception.
+Native archive authorization currently supports Linux x86-64 GNU ELF objects.
+The `native.elf.x86_64.declared` rule uses normal native-linking trust: the
+checker validates object headers, symbol namespaces, and external
+runtime references, without disassembling code or maintaining an instruction
+allowlist. Relocation support and application are delegated to the selected
+native or JIT linker, whose failures remain compilation errors. CPU requirements are declarations in the bundle target profile and
+are checked by `AbiCompatibilityChecker`; the native producer is responsible for
+making those declarations accurate, including any runtime CPU dispatch. Native
+instruction bytes do not independently establish or contradict a declaration.
+A dedicated build-configuration interface for additional native requirements is
+still unfinished; the packager does not infer them from compiler flags or archives.
+
+Unestablished runtime references, TLS, and native initialization arrays remain
+unsupported. The supported `atexit` service is recorded when referenced and is
+implemented by the JIT's cleanup handler or the executable's C runtime. Other
+target profiles, including AArch64 and musl, remain unsupported for native archives.
+Removing the instruction scan does not complete OpenSSL packaging: its runtime
+requirements must also be supported, and the selected linker must accept its objects.
 
 `sun --abi-info` emits the current experimental target profile, supported rule
 implementations, producer identity, and rebuild guidance as JSON for release

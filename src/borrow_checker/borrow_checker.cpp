@@ -357,9 +357,11 @@ void BorrowChecker::checkVariableCreation(
       if (init->getType() == ASTNodeType::PAREN_EXPR) {
         init = static_cast<const ParenExprAST&>(*init).getInner();
       } else if (init->getType() == ASTNodeType::MATCH &&
-                 static_cast<const sun::ast::MatchExprAST&>(*init).isPropagation()) {
+                 static_cast<const sun::ast::MatchExprAST&>(*init)
+                     .isPropagation()) {
         // Propagation retains the successful reference's original owner.
-        init = static_cast<const sun::ast::MatchExprAST&>(*init).getDiscriminant();
+        init =
+            static_cast<const sun::ast::MatchExprAST&>(*init).getDiscriminant();
       } else if (init->getType() == ASTNodeType::UNSAFE_BLOCK) {
         const auto& body =
             static_cast<const UnsafeBlockAST&>(*init).getBody().getBody();
@@ -550,11 +552,14 @@ void BorrowChecker::borrowRefCallInputs(const std::string& refName,
       if (source->getType() == ASTNodeType::PAREN_EXPR) {
         source = static_cast<const ParenExprAST&>(*source).getInner();
       } else if (source->getType() == ASTNodeType::MATCH &&
-                 static_cast<const sun::ast::MatchExprAST&>(*source).isPropagation()) {
-        source = static_cast<const sun::ast::MatchExprAST&>(*source).getDiscriminant();
+                 static_cast<const sun::ast::MatchExprAST&>(*source)
+                     .isPropagation()) {
+        source = static_cast<const sun::ast::MatchExprAST&>(*source)
+                     .getDiscriminant();
       } else if (source->getType() == ASTNodeType::CALL &&
                  classStoresRefs(source->getResolvedType())) {
-        const auto* callee = static_cast<const CallExprAST&>(*source).getCallee();
+        const auto* callee =
+            static_cast<const CallExprAST&>(*source).getCallee();
         if (!callee || callee->getType() != ASTNodeType::MEMBER_ACCESS) break;
         source = static_cast<const MemberAccessAST&>(*callee).getObject();
       } else {
