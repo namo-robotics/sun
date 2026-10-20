@@ -3081,9 +3081,11 @@ std::vector<ManifestArchiveDependency> Parser::parseManifestArchives() {
         expectCurrentTokenKind(TokenKind::COLON,
                                "expected ':' after archive field");
         getNextToken();
-        if (field == "path") {
-          expectCurrentTokenKind(TokenKind::STRING, "expected archive path");
-          dep.path = curTok.getString().value();
+        if (field == "path" || field == "provenance") {
+          expectCurrentTokenKind(TokenKind::STRING,
+                                 "expected archive field text");
+          (field == "path" ? dep.path : dep.provenance) =
+              curTok.getString().value();
           getNextToken();
         } else if (field == "cpu_features" || field == "runtime") {
           auto& values =
@@ -3547,14 +3549,9 @@ unique_ptr<ExprAST> Parser::parseQualifiedOrSimpleName() {
       std::make_unique<VariableReferenceAST>(std::move(firstName)), start);
 }
 
-// Handle import of a precompiled .moon file
-// Returns a MoonScopeAST wrapping all module stubs, or nullptr if already
-// imported
-std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
+std::unique_ptr<sun::moon_bundling::MoonReader> Parser::openMoonImport(
     const sun::moon_bundling::MoonImport& moonImport) {
   const std::string& moonPath = moonImport.path;
-  std::string contentHash;
-
   auto resolveOne = [&](const std::string& path) -> std::filesystem::path {
     if (std::filesystem::path(path).is_absolute()) {
       return std::filesystem::exists(path) ? std::filesystem::path(path)
@@ -3595,8 +3592,18 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
     logAndThrowError("Failed to open moon: " + resolvedStr);
     return nullptr;
   }
-  sun::abi::AbiCompatibilityChecker::current().validate(*reader);
   PARSER_TIMER_END(open_moon);
+  return reader;
+}
+
+std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
+    const sun::moon_bundling::MoonImport& moonImport,
+    std::unique_ptr<sun::moon_bundling::MoonReader> reader) {
+  if (!reader) reader = openMoonImport(moonImport);
+  sun::abi::AbiCompatibilityChecker::current().validate(*reader);
+  const auto resolved = reader->getPath();
+  const auto resolvedStr = resolved.string();
+  std::string contentHash;
 
   // Process each module in the bundle, grouping by module name
   // to consolidate stubs and detect name collisions
@@ -3811,7 +3818,7 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
   PARSER_TIMER_END(process_modules);
 
   // Store the moon reader in the cache for later linking
-  sun::moon_bundling::LibraryCache::instance().addBundle(resolved);
+  sun::moon_bundling::LibraryCache::instance().addBundle(std::move(reader));
 
   // Determine the alias if provided (from moduleRemap)
   std::optional<std::string> alias;

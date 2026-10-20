@@ -30,26 +30,37 @@ void LibraryCache::addSearchPath(const std::filesystem::path& path) {
 }
 
 void LibraryCache::addBundle(const std::filesystem::path& bundlePath) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  auto reader = MoonReader::open(bundlePath);
+  if (reader) addBundle(std::move(reader));
+}
 
-  // Already loaded (possibly by directory discovery): just mark it as an
-  // explicit registration so selection can prefer it among equals.
+void LibraryCache::addBundle(std::unique_ptr<MoonReader> reader) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  const auto path = std::filesystem::weakly_canonical(reader->getPath());
+  std::set<MoonReader*> replaced;
   for (const auto& bundle : bundles_) {
-    if (bundle->getPath() == bundlePath) {
+    if (std::filesystem::weakly_canonical(bundle->getPath()) != path) continue;
+    if (*bundle->getBytes() == *reader->getBytes()) {
       pinnedBundles_.insert(bundle.get());
       return;
     }
+    replaced.insert(bundle.get());
   }
-
-  auto reader = MoonReader::open(bundlePath);
-  if (reader) {
-    // Index all modules in this bundle
-    for (const auto& modPath : reader->listModules()) {
-      moduleToBundle_[modPath].push_back(reader.get());
-    }
-    pinnedBundles_.insert(reader.get());
-    bundles_.push_back(std::move(reader));
+  for (auto it = moduleToBundle_.begin(); it != moduleToBundle_.end();) {
+    std::erase_if(it->second,
+                  [&](MoonReader* old) { return replaced.count(old); });
+    if (it->second.empty())
+      it = moduleToBundle_.erase(it);
+    else
+      ++it;
   }
+  for (auto* old : replaced) pinnedBundles_.erase(old);
+  std::erase_if(bundles_,
+                [&](const auto& old) { return replaced.count(old.get()); });
+  for (const auto& key : reader->listModules())
+    moduleToBundle_[key].push_back(reader.get());
+  pinnedBundles_.insert(reader.get());
+  bundles_.push_back(std::move(reader));
 }
 
 void LibraryCache::invalidateBundle(const std::filesystem::path& bundlePath) {
@@ -75,10 +86,12 @@ void LibraryCache::invalidateBundle(const std::filesystem::path& bundlePath) {
   discovered_ = false;
 }
 
-void LibraryCache::setTargetTriple(const std::string& triple) {
+void LibraryCache::setTargetTriple(const std::string& triple,
+                                   bool resetChecker) {
   std::lock_guard<std::mutex> lock(mutex_);
   targetTriple_ = triple;
-  abi::AbiCompatibilityChecker::current().beginCompilation(triple);
+  if (resetChecker)
+    abi::AbiCompatibilityChecker::current().beginCompilation(triple);
 }
 
 MoonReader* LibraryCache::selectBundle(

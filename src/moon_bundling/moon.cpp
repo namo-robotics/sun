@@ -129,6 +129,13 @@ void MoonWriter::declareNativeRequirements(
   abi::addNativeRequirements(contract_, cpuFeatures, runtimeServices);
 }
 
+void MoonWriter::recordNativeProvenance(const std::string& archiveDigest,
+                                        const std::string& description) {
+  auto* provenance = contract_.add_native_build_provenance();
+  provenance->set_archive_sha256(archiveDigest);
+  provenance->set_description(description);
+}
+
 void MoonWriter::addNativeArchive(std::string archiveSetHash, std::string name,
                                   std::string data) {
   nativeArchives_.push_back(

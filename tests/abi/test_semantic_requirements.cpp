@@ -190,6 +190,16 @@ TEST(ABI_Compatibility, LocalReferencesCannotHideAsExternalDependencies) {
                sun::support::SunError);
   reference->set_declaration_key("$" + std::string(64, 'b') + "$_1");
   EXPECT_NO_THROW(sun::abi::validateDeclarationGraph({&metadata}));
+  EXPECT_THROW(sun::abi::validateDeclarationGraph({&metadata}, true),
+               sun::support::SunError);
+  sun::moon::ModuleMetadata dependency;
+  auto* external = dependency.add_declarations();
+  external->set_key(reference->declaration_key());
+  external->set_kind(sun::moon::CLASS);
+  EXPECT_NO_THROW(
+      sun::abi::validateDeclarationGraph({&metadata, &dependency}, true));
+  EXPECT_NO_THROW(sun::abi::validateDeclarationGraph(
+      {&dependency, &metadata, &dependency}, true));
   reference->set_declaration_key("$" + std::string(64, 'z') + "$_1");
   EXPECT_THROW(sun::abi::validateDeclarationGraph({&metadata}),
                sun::support::SunError);
@@ -261,4 +271,28 @@ TEST(ABI_Compatibility, RehashedSpecializationCannotInventMethodBodies) {
               std::string::npos);
   }
   std::filesystem::remove(path);
+}
+
+/** Unused imports need no declarations, but retained code keeps its lookup
+ * scope. */
+TEST(ABI_Compatibility, NavigationImportsAreRequiredForRetainedCode) {
+  sun::moon::ModuleMetadata metadata;
+  auto* navigation = metadata.add_using_declarations();
+  navigation->mutable_using_stmt()->set_is_module_import(true);
+  navigation->set_module_declaration_key("$" + std::string(64, 'e') +
+                                         "$_module");
+  EXPECT_NO_THROW(sun::abi::validateDeclarationGraph({&metadata}, true));
+  metadata.add_functions()
+      ->mutable_body()
+      ->add_body()
+      ->mutable_bool_literal()
+      ->set_value(true);
+  EXPECT_THROW(sun::abi::validateDeclarationGraph({&metadata}, true),
+               sun::support::SunError);
+  sun::moon::ModuleMetadata dependency;
+  auto* module = dependency.add_declarations();
+  module->set_key(navigation->module_declaration_key());
+  module->set_kind(sun::moon::MODULE);
+  EXPECT_NO_THROW(
+      sun::abi::validateDeclarationGraph({&metadata, &dependency}, true));
 }

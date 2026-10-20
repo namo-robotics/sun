@@ -97,6 +97,9 @@ std::filesystem::path MoonBuilder::defaultOutputPath(
 MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
                                    const std::filesystem::path& outputPath,
                                    const MoonBuildOptions& options) {
+  abi::CompilationScope compatibility({options.targetTriple,
+                                       abi::NativeExecution::NativeLink,
+                                       options.debugInfo, options.optimize});
   sun::driver::GitDependencyBuildScope dependencyScope(
       options.debugInfo, options.optimize, options.forceRebuild);
   namespace fs = std::filesystem;
@@ -106,6 +109,7 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   // ---- Inputs: manifest (if any) + entrypoint itself ----
   MoonBuildReport report;
   std::vector<std::string> nativeCPUFeatures, nativeRuntimeServices;
+  std::vector<std::pair<std::string, std::string>> nativeProvenance;
   report.moonImports = options.extraMoons;
   // Resolve command-line imports before hashing the bundles they name.
   for (auto& moon : report.moonImports) {
@@ -122,6 +126,7 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
     report.archiveFiles = std::move(manifest->archiveFiles);
     nativeCPUFeatures = std::move(manifest->nativeCPUFeatures);
     nativeRuntimeServices = std::move(manifest->nativeRuntimeServices);
+    nativeProvenance = std::move(manifest->nativeProvenance);
   }
   report.sunFiles.insert(report.sunFiles.begin(), entrypointPath.string());
 
@@ -255,6 +260,10 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
     writer.addModule(driver->getModule(), metadata);
   }
   writer.declareNativeRequirements(nativeCPUFeatures, nativeRuntimeServices);
+  for (const auto& [path, description] : nativeProvenance)
+    for (const auto& archive : ownArchives)
+      if (archive.path == path)
+        writer.recordNativeProvenance(archive.digest, description);
   for (const auto& [identity, contract] :
        abi::AbiCompatibilityChecker::current().importedContracts())
     writer.inheritContract(contract);

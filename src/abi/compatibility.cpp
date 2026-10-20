@@ -12,6 +12,7 @@
 #include <llvm/TargetParser/Triple.h>
 
 #include <algorithm>
+#include <initializer_list>
 #include <mutex>
 
 #include "abi/boundary_requirements.h"
@@ -355,6 +356,17 @@ void mergeContractRequirements(BundleContract& destination,
                  inherited.native_link_symbols().end());
   merged.clear_native_link_symbols();
   for (const auto& symbol : symbols) merged.add_native_link_symbols(symbol);
+  std::set<std::pair<std::string, std::string>> provenance;
+  for (const BundleContract* contract :
+       std::initializer_list<const BundleContract*>{&destination, &inherited})
+    for (const auto& item : contract->native_build_provenance())
+      provenance.emplace(item.archive_sha256(), item.description());
+  merged.clear_native_build_provenance();
+  for (const auto& [digest, description] : provenance) {
+    auto* item = merged.add_native_build_provenance();
+    item->set_archive_sha256(digest);
+    item->set_description(description);
+  }
   destination = std::move(merged);
 }
 

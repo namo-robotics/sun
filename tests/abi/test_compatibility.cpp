@@ -21,6 +21,10 @@
 #include "abi/producer_identity.h"
 #include "abi/support_inventory.h"
 #include "abi/support_manifest.h"
+#include "driver/build_record.h"
+#include "driver/driver.h"
+#include "driver/input_hash.h"
+#include "moon_bundling/library_cache.h"
 #include "moon_bundling/moon.h"
 #include "support/error.h"
 
@@ -238,7 +242,23 @@ TEST(ABI_Compatibility, CheckerOwnsAuthorizationAndTracksImmutableSnapshots) {
   EXPECT_EQ(checker.bytesHash(*first), firstDigest);
   EXPECT_EQ(checker.importedContracts().size(), 1u);
 
-  first.reset();
+  auto& cache = sun::moon_bundling::LibraryCache::instance();
+  cache.clear();
+  cache.setTargetTriple("x86_64-linux-gnu");
+  const auto moduleKey = first->listModules().front();
+  cache.addBundle(std::move(first));
+  auto originalModule = cache.loadModule(moduleKey, context);
+  ASSERT_NE(originalModule, nullptr);
+  EXPECT_EQ(originalModule->getFunction("answer")->getCallingConv(),
+            llvm::CallingConv::C);
+  cache.addBundle(path);
+  sun::abi::AbiCompatibilityChecker::current().beginCompilation(
+      "x86_64-linux-gnu");
+  auto replacedModule = cache.loadModule(moduleKey, context);
+  ASSERT_NE(replacedModule, nullptr);
+  EXPECT_EQ(replacedModule->getFunction("answer")->getCallingConv(),
+            llvm::CallingConv::Fast);
+  cache.clear();
   checker.beginCompilation("x86_64-linux-musl");
   EXPECT_TRUE(checker.importedContracts().empty());
   EXPECT_EQ(authorization.contract().compatibility_hash(), firstContract);
@@ -346,6 +366,43 @@ TEST(ABI_Compatibility, ProducerWarningFollowsValidationAndIsDeduplicated) {
   EXPECT_NE(output.find("unknown producer ordering"), std::string::npos);
   EXPECT_NE(output.find(identity.build()), std::string::npos);
   EXPECT_NE(output.find("bundle contract verified"), std::string::npos);
+  // Preflight and driver imports belong to one compilation, even when a
+  // nested dependency build runs between them.
+  testing::internal::CaptureStderr();
+  {
+    sun::abi::CompilationScope scope(
+        {"x86_64-linux-gnu", sun::abi::NativeExecution::NativeLink});
+    sun::driver::BuildInputs inputs;
+    inputs.targetTriple = "x86_64-linux-gnu";
+    inputs.moonImports.push_back({path.string(), {}});
+    inputs.settings.emplace_back("sysroot", "/target");
+    EXPECT_NO_THROW(sun::driver::computeInputHash(inputs));
+    auto* parent = &sun::abi::AbiCompatibilityChecker::current();
+    EXPECT_EQ(parent->context().linkOptions, inputs.settings);
+    EXPECT_EQ(parent->importedContracts().size(), 1);
+    inputs.debugInfo = true;
+    EXPECT_NO_THROW(sun::driver::computeInputHash(inputs));
+    inputs.debugInfo = false;
+    {
+      sun::abi::CompilationScope nested(
+          {"aarch64-linux-gnu", sun::abi::NativeExecution::NativeLink});
+      EXPECT_NE(&sun::abi::AbiCompatibilityChecker::current(), parent);
+      EXPECT_TRUE(sun::abi::AbiCompatibilityChecker::current()
+                      .importedContracts()
+                      .empty());
+    }
+    EXPECT_EQ(&sun::abi::AbiCompatibilityChecker::current(), parent);
+    auto driver =
+        sun::driver::Driver::createForAOT("scope", inputs.targetTriple);
+    EXPECT_EQ(parent->importedContracts().size(), 1);
+    EXPECT_NO_THROW(parent->validate(*reader));
+    EXPECT_NO_THROW(sun::driver::readMoonInputHash(path.string()));
+  }
+  output = testing::internal::GetCapturedStderr();
+  const auto scopedWarning = output.find("[sun][warning]");
+  EXPECT_NE(scopedWarning, std::string::npos);
+  EXPECT_EQ(output.find("[sun][warning]", scopedWarning + 1),
+            std::string::npos);
   std::filesystem::remove(path);
 }
 
@@ -667,4 +724,82 @@ TEST(ABI_Compatibility, NativeLinkChecksTargetCPUInsteadOfBuildHost) {
     EXPECT_THROW(checker.validateContract(declared, "cross.moon", triple),
                  sun::support::SunError);
   }
+}
+
+/** Options and runtime changes discard previous authorizations. */
+TEST(ABI_Compatibility, CompilationSettingsInvalidateAuthorizations) {
+  llvm::LLVMContext llvmContext;
+  llvm::Module module("scope", llvmContext);
+  module.setTargetTriple("x86_64-linux-gnu");
+  module.setDataLayout(
+      sun::abi::compatibilityTarget(module.getTargetTriple()).data_layout());
+  sun::moon_bundling::MoonWriter writer(std::string(64, 'b'));
+  sun::moon::ModuleMetadata metadata;
+  metadata.set_source_hash("scope");
+  writer.addModule(module, metadata);
+  const auto path = bundlePath();
+  ASSERT_TRUE(writer.write(path));
+  auto reader = sun::moon_bundling::MoonReader::open(path);
+  ASSERT_NE(reader, nullptr);
+  sun::abi::CompilationContext context{"x86_64-linux-gnu",
+                                       sun::abi::NativeExecution::NativeLink};
+  sun::abi::AbiCompatibilityChecker checker(context);
+  auto accepted = checker.validate(*reader);
+  context.linkOptions.emplace_back("sysroot", "/different");
+  checker.configure(context);
+  EXPECT_TRUE(checker.importedContracts().empty());
+  EXPECT_NO_THROW(checker.validate(*reader));
+  checker.configure(context);
+  EXPECT_EQ(checker.importedContracts().size(), 1);
+  context.optimize = false;
+  checker.configure(context);
+  EXPECT_TRUE(checker.importedContracts().empty());
+  EXPECT_FALSE(accepted.contract().compatibility_hash().empty());
+  std::filesystem::remove(path);
+}
+
+/** Rehashed external references must resolve before preflight or AST import. */
+TEST(ABI_Compatibility, CompleteImportSetRejectsMissingExternalReferences) {
+  llvm::LLVMContext context;
+  llvm::Module module("external", context);
+  module.setTargetTriple("x86_64-linux-gnu");
+  module.setDataLayout(
+      sun::abi::compatibilityTarget(module.getTargetTriple()).data_layout());
+  const auto consumerPath = bundlePath();
+  const std::filesystem::path dependencyPath =
+      consumerPath.string() + ".dependency";
+  const std::string key = "$" + std::string(64, 'd') + "$_type";
+  sun::moon::ModuleMetadata consumer;
+  consumer.set_source_hash("consumer");
+  consumer.add_globals()->mutable_type_annotation()->set_declaration_key(key);
+  sun::moon_bundling::MoonWriter consumerWriter(std::string(64, 'c'));
+  consumerWriter.addModule(module, consumer);
+  ASSERT_TRUE(consumerWriter.write(consumerPath));
+  sun::moon::ModuleMetadata dependency;
+  dependency.set_source_hash("dependency");
+  auto* declaration = dependency.add_declarations();
+  declaration->set_key(key);
+  declaration->set_kind(sun::moon::CLASS);
+  sun::moon_bundling::MoonWriter dependencyWriter(std::string(64, 'd'));
+  dependencyWriter.addModule(module, dependency);
+  ASSERT_TRUE(dependencyWriter.write(dependencyPath));
+  auto reader = sun::moon_bundling::MoonReader::open(consumerPath);
+  auto owner = sun::moon_bundling::MoonReader::open(dependencyPath);
+  ASSERT_NE(reader, nullptr);
+  ASSERT_NE(owner, nullptr);
+  sun::abi::AbiCompatibilityChecker checker("x86_64-linux-gnu");
+  EXPECT_THROW(checker.validateImports({reader.get()}), sun::support::SunError);
+  EXPECT_TRUE(checker.importedContracts().empty());
+  EXPECT_NO_THROW(checker.validateImports({reader.get(), owner.get()}));
+  checker.beginCompilation("x86_64-linux-gnu");
+  EXPECT_NO_THROW(
+      checker.validateImports({owner.get(), reader.get(), owner.get()}));
+  sun::driver::BuildInputs inputs;
+  inputs.targetTriple = "x86_64-linux-gnu";
+  inputs.moonImports.emplace_back(consumerPath.string());
+  EXPECT_THROW(sun::driver::computeInputHash(inputs), sun::support::SunError);
+  inputs.moonImports.emplace_back(dependencyPath.string());
+  EXPECT_NO_THROW(sun::driver::computeInputHash(inputs));
+  std::filesystem::remove(consumerPath);
+  std::filesystem::remove(dependencyPath);
 }

@@ -14,9 +14,11 @@ namespace sun::abi {
  * fields. */
 std::string describeSemantics(const moon::ModuleMetadata& metadata);
 /** Checks declaration ownership and retained references against bundle and
- * compiler-provided identities before import. */
+ * compiler-provided identities before import. Complete import sets also reject
+ * unresolved external references and allow identical embedded records. */
 void validateDeclarationGraph(
-    const std::vector<const moon::ModuleMetadata*>& modules);
+    const std::vector<const moon::ModuleMetadata*>& modules,
+    bool completeImportSet = false);
 /** Checks that advertised precompiled specialization methods have definitions.
  */
 void validateSpecializationPayload(const moon::ModuleMetadata& metadata,

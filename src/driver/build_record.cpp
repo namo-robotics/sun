@@ -112,8 +112,10 @@ std::optional<std::string> readMoonInputHash(const std::string& path) {
   try {
     reader = sun::moon_bundling::MoonReader::open(path);
     if (reader) {
-      sun::abi::AbiCompatibilityChecker checker(
-          reader->getTargetTriple(), sun::abi::NativeExecution::NativeLink);
+      sun::abi::CompilationContext context{
+          reader->getTargetTriple(), sun::abi::NativeExecution::NativeLink};
+      context.producerWarnings = false;
+      sun::abi::AbiCompatibilityChecker checker(std::move(context));
       checker.validate(*reader);
     }
   } catch (const sun::support::SunError&) {

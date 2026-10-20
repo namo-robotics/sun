@@ -578,13 +578,19 @@ class Parser {
    */
   unique_ptr<ExprAST> parseQualifiedOrSimpleName();
 
+  /** Resolves an import to an immutable snapshot without importing
+   * declarations. */
+  std::unique_ptr<sun::moon_bundling::MoonReader> openMoonImport(
+      const sun::moon_bundling::MoonImport& moonImport);
+
   /**
    * Collect AST stubs from a precompiled .moon file
    * Returns a MoonScopeAST wrapping all module stubs with content hash
    * Returns nullptr if the moon was already imported
    */
   std::unique_ptr<sun::ast::MoonScopeAST> collectMoonImport(
-      const sun::moon_bundling::MoonImport& moonImport);
+      const sun::moon_bundling::MoonImport& moonImport,
+      std::unique_ptr<sun::moon_bundling::MoonReader> reader = nullptr);
 
   /**
    * Create AST stubs from module metadata and append to collectedAST

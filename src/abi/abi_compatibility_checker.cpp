@@ -8,6 +8,8 @@
 #include <llvm/TargetParser/Host.h>
 #include <llvm/TargetParser/Triple.h>
 
+#include <optional>
+
 #include "abi/boundary_requirements.h"
 #include "abi/native_requirements.h"
 #include "abi/producer_identity.h"
@@ -20,24 +22,63 @@
 /** Owns compatibility policy independently of bundle container decoding. */
 namespace sun::abi {
 
+/** Tracks the innermost compilation without sharing state across threads. */
+namespace {
+thread_local AbiCompatibilityChecker* scopedChecker = nullptr;
+}
+
 AbiCompatibilityChecker::AbiCompatibilityChecker(std::string targetTriple,
                                                  NativeExecution execution)
-    : targetTriple_(std::move(targetTriple)), execution_(execution) {}
+    : AbiCompatibilityChecker(
+          CompilationContext{std::move(targetTriple), execution}) {}
+
+AbiCompatibilityChecker::AbiCompatibilityChecker(CompilationContext context)
+    : context_(std::move(context)) {}
 
 AbiCompatibilityChecker& AbiCompatibilityChecker::current() {
   thread_local AbiCompatibilityChecker checker;
-  return checker;
+  return scopedChecker ? *scopedChecker : checker;
+}
+
+bool AbiCompatibilityChecker::hasCompilationScope() {
+  return scopedChecker != nullptr;
+}
+
+void AbiCompatibilityChecker::prepareCompilation(
+    const std::string& targetTriple, NativeExecution execution, bool debugInfo,
+    bool optimize) {
+  auto& checker = current();
+  const auto& context = checker.context();
+  if (scopedChecker && context.targetTriple == targetTriple &&
+      context.execution == execution && context.debugInfo == debugInfo &&
+      context.optimize == optimize)
+    return;
+  checker.beginCompilation(targetTriple, execution);
+  checker.context_.debugInfo = debugInfo;
+  checker.context_.optimize = optimize;
+}
+
+void AbiCompatibilityChecker::configure(CompilationContext context) {
+  if (context_ == context) return;
+  beginCompilation(context.targetTriple, context.execution);
+  context_ = std::move(context);
 }
 
 void AbiCompatibilityChecker::beginCompilation(const std::string& targetTriple,
                                                NativeExecution execution) {
-  targetTriple_ = targetTriple;
-  execution_ = execution;
+  context_ = CompilationContext{targetTriple, execution};
   byteHashes_.clear();
   warnedBundles_.clear();
   importedContracts_.clear();
   validatedBundles_.clear();
 }
+
+CompilationScope::CompilationScope(CompilationContext context)
+    : checker_(std::move(context)), previous_(scopedChecker) {
+  scopedChecker = &checker_;
+}
+
+CompilationScope::~CompilationScope() { scopedChecker = previous_; }
 
 std::string AbiCompatibilityChecker::bytesHash(
     const moon_bundling::MoonReader& reader) const {
@@ -51,16 +92,57 @@ std::string AbiCompatibilityChecker::bytesHash(
 
 ValidatedBundle AbiCompatibilityChecker::validate(
     moon_bundling::MoonReader& reader) {
-  return validate(reader, targetTriple_);
+  return validate(reader, context_.targetTriple);
 }
 
 ValidatedBundle AbiCompatibilityChecker::validate(
     moon_bundling::MoonReader& reader, const std::string& targetTriple) {
+  return validateImpl(reader, targetTriple, true);
+}
+
+void AbiCompatibilityChecker::validateImports(
+    const std::vector<moon_bundling::MoonReader*>& readers) {
+  std::vector<const moon::ModuleMetadata*> metadata;
+  std::set<std::string> snapshots;
+  std::string imports;
+  std::optional<BundleContract> combined;
+  for (const auto& [identity, contract] : importedContracts_) {
+    if (combined)
+      mergeContractRequirements(*combined, contract);
+    else
+      combined = contract;
+  }
+  for (auto* reader : readers) {
+    const auto validated = validateImpl(*reader, context_.targetTriple, false);
+    imports += " '" + reader->getPath().string() + "' (contract " +
+               validated.contract().compatibility_hash() + ")";
+    if (!snapshots.insert(bytesHash(*reader)).second) continue;
+    if (combined)
+      mergeContractRequirements(*combined, validated.contract());
+    else
+      combined = validated.contract();
+    for (const auto& key : reader->listModules())
+      metadata.push_back(reader->getMetadata(key));
+  }
+  try {
+    validateDeclarationGraph(metadata, true);
+  } catch (const sun::support::SunError& error) {
+    sun::support::logAndThrowError("Invalid dependency declaration graph for" +
+                                   imports + ": " + error.what());
+  }
+  for (auto* reader : readers)
+    recordValidatedImport(reader->getLibrary().bundle_contract(),
+                          bytesHash(*reader), reader->getPath().string());
+}
+
+ValidatedBundle AbiCompatibilityChecker::validateImpl(
+    moon_bundling::MoonReader& reader, const std::string& targetTriple,
+    bool record) {
   const auto digest = bytesHash(reader);
-  const auto key =
-      std::make_pair(digest, targetTriple + ":" +
-                                 std::to_string(static_cast<int>(execution_)) +
-                                 ":" + compatibilityImplementation());
+  const auto key = std::make_pair(
+      digest, targetTriple + ":" +
+                  std::to_string(static_cast<int>(context_.execution)) + ":" +
+                  compatibilityImplementation());
   auto found = validatedBundles_.find(key);
   if (found == validatedBundles_.end()) {
     const auto modules = reader.listModules();
@@ -174,7 +256,8 @@ ValidatedBundle AbiCompatibilityChecker::validate(
                 .emplace(key, std::make_shared<const BundleContract>(contract))
                 .first;
   }
-  recordValidatedImport(*found->second, digest, reader.getPath().string());
+  if (record)
+    recordValidatedImport(*found->second, digest, reader.getPath().string());
   return ValidatedBundle(found->second);
 }
 
@@ -249,7 +332,7 @@ void AbiCompatibilityChecker::validateContract(
        {"moon.interface", "llvm.bitcode", "sun.experimental.semantics"})
     if (!seen.count(mandatory))
       fail(std::string("missing required rule '") + mandatory + "'");
-  if (execution_ == NativeExecution::JIT &&
+  if (context_.execution == NativeExecution::JIT &&
       (seen.count("native.runtime.initializers") ||
        seen.count("native.runtime.thread_local")))
     fail(
@@ -330,6 +413,7 @@ void AbiCompatibilityChecker::recordValidatedImport(
         ": incompatible imported requirements: " + error.what());
   }
   importedContracts_.emplace(bytesHash, contract);
+  if (!context_.producerWarnings) return;
   const auto current = currentProducerIdentity();
   const auto ordering = compareProducerIdentity(contract.producer(), current);
   if ((ordering == ProducerOrdering::Older ||

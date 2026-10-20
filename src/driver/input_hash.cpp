@@ -60,17 +60,14 @@ std::string digestBytes(llvm::StringRef bytes) {
  * already covers everything inside it, and how its modules are renamed here.
  */
 std::string hashMoonImport(const sun::moon_bundling::MoonImport& import,
-                           const std::string& target,
+                           sun::moon_bundling::MoonReader& reader,
                            sun::abi::AbiCompatibilityChecker& checker) {
-  auto reader = sun::moon_bundling::MoonReader::open(import.path);
-  if (!reader) fail("Cannot open imported moon: " + import.path);
-  checker.validate(*reader, target);
-  const auto modules = reader->listModules();
+  const auto modules = reader.listModules();
   const auto* first =
-      modules.empty() ? nullptr : reader->getMetadata(modules[0]);
+      modules.empty() ? nullptr : reader.getMetadata(modules[0]);
   if (!first) fail("Imported moon has no modules: " + import.path);
   std::string dependency = hashField("digest", first->content_hash()) +
-                           hashField("bytes", checker.bytesHash(*reader));
+                           hashField("bytes", checker.bytesHash(reader));
   // An alias changes which symbols the importing code refers to
   for (const auto& [from, to] : std::map<std::string, std::string>(
            import.moduleRemap.begin(), import.moduleRemap.end())) {
@@ -126,8 +123,23 @@ void addSourceDigests(BuildInputs& inputs,
 
 /** Computes a digest covering the inputs and settings of a build. */
 std::string computeInputHash(const BuildInputs& inputs) {
-  sun::abi::AbiCompatibilityChecker checker(
-      inputs.targetTriple, sun::abi::NativeExecution::NativeLink);
+  sun::abi::CompilationContext context{
+      inputs.targetTriple, sun::abi::NativeExecution::NativeLink,
+      inputs.debugInfo, inputs.optimize, inputs.settings};
+  sun::abi::AbiCompatibilityChecker isolated(context);
+  auto& current = sun::abi::AbiCompatibilityChecker::current();
+  const auto& active = current.context();
+  const bool share = sun::abi::AbiCompatibilityChecker::hasCompilationScope() &&
+                     active.targetTriple == context.targetTriple &&
+                     active.execution == context.execution &&
+                     active.debugInfo == context.debugInfo &&
+                     active.optimize == context.optimize;
+  // A differently configured artifact may only be probed for build skipping.
+  // Its real compilation gets its own scope and emits import diagnostics there.
+  if (sun::abi::AbiCompatibilityChecker::hasCompilationScope() && !share)
+    context.producerWarnings = false;
+  auto& checker = share ? current : isolated;
+  checker.configure(std::move(context));
   std::string input = "sun.inputs.v1";
   input += hashField("kind", inputs.artifactKind);
 
@@ -144,11 +156,19 @@ std::string computeInputHash(const BuildInputs& inputs) {
   std::sort(archiveLines.begin(), archiveLines.end());
   for (const auto& line : archiveLines) input += hashField("archive", line);
 
-  std::vector<std::string> dependencies;
+  std::vector<std::unique_ptr<sun::moon_bundling::MoonReader>> readers;
+  std::vector<sun::moon_bundling::MoonReader*> snapshots;
   for (const auto& import : inputs.moonImports) {
-    dependencies.push_back(
-        hashMoonImport(import, inputs.targetTriple, checker));
+    auto reader = sun::moon_bundling::MoonReader::open(import.path);
+    if (!reader) fail("Cannot open imported moon: " + import.path);
+    snapshots.push_back(reader.get());
+    readers.push_back(std::move(reader));
   }
+  checker.validateImports(snapshots);
+  std::vector<std::string> dependencies;
+  for (size_t i = 0; i < inputs.moonImports.size(); ++i)
+    dependencies.push_back(
+        hashMoonImport(inputs.moonImports[i], *readers[i], checker));
   std::sort(dependencies.begin(), dependencies.end());
   for (const auto& dependency : dependencies)
     input += hashField("moon", dependency);

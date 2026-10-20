@@ -5,6 +5,7 @@
 #include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "abi/compatibility.h"
 
@@ -19,6 +20,18 @@ namespace sun::abi {
 
 /** Selects the runtime that must implement imported native requirements. */
 enum class NativeExecution { JIT, NativeLink };
+
+/** Settings whose changes require fresh import authorization. */
+struct CompilationContext {
+  std::string targetTriple;
+  NativeExecution execution = NativeExecution::JIT;
+  bool debugInfo = false;
+  bool optimize = true;
+  std::vector<std::pair<std::string, std::string>> linkOptions;
+  bool producerWarnings = true;
+  /** Compares all options, preserving native link order. */
+  bool operator==(const CompilationContext&) const = default;
+};
 
 /** Owns a verified contract, remaining valid after the reader or checker is
  * reset. */
@@ -44,6 +57,18 @@ class AbiCompatibilityChecker {
   explicit AbiCompatibilityChecker(
       std::string targetTriple = "",
       NativeExecution execution = NativeExecution::JIT);
+  /** Creates a checker with the complete compilation settings. */
+  explicit AbiCompatibilityChecker(CompilationContext context);
+  /** Returns immutable settings used by all validations in this checker. */
+  const CompilationContext& context() const { return context_; }
+  /** Resets authorizations when any compilation setting changes. */
+  void configure(CompilationContext context);
+  /** Prepares a driver, retaining matching preflight state inside a scope. */
+  static void prepareCompilation(const std::string& targetTriple,
+                                 NativeExecution execution, bool debugInfo,
+                                 bool optimize);
+  /** Reports whether an explicit compilation scope owns the current checker. */
+  static bool hasCompilationScope();
   /** Returns the current thread's checker shared by compiler import paths. */
   static AbiCompatibilityChecker& current();
   /** Starts a compilation, discarding cached authorizations and warning state.
@@ -52,6 +77,9 @@ class AbiCompatibilityChecker {
                         NativeExecution execution = NativeExecution::JIT);
   /** Checks the complete contract and all payloads against this compilation. */
   ValidatedBundle validate(moon_bundling::MoonReader& reader);
+  /** Checks a complete import set, including external references, before use.
+   */
+  void validateImports(const std::vector<moon_bundling::MoonReader*>& readers);
   /** Checks an explicitly selected target without changing the compilation
    * target. */
   ValidatedBundle validate(moon_bundling::MoonReader& reader,
@@ -71,6 +99,9 @@ class AbiCompatibilityChecker {
   }
 
  private:
+  /** Validates immutable bytes, optionally recording an authorized import. */
+  ValidatedBundle validateImpl(moon_bundling::MoonReader& reader,
+                               const std::string& targetTriple, bool record);
   /** Checks emitted boundaries against the independently supported contract. */
   void validatePayload(const BundleContract& contract,
                        const llvm::Module& module, const std::string& bundle,
@@ -86,12 +117,28 @@ class AbiCompatibilityChecker {
   mutable std::map<std::weak_ptr<const std::string>, std::string,
                    std::owner_less<std::weak_ptr<const std::string>>>
       byteHashes_;
-  std::string targetTriple_;
-  NativeExecution execution_;
+  CompilationContext context_;
   std::set<std::string> warnedBundles_;
   std::map<std::string, BundleContract> importedContracts_;
   std::map<std::pair<std::string, std::string>,
            std::shared_ptr<const BundleContract>>
       validatedBundles_;
+};
+/** Shares preflight and import validation; nested builds restore their parent.
+ */
+class CompilationScope {
+ public:
+  /** Starts an isolated compilation on this thread. */
+  explicit CompilationScope(CompilationContext context);
+  /** Restores the parent compilation, including its warnings and imports. */
+  ~CompilationScope();
+  /** Keeps scope ownership tied to its original stack lifetime. */
+  CompilationScope(const CompilationScope&) = delete;
+  /** Prevents replacing a live thread-local scope. */
+  CompilationScope& operator=(const CompilationScope&) = delete;
+
+ private:
+  AbiCompatibilityChecker checker_;
+  AbiCompatibilityChecker* previous_;
 };
 }  // namespace sun::abi

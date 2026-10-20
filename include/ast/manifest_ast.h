@@ -40,6 +40,7 @@ struct ManifestArchiveDependency {
   std::string path;
   std::vector<std::string> cpuFeatures;
   std::vector<std::string> runtimeServices;
+  std::string provenance;
 };
 
 /**

@@ -294,7 +294,9 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
   ensureLLVMInitialized();
 
   // JIT always runs on the host; .moon bundle selection must match.
-  LibraryCache::instance().setTargetTriple("");
+  LibraryCache::instance().setTargetTriple("", false);
+  abi::AbiCompatibilityChecker::prepareCompilation(
+      "", abi::NativeExecution::JIT, debugInfo, optimize);
 
   auto jit = SunJIT::Create(optimize);
   if (!jit) {
@@ -342,9 +344,9 @@ std::unique_ptr<Driver> Driver::createForAOT(const std::string& moduleName,
 
   // Both the parser's bundle resolution and the linker's bundle selection
   // key off this; setting it here keeps API users consistent with the CLI.
-  LibraryCache::instance().setTargetTriple(targetTriple);
-  abi::AbiCompatibilityChecker::current().beginCompilation(
-      targetTriple, abi::NativeExecution::NativeLink);
+  LibraryCache::instance().setTargetTriple(targetTriple, false);
+  abi::AbiCompatibilityChecker::prepareCompilation(
+      targetTriple, abi::NativeExecution::NativeLink, debugInfo, optimize);
 
   auto ctx = std::make_unique<sun::codegen::CodegenContext>(
       moduleName, nullptr,
@@ -526,6 +528,15 @@ static void processMoonImports(BlockExprAST& blockAst, Parser& parser,
     return;
   }
 
+  // Resolve the complete graph before any bundle declarations enter the AST.
+  std::vector<std::unique_ptr<sun::moon_bundling::MoonReader>> readers;
+  std::vector<sun::moon_bundling::MoonReader*> snapshots;
+  for (const auto& moonImport : moonImports) {
+    readers.push_back(parser.openMoonImport(moonImport));
+    snapshots.push_back(readers.back().get());
+  }
+  abi::AbiCompatibilityChecker::current().validateImports(snapshots);
+
   // Collect top-level module names from source files
   std::unordered_set<std::string> sourceModuleNames;
   for (const auto& stmt : blockAst.getBody()) {
@@ -541,8 +552,10 @@ static void processMoonImports(BlockExprAST& blockAst, Parser& parser,
   std::unordered_map<std::string, std::pair<std::string, std::string>>
       moduleProviders;  // module_name -> (moon_path, content_hash)
 
+  size_t importIndex = 0;
   for (const auto& moonImport : moonImports) {
-    auto stub = parser.collectMoonImport(moonImport);
+    auto stub =
+        parser.collectMoonImport(moonImport, std::move(readers[importIndex++]));
     if (!stub) {
       continue;
     }

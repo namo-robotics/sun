@@ -258,6 +258,9 @@ ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
         for (const auto& archiveDep : archives) {
           out.archiveFiles.push_back(resolvePath(
               expandPathVariables(archiveDep.path, config), baseDir, config));
+          if (!archiveDep.provenance.empty())
+            out.nativeProvenance.emplace_back(out.archiveFiles.back(),
+                                              archiveDep.provenance);
           out.nativeCPUFeatures.insert(out.nativeCPUFeatures.end(),
                                        archiveDep.cpuFeatures.begin(),
                                        archiveDep.cpuFeatures.end());

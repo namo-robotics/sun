@@ -172,11 +172,41 @@ const std::vector<moon::DeclarationRecord>& builtinDeclarations() {
   }();
   return records;
 }
+/** Finds code that an importer must interpret, excluding module using records.
+ */
+bool hasRetainedCode(const google::protobuf::Message& message,
+                     unsigned depth = 0) {
+  if (depth > 128)
+    sun::support::logAndThrowError(
+        "Unsupported retained metadata nesting depth");
+  if (message.GetDescriptor()->full_name() == "sun.proto.ast.ASTNode")
+    return true;
+  const auto* reflection = message.GetReflection();
+  std::vector<const google::protobuf::FieldDescriptor*> fields;
+  reflection->ListFields(message, &fields);
+  for (const auto* field : fields) {
+    if (field->cpp_type() !=
+            google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE ||
+        field->name() == "using_declarations")
+      continue;
+    if (field->is_repeated()) {
+      for (int i = 0; i < reflection->FieldSize(message, field); ++i)
+        if (hasRetainedCode(reflection->GetRepeatedMessage(message, field, i),
+                            depth + 1))
+          return true;
+    } else if (hasRetainedCode(reflection->GetMessage(message, field),
+                               depth + 1))
+      return true;
+  }
+  return false;
+}
+
 /** Checks portable references throughout private bodies and nested types. */
 void validateReferences(
     const google::protobuf::Message& message,
     const std::map<std::string, const moon::DeclarationRecord*>& records,
-    const std::set<std::string>& bundleScopes, unsigned depth) {
+    const std::set<std::string>& bundleScopes, bool completeImportSet,
+    unsigned depth) {
   if (depth > 128)
     sun::support::logAndThrowError(
         "Unsupported retained metadata nesting depth");
@@ -190,6 +220,9 @@ void validateReferences(
       sun::support::logAndThrowError("Compiled specialization has no identity");
     return;
   }
+  const bool needsNavigation =
+      descriptor->full_name() != "sun.moon.ModuleMetadata" ||
+      hasRetainedCode(message);
   const bool identity =
       descriptor->full_name() == "sun.proto.ast.DeclarationIdentity";
   std::vector<const google::protobuf::FieldDescriptor*> fields;
@@ -203,7 +236,10 @@ void validateReferences(
         validateReferences(
             repeated ? reflection->GetRepeatedMessage(message, field, i)
                      : reflection->GetMessage(message, field),
-            records, bundleScopes, depth + 1);
+            records, bundleScopes,
+            completeImportSet &&
+                (field->name() != "using_declarations" || needsNavigation),
+            depth + 1);
       } else if (field->cpp_type() ==
                      google::protobuf::FieldDescriptor::CPPTYPE_STRING &&
                  (identity || field->name() == "declaration_key" ||
@@ -212,19 +248,39 @@ void validateReferences(
                              ? reflection->GetRepeatedString(message, field, i)
                              : reflection->GetString(message, field);
         const auto found = records.find(key);
-        // External source declarations are resolved by the semantic import
-        // pass after every explicit dependency has been loaded. Import order
-        // must not turn a reference to another bundle into a dangling local.
-        if (found == records.end() && key.size() > 67 && key[0] == '$' &&
-            key.substr(65, 2) == "$_" &&
+        // A single bundle can refer to another bundle. Resolve those keys
+        // when the complete import set is available, before creating ASTs.
+        if (!completeImportSet && found == records.end() && key.size() > 67 &&
+            key[0] == '$' && key.substr(65, 2) == "$_" &&
             key.substr(1, 64).find_first_not_of("0123456789abcdef") ==
                 std::string::npos &&
             !bundleScopes.count(key.substr(0, 67)))
           continue;
-        if (found == records.end())
+        if (found == records.end()) {
+          std::string reason =
+              "moon exact dependency: Missing retained declaration reference "
+              "in " +
+              field->full_name() + ": " + key;
+          const auto* name = descriptor->FindFieldByName(
+              descriptor->full_name() == "sun.proto.ast.TypeAnnotation"
+                  ? "base_name"
+                  : "name");
+          if (name &&
+              name->cpp_type() ==
+                  google::protobuf::FieldDescriptor::CPPTYPE_STRING &&
+              !name->is_repeated()) {
+            const auto display = reflection->GetString(message, name);
+            for (const auto& [candidate, record] : records)
+              if (!display.empty() &&
+                  (display == record->name() ||
+                   display.ends_with("." + record->name()))) {
+                reason += " (conflicting bundle supplied)";
+                break;
+              }
+          }
           sun::support::logAndThrowError(
-              "Missing retained declaration reference in " +
-              field->full_name() + ": " + key);
+              reason + ". Explicitly import the required exact bundle.");
+        }
         const auto kind = found->second->kind();
         if ((field->name() == "module_declaration_key" &&
              kind != moon::MODULE) ||
@@ -247,7 +303,8 @@ std::string describeSemantics(const moon::ModuleMetadata& metadata) {
   return field(0, "sun.abi.metadata.v1") + encode(metadata, 0);
 }
 void validateDeclarationGraph(
-    const std::vector<const moon::ModuleMetadata*>& modules) {
+    const std::vector<const moon::ModuleMetadata*>& modules,
+    bool completeImportSet) {
   std::map<std::string, const moon::DeclarationRecord*> records;
   for (const auto& record : builtinDeclarations())
     records.emplace(record.key(), &record);
@@ -255,7 +312,9 @@ void validateDeclarationGraph(
     for (const auto& record : module->declarations()) {
       if (record.key().empty() || !moon::DeclarationKind_IsValid(record.kind()))
         sun::support::logAndThrowError("Invalid declaration identity or kind");
-      if (!records.emplace(record.key(), &record).second)
+      const auto [found, inserted] = records.emplace(record.key(), &record);
+      if (!inserted && (!completeImportSet ||
+                        encode(*found->second, 0) != encode(record, 0)))
         sun::support::logAndThrowError("Duplicate declaration identity: " +
                                        record.key());
     }
@@ -265,7 +324,7 @@ void validateDeclarationGraph(
     if (key.size() > 67 && key[0] == '$' && key.substr(65, 2) == "$_")
       bundleScopes.insert(key.substr(0, 67));
   for (const auto* module : modules)
-    validateReferences(*module, records, bundleScopes, 0);
+    validateReferences(*module, records, bundleScopes, completeImportSet, 0);
   std::map<std::string, size_t> pending;
   std::map<std::string, std::vector<std::string>> dependents;
   std::deque<std::string> ready;
