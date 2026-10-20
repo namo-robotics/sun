@@ -109,7 +109,11 @@ by disassembling the archive.
 
 The compiler checks object architecture, format, symbol resolution, and runtime
 references where available. The selected native or JIT linker checks relocation
-support and applies relocations; link failures remain compilation errors. It does not maintain an
+support and applies relocations; link failures remain compilation errors. Native
+external references are recorded in the contract and checked against the archive's
+symbol tables, while the selected linker resolves them. Known unsupported runtime
+behavior, such as native initializers in a JIT without lifecycle support, must be
+rejected before import. The compiler does not maintain an
 instruction allowlist, infer every requirement from machine code, or prove that
 native code obeys its declarations. Indirect calls and runtime CPU dispatch are
 allowed under this trust model. Runtime-dispatched optional instructions need not

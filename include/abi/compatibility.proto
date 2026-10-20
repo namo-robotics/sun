@@ -39,6 +39,8 @@ message BundleContract {
   bool experimental = 7;
   // Canonical declarations and retained bodies, including private semantic inputs.
   repeated bytes semantic_records = 8;
+  // External native references; ELF binding and weak-reference semantics remain in the objects.
+  repeated string native_link_symbols = 9;
 }
 
 /** One implemented rule version available to the compiler. */

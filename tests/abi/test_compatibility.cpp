@@ -597,7 +597,8 @@ TEST(ABI_Compatibility, DeclaredNativeCPURequirementsMustBeSupported) {
   auto* native = declared.add_requirements();
   native->set_name("native.elf.x86_64.declared");
   native->set_implementation(sun::abi::emissionImplementation(native->name()));
-  declared.mutable_target()->add_cpu_features("sun-test-unavailable-cpu-feature");
+  declared.mutable_target()->add_cpu_features(
+      "sun-test-unavailable-cpu-feature");
   declared.set_compatibility_hash(sun::abi::hashBundleContract(declared));
   EXPECT_THROW(sun::abi::AbiCompatibilityChecker::current().validateContract(
                    declared, "native.moon", "x86_64-linux-gnu"),
@@ -614,4 +615,40 @@ TEST(ABI_Compatibility, AuditedNativeRuleIsNotDeclaredNativeTrust) {
   EXPECT_THROW(sun::abi::AbiCompatibilityChecker::current().validateContract(
                    audited, "native.moon", "x86_64-linux-gnu"),
                sun::support::SunError);
+}
+
+/** Native symbol declarations are canonical sets and survive embedded
+ * dependency merging. */
+TEST(ABI_Compatibility, NativeSymbolsAreCanonicalAndInherited) {
+  auto first = contract();
+  first.add_native_link_symbols("malloc");
+  first.add_native_link_symbols("free");
+  auto reordered = first;
+  reordered.mutable_native_link_symbols()->SwapElements(0, 1);
+  reordered.add_native_link_symbols("malloc");
+  EXPECT_EQ(sun::abi::hashBundleContract(first),
+            sun::abi::hashBundleContract(reordered));
+  auto inherited = contract();
+  inherited.add_native_link_symbols("__errno_location");
+  sun::abi::mergeContractRequirements(first, inherited);
+  EXPECT_EQ(first.native_link_symbols_size(), 3);
+  EXPECT_NE(sun::abi::hashBundleContract(first),
+            sun::abi::hashBundleContract(reordered));
+}
+
+/** Symbol records cannot be accepted without an implementation of their
+ * resolution rule. */
+TEST(ABI_Compatibility, NativeSymbolsRequireLinkerRule) {
+  auto native = contract();
+  native.add_native_link_symbols("__errno_location");
+  native.set_compatibility_hash(sun::abi::hashBundleContract(native));
+  EXPECT_THROW(sun::abi::AbiCompatibilityChecker::current().validateContract(
+                   native, "native.moon", "x86_64-linux-gnu"),
+               sun::support::SunError);
+  auto* rule = native.add_requirements();
+  rule->set_name("native.runtime.linker");
+  rule->set_implementation(sun::abi::emissionImplementation(rule->name()));
+  native.set_compatibility_hash(sun::abi::hashBundleContract(native));
+  EXPECT_NO_THROW(sun::abi::AbiCompatibilityChecker::current().validateContract(
+      native, "native.moon", "x86_64-linux-gnu"));
 }

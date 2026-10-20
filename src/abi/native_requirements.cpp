@@ -19,14 +19,25 @@ namespace {
 }
 }  // namespace
 
+std::string nativeArchiveRule(const TargetProfile& profile) {
+  if ((profile.architecture() != "x86_64" &&
+       profile.architecture() != "aarch64") ||
+      (profile.platform_abi() != "linux:gnu" &&
+       profile.platform_abi() != "linux:musl") ||
+      profile.pointer_bits() != 64 || !profile.little_endian())
+    unsupported("expected a Linux x86-64 or AArch64 GNU/musl profile");
+  return "native.elf." + profile.architecture() + ".declared";
+}
+
 void validateNativeArchives(const std::vector<NativeArchiveInput>& archives,
                             const TargetProfile& profile,
-                            std::set<std::string>* runtimeServices) {
+                            std::set<std::string>* runtimeServices,
+                            std::set<std::string>* linkSymbols) {
   if (archives.empty()) return;
-  if (profile.architecture() != "x86_64" ||
-      profile.platform_abi() != "linux:gnu" || profile.pointer_bits() != 64 ||
-      !profile.little_endian())
-    unsupported("only the Linux x86-64 GNU profile is implemented");
+  nativeArchiveRule(profile);
+  const auto machine = profile.architecture() == "x86_64"
+                           ? llvm::ELF::EM_X86_64
+                           : llvm::ELF::EM_AARCH64;
   std::set<std::string> definitions, references;
   for (const auto& input : archives) {
     auto archive = llvm::object::Archive::create(input.bytes);
@@ -39,19 +50,20 @@ void validateNativeArchives(const std::vector<NativeArchiveInput>& archives,
       if (!binary) unsupported(llvm::toString(binary.takeError()));
       const auto* object =
           llvm::dyn_cast<llvm::object::ELFObjectFileBase>(binary->get());
-      if (!object || object->getEMachine() != llvm::ELF::EM_X86_64 ||
+      if (!object || object->getEMachine() != machine ||
           object->getEType() != llvm::ELF::ET_REL ||
           !object->isLittleEndian() || object->getBytesInAddress() != 8)
-        unsupported("expected a relocatable little-endian x86-64 ELF member");
+        unsupported("expected a relocatable little-endian " +
+                    profile.architecture() + " ELF member");
       for (const auto& section : object->sections()) {
         llvm::object::ELFSectionRef elfSection(section);
-        if (elfSection.getFlags() & llvm::ELF::SHF_TLS)
-          unsupported("thread-local native state is not implemented");
+        if ((elfSection.getFlags() & llvm::ELF::SHF_TLS) && runtimeServices)
+          runtimeServices->insert("thread_local");
         if (elfSection.getType() == llvm::ELF::SHT_INIT_ARRAY ||
             elfSection.getType() == llvm::ELF::SHT_FINI_ARRAY ||
-            elfSection.getType() == llvm::ELF::SHT_PREINIT_ARRAY)
-          unsupported(
-              "native initialization and finalization are not implemented");
+            elfSection.getType() == llvm::ELF::SHT_PREINIT_ARRAY) {
+          if (runtimeServices) runtimeServices->insert("initializers");
+        }
         if (elfSection.getType() != llvm::ELF::SHT_NOBITS) {
           auto contents = section.getContents();
           if (!contents) unsupported(llvm::toString(contents.takeError()));
@@ -83,10 +95,11 @@ void validateNativeArchives(const std::vector<NativeArchiveInput>& archives,
     // Sun's JIT owns callback registration and drains it before unloading code;
     // native executables use the C runtime's corresponding process-exit
     // service.
-    if (name == "atexit") {
-      if (runtimeServices) runtimeServices->insert("atexit");
-    } else
-      unsupported("unestablished runtime symbol '" + name + "'");
+    if (runtimeServices) {
+      runtimeServices->insert("linker");
+      if (name == "atexit") runtimeServices->insert("atexit");
+    }
+    if (linkSymbols) linkSymbols->insert(name);
   }
 }
 }  // namespace sun::abi

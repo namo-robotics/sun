@@ -30,3 +30,11 @@ set_target_properties(sun_abi_relocations PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests")
 target_link_libraries(sun_tests PRIVATE sun_abi_relocations)
 target_link_libraries(sun_abi_tests PRIVATE sun_abi_relocations)
+
+# Native execution owns object constructors and thread-local state.
+add_library(sun_abi_lifecycle STATIC native_lifecycle.cpp)
+set_target_properties(sun_abi_lifecycle PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests")
+target_link_libraries(sun_tests PRIVATE sun_abi_lifecycle)
+target_link_libraries(sun_abi_tests PRIVATE sun_abi_lifecycle)

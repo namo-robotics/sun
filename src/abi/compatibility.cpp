@@ -199,7 +199,8 @@ std::string encodeBundleContract(const BundleContract& contract) {
          field(3, encodeTarget(contract.target())) + sortedFields(4, rules) +
          sortedFields(5, contract.boundary_records()) +
          field(6, integer(contract.experimental())) +
-         sortedFields(7, contract.semantic_records());
+         sortedFields(7, contract.semantic_records()) +
+         sortedFields(8, contract.native_link_symbols());
 }
 
 std::string hashBundleContract(const BundleContract& contract) {
@@ -349,6 +350,12 @@ void mergeContractRequirements(BundleContract& destination,
                    inherited.semantic_records().end());
   merged.clear_semantic_records();
   for (const auto& record : semantics) merged.add_semantic_records(record);
+  std::set<std::string> symbols(destination.native_link_symbols().begin(),
+                                destination.native_link_symbols().end());
+  symbols.insert(inherited.native_link_symbols().begin(),
+                 inherited.native_link_symbols().end());
+  merged.clear_native_link_symbols();
+  for (const auto& symbol : symbols) merged.add_native_link_symbols(symbol);
   destination = std::move(merged);
 }
 

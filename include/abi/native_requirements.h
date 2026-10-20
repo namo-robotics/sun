@@ -15,11 +15,17 @@ struct NativeArchiveInput {
   llvm::MemoryBufferRef bytes;
   std::string symbolPrefix;
 };
+/** Returns the implemented native object rule for a declared target, or fails.
+ */
+std::string nativeArchiveRule(const TargetProfile& target);
 /** Checks ELF targets, symbol isolation, and runtime references.
  * Relocation support and application are delegated to the selected linker.
  * Machine code is trusted to obey the declared CPU and runtime requirements;
- * the compatibility checker validates the bundle's declarations separately. */
+ * the compatibility checker validates the bundle's declarations separately.
+ * Optional outputs collect runtime rules and external symbols for the contract.
+ */
 void validateNativeArchives(const std::vector<NativeArchiveInput>& archives,
                             const TargetProfile& target,
-                            std::set<std::string>* runtimeServices = nullptr);
+                            std::set<std::string>* runtimeServices = nullptr,
+                            std::set<std::string>* linkSymbols = nullptr);
 }  // namespace sun::abi

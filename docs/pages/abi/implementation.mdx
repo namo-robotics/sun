@@ -73,24 +73,37 @@ duplicate declaration identities, missing ownership links, and ownership cycles.
 Source locations, documentation, optional source text, and producer diagnostics
 are excluded. Ordered fields, parameters, and statements remain ordered.
 
-Native archive authorization currently supports Linux x86-64 GNU ELF objects.
-The `native.elf.x86_64.declared` rule uses normal native-linking trust: the
-checker validates object headers, symbol namespaces, and external
-runtime references, without disassembling code or maintaining an instruction
-allowlist. Relocation support and application are delegated to the selected
-native or JIT linker, whose failures remain compilation errors. CPU requirements are declarations in the bundle target profile and
-are checked by `AbiCompatibilityChecker`; the native producer is responsible for
-making those declarations accurate, including any runtime CPU dispatch. Native
-instruction bytes do not independently establish or contradict a declaration.
-A dedicated build-configuration interface for additional native requirements is
-still unfinished; the packager does not infer them from compiler flags or archives.
+Native archive authorization supports declared Linux x86-64 and AArch64 GNU/musl
+ELF profiles. The `native.elf.<architecture>.declared` rules use normal
+native-linking trust: the checker validates object headers, section bounds, and
+symbol namespaces, without instruction or relocation allowlists. Native producers
+remain responsible for accurate CPU and runtime declarations. The packager does
+not infer libc compatibility from archive filenames or prove that matching symbol
+names imply compatible C interfaces. A dedicated build-configuration interface
+for additional native CPU/provenance declarations remains unfinished.
 
-Unestablished runtime references, TLS, and native initialization arrays remain
-unsupported. The supported `atexit` service is recorded when referenced and is
-implemented by the JIT's cleanup handler or the executable's C runtime. Other
-target profiles, including AArch64 and musl, remain unsupported for native archives.
-Removing the instruction scan does not complete OpenSSL packaging: its runtime
-requirements must also be supported, and the selected linker must accept its objects.
+External native references are recorded in `BundleContract.native_link_symbols`
+under `native.runtime.linker`. They participate in the canonical compatibility
+hash as a sorted, deduplicated set and are retained when embedding dependencies.
+Consumers reconstruct external references from the archive symbol tables and
+reject omitted declarations before import. The selected native or JIT linker
+resolves them using the actual link environment; unresolved strong references
+remain link errors. Weak-reference behavior stays in the ELF objects. The
+linker-provided GOT base is excluded from runtime references. `atexit` also retains
+its lifecycle rule because the JIT registers cleanup callbacks for execution
+before unloading code.
+
+Native initializer/finalizer arrays and thread-local storage are recorded as
+`native.runtime.initializers` and `native.runtime.thread_local`. These require
+native linking, where the executable's runtime supplies their lifecycle. The
+current JIT rejects these rules before import. The compatibility checker records
+native-link versus JIT execution in its compilation context and cache key, and
+changing modes clears authorizations. Build-cache checks use an isolated native-link
+context; they do not authorize execution by the JIT.
+
+The native runtime work remains experimental. Shared-state and allocation-family
+contracts, explicit native build provenance, and complete compilation-option
+modeling still need implementation and conformance coverage.
 
 `sun --abi-info` emits the current experimental target profile, supported rule
 implementations, producer identity, and rebuild guidance as JSON for release

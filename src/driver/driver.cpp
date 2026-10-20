@@ -343,6 +343,8 @@ std::unique_ptr<Driver> Driver::createForAOT(const std::string& moduleName,
   // Both the parser's bundle resolution and the linker's bundle selection
   // key off this; setting it here keeps API users consistent with the CLI.
   LibraryCache::instance().setTargetTriple(targetTriple);
+  abi::AbiCompatibilityChecker::current().beginCompilation(
+      targetTriple, abi::NativeExecution::NativeLink);
 
   auto ctx = std::make_unique<sun::codegen::CodegenContext>(
       moduleName, nullptr,

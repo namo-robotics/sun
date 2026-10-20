@@ -18,17 +18,19 @@
 /** Owns compatibility policy independently of bundle container decoding. */
 namespace sun::abi {
 
-AbiCompatibilityChecker::AbiCompatibilityChecker(std::string targetTriple)
-    : targetTriple_(std::move(targetTriple)) {}
+AbiCompatibilityChecker::AbiCompatibilityChecker(std::string targetTriple,
+                                                 NativeExecution execution)
+    : targetTriple_(std::move(targetTriple)), execution_(execution) {}
 
 AbiCompatibilityChecker& AbiCompatibilityChecker::current() {
   thread_local AbiCompatibilityChecker checker;
   return checker;
 }
 
-void AbiCompatibilityChecker::beginCompilation(
-    const std::string& targetTriple) {
+void AbiCompatibilityChecker::beginCompilation(const std::string& targetTriple,
+                                               NativeExecution execution) {
   targetTriple_ = targetTriple;
+  execution_ = execution;
   byteHashes_.clear();
   warnedBundles_.clear();
   importedContracts_.clear();
@@ -53,8 +55,10 @@ ValidatedBundle AbiCompatibilityChecker::validate(
 ValidatedBundle AbiCompatibilityChecker::validate(
     moon_bundling::MoonReader& reader, const std::string& targetTriple) {
   const auto digest = bytesHash(reader);
-  const auto key = std::make_pair(
-      digest, targetTriple + ":" + compatibilityImplementation());
+  const auto key =
+      std::make_pair(digest, targetTriple + ":" +
+                                 std::to_string(static_cast<int>(execution_)) +
+                                 ":" + compatibilityImplementation());
   auto found = validatedBundles_.find(key);
   if (found == validatedBundles_.end()) {
     const auto modules = reader.listModules();
@@ -116,7 +120,8 @@ ValidatedBundle AbiCompatibilityChecker::validate(
     if (!reader.getNativeArchives().empty()) {
       bool nativeRule = false;
       for (const auto& rule : contract.requirements())
-        if (rule.name() == "native.elf.x86_64.declared") nativeRule = true;
+        if (rule.name() == nativeArchiveRule(contract.target()))
+          nativeRule = true;
       try {
         if (!nativeRule)
           sun::support::logAndThrowError("missing native archive requirements");
@@ -133,8 +138,16 @@ ValidatedBundle AbiCompatibilityChecker::validate(
                    llvm::StringRef(bytes.data(), bytes.size()), entry.name),
                "$" + entry.archiveSetHash + "$_"});
         }
-        std::set<std::string> runtimeServices;
-        validateNativeArchives(archives, contract.target(), &runtimeServices);
+        std::set<std::string> runtimeServices, linkSymbols;
+        validateNativeArchives(archives, contract.target(), &runtimeServices,
+                               &linkSymbols);
+        const std::set<std::string> declaredSymbols(
+            contract.native_link_symbols().begin(),
+            contract.native_link_symbols().end());
+        for (const auto& symbol : linkSymbols)
+          if (!declaredSymbols.count(symbol))
+            sun::support::logAndThrowError(
+                "missing native linker symbol requirement: " + symbol);
         for (const auto& service : runtimeServices) {
           bool recorded = false;
           for (const auto& rule : contract.requirements())
@@ -214,6 +227,24 @@ void AbiCompatibilityChecker::validateContract(
        {"moon.interface", "llvm.bitcode", "sun.experimental.semantics"})
     if (!seen.count(mandatory))
       fail(std::string("missing required rule '") + mandatory + "'");
+  if (execution_ == NativeExecution::JIT &&
+      (seen.count("native.runtime.initializers") ||
+       seen.count("native.runtime.thread_local")))
+    fail(
+        "native initialization or thread-local storage requires native "
+        "linking; the JIT does not implement it");
+  if (!contract.native_link_symbols().empty() &&
+      !seen.count("native.runtime.linker"))
+    fail("missing native.runtime.linker requirement");
+  for (const auto& rule : contract.requirements())
+    if (rule.name().starts_with("native.elf.") &&
+        rule.name() != nativeArchiveRule(contract.target()))
+      fail("native object rule does not match the target");
+  for (const auto& symbol : contract.native_link_symbols()) {
+    if (symbol.empty() || symbol.find('\0') != std::string::npos)
+      fail("invalid native linker symbol requirement");
+    derived.add_native_link_symbols(symbol);
+  }
   // Boundary records are checked against decoded payloads by this checker. The
   // exact semantics closure supplies interpretation of retained generic ASTs.
   BoundaryRequirements boundaries;

@@ -136,7 +136,10 @@ The metadata stores one [bundle contract hash](/abi/compatibility#computed-abi-h
 and the information needed to derive its complete contract. Existing type,
 declaration, and target metadata can supply part of that description. The experimental schema is `include/abi/compatibility.proto`, referenced once
 through `MoonLibrary.bundle_contract`. The container header references that
-bundle metadata directly.
+bundle metadata directly. External native symbol references are part of this
+same contract (`native_link_symbols`), canonically encoded as a sorted unique set.
+Embedded dependency references are retained; no per-archive compatibility hash
+is introduced.
 
 | Subject | Level | Requirement |
 | --- | --- | --- |

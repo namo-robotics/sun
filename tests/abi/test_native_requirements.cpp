@@ -1,14 +1,20 @@
 /** Exercises native archive structure and declared requirement validation. */
 #include <gtest/gtest.h>
 #include <llvm/BinaryFormat/ELF.h>
+#include <llvm/IR/IRBuilder.h>
 #include <llvm/Object/Archive.h>
 #include <llvm/Object/ObjectFile.h>
 #include <llvm/Support/MemoryBuffer.h>
+#include <unistd.h>
 
 #include <algorithm>
+#include <fstream>
 
+#include "abi/abi_compatibility_checker.h"
 #include "abi/native_requirements.h"
+#include "driver/compiler.h"
 #include "moon_bundling/archive_symbols.h"
+#include "moon_bundling/moon.h"
 #include "support/error.h"
 
 /** Reads the linked PIC fixture to verify the linker resolved its GOT
@@ -120,7 +126,7 @@ TEST(ABI_Compatibility, NativeRuntimeRequirementsFollowActualReferences) {
   sun::abi::validateNativeArchives(
       {{llvm::MemoryBufferRef(second, "second.a"), "$test$_"}}, profile,
       &services);
-  EXPECT_EQ(services, std::set<std::string>{"atexit"});
+  EXPECT_EQ(services, (std::set<std::string>{"atexit", "linker"}));
 }
 
 /** Trusting native instructions does not authorize malformed archive
@@ -133,18 +139,21 @@ TEST(ABI_Compatibility, NativeArchiveStructureStillRequiresValidation) {
                sun::support::SunError);
 }
 
-/** External runtime references still need an implemented compatibility rule. */
-TEST(ABI_Compatibility, NativeUnknownRuntimeReferencesRemainUnsupported) {
+/** External references are declared for resolution by the actual selected
+ * linker. */
+TEST(ABI_Compatibility, NativeExternalReferencesAreRecordedForTheLinker) {
   const auto bytes = nativeFixture(true, true);
   auto renamed = sun::moon_bundling::renameArchiveSymbols(
       llvm::MemoryBufferRef(bytes, "fixture.a"),
       {{"atexit", "sun_test_unknown_runtime"}});
   ASSERT_TRUE(static_cast<bool>(renamed))
       << llvm::toString(renamed.takeError());
-  EXPECT_THROW(sun::abi::validateNativeArchives(
-                   {{llvm::MemoryBufferRef(*renamed, "fixture.a"), "$test$_"}},
-                   sun::abi::compatibilityTarget("x86_64-linux-gnu")),
-               sun::support::SunError);
+  std::set<std::string> services, symbols;
+  EXPECT_NO_THROW(sun::abi::validateNativeArchives(
+      {{llvm::MemoryBufferRef(*renamed, "fixture.a"), "$test$_"}},
+      sun::abi::compatibilityTarget("x86_64-linux-gnu"), &services, &symbols));
+  EXPECT_EQ(services, std::set<std::string>{"linker"});
+  EXPECT_EQ(symbols, std::set<std::string>{"sun_test_unknown_runtime"});
 }
 
 /** GOT references are accepted by ABI validation and left to the linker. */
@@ -192,4 +201,159 @@ TEST(ABI_Compatibility, NativeGotBaseIsSuppliedByTheLinker) {
       {{llvm::MemoryBufferRef(*renamed, "fixture.a"), "$test$_"}},
       sun::abi::compatibilityTarget("x86_64-linux-gnu"), &services));
   EXPECT_TRUE(services.empty());
+}
+
+/** ELF object structure can be checked for a declared musl target without host
+ * libc inference. */
+TEST(ABI_Compatibility, NativeELFSupportsDeclaredMuslTarget) {
+  const auto bytes = nativeFixture(true);
+  EXPECT_NO_THROW(sun::abi::validateNativeArchives(
+      {{llvm::MemoryBufferRef(bytes, "fixture.a"), "$test$_"}},
+      sun::abi::compatibilityTarget("x86_64-linux-musl")));
+  EXPECT_EQ(sun::abi::nativeArchiveRule(
+                sun::abi::compatibilityTarget("aarch64-linux-musl")),
+            "native.elf.aarch64.declared");
+}
+
+/** Rehashing an altered native declaration cannot hide the archive's actual
+ * references. */
+TEST(ABI_Compatibility, NativeSymbolDeclarationsAreCheckedBeforeImport) {
+  llvm::LLVMContext context;
+  llvm::Module module("native", context);
+  module.setTargetTriple("x86_64-linux-gnu");
+  module.setDataLayout(
+      sun::abi::compatibilityTarget(module.getTargetTriple()).data_layout());
+  sun::moon::ModuleMetadata metadata;
+  metadata.set_source_hash("native");
+  sun::moon_bundling::MoonWriter writer(std::string(64, 'a'));
+  writer.addModule(module, metadata);
+  writer.addNativeArchive("test", "fixture.a", nativeFixture(true, true));
+  std::filesystem::create_directories("tmp");
+  const auto path = std::filesystem::path("tmp") /
+                    ("native_symbols_" + std::to_string(getpid()) + ".moon");
+  ASSERT_TRUE(writer.write(path));
+  auto reader = sun::moon_bundling::MoonReader::open(path);
+  ASSERT_NE(reader, nullptr);
+  sun::abi::AbiCompatibilityChecker checker("x86_64-linux-gnu");
+  EXPECT_NO_THROW(checker.validate(*reader));
+  auto altered = reader->getLibrary();
+  auto* contract = altered.mutable_bundle_contract();
+  ASSERT_EQ(contract->native_link_symbols_size(), 1);
+  EXPECT_EQ(contract->native_link_symbols(0), "atexit");
+  contract->set_native_link_symbols(0, "mtexit");
+  contract->set_compatibility_hash(sun::abi::hashBundleContract(*contract));
+  EXPECT_NO_THROW(
+      checker.validateContract(*contract, "native.moon", "x86_64-linux-gnu"));
+  const auto before = reader->getLibrary().SerializeAsString();
+  const auto after = altered.SerializeAsString();
+  ASSERT_EQ(before.size(), after.size());
+  auto bytes = *reader->getBytes();
+  const auto offset = bytes.find(before);
+  ASSERT_NE(offset, std::string::npos);
+  bytes.replace(offset, before.size(), after);
+  {
+    std::ofstream output(path, std::ios::binary);
+    output.write(bytes.data(), bytes.size());
+  }
+  auto changed = sun::moon_bundling::MoonReader::open(path);
+  ASSERT_NE(changed, nullptr);
+  try {
+    checker.validate(*changed);
+    FAIL() << "Accepted a missing native symbol declaration";
+  } catch (const sun::support::SunError& error) {
+    EXPECT_NE(std::string(error.what())
+                  .find("missing native linker symbol requirement: atexit"),
+              std::string::npos);
+  }
+  std::filesystem::remove(path);
+}
+
+/** Reads native state initialized by the executable runtime. */
+int sun_abi_read_lifecycle_value();
+
+/** Native initialization and TLS are recorded and authorized only for native
+ * linking. */
+TEST(ABI_Compatibility, NativeLifecycleRequirementsDependOnExecutionMode) {
+  EXPECT_EQ(sun_abi_read_lifecycle_value(), 42);
+  const auto bytes = nativeFixture(true, false, "libsun_abi_lifecycle.a");
+  std::set<std::string> services;
+  sun::abi::validateNativeArchives(
+      {{llvm::MemoryBufferRef(bytes, "lifecycle.a"), "$test$_"}},
+      sun::abi::compatibilityTarget("x86_64-linux-gnu"), &services);
+  EXPECT_TRUE(services.count("initializers"));
+  EXPECT_TRUE(services.count("thread_local"));
+  llvm::LLVMContext context;
+  llvm::Module module("lifecycle", context);
+  module.setTargetTriple("x86_64-linux-gnu");
+  module.setDataLayout(
+      sun::abi::compatibilityTarget(module.getTargetTriple()).data_layout());
+  sun::moon::ModuleMetadata metadata;
+  metadata.set_source_hash("lifecycle");
+  sun::moon_bundling::MoonWriter writer(std::string(64, 'a'));
+  writer.addModule(module, metadata);
+  writer.addNativeArchive("test", "lifecycle.a", bytes);
+  std::filesystem::create_directories("tmp");
+  const auto path = std::filesystem::path("tmp") /
+                    ("native_lifecycle_" + std::to_string(getpid()) + ".moon");
+  ASSERT_TRUE(writer.write(path));
+  auto reader = sun::moon_bundling::MoonReader::open(path);
+  ASSERT_NE(reader, nullptr);
+  sun::abi::AbiCompatibilityChecker checker(
+      "x86_64-linux-gnu", sun::abi::NativeExecution::NativeLink);
+  EXPECT_NO_THROW(checker.validate(*reader));
+  checker.beginCompilation("x86_64-linux-gnu", sun::abi::NativeExecution::JIT);
+  EXPECT_TRUE(checker.importedContracts().empty());
+  EXPECT_THROW(checker.validate(*reader), sun::support::SunError);
+  EXPECT_TRUE(checker.importedContracts().empty());
+  checker.beginCompilation("x86_64-linux-gnu",
+                           sun::abi::NativeExecution::NativeLink);
+  EXPECT_NO_THROW(checker.validate(*reader));
+  std::filesystem::remove(path);
+}
+
+/** Declaring an external reference does not suppress an actual native link
+ * failure. */
+TEST(ABI_Compatibility, MissingNativeRuntimeSymbolFailsAtLinkTime) {
+  const auto bytes = nativeFixture(true, true);
+  auto renamed = sun::moon_bundling::renameArchiveSymbols(
+      llvm::MemoryBufferRef(bytes, "fixture.a"),
+      {{"atexit", "sun_test_missing_native_runtime"}});
+  ASSERT_TRUE(static_cast<bool>(renamed))
+      << llvm::toString(renamed.takeError());
+  std::set<std::string> services, symbols;
+  EXPECT_NO_THROW(sun::abi::validateNativeArchives(
+      {{llvm::MemoryBufferRef(*renamed, "fixture.a"), "$test$_"}},
+      sun::abi::compatibilityTarget("x86_64-linux-gnu"), &services, &symbols));
+  EXPECT_TRUE(symbols.count("sun_test_missing_native_runtime"));
+  const auto dir = std::filesystem::path("tmp") /
+                   ("native_missing_" + std::to_string(getpid()));
+  std::filesystem::create_directories(dir);
+  const auto archive = dir / "missing.a";
+  {
+    std::ofstream output(archive, std::ios::binary);
+    output.write(renamed->data(), renamed->size());
+  }
+  llvm::LLVMContext context;
+  llvm::Module module("missing", context);
+  module.setTargetTriple("x86_64-linux-gnu");
+  module.setDataLayout(
+      sun::abi::compatibilityTarget(module.getTargetTriple()).data_layout());
+  auto* setter = llvm::Function::Create(
+      llvm::FunctionType::get(llvm::Type::getVoidTy(context),
+                              {llvm::Type::getInt32Ty(context)}, false),
+      llvm::Function::ExternalLinkage, "$test$_sun_ffi_slot_set", module);
+  auto* main = llvm::Function::Create(
+      llvm::FunctionType::get(llvm::Type::getInt32Ty(context), false),
+      llvm::Function::ExternalLinkage, "main", module);
+  llvm::IRBuilder<> builder(llvm::BasicBlock::Create(context, "entry", main));
+  builder.CreateCall(setter, {builder.getInt32(42)});
+  builder.CreateRet(builder.getInt32(0));
+  sun::driver::LinkOptions options;
+  options.archives.push_back(archive.string());
+  std::string error;
+  EXPECT_FALSE(sun::driver::compileToExecutable(
+      module, (dir / "program").string(), error, false, options));
+  EXPECT_FALSE(error.empty());
+  EXPECT_FALSE(std::filesystem::exists(dir / "program"));
+  std::filesystem::remove_all(dir);
 }

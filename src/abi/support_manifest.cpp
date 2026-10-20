@@ -19,6 +19,13 @@ void validateCompilerSupport(const proto::CompilerAbiSupport& support) {
        "sun_semantics_experimental"},
       {{"native.elf.x86_64.declared", "experimental"},
        "native_elf_declared_experimental"},
+      {{"native.elf.aarch64.declared", "experimental"},
+       "native_elf_declared_experimental"},
+      {{"native.runtime.linker", "experimental"}, "native_linker_experimental"},
+      {{"native.runtime.initializers", "experimental"},
+       "native_initializers_experimental"},
+      {{"native.runtime.thread_local", "experimental"},
+       "native_thread_local_experimental"},
       {{"native.runtime.atexit", "experimental"},
        "native_atexit_experimental"}};
   if (support.schema() != 1 ||

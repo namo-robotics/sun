@@ -43,7 +43,6 @@ std::string emissionImplementation(const std::string& name) {
 
 std::string compatibilitySupportJson() {
   const auto producer = currentProducerIdentity();
-  const auto target = compatibilityTarget("x86_64-linux-gnu");
   llvm::json::Object rules;
   for (const auto& [name, implementation] : supportedRules())
     rules[name] = implementation;
@@ -55,13 +54,17 @@ std::string compatibilitySupportJson() {
   llvm::json::Object defaults;
   for (const auto& rule : compilerAbiSupport().emission_defaults())
     defaults[rule.name()] = rule.version();
-  llvm::json::Object profile{{"architecture", target.architecture()},
-                             {"platform_abi", target.platform_abi()},
-                             {"data_layout", target.data_layout()},
-                             {"pointer_bits", target.pointer_bits()},
-                             {"little_endian", target.little_endian()}};
   llvm::json::Array profiles;
-  profiles.push_back(std::move(profile));
+  for (const auto* triple : {"x86_64-linux-gnu", "x86_64-linux-musl",
+                             "aarch64-linux-gnu", "aarch64-linux-musl"}) {
+    const auto target = compatibilityTarget(triple);
+    profiles.push_back(
+        llvm::json::Object{{"architecture", target.architecture()},
+                           {"platform_abi", target.platform_abi()},
+                           {"data_layout", target.data_layout()},
+                           {"pointer_bits", target.pointer_bits()},
+                           {"little_endian", target.little_endian()}});
+  }
   llvm::json::Object inventory{
       {"schema", 1},
       {"experimental", true},
@@ -74,10 +77,13 @@ std::string compatibilitySupportJson() {
       {"implementation_bindings", std::move(bindings)},
       {"emission_defaults", std::move(defaults)},
       {"native_constraints",
-       "Linux x86-64 GNU relocatable ELF; trusted native code with declared "
+       "Linux x86-64/AArch64 GNU/musl relocatable ELF; trusted native code "
+       "with declared "
        "CPU/runtime requirements; isolated "
-       "symbols; only explicitly recorded atexit runtime references; no TLS or "
-       "initialization arrays; relocation support delegated to the linker"},
+       "symbols; external references recorded in the contract and resolved by "
+       "the linker; native TLS and "
+       "initialization require native linking; relocation support delegated to "
+       "the linker"},
       {"support_window",
        "No fixed support window during the experimental stage"},
       {"rebuild_guidance",

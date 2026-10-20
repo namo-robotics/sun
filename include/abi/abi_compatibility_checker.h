@@ -17,6 +17,9 @@ class MoonReader;
 /** Owns compatibility policy independently of bundle container decoding. */
 namespace sun::abi {
 
+/** Selects the runtime that must implement imported native requirements. */
+enum class NativeExecution { JIT, NativeLink };
+
 /** Owns a verified contract, remaining valid after the reader or checker is
  * reset. */
 class ValidatedBundle {
@@ -38,12 +41,15 @@ class AbiCompatibilityChecker {
  public:
   /** Creates an isolated checker for the host or an explicitly selected target.
    */
-  explicit AbiCompatibilityChecker(std::string targetTriple = "");
+  explicit AbiCompatibilityChecker(
+      std::string targetTriple = "",
+      NativeExecution execution = NativeExecution::JIT);
   /** Returns the current thread's checker shared by compiler import paths. */
   static AbiCompatibilityChecker& current();
   /** Starts a compilation, discarding cached authorizations and warning state.
    */
-  void beginCompilation(const std::string& targetTriple);
+  void beginCompilation(const std::string& targetTriple,
+                        NativeExecution execution = NativeExecution::JIT);
   /** Checks the complete contract and all payloads against this compilation. */
   ValidatedBundle validate(moon_bundling::MoonReader& reader);
   /** Checks an explicitly selected target without changing the compilation
@@ -81,6 +87,7 @@ class AbiCompatibilityChecker {
                    std::owner_less<std::weak_ptr<const std::string>>>
       byteHashes_;
   std::string targetTriple_;
+  NativeExecution execution_;
   std::set<std::string> warnedBundles_;
   std::map<std::string, BundleContract> importedContracts_;
   std::map<std::pair<std::string, std::string>,

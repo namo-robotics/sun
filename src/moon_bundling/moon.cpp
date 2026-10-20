@@ -140,7 +140,13 @@ bool MoonWriter::write(const std::filesystem::path& outputPath) {
       archives.push_back({llvm::MemoryBufferRef(archive.data, archive.name),
                           "$" + archive.archiveSetHash + "$_"});
     std::set<std::string> runtimeServices;
-    abi::validateNativeArchives(archives, contract_.target(), &runtimeServices);
+    std::set<std::string> linkSymbols(contract_.native_link_symbols().begin(),
+                                      contract_.native_link_symbols().end());
+    abi::validateNativeArchives(archives, contract_.target(), &runtimeServices,
+                                &linkSymbols);
+    contract_.clear_native_link_symbols();
+    for (const auto& symbol : linkSymbols)
+      contract_.add_native_link_symbols(symbol);
     for (const auto& service : runtimeServices) {
       const auto name = "native.runtime." + service;
       bool present = false;
@@ -152,12 +158,13 @@ bool MoonWriter::write(const std::filesystem::path& outputPath) {
         rule->set_implementation(abi::emissionImplementation(rule->name()));
       }
     }
+    const auto nativeRuleName = abi::nativeArchiveRule(contract_.target());
     bool nativeRule = false;
     for (const auto& rule : contract_.requirements())
-      if (rule.name() == "native.elf.x86_64.declared") nativeRule = true;
+      if (rule.name() == nativeRuleName) nativeRule = true;
     if (!nativeRule) {
       auto* rule = contract_.add_requirements();
-      rule->set_name("native.elf.x86_64.declared");
+      rule->set_name(nativeRuleName);
       rule->set_implementation(abi::emissionImplementation(rule->name()));
     }
   }

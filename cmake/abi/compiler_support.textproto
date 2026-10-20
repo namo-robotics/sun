@@ -12,3 +12,11 @@ emission_defaults { name: "llvm.bitcode" version: "experimental" }
 emission_defaults { name: "sun.experimental.semantics" version: "experimental" }
 emission_defaults { name: "native.elf.x86_64.declared" version: "experimental" }
 emission_defaults { name: "native.runtime.atexit" version: "experimental" }
+rules { name: "native.elf.aarch64.declared" version: "experimental" binding: "native_elf_declared_experimental" }
+rules { name: "native.runtime.linker" version: "experimental" binding: "native_linker_experimental" }
+emission_defaults { name: "native.elf.aarch64.declared" version: "experimental" }
+emission_defaults { name: "native.runtime.linker" version: "experimental" }
+rules { name: "native.runtime.initializers" version: "experimental" binding: "native_initializers_experimental" }
+rules { name: "native.runtime.thread_local" version: "experimental" binding: "native_thread_local_experimental" }
+emission_defaults { name: "native.runtime.initializers" version: "experimental" }
+emission_defaults { name: "native.runtime.thread_local" version: "experimental" }
