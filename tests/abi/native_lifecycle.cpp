@@ -1,8 +1,9 @@
 /** Exercises native initialization and thread-local storage under the system
  * linker. */
 
-/** Stores the value installed by the native initializer. */
-int sun_abi_initialized_value;
+/** Keeps initialization observable so optimization cannot replace it with
+ * static data. */
+volatile int sun_abi_initialized_value;
 /** Gives each thread its own trivially initialized native value. */
 thread_local int sun_abi_thread_value = 2;
 

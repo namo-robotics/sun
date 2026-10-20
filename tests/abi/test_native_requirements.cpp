@@ -39,7 +39,7 @@ std::string nativeFixture(
   if (!scan) throw std::runtime_error(llvm::toString(scan.takeError()));
   std::map<std::string, std::string> renames;
   for (const auto& symbol : scan->defined)
-    renames.emplace(symbol, "$test$_" + symbol);
+    renames.emplace(symbol, "$abcd$_" + symbol);
   auto renamed = sun::moon_bundling::renameArchiveSymbols(
       (*bytes)->getMemBufferRef(), renames);
   if (!renamed) throw std::runtime_error(llvm::toString(renamed.takeError()));
@@ -52,14 +52,14 @@ std::string nativeFixture(
 TEST(ABI_Compatibility, NativeProfileChecksPlatformAndSymbolNamespace) {
   auto bytes = nativeFixture(true);
   std::vector<sun::abi::NativeArchiveInput> input{
-      {llvm::MemoryBufferRef(bytes, "fixture.a"), "$test$_"}};
+      {llvm::MemoryBufferRef(bytes, "fixture.a"), "$abcd$_"}};
   EXPECT_NO_THROW(sun::abi::validateNativeArchives(
       input, sun::abi::compatibilityTarget("x86_64-linux-gnu")));
   EXPECT_THROW(sun::abi::validateNativeArchives(
                    input, sun::abi::compatibilityTarget("aarch64-linux-gnu")),
                sun::support::SunError);
   bytes = nativeFixture(false);
-  input = {{llvm::MemoryBufferRef(bytes, "fixture.a"), "$test$_"}};
+  input = {{llvm::MemoryBufferRef(bytes, "fixture.a"), "$abcd$_"}};
   EXPECT_THROW(sun::abi::validateNativeArchives(
                    input, sun::abi::compatibilityTarget("x86_64-linux-gnu")),
                sun::support::SunError);
@@ -106,7 +106,7 @@ TEST(ABI_Compatibility, NativeInstructionsDoNotRequireAnAllowlist) {
     ASSERT_FALSE(static_cast<bool>(error)) << llvm::toString(std::move(error));
     ASSERT_TRUE(changed);
     const std::vector<sun::abi::NativeArchiveInput> input{
-        {llvm::MemoryBufferRef(bytes, "fixture.a"), "$test$_"}};
+        {llvm::MemoryBufferRef(bytes, "fixture.a"), "$abcd$_"}};
     EXPECT_NO_THROW(sun::abi::validateNativeArchives(
         input, sun::abi::compatibilityTarget("x86_64-linux-gnu")));
   }
@@ -120,11 +120,11 @@ TEST(ABI_Compatibility, NativeRuntimeRequirementsFollowActualReferences) {
   const auto profile = sun::abi::compatibilityTarget("x86_64-linux-gnu");
   std::set<std::string> services;
   sun::abi::validateNativeArchives(
-      {{llvm::MemoryBufferRef(first, "first.a"), "$test$_"}}, profile,
+      {{llvm::MemoryBufferRef(first, "first.a"), "$abcd$_"}}, profile,
       &services);
   EXPECT_TRUE(services.empty());
   sun::abi::validateNativeArchives(
-      {{llvm::MemoryBufferRef(second, "second.a"), "$test$_"}}, profile,
+      {{llvm::MemoryBufferRef(second, "second.a"), "$abcd$_"}}, profile,
       &services);
   EXPECT_EQ(services, (std::set<std::string>{"atexit", "linker"}));
 }
@@ -134,7 +134,7 @@ TEST(ABI_Compatibility, NativeRuntimeRequirementsFollowActualReferences) {
 TEST(ABI_Compatibility, NativeArchiveStructureStillRequiresValidation) {
   const std::string invalid = "not an archive";
   EXPECT_THROW(sun::abi::validateNativeArchives(
-                   {{llvm::MemoryBufferRef(invalid, "invalid.a"), "$test$_"}},
+                   {{llvm::MemoryBufferRef(invalid, "invalid.a"), "$abcd$_"}},
                    sun::abi::compatibilityTarget("x86_64-linux-gnu")),
                sun::support::SunError);
 }
@@ -150,7 +150,7 @@ TEST(ABI_Compatibility, NativeExternalReferencesAreRecordedForTheLinker) {
       << llvm::toString(renamed.takeError());
   std::set<std::string> services, symbols;
   EXPECT_NO_THROW(sun::abi::validateNativeArchives(
-      {{llvm::MemoryBufferRef(*renamed, "fixture.a"), "$test$_"}},
+      {{llvm::MemoryBufferRef(*renamed, "fixture.a"), "$abcd$_"}},
       sun::abi::compatibilityTarget("x86_64-linux-gnu"), &services, &symbols));
   EXPECT_EQ(services, std::set<std::string>{"linker"});
   EXPECT_EQ(symbols, std::set<std::string>{"sun_test_unknown_runtime"});
@@ -184,7 +184,7 @@ TEST(ABI_Compatibility, NativeRelocationsAreDelegatedToTheLinker) {
   ASSERT_FALSE(static_cast<bool>(error)) << llvm::toString(std::move(error));
   ASSERT_TRUE(foundGotReference);
   EXPECT_NO_THROW(sun::abi::validateNativeArchives(
-      {{llvm::MemoryBufferRef(bytes, "relocations.a"), "$test$_"}},
+      {{llvm::MemoryBufferRef(bytes, "relocations.a"), "$abcd$_"}},
       sun::abi::compatibilityTarget("x86_64-linux-gnu")));
 }
 
@@ -198,7 +198,7 @@ TEST(ABI_Compatibility, NativeGotBaseIsSuppliedByTheLinker) {
       << llvm::toString(renamed.takeError());
   std::set<std::string> services;
   EXPECT_NO_THROW(sun::abi::validateNativeArchives(
-      {{llvm::MemoryBufferRef(*renamed, "fixture.a"), "$test$_"}},
+      {{llvm::MemoryBufferRef(*renamed, "fixture.a"), "$abcd$_"}},
       sun::abi::compatibilityTarget("x86_64-linux-gnu"), &services));
   EXPECT_TRUE(services.empty());
 }
@@ -208,7 +208,7 @@ TEST(ABI_Compatibility, NativeGotBaseIsSuppliedByTheLinker) {
 TEST(ABI_Compatibility, NativeELFSupportsDeclaredMuslTarget) {
   const auto bytes = nativeFixture(true);
   EXPECT_NO_THROW(sun::abi::validateNativeArchives(
-      {{llvm::MemoryBufferRef(bytes, "fixture.a"), "$test$_"}},
+      {{llvm::MemoryBufferRef(bytes, "fixture.a"), "$abcd$_"}},
       sun::abi::compatibilityTarget("x86_64-linux-musl")));
   EXPECT_EQ(sun::abi::nativeArchiveRule(
                 sun::abi::compatibilityTarget("aarch64-linux-musl")),
@@ -227,7 +227,7 @@ TEST(ABI_Compatibility, NativeSymbolDiagnosticsDoNotGateImport) {
   metadata.set_source_hash("native");
   sun::moon_bundling::MoonWriter writer(std::string(64, 'a'));
   writer.addModule(module, metadata);
-  writer.addNativeArchive("test", "fixture.a", nativeFixture(true, true));
+  writer.addNativeArchive("abcd", "fixture.a", nativeFixture(true, true));
   std::filesystem::create_directories("tmp");
   const auto path = std::filesystem::path("tmp") /
                     ("native_symbols_" + std::to_string(getpid()) + ".moon");
@@ -271,7 +271,7 @@ TEST(ABI_Compatibility, NativeLifecycleRequirementsDependOnExecutionMode) {
   const auto bytes = nativeFixture(true, false, "libsun_abi_lifecycle.a");
   std::set<std::string> services;
   sun::abi::validateNativeArchives(
-      {{llvm::MemoryBufferRef(bytes, "lifecycle.a"), "$test$_"}},
+      {{llvm::MemoryBufferRef(bytes, "lifecycle.a"), "$abcd$_"}},
       sun::abi::compatibilityTarget("x86_64-linux-gnu"), &services);
   EXPECT_TRUE(services.count("initializers"));
   EXPECT_TRUE(services.count("thread_local"));
@@ -284,7 +284,7 @@ TEST(ABI_Compatibility, NativeLifecycleRequirementsDependOnExecutionMode) {
   metadata.set_source_hash("lifecycle");
   sun::moon_bundling::MoonWriter writer(std::string(64, 'a'));
   writer.addModule(module, metadata);
-  writer.addNativeArchive("test", "lifecycle.a", bytes);
+  writer.addNativeArchive("abcd", "lifecycle.a", bytes);
   std::filesystem::create_directories("tmp");
   const auto path = std::filesystem::path("tmp") /
                     ("native_lifecycle_" + std::to_string(getpid()) + ".moon");
@@ -315,7 +315,7 @@ TEST(ABI_Compatibility, MissingNativeRuntimeSymbolFailsAtLinkTime) {
       << llvm::toString(renamed.takeError());
   std::set<std::string> services, symbols;
   EXPECT_NO_THROW(sun::abi::validateNativeArchives(
-      {{llvm::MemoryBufferRef(*renamed, "fixture.a"), "$test$_"}},
+      {{llvm::MemoryBufferRef(*renamed, "fixture.a"), "$abcd$_"}},
       sun::abi::compatibilityTarget("x86_64-linux-gnu"), &services, &symbols));
   EXPECT_TRUE(symbols.count("sun_test_missing_native_runtime"));
   const auto dir = std::filesystem::path("tmp") /
@@ -334,7 +334,7 @@ TEST(ABI_Compatibility, MissingNativeRuntimeSymbolFailsAtLinkTime) {
   auto* setter = llvm::Function::Create(
       llvm::FunctionType::get(llvm::Type::getVoidTy(context),
                               {llvm::Type::getInt32Ty(context)}, false),
-      llvm::Function::ExternalLinkage, "$test$_sun_ffi_slot_set", module);
+      llvm::Function::ExternalLinkage, "$abcd$_sun_ffi_slot_set", module);
   auto* main = llvm::Function::Create(
       llvm::FunctionType::get(llvm::Type::getInt32Ty(context), false),
       llvm::Function::ExternalLinkage, "main", module);
