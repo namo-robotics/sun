@@ -206,6 +206,8 @@ ValidatedBundle AbiCompatibilityChecker::validateImpl(
       validatePayload(contract, *module, reader.getPath().string(),
                       targetTriple);
       try {
+        validatePayloadDeclarations(
+            payloadMetadata.at(reader.getBitcodeId(moduleKey)), *module);
         for (const auto* metadata :
              payloadMetadata.at(reader.getBitcodeId(moduleKey)))
           validateSpecializationPayload(*metadata, *module);

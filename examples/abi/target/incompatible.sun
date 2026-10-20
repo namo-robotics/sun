@@ -1,0 +1,8 @@
+/** Must reject a library built for another target. */
+function main() i32 {
+  return sample.answer() - 42;
+}
+
+manifest {
+  libraries: ["incompatible.moon"]
+}

@@ -1,5 +1,6 @@
 // Generates docs pages from the programs in the repo-root examples/ folder.
-// Every examples/<name>/ has a README.md plus build.sh and test.sh that CI
+// Examples may be grouped in subfolders. Each leaf has a README.md plus build.sh
+// and test.sh that CI
 // compiles and runs. Three outputs:
 //
 //  - docs/pages/examples.mdx: the Examples page, one section per example.
@@ -23,7 +24,7 @@
 // every .sun source file found in the folder, read verbatim so the docs can
 // never drift from the code CI compiles and runs. The README is the single
 // source of truth for prose, and the source list is discovered by globbing
-// *.sun.
+// *.sun. A `docs-config: true` key also displays the example's sun-config.json.
 //
 // A README is written as an intro, then `## ` sections — by convention a
 // single `## Build and run` holding the commands. The source is spliced in
@@ -35,7 +36,7 @@
 // Run automatically via the `predev` / `prebuild` npm scripts. CWD is docs/.
 
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from 'node:fs'
-import { join, extname, dirname, basename, relative, sep } from 'node:path'
+import { join, extname, dirname, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const DOCS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -84,20 +85,25 @@ function splitFrontmatter(readme) {
   return { meta, markdown: readme.slice(match[0].length) }
 }
 
-/**
- * An example is any immediate subdirectory that has a README.md. A plain name
- * sort gives the ordering.
- */
+/** Finds examples, descending through grouping folders until a README is found. */
+function exampleDirectories(dir) {
+  if (existsSync(join(dir, 'README.md'))) return [dir]
+  return readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+    .flatMap((entry) => exampleDirectories(join(dir, entry.name)))
+}
+
+/** Reads example prose and rendering options in folder order. */
 function loadExamples() {
-  return readdirSync(EXAMPLES_DIR, { withFileTypes: true })
-    .filter((d) => d.isDirectory())
-    .map((d) => join(EXAMPLES_DIR, d.name))
-    .filter((dir) => existsSync(join(dir, 'README.md')))
-    .sort()
-    .map((dir) => {
-      const { meta, markdown } = splitFrontmatter(readFileSync(join(dir, 'README.md'), 'utf8'))
-      return { dir, meta, readme: markdown }
-    })
+  return exampleDirectories(EXAMPLES_DIR).sort().map((dir) => {
+    const { meta, markdown } = splitFrontmatter(readFileSync(join(dir, 'README.md'), 'utf8'))
+    return { dir, meta, readme: markdown }
+  })
+}
+
+/** Gives grouped examples unique partial names, such as abi-target. */
+function partialName(dir) {
+  return relative(EXAMPLES_DIR, dir).split(sep).join('-')
 }
 
 /**
@@ -157,9 +163,11 @@ function splitReadme(readme) {
  * Every .sun file in the folder verbatim, each as a fenced block labelled with
  * its filename.
  */
-function renderSourceBlocks(dir) {
+function renderSourceBlocks(dir, includeConfig = false) {
   const parts = []
-  for (const file of collectSunFiles(dir)) {
+  const files = collectSunFiles(dir)
+  if (includeConfig) files.unshift('sun-config.json')
+  for (const file of files) {
     const contents = readFileSync(join(dir, file), 'utf8').replace(/\s+$/, '')
     parts.push('```' + langFor(file) + ` filename="${file}"`)
     parts.push(contents)
@@ -171,19 +179,19 @@ function renderSourceBlocks(dir) {
 /**
  * A `Source` heading at the given level, followed by every .sun file verbatim.
  */
-function renderSources(dir, level) {
-  return ['#'.repeat(level) + ' Source', '', ...renderSourceBlocks(dir)]
+function renderSources(dir, level, includeConfig) {
+  return ['#'.repeat(level) + ' Source', '', ...renderSourceBlocks(dir, includeConfig)]
 }
 
 /**
  * The body of one example: its intro prose, then the source, then the README's
  * own sections at `level` — the same level the `Source` heading is given.
  */
-function renderBody({ dir, readme }, level) {
+function renderBody({ dir, readme, meta }, level) {
   const { intro, sections } = splitReadme(readme)
   const parts = []
   if (intro) parts.push(intro, '')
-  parts.push(...renderSources(dir, level))
+  parts.push(...renderSources(dir, level, meta['docs-config'] === 'true'))
   if (sections) parts.push(shiftHeadings(sections, level - 2), '')
   return parts
 }
@@ -212,8 +220,7 @@ function partialHeader(name) {
  * so the README's H1 is dropped and `Source` sits at level 4.
  */
 function renderPartial(example) {
-  const name = basename(example.dir)
-  return [...partialHeader(name), ...renderBody(example, 4)].join('\n')
+  return [...partialHeader(relative(EXAMPLES_DIR, example.dir).split(sep).join('/')), ...renderBody(example, 4)].join('\n')
 }
 
 /**
@@ -221,8 +228,7 @@ function renderPartial(example) {
  * that writes its own walkthrough around it.
  */
 function renderSourcePartial(example) {
-  const name = basename(example.dir)
-  return [...partialHeader(name), ...renderSourceBlocks(example.dir)].join('\n')
+  return [...partialHeader(relative(EXAMPLES_DIR, example.dir).split(sep).join('/')), ...renderSourceBlocks(example.dir)].join('\n')
 }
 
 /**
@@ -264,7 +270,7 @@ console.log(`Generated ${OUT_FILE} from ${pageExamples.length} examples.`)
 
 mkdirSync(GENERATED_DIR, { recursive: true })
 for (const example of partials) {
-  const name = basename(example.dir)
+  const name = partialName(example.dir)
   const page = example.meta['docs-page']
   checkHostImports(name, 'docs-page', page, `${name}.mdx`)
   const out = join(GENERATED_DIR, name + '.mdx')
@@ -273,7 +279,7 @@ for (const example of partials) {
 }
 
 for (const example of sourcePartials) {
-  const name = basename(example.dir)
+  const name = partialName(example.dir)
   const page = example.meta['docs-source']
   checkHostImports(name, 'docs-source', page, `${name}.source.mdx`)
   const out = join(GENERATED_DIR, name + '.source.mdx')

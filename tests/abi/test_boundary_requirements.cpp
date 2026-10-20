@@ -5,6 +5,7 @@
 
 #include "abi/abi_compatibility_checker.h"
 #include "abi/boundary_requirements.h"
+#include "abi/lowering_descriptors.h"
 #include "support/error.h"
 
 /** Builds small generated contracts for independent boundary scenarios. */
@@ -180,4 +181,91 @@ TEST(ABI_Compatibility, AppendingInitializationListsCanCoexist) {
   const auto dependency = describe(2);
   EXPECT_NO_THROW(sun::abi::mergeContractRequirements(outer, dependency));
   EXPECT_EQ(outer.boundary_records_size(), 2);
+}
+
+/** Code generation and contract inspection share packing and alignment rules.
+ */
+TEST(ABI_Compatibility, SharedAggregateDescriptorControlsStorage) {
+  llvm::LLVMContext context;
+  const llvm::DataLayout layout(
+      sun::abi::compatibilityTarget("x86_64-linux-gnu").data_layout());
+  const std::vector<llvm::Type*> fields{llvm::Type::getInt8Ty(context),
+                                        llvm::Type::getInt64Ty(context)};
+  auto natural = sun::abi::AggregateLayout::inspect(
+      sun::abi::AggregateLayout::build(context, fields), layout);
+  auto packed = sun::abi::AggregateLayout::inspect(
+      sun::abi::AggregateLayout::build(context, fields, true), layout);
+  auto aligned = sun::abi::AggregateLayout::inspect(
+      sun::abi::AggregateLayout::build(context, fields, false, 32), layout);
+  EXPECT_EQ(natural.offsets, (std::vector<uint64_t>{0, 8}));
+  EXPECT_EQ(natural.size, 16);
+  EXPECT_EQ(packed.offsets, (std::vector<uint64_t>{0, 1}));
+  EXPECT_EQ(packed.size, 9);
+  EXPECT_EQ(packed.alignment, 1);
+  EXPECT_EQ(aligned.size, 32);
+  EXPECT_EQ(aligned.alignment, 32);
+  EXPECT_THROW(sun::abi::AggregateLayout::build(context, fields, true, 32),
+               sun::support::SunError);
+}
+
+/** Calls and invokes inherit exactly the ABI attributes retained by contracts.
+ */
+TEST(ABI_Compatibility, SharedCallDescriptorPreservesConventionAndAttributes) {
+  llvm::LLVMContext context;
+  llvm::Module module("calls", context);
+  auto* i32 = llvm::Type::getInt32Ty(context);
+  auto direct = sun::abi::CallDescriptor::sun(i32, {i32});
+  auto closure = sun::abi::CallDescriptor::sun(i32, {i32}, true);
+  ASSERT_EQ(closure.signature->getNumParams(), 2);
+  EXPECT_TRUE(closure.signature->getParamType(0)->isPointerTy());
+  auto* function = llvm::Function::Create(
+      direct.signature, llvm::GlobalValue::ExternalLinkage, "callee", module);
+  function->setCallingConv(llvm::CallingConv::Fast);
+  function->addParamAttr(0, llvm::Attribute::SExt);
+  function->addFnAttr(llvm::Attribute::NoInline);
+  auto* caller = llvm::Function::Create(
+      direct.signature, llvm::GlobalValue::ExternalLinkage, "caller", module);
+  llvm::IRBuilder<> builder(llvm::BasicBlock::Create(context, "entry", caller));
+  auto* call = builder.CreateCall(function, {caller->getArg(0)});
+  auto descriptor =
+      sun::abi::CallDescriptor::forCall(direct.signature, function);
+  descriptor.apply(*call);
+  EXPECT_EQ(call->getCallingConv(), llvm::CallingConv::Fast);
+  EXPECT_TRUE(call->paramHasAttr(0, llvm::Attribute::SExt));
+  EXPECT_FALSE(call->getAttributes().hasFnAttr(llvm::Attribute::NoInline));
+  EXPECT_EQ(descriptor.encodedAttributes(),
+            sun::abi::CallDescriptor::inspect(*call).encodedAttributes());
+  auto* next = llvm::BasicBlock::Create(context, "next", caller);
+  auto* unwind = llvm::BasicBlock::Create(context, "unwind", caller);
+  auto* invoke =
+      builder.CreateInvoke(function, next, unwind, {caller->getArg(0)});
+  descriptor.apply(*invoke);
+  EXPECT_EQ(invoke->getCallingConv(), llvm::CallingConv::Fast);
+  EXPECT_EQ(descriptor.encodedAttributes(),
+            sun::abi::CallDescriptor::inspect(*invoke).encodedAttributes());
+  closure.attributes = llvm::AttributeList().addParamAttribute(
+      context, 1,
+      llvm::Attribute::getWithStackAlignment(context, llvm::Align(16)));
+  EXPECT_FALSE(closure.encodedAttributes().empty());
+}
+
+/** Every enum view uses the same payload boundary and fits in its storage. */
+TEST(ABI_Compatibility, SharedEnumDescriptorPreservesAlignedPayloads) {
+  llvm::LLVMContext context;
+  const llvm::DataLayout layout(
+      sun::abi::compatibilityTarget("x86_64-linux-gnu").data_layout());
+  auto* wide = llvm::FixedVectorType::get(llvm::Type::getInt8Ty(context), 32);
+  const auto descriptor = sun::abi::EnumLayout::build(
+      context, layout, {{}, {llvm::Type::getInt8Ty(context)}, {wide}});
+  const auto storage =
+      sun::abi::AggregateLayout::inspect(descriptor.storage, layout);
+  ASSERT_EQ(descriptor.variants.size(), 3);
+  EXPECT_EQ(storage.alignment, 32);
+  EXPECT_EQ(storage.offsets[1], 32);
+  for (size_t i = 1; i < descriptor.variants.size(); ++i) {
+    const auto view =
+        sun::abi::AggregateLayout::inspect(descriptor.variants[i], layout);
+    EXPECT_EQ(view.offsets.back(), storage.offsets[1]);
+    EXPECT_LE(view.size, storage.size);
+  }
 }

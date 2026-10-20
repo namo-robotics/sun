@@ -1,0 +1,13 @@
+/** Defines a different declaration with the same name and storage. */
+public module shapes {
+
+  /** Stores one integer, just like the original type. */
+  public class Point {
+    public var x: i32;
+
+    /** Uses a different implementation without changing the field layout. */
+    init() {
+      this.x = 43;
+    }
+  }
+}

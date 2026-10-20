@@ -1,0 +1,31 @@
+{
+  "root": true,
+  "sun_path": [
+    "../../../tmp/abi-examples/identity"
+  ],
+  "path_variables": {
+    "ABI_BUILD": "../../../tmp/abi-examples/identity"
+  },
+  "entrypoints": [
+    {
+      "path": "original.sun",
+      "type": "library",
+      "output_name": "$ABI_BUILD/original"
+    },
+    {
+      "path": "replacement.sun",
+      "type": "library",
+      "output_name": "$ABI_BUILD/replacement"
+    },
+    {
+      "path": "bridge.sun",
+      "type": "library",
+      "output_name": "$ABI_BUILD/bridge"
+    },
+    {
+      "path": "main.sun",
+      "type": "binary",
+      "output_name": "$ABI_BUILD/compatible"
+    }
+  ]
+}

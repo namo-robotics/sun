@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 
+#include "abi/lowering_descriptors.h"
 #include "ast.h"
 #include "codegen/classes/class_generator.h"
 #include "codegen/codegen.h"
@@ -215,6 +216,12 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
 
   // Create the LLVM struct type for the class
   llvm::StructType* structType = classType->getStructType(ctx.getContext());
+  sun::abi::recordClassLayout(
+      *module,
+      sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
+          expr.getDeclarationId(), state_.analysis->declarations)
+          .encoding(),
+      structType);
 
   // Save current class context
   sun::codegen::CodegenState::ReceiverGuard receiver(state_);

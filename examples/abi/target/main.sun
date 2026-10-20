@@ -1,0 +1,8 @@
+/** Exits successfully when the imported scalar call works. */
+function main() i32 {
+  return sample.answer() - 42;
+}
+
+manifest {
+  libraries: ["compatible.moon"]
+}

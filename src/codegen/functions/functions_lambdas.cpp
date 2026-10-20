@@ -1,3 +1,4 @@
+#include "abi/lowering_descriptors.h"
 // functions_lambdas.cpp - Function and lambda codegen methods
 
 #include "ast.h"
@@ -312,11 +313,6 @@ std::pair<Function*, llvm::StructType*> FunctionGenerator::codegen(
   // Build the arg types for the function
   std::vector<llvm::Type*> argTypes;
 
-  // Add the lambda fat pointer as the first argument when needed.
-  if (needsClosureArg) {
-    argTypes.push_back(PointerType::getUnqual(typeResolver.getClosureType()));
-  }
-
   // Append the user-visible args from proto: the fixed parameters, then the
   // elements of any `args...` pack. Semantic analysis must have resolved
   // every one of them.
@@ -336,7 +332,8 @@ std::pair<Function*, llvm::StructType*> FunctionGenerator::codegen(
 
   // Create the function type
   llvm::FunctionType* funcType =
-      llvm::FunctionType::get(returnType, argTypes, false);
+      sun::abi::CallDescriptor::sun(returnType, argTypes, needsClosureArg)
+          .signature;
 
   // Reuse existing forward declaration if type matches, otherwise replace it
   Function* func = module->getFunction(funcName);
@@ -396,7 +393,7 @@ void FunctionGenerator::forwardDeclareFunction(const PrototypeAST& proto) {
     paramTypes.push_back(typeResolver.resolve(sunType));
   }
   llvm::FunctionType* funcType =
-      llvm::FunctionType::get(retType, paramTypes, false);
+      sun::abi::CallDescriptor::sun(retType, paramTypes).signature;
   auto* function = llvm::Function::Create(
       funcType, llvm::Function::ExternalLinkage, funcName, module);
   functions().registerFunction(proto.getDeclarationId(), function);

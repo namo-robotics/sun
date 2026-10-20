@@ -1,0 +1,13 @@
+/** Deliberately lacks the method required by the imported generic body. */
+class Item {
+}
+
+/** Must fail when the retained body is specialized for Item. */
+function main() i32 {
+  var item = Item();
+  return reader.read<Item>(item) - 42;
+}
+
+manifest {
+  libraries: ["reader.moon"]
+}

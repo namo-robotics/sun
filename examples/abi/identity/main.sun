@@ -1,0 +1,9 @@
+/** Passes a value across the bridge's nominal type boundary. */
+function main() i32 {
+  var point = shapes.Point();
+  return bridge.read(point) - 42;
+}
+
+manifest {
+  libraries: ["original.moon", "bridge.moon"]
+}

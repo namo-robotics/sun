@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <unordered_map>
 
+#include "abi/lowering_descriptors.h"
 #include "ast/type_constraint.h"
 #include "semantic_analysis/qualified_name.h"
 #include "semantic_analysis/visibility.h"
@@ -421,15 +422,8 @@ class ClassType : public NominalType {
         fieldTypes.push_back(field.type->toLLVMType(ctx));
       }
     }
-    // A zero-length vector array contributes alignment without a source field.
-    // Keeping it last preserves source field indices and rounds the array
-    // stride.
-    if (alignment_) {
-      auto* marker =
-          llvm::FixedVectorType::get(llvm::Type::getInt8Ty(ctx), alignment_);
-      fieldTypes.push_back(llvm::ArrayType::get(marker, 0));
-    }
-    cachedLLVMType = llvm::StructType::get(ctx, fieldTypes, isPacked_);
+    cachedLLVMType = sun::abi::AggregateLayout::build(ctx, fieldTypes,
+                                                      isPacked_, alignment_);
     return cachedLLVMType;
   }
 

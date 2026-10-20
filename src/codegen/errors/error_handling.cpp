@@ -1,3 +1,4 @@
+#include "abi/lowering_descriptors.h"
 // error_handling.cpp — Codegen for error handling expressions (try/catch/throw)
 
 #include <llvm/IR/Constants.h>
@@ -555,9 +556,16 @@ Value* ErrorGenerator::emitPossiblyThrowingCall(llvm::FunctionType* fnTy,
                                                 ArrayRef<Value*> args,
                                                 bool canThrow,
                                                 const Twine& name) {
+  const auto descriptor = sun::abi::CallDescriptor::forCall(fnTy, callee);
+  /** Applies the same ABI to ordinary calls and calls with cleanup edges. */
+  auto finish = [&](llvm::CallBase* call) -> llvm::Value* {
+    descriptor.apply(*call);
+    return call;
+  };
   bool isVoid = fnTy->getReturnType()->isVoidTy();
   if (!canThrow) {
-    return ctx.builder->CreateCall(fnTy, callee, args, isVoid ? "" : name);
+    return finish(
+        ctx.builder->CreateCall(fnTy, callee, args, isVoid ? "" : name));
   }
 
   bool inTry = activeTry() != nullptr;
@@ -567,7 +575,8 @@ Value* ErrorGenerator::emitPossiblyThrowingCall(llvm::FunctionType* fnTy,
 
   if (!inTry && !needsCleanup) {
     // Nothing to clean: let the exception unwind straight into the caller.
-    return ctx.builder->CreateCall(fnTy, callee, args, isVoid ? "" : name);
+    return finish(
+        ctx.builder->CreateCall(fnTy, callee, args, isVoid ? "" : name));
   }
 
   Function* curFn = ctx.builder->GetInsertBlock()->getParent();
@@ -610,8 +619,8 @@ Value* ErrorGenerator::emitPossiblyThrowingCall(llvm::FunctionType* fnTy,
     unwindDest = padBB;
   }
 
-  Value* inv = ctx.builder->CreateInvoke(fnTy, callee, contBB, unwindDest, args,
-                                         isVoid ? "" : name);
+  Value* inv = finish(ctx.builder->CreateInvoke(
+      fnTy, callee, contBB, unwindDest, args, isVoid ? "" : name));
   ctx.builder->SetInsertPoint(contBB);
   return inv;
 }

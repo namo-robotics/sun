@@ -345,10 +345,12 @@ add_library(sun_lib
     src/serialization/ast_deserializer.cpp
     # ABI requirements and compatibility decisions
     src/abi/compatibility.cpp
+    src/abi/payload_requirements.cpp
     src/abi/semantic_requirements.cpp
     src/abi/native_requirements.cpp
     src/abi/support_inventory.cpp
     src/abi/support_manifest.cpp
+    src/abi/lowering_descriptors.cpp
     src/abi/boundary_requirements.cpp
     src/abi/producer_identity.cpp
     src/abi/abi_compatibility_checker.cpp

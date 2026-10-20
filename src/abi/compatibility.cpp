@@ -16,6 +16,7 @@
 #include <mutex>
 
 #include "abi/boundary_requirements.h"
+#include "abi/lowering_descriptors.h"
 #include "abi/support_inventory.h"
 #ifdef __linux__
 #include <link.h>
@@ -87,67 +88,6 @@ void require(BundleContract& contract, const std::string& name,
   auto* rule = contract.add_requirements();
   rule->set_name(name);
   rule->set_implementation(implementation);
-}
-/** Describes machine types structurally while keeping opaque nominal
- * references. LLVM linking can replace a named aggregate with its identical
- * literal layout. Sun nominal identities are validated separately from these
- * machine shapes.
- */
-std::string typeName(llvm::Type* type) {
-  if (auto* structure = llvm::dyn_cast<llvm::StructType>(type);
-      structure && structure->isSized()) {
-    std::string result = structure->isPacked() ? "packed{" : "struct{";
-    for (auto* member : structure->elements()) result += typeName(member) + ";";
-    return result + "}";
-  }
-  if (auto* array = llvm::dyn_cast<llvm::ArrayType>(type))
-    return "array[" + std::to_string(array->getNumElements()) + ":" +
-           typeName(array->getElementType()) + "]";
-  if (auto* function = llvm::dyn_cast<llvm::FunctionType>(type)) {
-    std::string result = typeName(function->getReturnType()) + "(";
-    for (auto* parameter : function->params())
-      result += typeName(parameter) + ";";
-    return result + (function->isVarArg() ? "...)" : ")");
-  }
-  std::string result;
-  llvm::raw_string_ostream stream(result);
-  type->print(stream, false, true);
-  return result;
-}
-/** Retains ABI attributes, excluding optimizer facts and diagnostic attributes.
- */
-std::string abiAttributes(llvm::AttributeList attributes) {
-  std::string result;
-  for (unsigned index : attributes.indexes()) {
-    for (auto attribute : attributes.getAttributes(index)) {
-      if (attribute.isStringAttribute()) continue;
-      switch (attribute.getKindAsEnum()) {
-        case llvm::Attribute::StructRet:
-        case llvm::Attribute::ByVal:
-        case llvm::Attribute::ByRef:
-        case llvm::Attribute::InAlloca:
-        case llvm::Attribute::Preallocated:
-        case llvm::Attribute::InReg:
-        case llvm::Attribute::SExt:
-        case llvm::Attribute::ZExt:
-        case llvm::Attribute::Alignment:
-        case llvm::Attribute::Nest:
-        case llvm::Attribute::SwiftSelf:
-        case llvm::Attribute::SwiftError:
-          result += field(
-              index, attribute.isTypeAttribute()
-                         ? llvm::Attribute::getNameFromAttrKind(
-                               attribute.getKindAsEnum())
-                                   .str() +
-                               "(" + typeName(attribute.getValueAsType()) + ")"
-                         : attribute.getAsString());
-          break;
-        default:
-          break;
-      }
-    }
-  }
-  return result;
 }
 #ifdef __linux__
 /** Collects the actual shared implementation dependencies, excluding the host
@@ -240,37 +180,46 @@ TargetProfile compatibilityTarget(const std::string& requested) {
 std::vector<std::string> describeBoundaries(const llvm::Module& module) {
   std::set<std::string> records;
   const auto& layout = module.getDataLayout();
-  for (auto* type : module.getIdentifiedStructTypes()) {
-    if (type->isOpaque() || !type->isSized()) continue;
-    const auto* structure = layout.getStructLayout(type);
-    std::string record = field(1, type->getName().str()) +
-                         field(2, integer(structure->getSizeInBytes())) +
-                         field(3, integer(structure->getAlignment().value()));
+  std::map<std::string, llvm::StructType*> layouts;
+  for (auto* type : module.getIdentifiedStructTypes())
+    if (!type->isOpaque() && type->isSized())
+      layouts.emplace(type->getName().str(), type);
+  for (const auto& [identity, type] : classLayouts(module))
+    layouts.emplace("sun.declaration:" + identity, type);
+  for (const auto& [identity, type] : layouts) {
+    const auto structure = AggregateLayout::inspect(type, layout);
+    std::string record = field(1, identity) +
+                         field(2, integer(structure.size)) +
+                         field(3, integer(structure.alignment));
     for (unsigned i = 0; i < type->getNumElements(); ++i)
-      record += field(4, integer(structure->getElementOffset(i)) +
-                             field(1, typeName(type->getElementType(i))));
+      record +=
+          field(4, integer(structure.offsets.at(i)) +
+                       field(1, machineTypeName(type->getElementType(i))));
     records.insert(field(1, record));
   }
   for (const auto& function : module) {
     if (!function.hasLocalLinkage())
-      records.insert(
-          field(2, field(1, function.getName().str()) +
-                       field(2, typeName(function.getFunctionType())) +
-                       field(3, integer(function.getCallingConv())) +
-                       field(4, abiAttributes(function.getAttributes()))));
+      records.insert(field(
+          2,
+          field(1, function.getName().str()) +
+              field(2, machineTypeName(function.getFunctionType())) +
+              field(3, integer(function.getCallingConv())) +
+              field(4, CallDescriptor::inspect(function).encodedAttributes())));
     for (const auto& block : function)
       for (const auto& instruction : block)
         if (const auto* call = llvm::dyn_cast<llvm::CallBase>(&instruction))
-          records.insert(
-              field(3, field(1, typeName(call->getFunctionType())) +
-                           field(2, integer(call->getCallingConv())) +
-                           field(3, abiAttributes(call->getAttributes()))));
+          records.insert(field(
+              3,
+              field(1, machineTypeName(call->getFunctionType())) +
+                  field(2, integer(call->getCallingConv())) +
+                  field(3,
+                        CallDescriptor::inspect(*call).encodedAttributes())));
   }
   for (const auto& global : module.globals()) {
     if (global.hasLocalLinkage()) continue;
     records.insert(
         field(4, field(1, global.getName().str()) +
-                     field(2, typeName(global.getValueType())) +
+                     field(2, machineTypeName(global.getValueType())) +
                      field(3, integer(global.getAlign().valueOrOne().value())) +
                      field(4, integer(global.getThreadLocalMode()))));
   }

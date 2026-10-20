@@ -1,0 +1,13 @@
+/** Defines the exact nominal type used by the bridge library. */
+public module shapes {
+
+  /** Stores one integer. */
+  public class Point {
+    public var x: i32;
+
+    /** Initializes the field. */
+    init() {
+      this.x = 42;
+    }
+  }
+}

@@ -10,8 +10,10 @@
 #include <fstream>
 
 #include "abi/abi_compatibility_checker.h"
+#include "abi/lowering_descriptors.h"
 #include "abi/semantic_requirements.h"
 #include "moon_bundling/moon.h"
+#include "semantic_analysis/portable_declaration_key.h"
 #include "support/error.h"
 
 /** Diagnostic changes and declaration-map traversal do not change semantics. */
@@ -295,4 +297,185 @@ TEST(ABI_Compatibility, NavigationImportsAreRequiredForRetainedCode) {
   module->set_kind(sun::moon::MODULE);
   EXPECT_NO_THROW(
       sun::abi::validateDeclarationGraph({&metadata, &dependency}, true));
+}
+
+/** Recomputing metadata and contract hashes cannot bless a changed class ABI.
+ */
+TEST(ABI_Compatibility, RehashedClassMetadataMustMatchCompiledLayout) {
+  llvm::LLVMContext context;
+  llvm::Module module("layout", context);
+  module.setTargetTriple("x86_64-linux-gnu");
+  module.setDataLayout(
+      sun::abi::compatibilityTarget(module.getTargetTriple()).data_layout());
+  const auto functionKey =
+      sun::semantic_analysis::PortableDeclarationKey::original(
+          std::string(64, 'a'), 1);
+  const auto classKey =
+      sun::semantic_analysis::PortableDeclarationKey::original(
+          std::string(64, 'a'), 2);
+  auto* storage = sun::abi::AggregateLayout::build(
+      context,
+      {llvm::Type::getInt8Ty(context), llvm::Type::getInt64Ty(context)});
+  sun::abi::recordClassLayout(module, classKey.encoding(), storage);
+  auto* function = llvm::Function::Create(
+      sun::abi::CallDescriptor::sun(llvm::Type::getInt32Ty(context),
+                                    {llvm::PointerType::getUnqual(context)})
+          .signature,
+      llvm::GlobalValue::ExternalLinkage, functionKey.symbol("function"),
+      module);
+  llvm::IRBuilder<> builder(
+      llvm::BasicBlock::Create(context, "entry", function));
+  builder.CreateRet(builder.getInt32(42));
+  sun::moon::ModuleMetadata metadata;
+  metadata.set_source_hash("layout");
+  auto* record = metadata.add_declarations();
+  record->set_key(functionKey.encoding());
+  record->set_kind(sun::moon::FUNCTION);
+  record = metadata.add_declarations();
+  record->set_key(classKey.encoding());
+  record->set_kind(sun::moon::CLASS);
+  auto* cls = metadata.add_classes();
+  cls->set_name("Pair");
+  cls->mutable_declaration_identity()->set_key(classKey.encoding());
+  cls->add_fields()->mutable_type()->set_base_name("i8");
+  cls->add_fields()->mutable_type()->set_base_name("i64");
+  auto* proto = metadata.add_functions()->mutable_proto();
+  proto->set_name("make");
+  proto->mutable_declaration_identity()->set_key(functionKey.encoding());
+  proto->mutable_return_type()->set_base_name("i32");
+  auto* parameter = proto->add_args()->mutable_type();
+  parameter->set_base_name("ref");
+  parameter->mutable_element_type()->set_base_name("Pair");
+  parameter->mutable_element_type()->set_declaration_key(classKey.encoding());
+  const auto path =
+      std::filesystem::path("tmp") /
+      ("abi_payload_layout_" + std::to_string(getpid()) + ".moon");
+  std::filesystem::create_directories("tmp");
+  /** Writes a newly hashed contract while preserving the original LLVM body. */
+  auto write = [&](const sun::moon::ModuleMetadata& description) {
+    sun::moon_bundling::MoonWriter writer(std::string(64, 'a'));
+    writer.addModule(module, description);
+    EXPECT_TRUE(writer.write(path));
+    return sun::moon_bundling::MoonReader::open(path);
+  };
+  auto reader = write(metadata);
+  ASSERT_NE(reader, nullptr);
+  sun::abi::AbiCompatibilityChecker checker("x86_64-linux-gnu");
+  EXPECT_NO_THROW(checker.validate(*reader));
+  for (int change = 0; change < 5; ++change) {
+    auto changed = metadata;
+    if (change == 0)
+      changed.mutable_classes(0)
+          ->mutable_fields(1)
+          ->mutable_type()
+          ->set_base_name("i32");
+    if (change == 1) changed.mutable_classes(0)->set_is_packed(true);
+    if (change == 2) changed.mutable_classes(0)->set_alignment(32);
+    if (change == 3)
+      changed.mutable_functions(0)
+          ->mutable_proto()
+          ->mutable_return_type()
+          ->set_base_name("i64");
+    if (change == 4)
+      module.eraseNamedMetadata(module.getNamedMetadata("sun.abi.classes"));
+    auto altered = write(changed);
+    ASSERT_NE(altered, nullptr);
+    checker.beginCompilation("x86_64-linux-gnu");
+    try {
+      checker.validate(*altered);
+      FAIL() << "Accepted changed source layout against unchanged code";
+    } catch (const sun::support::SunError& error) {
+      EXPECT_NE(std::string(error.what()).find("ABI"), std::string::npos);
+    }
+  }
+  std::filesystem::remove(path);
+}
+
+/** Enum payload metadata is checked against independently lowered call types.
+ */
+TEST(ABI_Compatibility, EnumMetadataMustMatchCompiledSignature) {
+  llvm::LLVMContext context;
+  llvm::Module module("enum", context);
+  module.setTargetTriple("x86_64-linux-gnu");
+  module.setDataLayout(
+      sun::abi::compatibilityTarget(module.getTargetTriple()).data_layout());
+  const auto functionKey =
+      sun::semantic_analysis::PortableDeclarationKey::original(
+          std::string(64, 'a'), 1);
+  const auto enumKey = sun::semantic_analysis::PortableDeclarationKey::original(
+      std::string(64, 'a'), 2);
+  auto layout = sun::abi::EnumLayout::build(
+      context, module.getDataLayout(), {{}, {llvm::Type::getInt64Ty(context)}});
+  auto* function = llvm::Function::Create(
+      sun::abi::CallDescriptor::sun(llvm::Type::getVoidTy(context),
+                                    {layout.storage})
+          .signature,
+      llvm::GlobalValue::ExternalLinkage, functionKey.symbol("function"),
+      module);
+  llvm::IRBuilder<> builder(
+      llvm::BasicBlock::Create(context, "entry", function));
+  builder.CreateRetVoid();
+  sun::moon::ModuleMetadata metadata;
+  auto* enumeration = metadata.add_enums();
+  enumeration->set_name("Option");
+  enumeration->mutable_declaration_identity()->set_key(enumKey.encoding());
+  enumeration->add_variants()->set_name("None");
+  auto* variant = enumeration->add_variants();
+  variant->set_name("Some");
+  variant->add_payload_types()->set_base_name("i64");
+  auto* proto = metadata.add_functions()->mutable_proto();
+  proto->set_name("consume");
+  proto->mutable_declaration_identity()->set_key(functionKey.encoding());
+  proto->mutable_return_type()->set_base_name("void");
+  auto* argument = proto->add_args()->mutable_type();
+  argument->set_base_name("Option");
+  argument->set_declaration_key(enumKey.encoding());
+  EXPECT_NO_THROW(sun::abi::validatePayloadDeclarations({&metadata}, module));
+  variant->mutable_payload_types(0)->set_base_name("i32");
+  EXPECT_THROW(sun::abi::validatePayloadDeclarations({&metadata}, module),
+               sun::support::SunError);
+  variant->mutable_payload_types(0)->set_base_name("i64");
+  function->deleteBody();
+  EXPECT_THROW(sun::abi::validatePayloadDeclarations({&metadata}, module),
+               sun::support::SunError);
+}
+
+/** Generic arguments behind pointers do not create by-value storage cycles. */
+TEST(ABI_Compatibility, RecursiveGenericStorageFollowsPointerBoundaries) {
+  llvm::LLVMContext context;
+  llvm::Module module("recursive", context);
+  module.setTargetTriple("x86_64-linux-gnu");
+  module.setDataLayout(
+      sun::abi::compatibilityTarget(module.getTargetTriple()).data_layout());
+  const auto nodeKey = sun::semantic_analysis::PortableDeclarationKey::original(
+      std::string(64, 'a'), 1);
+  const auto boxKey = sun::semantic_analysis::PortableDeclarationKey::original(
+      std::string(64, 'a'), 2);
+  auto* boxStorage = sun::abi::AggregateLayout::build(
+      context, {llvm::PointerType::getUnqual(context)});
+  sun::abi::recordClassLayout(
+      module, nodeKey.encoding(),
+      sun::abi::AggregateLayout::build(context, {boxStorage}));
+  sun::moon::ModuleMetadata metadata;
+  auto* node = metadata.add_classes();
+  node->set_name("Node");
+  node->mutable_declaration_identity()->set_key(nodeKey.encoding());
+  auto* boxField = node->add_fields()->mutable_type();
+  boxField->set_base_name("Box");
+  boxField->set_declaration_key(boxKey.encoding());
+  auto* argument = boxField->add_type_arguments();
+  argument->set_base_name("Node");
+  argument->set_declaration_key(nodeKey.encoding());
+  auto* box = metadata.add_classes();
+  box->set_name("Box");
+  box->mutable_declaration_identity()->set_key(boxKey.encoding());
+  box->add_type_params()->set_name("T");
+  auto* pointer = box->add_fields()->mutable_type();
+  pointer->set_base_name("raw_ptr");
+  pointer->mutable_element_type()->set_base_name("T");
+  EXPECT_NO_THROW(sun::abi::validatePayloadDeclarations({&metadata}, module));
+  pointer->Clear();
+  pointer->set_base_name("T");
+  EXPECT_THROW(sun::abi::validatePayloadDeclarations({&metadata}, module),
+               sun::support::SunError);
 }

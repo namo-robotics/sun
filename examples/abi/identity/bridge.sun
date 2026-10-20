@@ -1,0 +1,12 @@
+/** Exposes a signature referring to the original library's type. */
+public module bridge {
+
+  /** Reads the exact Point declaration imported when this library was built. */
+  public function read(point: ref shapes.Point) i32 {
+    return point.x;
+  }
+}
+
+manifest {
+  libraries: ["original.moon"]
+}

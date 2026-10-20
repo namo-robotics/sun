@@ -21,6 +21,7 @@ validated and embedded during its build. Editing that manifest afterward cannot 
 - The target and required compiler rules are supported.
 - Decoded LLVM code matches the contract's recorded layouts, calls, and CPU requirements.
 - Retained declarations and generic bodies match their recorded descriptions.
+- Concrete class layouts and reconstructable function signatures agree with the compiled payload.
 - Declaration references resolve across the selected imports, and advertised precompiled methods have bodies.
 - Embedded dependencies retain their requirements.
 
@@ -32,6 +33,10 @@ still define different Sun types. Matching memory layouts do not make them inter
 
 These checks are incomplete: Sun does not yet independently verify every
 relationship between source-level type metadata and compiled layouts.
+Class and enum storage and Sun call signatures now share code with ABI validation.
+For example, changing a recorded class field from `i64` to `i32` is rejected even
+when the class is passed through a pointer and the contract hash is recomputed.
+Types whose layouts depend on unavailable external declarations still need further checks.
 
 ## Native archives
 
@@ -89,7 +94,7 @@ library acceptable. Checking an existing output for build skipping does not warn
 
 ## Remaining work
 
-- Share layout and call descriptions with code generation, and finish metadata-to-code checks.
+- Finish shared descriptions for closures and interface dispatch, and metadata-to-code checks.
 - Finish destination CPU and runtime-dispatch modeling.
 - Finish transitive fingerprint coverage.
 - Test successful compatibility across historical compilers and libraries; current historical coverage only proves rejection.
