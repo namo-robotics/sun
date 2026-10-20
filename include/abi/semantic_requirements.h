@@ -11,8 +11,8 @@ namespace sun::abi {
 /** Canonically encodes semantic metadata, excluding diagnostic and container
  * fields. */
 std::string describeSemantics(const moon::ModuleMetadata& metadata);
-/** Checks unique declaration identities and acyclic, complete ownership before
- * import. */
+/** Checks declaration ownership and retained references against bundle and
+ * compiler-provided identities before import. */
 void validateDeclarationGraph(
     const std::vector<const moon::ModuleMetadata*>& modules);
 }  // namespace sun::abi

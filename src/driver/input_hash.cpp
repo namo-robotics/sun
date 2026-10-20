@@ -126,7 +126,8 @@ void addSourceDigests(BuildInputs& inputs,
 
 /** Computes a digest covering the inputs and settings of a build. */
 std::string computeInputHash(const BuildInputs& inputs) {
-  sun::abi::AbiCompatibilityChecker checker(inputs.targetTriple);
+  sun::abi::AbiCompatibilityChecker checker(
+      inputs.targetTriple, sun::abi::NativeExecution::NativeLink);
   std::string input = "sun.inputs.v1";
   input += hashField("kind", inputs.artifactKind);
 

@@ -646,3 +646,25 @@ TEST(ABI_Compatibility, NativeSymbolDiagnosticsDoNotRequireLinkerRule) {
   EXPECT_NO_THROW(sun::abi::AbiCompatibilityChecker::current().validateContract(
       native, "native.moon", "x86_64-linux-gnu"));
 }
+
+/** Cross compilation accepts baseline features of the selected target. */
+TEST(ABI_Compatibility, NativeLinkChecksTargetCPUInsteadOfBuildHost) {
+  for (const auto& [triple, feature] :
+       {std::pair{"aarch64-linux-gnu", "neon"},
+        std::pair{"x86_64-linux-gnu", "sse2"}}) {
+    llvm::LLVMContext context;
+    llvm::Module module("cross", context);
+    module.setTargetTriple(triple);
+    module.setDataLayout(sun::abi::compatibilityTarget(triple).data_layout());
+    auto declared = sun::abi::describeContract(module);
+    declared.mutable_target()->add_cpu_features(feature);
+    declared.set_compatibility_hash(sun::abi::hashBundleContract(declared));
+    sun::abi::AbiCompatibilityChecker checker(
+        triple, sun::abi::NativeExecution::NativeLink);
+    EXPECT_NO_THROW(checker.validateContract(declared, "cross.moon", triple));
+    declared.mutable_target()->add_cpu_features("sun-unknown-feature");
+    declared.set_compatibility_hash(sun::abi::hashBundleContract(declared));
+    EXPECT_THROW(checker.validateContract(declared, "cross.moon", triple),
+                 sun::support::SunError);
+  }
+}

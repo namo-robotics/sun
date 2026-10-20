@@ -13,6 +13,7 @@
 #include "abi/abi_compatibility_checker.h"
 #include "abi/native_requirements.h"
 #include "driver/compiler.h"
+#include "driver/input_hash.h"
 #include "moon_bundling/archive_symbols.h"
 #include "moon_bundling/moon.h"
 #include "support/error.h"
@@ -294,6 +295,11 @@ TEST(ABI_Compatibility, NativeLifecycleRequirementsDependOnExecutionMode) {
   sun::abi::AbiCompatibilityChecker checker(
       "x86_64-linux-gnu", sun::abi::NativeExecution::NativeLink);
   EXPECT_NO_THROW(checker.validate(*reader));
+  sun::driver::BuildInputs inputs;
+  inputs.artifactKind = "executable";
+  inputs.targetTriple = "x86_64-linux-gnu";
+  inputs.moonImports.emplace_back(path.string());
+  EXPECT_NO_THROW(sun::driver::computeInputHash(inputs));
   checker.beginCompilation("x86_64-linux-gnu", sun::abi::NativeExecution::JIT);
   EXPECT_TRUE(checker.importedContracts().empty());
   EXPECT_THROW(checker.validate(*reader), sun::support::SunError);

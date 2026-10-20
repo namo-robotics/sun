@@ -143,3 +143,33 @@ TEST(ABI_Compatibility,
   EXPECT_THROW(sun::moon_bundling::MoonReader::open(path),
                sun::support::SunError);
 }
+
+/** Retained bodies and nested types must resolve exact cross-module identities.
+ */
+TEST(ABI_Compatibility,
+     RetainedReferencesResolveAcrossCompleteDeclarationGraph) {
+  sun::moon::ModuleMetadata owner, user;
+  auto* record = owner.add_declarations();
+  record->set_key("private-class");
+  record->set_kind(sun::moon::CLASS);
+  auto* function = user.add_functions();
+  auto* reference = function->mutable_proto()->mutable_return_type();
+  reference->set_declaration_key("private-class");
+  EXPECT_NO_THROW(sun::abi::validateDeclarationGraph({&owner, &user}));
+  EXPECT_THROW(sun::abi::validateDeclarationGraph({&user}),
+               sun::support::SunError);
+  reference->mutable_element_type()->set_declaration_key("missing-nested-type");
+  EXPECT_THROW(sun::abi::validateDeclarationGraph({&owner, &user}),
+               sun::support::SunError);
+  reference->clear_element_type();
+  auto* node = function->mutable_body()->add_body();
+  node->mutable_bool_literal()->set_value(true);
+  node->set_module_declaration_key("private-class");
+  EXPECT_THROW(sun::abi::validateDeclarationGraph({&owner, &user}),
+               sun::support::SunError);
+  record->set_kind(sun::moon::MODULE);
+  EXPECT_NO_THROW(sun::abi::validateDeclarationGraph({&owner, &user}));
+  node->mutable_declaration_identity()->add_parameters("private-class");
+  EXPECT_THROW(sun::abi::validateDeclarationGraph({&owner, &user}),
+               sun::support::SunError);
+}

@@ -10,6 +10,8 @@
 #include <map>
 #include <vector>
 
+#include "semantic_analysis/analysis_results.h"
+#include "semantic_analysis/semantic_context.h"
 #include "support/error.h"
 
 /** Describes the declarations and retained bodies interpreted by an importer.
@@ -150,6 +152,85 @@ std::string encode(const google::protobuf::Message& message, unsigned depth) {
   }
   return result;
 }
+/** Uses the same builtin identities as a fresh semantic analysis session. */
+const std::vector<moon::DeclarationRecord>& builtinDeclarations() {
+  static const auto records = [] {
+    auto results = std::make_shared<sun::semantic_analysis::AnalysisResults>();
+    sun::semantic_analysis::SemanticContext context(results);
+    const auto& table = results->declarations;
+    std::vector<moon::DeclarationRecord> records;
+    for (size_t i = 1; i <= table.size(); ++i) {
+      const auto& source = table.get(sun::semantic_analysis::DeclarationId(i));
+      if (!source.portableKey) continue;
+      auto& record = records.emplace_back();
+      record.set_key(source.portableKey->encoding());
+      record.set_kind(static_cast<moon::DeclarationKind>(source.kind));
+      record.set_name(source.name);
+    }
+    return records;
+  }();
+  return records;
+}
+/** Checks portable references throughout private bodies and nested types. */
+void validateReferences(
+    const google::protobuf::Message& message,
+    const std::map<std::string, const moon::DeclarationRecord*>& records,
+    unsigned depth) {
+  if (depth > 128)
+    sun::support::logAndThrowError(
+        "Unsupported retained metadata nesting depth");
+  const auto* descriptor = message.GetDescriptor();
+  const auto* reflection = message.GetReflection();
+  // Compiled specializations introduce derived identities; they do not refer
+  // to source declaration records. Their method symbols are checked by Moon.
+  if (descriptor->full_name() == "sun.proto.ast.CompiledSpecialization") {
+    const auto* key = descriptor->FindFieldByName("declaration_key");
+    if (reflection->GetString(message, key).empty())
+      sun::support::logAndThrowError("Compiled specialization has no identity");
+    return;
+  }
+  const bool identity =
+      descriptor->full_name() == "sun.proto.ast.DeclarationIdentity";
+  std::vector<const google::protobuf::FieldDescriptor*> fields;
+  reflection->ListFields(message, &fields);
+  for (const auto* field : fields) {
+    const bool repeated = field->is_repeated();
+    const int count = repeated ? reflection->FieldSize(message, field) : 1;
+    for (int i = 0; i < count; ++i) {
+      if (field->cpp_type() ==
+          google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
+        validateReferences(
+            repeated ? reflection->GetRepeatedMessage(message, field, i)
+                     : reflection->GetMessage(message, field),
+            records, depth + 1);
+      } else if (field->cpp_type() ==
+                     google::protobuf::FieldDescriptor::CPPTYPE_STRING &&
+                 (identity || field->name() == "declaration_key" ||
+                  field->name() == "module_declaration_key")) {
+        const auto key = repeated
+                             ? reflection->GetRepeatedString(message, field, i)
+                             : reflection->GetString(message, field);
+        const auto found = records.find(key);
+        if (found == records.end())
+          sun::support::logAndThrowError(
+              "Missing retained declaration reference in " +
+              field->full_name() + ": " + key);
+        const auto kind = found->second->kind();
+        if ((field->name() == "module_declaration_key" &&
+             kind != moon::MODULE) ||
+            (identity && field->name() == "parameters" &&
+             kind != moon::PARAMETER) ||
+            (identity && field->name() == "type_parameters" &&
+             kind != moon::TYPE_PARAMETER) ||
+            (identity && field->name() == "lifetime_parameters" &&
+             kind != moon::LIFETIME_PARAMETER))
+          sun::support::logAndThrowError(
+              "Invalid retained declaration kind in " + field->full_name() +
+              ": " + key);
+      }
+    }
+  }
+}
 }  // namespace
 
 std::string describeSemantics(const moon::ModuleMetadata& metadata) {
@@ -158,6 +239,8 @@ std::string describeSemantics(const moon::ModuleMetadata& metadata) {
 void validateDeclarationGraph(
     const std::vector<const moon::ModuleMetadata*>& modules) {
   std::map<std::string, const moon::DeclarationRecord*> records;
+  for (const auto& record : builtinDeclarations())
+    records.emplace(record.key(), &record);
   for (const auto* module : modules) {
     for (const auto& record : module->declarations()) {
       if (record.key().empty() || !moon::DeclarationKind_IsValid(record.kind()))
@@ -167,6 +250,7 @@ void validateDeclarationGraph(
                                        record.key());
     }
   }
+  for (const auto* module : modules) validateReferences(*module, records, 0);
   std::map<std::string, size_t> pending;
   std::map<std::string, std::vector<std::string>> dependents;
   std::deque<std::string> ready;

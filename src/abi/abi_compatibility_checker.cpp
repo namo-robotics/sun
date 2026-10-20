@@ -2,6 +2,8 @@
 
 #include <llvm/ADT/StringMap.h>
 #include <llvm/IR/Verifier.h>
+#include <llvm/MC/MCSubtargetInfo.h>
+#include <llvm/MC/TargetRegistry.h>
 #include <llvm/Support/Error.h>
 #include <llvm/TargetParser/Host.h>
 #include <llvm/TargetParser/Triple.h>
@@ -186,14 +188,28 @@ void AbiCompatibilityChecker::validateContract(
       expected.little_endian() != actual.little_endian())
     fail("incompatible target profile for current target '" + targetTriple +
          "'");
-  if (!contract.target().cpu_features().empty() &&
-      expected.architecture() !=
-          llvm::Triple(llvm::sys::getDefaultTargetTriple()).getArchName().str())
-    fail("CPU feature support cannot be established for a cross target");
-  llvm::StringMap<bool> hostFeatures = llvm::sys::getHostCPUFeatures();
+  // Preserve native-host capability checks; cross targets use their own
+  // baseline rather than borrowing features from the build host.
+  llvm::StringMap<bool> availableFeatures;
+  if (expected.architecture() ==
+      llvm::Triple(llvm::sys::getDefaultTargetTriple()).getArchName().str()) {
+    availableFeatures = llvm::sys::getHostCPUFeatures();
+  } else {
+    const auto triple = llvm::Triple::normalize(
+        targetTriple.empty() ? llvm::sys::getDefaultTargetTriple()
+                             : targetTriple);
+    std::string error;
+    const auto* target = llvm::TargetRegistry::lookupTarget(triple, error);
+    if (!target) fail("cannot determine target CPU capabilities: " + error);
+    std::unique_ptr<llvm::MCSubtargetInfo> subtarget(
+        target->createMCSubtargetInfo(triple, "generic", ""));
+    if (!subtarget) fail("cannot determine target CPU capabilities");
+    for (const auto& feature : subtarget->getEnabledProcessorFeatures())
+      availableFeatures[feature.Key] = true;
+  }
   for (const auto& feature : contract.target().cpu_features()) {
-    if (!hostFeatures.lookup(feature))
-      fail("unsupported CPU feature '" + feature + "'");
+    if (!availableFeatures.lookup(feature))
+      fail("unsupported CPU feature '" + feature + "' for selected target");
     expected.add_cpu_features(feature);
   }
   BundleContract derived;
