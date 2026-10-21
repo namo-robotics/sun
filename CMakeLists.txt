@@ -348,6 +348,7 @@ add_library(sun_lib
     src/abi/payload_requirements.cpp
     src/abi/semantic_requirements.cpp
     src/abi/native_requirements.cpp
+    src/abi/nominal_identity.cpp
     src/abi/support_inventory.cpp
     src/abi/support_manifest.cpp
     src/abi/lowering_descriptors.cpp
