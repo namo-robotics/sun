@@ -49,6 +49,8 @@ message BundleContract {
   repeated string native_link_symbols = 9;
   // Diagnostic provenance; never authorizes compatibility.
   repeated NativeBuildProvenance native_build_provenance = 10;
+  // Producer-declared nominal namespace; never authorizes replacement alone.
+  optional string library_id = 11;
 }
 
 /** One implemented rule version available to the compiler. */

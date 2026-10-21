@@ -1,4 +1,4 @@
-target_sources(sun_tests PRIVATE test_compatibility.cpp test_boundary_requirements.cpp test_semantic_requirements.cpp test_native_requirements.cpp)
+target_sources(sun_tests PRIVATE test_compatibility.cpp test_boundary_requirements.cpp test_semantic_requirements.cpp test_native_requirements.cpp test_nominal_identity.cpp)
 
 # Verify release configuration independently of the current compiler identity.
 add_test(NAME ABI_ReleaseIdentity.Configuration
@@ -9,7 +9,7 @@ add_test(NAME ABI_ReleaseIdentity.Configuration
 # ABI checks remain buildable while an unsupported product dependency is diagnosed.
 add_executable(sun_abi_tests EXCLUDE_FROM_ALL
     test_compatibility.cpp test_boundary_requirements.cpp
-    test_semantic_requirements.cpp test_native_requirements.cpp)
+    test_semantic_requirements.cpp test_native_requirements.cpp test_nominal_identity.cpp)
 target_link_libraries(sun_abi_tests PRIVATE sun_lib GTest::gtest_main)
 target_compile_definitions(sun_abi_tests PRIVATE
     SUN_FFI_TESTLIB_DIR="${CMAKE_BINARY_DIR}/tests"

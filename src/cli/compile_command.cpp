@@ -6,6 +6,7 @@
 #include <filesystem>
 
 #include "abi/abi_compatibility_checker.h"
+#include "abi/abi_validation_scope.h"
 #include "cli/command_support.h"
 #include "driver/build_record.h"
 #include "driver/driver.h"
@@ -185,7 +186,7 @@ CompileJob makeCompileJob(const BuildRunOptions& options) {
 
 /** Builds the executable used to run the selected Sun tests. */
 int compileTestBinary(const CompileJob& job, bool hasExecutable) {
-  sun::abi::CompilationScope compatibility(
+  sun::abi::AbiValidationScope compatibility(
       {job.targetTriple, sun::abi::NativeExecution::NativeLink, true,
        job.optimize});
   const std::string& inputFile = job.inputFiles[0];
@@ -238,7 +239,7 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
 
 /** Compiles and links a program entrypoint using the prepared job settings. */
 int compileEntrypoint(const CompileJob& job) {
-  sun::abi::CompilationScope compatibility(
+  sun::abi::AbiValidationScope compatibility(
       {job.targetTriple, sun::abi::NativeExecution::NativeLink, job.debugInfo,
        job.optimize});
   const std::string& inputFile = job.inputFiles[0];

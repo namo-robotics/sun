@@ -2936,6 +2936,7 @@ unique_ptr<sun::ast::ManifestAST> Parser::parseManifest() {
   std::vector<ManifestArchiveDependency> archives;
   std::vector<ManifestTargetBlock> targets;
   std::vector<ManifestSunDependency> testSuns;
+  std::optional<std::string> libraryId;
 
   while (curTok.kind == TokenKind::IDENTIFIER) {
     auto ident = curTok.getIdentifier().value();
@@ -2945,7 +2946,14 @@ unique_ptr<sun::ast::ManifestAST> Parser::parseManifest() {
                            "expected ':' after '" + ident + "' in manifest");
     getNextToken();  // eat ':'
 
-    if (ident == "source_files") {
+    if (ident == "library_id") {
+      if (libraryId) parsingError("duplicate library_id in manifest");
+      expectCurrentTokenKind(TokenKind::STRING,
+                             "expected string after library_id");
+      libraryId = curTok.getString().value();
+      sun::abi::validateLibraryId(*libraryId);
+      getNextToken();
+    } else if (ident == "source_files") {
       suns = parseManifestSuns();
     } else if (ident == "libraries") {
       moons = parseManifestMoons();
@@ -2958,9 +2966,10 @@ unique_ptr<sun::ast::ManifestAST> Parser::parseManifest() {
     } else if (ident == "test_files") {
       testSuns = parseManifestSuns();
     } else {
-      parsingError("unexpected identifier '" + ident +
-                   "' in manifest; expected 'source_files', 'test_files', "
-                   "'libraries', 'protos', 'archives' or 'target'");
+      parsingError(
+          "unexpected identifier '" + ident +
+          "' in manifest; expected 'source_files', 'test_files', "
+          "'libraries', 'protos', 'archives', 'library_id' or 'target'");
     }
 
     // Sections are newline-separated; a trailing ',' or ';' is tolerated
@@ -2974,11 +2983,11 @@ unique_ptr<sun::ast::ManifestAST> Parser::parseManifest() {
                          "expected '}' at end of manifest block");
   getNextToken();  // eat '}'
 
-  return finishNode(
-      std::make_unique<sun::ast::ManifestAST>(
-          std::move(suns), std::move(moons), std::move(protos),
-          std::move(archives), std::move(targets), std::move(testSuns)),
-      start);
+  return finishNode(std::make_unique<sun::ast::ManifestAST>(
+                        std::move(suns), std::move(moons), std::move(protos),
+                        std::move(archives), std::move(targets),
+                        std::move(testSuns), std::move(libraryId)),
+                    start);
 }
 
 // Parse the target-conditional block:

@@ -68,7 +68,7 @@ class AbiCompatibilityChecker {
                                  NativeExecution execution, bool debugInfo,
                                  bool optimize);
   /** Reports whether an explicit compilation scope owns the current checker. */
-  static bool hasCompilationScope();
+  static bool hasValidationScope();
   /** Returns the current thread's checker shared by compiler import paths. */
   static AbiCompatibilityChecker& current();
   /** Starts a compilation, discarding cached authorizations and warning state.
@@ -123,22 +123,5 @@ class AbiCompatibilityChecker {
   std::map<std::pair<std::string, std::string>,
            std::shared_ptr<const BundleContract>>
       validatedBundles_;
-};
-/** Shares preflight and import validation; nested builds restore their parent.
- */
-class CompilationScope {
- public:
-  /** Starts an isolated compilation on this thread. */
-  explicit CompilationScope(CompilationContext context);
-  /** Restores the parent compilation, including its warnings and imports. */
-  ~CompilationScope();
-  /** Keeps scope ownership tied to its original stack lifetime. */
-  CompilationScope(const CompilationScope&) = delete;
-  /** Prevents replacing a live thread-local scope. */
-  CompilationScope& operator=(const CompilationScope&) = delete;
-
- private:
-  AbiCompatibilityChecker checker_;
-  AbiCompatibilityChecker* previous_;
 };
 }  // namespace sun::abi

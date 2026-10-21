@@ -348,12 +348,14 @@ add_library(sun_lib
     src/abi/payload_requirements.cpp
     src/abi/semantic_requirements.cpp
     src/abi/native_requirements.cpp
+    src/abi/nominal_identity.cpp
     src/abi/support_inventory.cpp
     src/abi/support_manifest.cpp
     src/abi/lowering_descriptors.cpp
     src/abi/boundary_requirements.cpp
     src/abi/producer_identity.cpp
     src/abi/abi_compatibility_checker.cpp
+    src/abi/abi_validation_scope.cpp
     # Precompiled library support (moon format)
     src/moon_bundling/moon.cpp
     src/moon_bundling/archive_symbols.cpp

@@ -129,14 +129,14 @@ std::string computeInputHash(const BuildInputs& inputs) {
   sun::abi::AbiCompatibilityChecker isolated(context);
   auto& current = sun::abi::AbiCompatibilityChecker::current();
   const auto& active = current.context();
-  const bool share = sun::abi::AbiCompatibilityChecker::hasCompilationScope() &&
+  const bool share = sun::abi::AbiCompatibilityChecker::hasValidationScope() &&
                      active.targetTriple == context.targetTriple &&
                      active.execution == context.execution &&
                      active.debugInfo == context.debugInfo &&
                      active.optimize == context.optimize;
   // A differently configured artifact may only be probed for build skipping.
   // Its real compilation gets its own scope and emits import diagnostics there.
-  if (sun::abi::AbiCompatibilityChecker::hasCompilationScope() && !share)
+  if (sun::abi::AbiCompatibilityChecker::hasValidationScope() && !share)
     context.producerWarnings = false;
   auto& checker = share ? current : isolated;
   checker.configure(std::move(context));

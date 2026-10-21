@@ -16,6 +16,7 @@
 #include <fstream>
 
 #include "abi/abi_compatibility_checker.h"
+#include "abi/abi_validation_scope.h"
 #include "abi/boundary_requirements.h"
 #include "abi/compatibility.h"
 #include "abi/producer_identity.h"
@@ -26,6 +27,7 @@
 #include "driver/input_hash.h"
 #include "moon_bundling/library_cache.h"
 #include "moon_bundling/moon.h"
+#include "moon_bundling/moon_builder.h"
 #include "support/error.h"
 
 /** Keeps test construction helpers private to this translation unit. */
@@ -370,7 +372,7 @@ TEST(ABI_Compatibility, ProducerWarningFollowsValidationAndIsDeduplicated) {
   // nested dependency build runs between them.
   testing::internal::CaptureStderr();
   {
-    sun::abi::CompilationScope scope(
+    sun::abi::AbiValidationScope scope(
         {"x86_64-linux-gnu", sun::abi::NativeExecution::NativeLink});
     sun::driver::BuildInputs inputs;
     inputs.targetTriple = "x86_64-linux-gnu";
@@ -384,7 +386,7 @@ TEST(ABI_Compatibility, ProducerWarningFollowsValidationAndIsDeduplicated) {
     EXPECT_NO_THROW(sun::driver::computeInputHash(inputs));
     inputs.debugInfo = false;
     {
-      sun::abi::CompilationScope nested(
+      sun::abi::AbiValidationScope nested(
           {"aarch64-linux-gnu", sun::abi::NativeExecution::NativeLink});
       EXPECT_NE(&sun::abi::AbiCompatibilityChecker::current(), parent);
       EXPECT_TRUE(sun::abi::AbiCompatibilityChecker::current()
@@ -802,4 +804,94 @@ TEST(ABI_Compatibility, CompleteImportSetRejectsMissingExternalReferences) {
   EXPECT_NO_THROW(sun::driver::computeInputHash(inputs));
   std::filesystem::remove(consumerPath);
   std::filesystem::remove(dependencyPath);
+}
+
+/** Library identity is authenticated contract data, not an inherited rule. */
+TEST(ABI_Compatibility, LibraryIdentityIsHashedValidatedAndNotInherited) {
+  auto original = contract();
+  auto identified = original;
+  identified.set_library_id("org.example/shapes");
+  identified.set_compatibility_hash(sun::abi::hashBundleContract(identified));
+  EXPECT_NE(original.compatibility_hash(), identified.compatibility_hash());
+  sun::abi::AbiCompatibilityChecker checker("x86_64-linux-gnu");
+  EXPECT_NO_THROW(
+      checker.validateContract(identified, "shapes", "x86_64-linux-gnu"));
+  auto tampered = identified;
+  tampered.set_library_id("other/shapes");
+  EXPECT_THROW(checker.validateContract(tampered, "shapes", "x86_64-linux-gnu"),
+               sun::support::SunError);
+  for (const auto& invalid :
+       {std::string(), std::string(513, 'a'), std::string("\xff")}) {
+    auto malformed = identified;
+    malformed.set_library_id(invalid);
+    malformed.set_compatibility_hash(sun::abi::hashBundleContract(malformed));
+    EXPECT_THROW(
+        checker.validateContract(malformed, "shapes", "x86_64-linux-gnu"),
+        sun::support::SunError);
+  }
+  sun::abi::mergeContractRequirements(original, identified);
+  EXPECT_FALSE(original.has_library_id());
+  auto consumer = original;
+  consumer.set_library_id("org.example/consumer");
+  sun::abi::mergeContractRequirements(consumer, identified);
+  EXPECT_EQ(consumer.library_id(), "org.example/consumer");
+}
+
+/** Moon serialization preserves arbitrary identity bytes through validation. */
+TEST(ABI_Compatibility, LibraryIdentitySurvivesBundleRoundTrip) {
+  llvm::LLVMContext context;
+  llvm::Module module("identity", context);
+  module.setTargetTriple("x86_64-linux-gnu");
+  module.setDataLayout(
+      sun::abi::compatibilityTarget(module.getTargetTriple()).data_layout());
+  sun::moon::ModuleMetadata metadata;
+  metadata.set_source_hash("identity");
+  sun::moon_bundling::MoonWriter writer(std::string(64, 'a'));
+  writer.addModule(module, metadata);
+  const std::string identity("library\0名前", 14);
+  writer.setLibraryId(identity);
+  const auto path = bundlePath();
+  ASSERT_TRUE(writer.write(path));
+  auto reader = sun::moon_bundling::MoonReader::open(path);
+  ASSERT_NE(reader, nullptr);
+  sun::abi::AbiCompatibilityChecker checker("x86_64-linux-gnu");
+  EXPECT_EQ(checker.validate(*reader).contract().library_id(), identity);
+  std::filesystem::remove(path);
+}
+
+/** Packaging uses the entrypoint ID and rebuilds when that identity changes. */
+TEST(ABI_Compatibility, PackagingPreservesEntrypointLibraryIdentity) {
+  const auto directory = std::filesystem::path("tmp") /
+                         ("abi_library_identity_" + std::to_string(getpid()));
+  std::filesystem::create_directories(directory);
+  const auto source = directory / "library.sun";
+  const auto output = directory / "library.moon";
+  /** Writes an explicit identity with otherwise identical library code. */
+  const auto writeSource = [&](const std::string& identity) {
+    std::ofstream file(source);
+    file << "manifest { library_id: \"" << identity << "\" }\n"
+         << "/** Exports a value for identity packaging tests. */\n"
+         << "public module identity_fixture {\n"
+         << "/** Returns a constant. */\n"
+         << "public function value() i32 { return 42; } }\n";
+  };
+  writeSource("org.example/shapes");
+  ASSERT_NO_THROW(
+      sun::moon_bundling::MoonBuilder::build(source.string(), output));
+  auto reader = sun::moon_bundling::MoonReader::open(output);
+  ASSERT_NE(reader, nullptr);
+  EXPECT_EQ(reader->getLibrary().bundle_contract().library_id(),
+            "org.example/shapes");
+  const auto firstHash = reader->getLibrary().content_hash();
+  EXPECT_TRUE(
+      sun::moon_bundling::MoonBuilder::build(source.string(), output).upToDate);
+  writeSource("org.example/other");
+  EXPECT_FALSE(
+      sun::moon_bundling::MoonBuilder::build(source.string(), output).upToDate);
+  reader = sun::moon_bundling::MoonReader::open(output);
+  ASSERT_NE(reader, nullptr);
+  EXPECT_EQ(reader->getLibrary().bundle_contract().library_id(),
+            "org.example/other");
+  EXPECT_NE(reader->getLibrary().content_hash(), firstHash);
+  std::filesystem::remove_all(directory);
 }

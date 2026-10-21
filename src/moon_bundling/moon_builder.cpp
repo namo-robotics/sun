@@ -10,6 +10,7 @@
 #include <set>
 
 #include "abi/abi_compatibility_checker.h"
+#include "abi/abi_validation_scope.h"
 #include "driver/build_record.h"
 #include "driver/driver.h"
 #include "driver/git_source.h"
@@ -97,9 +98,9 @@ std::filesystem::path MoonBuilder::defaultOutputPath(
 MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
                                    const std::filesystem::path& outputPath,
                                    const MoonBuildOptions& options) {
-  abi::CompilationScope compatibility({options.targetTriple,
-                                       abi::NativeExecution::NativeLink,
-                                       options.debugInfo, options.optimize});
+  abi::AbiValidationScope compatibility({options.targetTriple,
+                                         abi::NativeExecution::NativeLink,
+                                         options.debugInfo, options.optimize});
   sun::driver::GitDependencyBuildScope dependencyScope(
       options.debugInfo, options.optimize, options.forceRebuild);
   namespace fs = std::filesystem;
@@ -108,6 +109,7 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
 
   // ---- Inputs: manifest (if any) + entrypoint itself ----
   MoonBuildReport report;
+  std::optional<std::string> libraryId;
   std::vector<std::string> nativeCPUFeatures, nativeRuntimeServices;
   std::vector<std::pair<std::string, std::string>> nativeProvenance;
   report.moonImports = options.extraMoons;
@@ -118,6 +120,7 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   }
   if (auto manifest = sun::driver::ManifestProcessor::fromEntrypointFile(
           entrypoint, options.targetTriple)) {
+    libraryId = manifest->libraryId;
     report.sunFiles = std::move(manifest->sunFiles);
     report.moonImports.insert(report.moonImports.end(),
                               manifest->moonImports.begin(),
@@ -259,6 +262,7 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
     metadata.set_source_hash(inputHash);
     writer.addModule(driver->getModule(), metadata);
   }
+  if (libraryId) writer.setLibraryId(*libraryId);
   writer.declareNativeRequirements(nativeCPUFeatures, nativeRuntimeServices);
   for (const auto& [path, description] : nativeProvenance)
     for (const auto& archive : ownArchives)

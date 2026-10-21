@@ -16,6 +16,9 @@ Its compiled library requires that exact dependency.
 The version names describe the examples; they do not grant compatibility.
 The current exact-dependency check rejects both replacements. Even matching
 layouts do not make separately built Sun declarations interchangeable.
+Accepting compatible revisions of the same library is tracked in
+[#399](https://github.com/namo-robotics/sun/issues/399); v1.1 rejection is a current
+implementation limitation, not the intended final ABI behavior.
 
 ## Run
 
