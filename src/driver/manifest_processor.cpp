@@ -209,6 +209,7 @@ ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
                                             const std::string& targetTriple) {
   generateCBindings(baseDir, targetTriple);
   ResolvedManifest out;
+  out.libraryId = manifest.getLibraryId();
   out.baseDir = baseDir;
 
   // Explicit path variables win, followed by consuming-project overrides

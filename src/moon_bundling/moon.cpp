@@ -22,6 +22,7 @@
 #include <sstream>
 
 #include "abi/native_requirements.h"
+#include "abi/nominal_identity.h"
 #include "abi/semantic_requirements.h"
 #include "abi/support_inventory.h"
 #include "support/error.h"
@@ -114,6 +115,13 @@ void MoonWriter::addModule(llvm::Module& module,
   data.metadata.set_target_triple(module.getTargetTriple());
 
   modules_.push_back(std::move(data));
+}
+
+void MoonWriter::setLibraryId(const std::string& libraryId) {
+  if (contract_.encoding_schema() == 0)
+    sun::support::logAndThrowError("Add emitted code before library identity");
+  abi::validateLibraryId(libraryId);
+  contract_.set_library_id(libraryId);
 }
 
 void MoonWriter::inheritContract(const abi::BundleContract& contract) {

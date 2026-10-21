@@ -355,6 +355,7 @@ add_library(sun_lib
     src/abi/boundary_requirements.cpp
     src/abi/producer_identity.cpp
     src/abi/abi_compatibility_checker.cpp
+    src/abi/abi_validation_scope.cpp
     # Precompiled library support (moon format)
     src/moon_bundling/moon.cpp
     src/moon_bundling/archive_symbols.cpp

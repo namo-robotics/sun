@@ -877,7 +877,12 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeManifest(
   }
 
   return std::make_unique<sun::ast::ManifestAST>(
-      std::move(suns), std::move(moons), std::move(protos));
+      std::move(suns), std::move(moons), std::move(protos),
+      std::vector<sun::ast::ManifestArchiveDependency>{},
+      std::vector<sun::ast::ManifestTargetBlock>{},
+      std::vector<sun::ast::ManifestSunDependency>{},
+      proto.has_library_id() ? std::optional<std::string>(proto.library_id())
+                             : std::nullopt);
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeModule(

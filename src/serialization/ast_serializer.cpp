@@ -813,6 +813,7 @@ void ASTSerializer::serializeGenericCall(const sun::ast::GenericCallAST& expr,
 void ASTSerializer::serializeManifest(const sun::ast::ManifestAST& expr,
                                       pbc::ASTNode* node) const {
   auto* manifest = node->mutable_manifest();
+  if (expr.getLibraryId()) manifest->set_library_id(*expr.getLibraryId());
 
   // Suns
   auto* suns = manifest->mutable_suns();

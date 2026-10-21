@@ -1,5 +1,6 @@
 #include "abi/nominal_identity.h"
 
+#include <llvm/Support/ConvertUTF.h>
 #include <llvm/Support/SHA256.h>
 
 #include <cstdint>
@@ -34,9 +35,20 @@ std::string kindName(NominalKind kind) {
 }
 }  // namespace
 
+void validateLibraryId(const std::string& library) {
+  if (library.empty() || library.size() > 512)
+    sun::support::logAndThrowError(
+        "library_id must contain between 1 and 512 UTF-8 bytes");
+  const auto* start = reinterpret_cast<const llvm::UTF8*>(library.data());
+  const auto* end = start + library.size();
+  if (!llvm::isLegalUTF8String(&start, end))
+    sun::support::logAndThrowError("library_id must be valid UTF-8");
+}
+
 NominalIdentity::NominalIdentity(const std::string& library, NominalKind kind,
                                  const std::vector<std::string>& path) {
-  if (library.empty() || path.empty())
+  validateLibraryId(library);
+  if (path.empty())
     sun::support::logAndThrowError(
         "Nominal identity requires a library and declaration path");
   std::string bytes;

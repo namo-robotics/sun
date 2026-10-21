@@ -569,6 +569,7 @@ message Manifest {
   repeated ManifestSunDependency suns = 1;
   repeated ManifestMoonDependency moons = 2;
   repeated ManifestProtoDependency protos = 3;
+  optional string library_id = 4;
 }
 
 /** Stores module definition data in the compiler serialization format. */

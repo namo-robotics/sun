@@ -10,8 +10,10 @@
 
 #include <optional>
 
+#include "abi/abi_validation_scope.h"
 #include "abi/boundary_requirements.h"
 #include "abi/native_requirements.h"
+#include "abi/nominal_identity.h"
 #include "abi/producer_identity.h"
 #include "abi/semantic_requirements.h"
 #include "abi/support_inventory.h"
@@ -21,11 +23,6 @@
 
 /** Owns compatibility policy independently of bundle container decoding. */
 namespace sun::abi {
-
-/** Tracks the innermost compilation without sharing state across threads. */
-namespace {
-thread_local AbiCompatibilityChecker* scopedChecker = nullptr;
-}
 
 AbiCompatibilityChecker::AbiCompatibilityChecker(std::string targetTriple,
                                                  NativeExecution execution)
@@ -37,11 +34,13 @@ AbiCompatibilityChecker::AbiCompatibilityChecker(CompilationContext context)
 
 AbiCompatibilityChecker& AbiCompatibilityChecker::current() {
   thread_local AbiCompatibilityChecker checker;
-  return scopedChecker ? *scopedChecker : checker;
+  return AbiValidationScope::currentChecker_
+             ? *AbiValidationScope::currentChecker_
+             : checker;
 }
 
-bool AbiCompatibilityChecker::hasCompilationScope() {
-  return scopedChecker != nullptr;
+bool AbiCompatibilityChecker::hasValidationScope() {
+  return AbiValidationScope::currentChecker_ != nullptr;
 }
 
 void AbiCompatibilityChecker::prepareCompilation(
@@ -49,9 +48,9 @@ void AbiCompatibilityChecker::prepareCompilation(
     bool optimize) {
   auto& checker = current();
   const auto& context = checker.context();
-  if (scopedChecker && context.targetTriple == targetTriple &&
-      context.execution == execution && context.debugInfo == debugInfo &&
-      context.optimize == optimize)
+  if (AbiValidationScope::currentChecker_ &&
+      context.targetTriple == targetTriple && context.execution == execution &&
+      context.debugInfo == debugInfo && context.optimize == optimize)
     return;
   checker.beginCompilation(targetTriple, execution);
   checker.context_.debugInfo = debugInfo;
@@ -72,13 +71,6 @@ void AbiCompatibilityChecker::beginCompilation(const std::string& targetTriple,
   importedContracts_.clear();
   validatedBundles_.clear();
 }
-
-CompilationScope::CompilationScope(CompilationContext context)
-    : checker_(std::move(context)), previous_(scopedChecker) {
-  scopedChecker = &checker_;
-}
-
-CompilationScope::~CompilationScope() { scopedChecker = previous_; }
 
 std::string AbiCompatibilityChecker::bytesHash(
     const moon_bundling::MoonReader& reader) const {
@@ -275,6 +267,13 @@ void AbiCompatibilityChecker::validateContract(
   };
   if (contract.encoding_schema() != 1 || !contract.experimental())
     fail("unsupported contract encoding or stability claim");
+  if (contract.has_library_id()) {
+    try {
+      validateLibraryId(contract.library_id());
+    } catch (const sun::support::SunError& error) {
+      fail(error.what());
+    }
+  }
   if (hashBundleContract(contract) != contract.compatibility_hash())
     fail("contract description does not match its hash");
   auto expected = compatibilityTarget(targetTriple);
@@ -315,6 +314,7 @@ void AbiCompatibilityChecker::validateContract(
   }
   BundleContract derived;
   derived.set_encoding_schema(1);
+  if (contract.has_library_id()) derived.set_library_id(contract.library_id());
   derived.set_experimental(true);
   *derived.mutable_target() = expected;
   const auto supportedImplementations = supportedRules();

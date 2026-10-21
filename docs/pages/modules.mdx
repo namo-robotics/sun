@@ -55,6 +55,23 @@ manifest {
 }
 ```
 
+### Library identity
+
+A library's entrypoint manifest can declare a persistent identity:
+
+```sun
+manifest {
+    library_id: "org.example/shapes"
+}
+```
+
+Use a distinctive name and keep it across library revisions. The optional ID
+accepts any nonempty UTF-8 string up to 512 bytes and is compared exactly,
+without normalization.
+
+Matching IDs do not yet enable compatible-revision imports; see
+[#399](https://github.com/namo-robotics/sun/issues/399).
+
 ### Manifest Syntax
 
 ```sun

@@ -88,6 +88,9 @@ class MoonWriter {
    */
   void addModule(llvm::Module& module, const moon::ModuleMetadata& metadata);
 
+  /** Sets the producing library identity after adding emitted code. */
+  void setLibraryId(const std::string& libraryId);
+
   /** Retains all requirements of code embedded from a validated dependency. */
   void inheritContract(const abi::BundleContract& contract);
   /** Records additional producer-declared requirements for packaged archives.

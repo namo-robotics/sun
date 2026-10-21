@@ -27,6 +27,7 @@ namespace sun::driver {
 
 /** Dependencies and settings after manifest paths and targets are resolved. */
 struct ResolvedManifest {
+  std::optional<std::string> libraryId;
   std::vector<std::string> sunFiles;  // resolved .sun paths (manifest order)
   std::vector<sun::moon_bundling::MoonImport>
       moonImports;                        // resolved .moon imports

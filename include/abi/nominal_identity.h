@@ -9,6 +9,10 @@ namespace sun::abi {
 /** Distinguishes nominal declaration kinds even when their names match. */
 enum class NominalKind { Class, Interface, Enum };
 
+/** Rejects empty, invalid UTF-8, or oversized library IDs without normalizing
+ * their contents. Library IDs may contain at most 512 UTF-8 bytes. */
+void validateLibraryId(const std::string& library);
+
 /** Identifies a declaration across revisions of an explicitly named library.
  * Equality identifies a candidate correspondence, not ABI compatibility.
  * PortableDeclarationKey continues to identify exact code and linker symbols.
