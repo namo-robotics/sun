@@ -20,6 +20,9 @@
 #include "abi/support_inventory.h"
 #ifdef __linux__
 #include <link.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#include <mach-o/loader.h>
 #endif
 
 #include <llvm/Support/SHA256.h>
@@ -106,6 +109,46 @@ const std::set<std::string> implementationLibraries = [] {
   dl_iterate_phdr(collectLibraries, &paths);
   return paths;
 }();
+#elif defined(__APPLE__)
+/** Snapshots startup dylibs before application code can load more libraries.
+ * Cached system images use their Mach-O build UUID; disk dylibs use file bytes.
+ */
+const std::set<std::string> implementationLibraryDigests = [] {
+  std::set<std::string> digests;
+  for (uint32_t i = 1; i < _dyld_image_count(); ++i) {
+    const std::string path = _dyld_get_image_name(i);
+    auto bytes = llvm::MemoryBuffer::getFile(path);
+    if (bytes) {
+      digests.insert(computeSha256Hex((*bytes)->getBuffer()));
+      continue;
+    }
+    if (!path.starts_with("/usr/lib/") && !path.starts_with("/System/Library/"))
+      sun::support::logAndThrowError(
+          "Cannot fingerprint implementation dependency: " + path);
+    const auto* header = _dyld_get_image_header(i);
+    const auto* command = reinterpret_cast<const load_command*>(
+        reinterpret_cast<const char*>(header) + (header->magic == MH_MAGIC_64
+                                                     ? sizeof(mach_header_64)
+                                                     : sizeof(mach_header)));
+    bool identified = false;
+    for (uint32_t j = 0; j < header->ncmds; ++j) {
+      if (command->cmd == LC_UUID) {
+        const auto* uuid = reinterpret_cast<const uuid_command*>(command);
+        digests.insert(computeSha256Hex(
+            path + std::string(reinterpret_cast<const char*>(uuid->uuid),
+                               sizeof(uuid->uuid))));
+        identified = true;
+        break;
+      }
+      command = reinterpret_cast<const load_command*>(
+          reinterpret_cast<const char*>(command) + command->cmdsize);
+    }
+    if (!identified)
+      sun::support::logAndThrowError("Missing system library build identity: " +
+                                     path);
+  }
+  return digests;
+}();
 #endif
 }  // namespace
 
@@ -120,9 +163,12 @@ const std::string& compatibilityImplementation() {
             "Cannot fingerprint implementation dependency: " + path);
       digests.insert(computeSha256Hex((*bytes)->getBuffer()));
     }
+#elif defined(__APPLE__)
+    digests = implementationLibraryDigests;
 #else
     sun::support::logAndThrowError(
-        "Experimental compatibility dependency discovery requires Linux; this "
+        "Experimental compatibility dependency discovery requires Linux or "
+        "macOS; this "
         "host is unsupported");
 #endif
     return computeSha256Hex(field(1, SUN_COMPATIBILITY_IMPLEMENTATION) +
@@ -168,7 +214,8 @@ TargetProfile compatibilityTarget(const std::string& requested) {
     sun::support::logAndThrowError("Cannot derive compatibility target");
   const auto layout = machine->createDataLayout();
   TargetProfile profile;
-  profile.set_architecture(triple.getArchName().str());
+  profile.set_architecture(
+      llvm::Triple::getArchTypeName(triple.getArch()).str());
   profile.set_platform_abi(triple.getOSName().str() + ":" +
                            triple.getEnvironmentName().str());
   profile.set_data_layout(layout.getStringRepresentation());

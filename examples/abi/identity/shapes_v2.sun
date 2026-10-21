@@ -1,0 +1,15 @@
+/** Defines a new Point layout with an additional coordinate. */
+public module shapes {
+
+  /** Stores two integers instead of v1's single field. */
+  public class Point {
+    public var x: i32;
+    public var y: i32;
+
+    /** Initializes both coordinates. */
+    init() {
+      this.x = 42;
+      this.y = 0;
+    }
+  }
+}

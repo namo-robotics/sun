@@ -20,3 +20,7 @@ rules { name: "native.runtime.initializers" version: "experimental" binding: "na
 rules { name: "native.runtime.thread_local" version: "experimental" binding: "native_thread_local_experimental" }
 emission_defaults { name: "native.runtime.initializers" version: "experimental" }
 emission_defaults { name: "native.runtime.thread_local" version: "experimental" }
+rules { name: "native.macho.x86_64.declared" version: "experimental" binding: "native_macho_declared_experimental" }
+rules { name: "native.macho.aarch64.declared" version: "experimental" binding: "native_macho_declared_experimental" }
+emission_defaults { name: "native.macho.x86_64.declared" version: "experimental" }
+emission_defaults { name: "native.macho.aarch64.declared" version: "experimental" }

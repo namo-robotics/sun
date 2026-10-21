@@ -1,7 +1,7 @@
 /** Defines a different declaration with the same name and storage. */
 public module shapes {
 
-  /** Stores one integer, just like the original type. */
+  /** Stores one integer, just like the v1 type. */
   public class Point {
     public var x: i32;
 

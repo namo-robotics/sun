@@ -40,8 +40,8 @@ Types whose layouts depend on unavailable external declarations still need furth
 
 ## Native archives
 
-The draft accepts Linux x86-64 and AArch64 GNU/musl ELF archives using normal
-linker trust. Sun checks readable objects, matching targets, isolated symbols,
+The draft accepts x86-64 and AArch64 archives: ELF on Linux GNU/musl,
+and Mach-O on macOS. It uses normal linker trust. Sun checks readable objects, matching targets, isolated symbols,
 and declared requirements. It does not audit instructions or maintain instruction,
 relocation, or external-symbol allowlists. The linker resolves native references.
 
@@ -80,8 +80,10 @@ compiler tool → libLLVM.so
 
 Changing `libLLVM.so` can change generated code without changing the tool's own
 executable. Fingerprints now follow these linked shared-library dependencies
-recursively, and fail if one is missing or ambiguous. Discovery requires Linux
-and no `LD_LIBRARY_PATH`, `LD_PRELOAD`, or `LD_AUDIT` overrides. Dynamically
+recursively, and fail if one is missing or ambiguous. Discovery supports Linux
+and macOS without library-loader overrides. macOS system libraries use the OS
+build identity at build time and loaded image UUIDs at startup, because they may
+exist only in Apple’s shared cache. Dynamically
 loaded build-tool plugins and other undeclared build inputs still need coverage.
 
 Preflight and actual imports share a compilation context, including the target,

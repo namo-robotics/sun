@@ -14,7 +14,7 @@ From the repository root:
 
 ```bash
 bash examples/abi/target/build.sh
-bash examples/abi/target/test.sh
+bash examples/abi/target/build-incompatible.sh
 ```
 
 The build script builds `library.sun` twice: once for the host and once for a foreign
@@ -22,4 +22,5 @@ architecture. The consumers have the same call but select different libraries in
 the foreign artifact is a `.moon` library and is never executed.
 
 `sun-config.json` declares the successful build products and their library search
-path. The test script checks the deliberately failing consumer separately.
+path. `build-incompatible.sh` intentionally fails and prints the compiler error. To check
+both cases automatically, run `bash examples/abi/target/test.sh`.

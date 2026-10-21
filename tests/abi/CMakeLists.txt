@@ -24,7 +24,8 @@ add_test(NAME ABI_CompilerSupport.BuildManifest
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 # Exercise real position-independent relocations previously rejected by ABI checks.
-add_library(sun_abi_relocations STATIC native_relocations.cpp)
+add_library(sun_abi_relocations STATIC native_relocations.cpp
+    native_relocation_value.cpp)
 set_target_properties(sun_abi_relocations PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests")
@@ -38,3 +39,21 @@ set_target_properties(sun_abi_lifecycle PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests")
 target_link_libraries(sun_tests PRIVATE sun_abi_lifecycle)
 target_link_libraries(sun_abi_tests PRIVATE sun_abi_lifecycle)
+
+# Cross-target objects need no SDK: this fixture has no headers or library calls.
+find_program(SUN_ABI_CLANG NAMES clang HINTS "${LLVM_TOOLS_BINARY_DIR}" REQUIRED)
+find_program(SUN_ABI_AR NAMES llvm-ar HINTS "${LLVM_TOOLS_BINARY_DIR}" REQUIRED)
+set(macho_fixtures)
+foreach(architecture IN ITEMS x86_64 aarch64)
+    set(archive "${CMAKE_BINARY_DIR}/tests/libsun_abi_${architecture}_macho.a")
+    set(object "${CMAKE_CURRENT_BINARY_DIR}/${architecture}_macho.o")
+    add_custom_command(OUTPUT "${archive}"
+        COMMAND "${SUN_ABI_CLANG}" --target=${architecture}-apple-macos11
+            -c "${CMAKE_CURRENT_SOURCE_DIR}/native_cross_target.c" -o "${object}"
+        COMMAND "${SUN_ABI_AR}" rcs "${archive}" "${object}"
+        DEPENDS native_cross_target.c VERBATIM)
+    list(APPEND macho_fixtures "${archive}")
+endforeach()
+add_custom_target(sun_abi_macho_fixtures DEPENDS ${macho_fixtures})
+add_dependencies(sun_tests sun_abi_macho_fixtures)
+add_dependencies(sun_abi_tests sun_abi_macho_fixtures)

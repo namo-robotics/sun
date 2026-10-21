@@ -1,30 +1,44 @@
+cmake_minimum_required(VERSION 3.21)
+
 # Hash a deliberately broad source/configuration/tool closure for experimental
 # semantics. Shared libraries are additionally hashed by the running consumer.
-file(GLOB_RECURSE inputs LIST_DIRECTORIES false
+file(GLOB_RECURSE inputs FOLLOW_SYMLINKS LIST_DIRECTORIES false
     "${SOURCE_DIR}/src/*" "${SOURCE_DIR}/include/*"
     "${SOURCE_DIR}/stdlib/*" "${SOURCE_DIR}/third_party/*"
     "${SOURCE_DIR}/cmake/*" "${BINARY_DIR}/_deps/*-src/*")
 foreach(directory IN LISTS EXTERNAL_INCLUDES)
-    file(GLOB_RECURSE headers LIST_DIRECTORIES false "${directory}/*")
+    file(GLOB_RECURSE headers FOLLOW_SYMLINKS LIST_DIRECTORIES false "${directory}/*")
     list(APPEND inputs ${headers})
 endforeach()
 file(GLOB generated "${BINARY_DIR}/*.pb.h" "${BINARY_DIR}/*.pb.cc")
 list(APPEND inputs "${BINARY_DIR}/generated/sun_abi_support.h" ${generated} "${SOURCE_DIR}/CMakeLists.txt"
      "${BINARY_DIR}/CMakeCache.txt" "${COMPILER}" ${TOOLS})
-# Inspect ELF dependency tables without running the tools. CMake follows the
-# shared-library dependency graph and reports any missing runtime libraries.
-if(NOT CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
-    message(FATAL_ERROR "Experimental tool dependency discovery requires Linux")
+# Inspect dependency tables without executing the compiler or linker.
+set(loader_overrides LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT)
+set(system_dependencies)
+if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
+    find_program(dependency_inspector NAMES objdump REQUIRED)
+    set(CMAKE_GET_RUNTIME_DEPENDENCIES_PLATFORM "linux+elf")
+    set(CMAKE_GET_RUNTIME_DEPENDENCIES_TOOL "objdump")
+elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+    find_program(dependency_inspector NAMES otool REQUIRED)
+    set(CMAKE_GET_RUNTIME_DEPENDENCIES_PLATFORM "macos+macho")
+    set(CMAKE_GET_RUNTIME_DEPENDENCIES_TOOL "otool")
+    list(APPEND loader_overrides DYLD_LIBRARY_PATH DYLD_FRAMEWORK_PATH
+        DYLD_FALLBACK_LIBRARY_PATH DYLD_FALLBACK_FRAMEWORK_PATH
+        DYLD_INSERT_LIBRARIES DYLD_ROOT_PATH DYLD_SHARED_CACHE_DIR)
+    # System dylibs live in Apple's shared cache, not individual disk files.
+    # Use the OS build identity for that runtime; hash other dylibs recursively.
+    list(APPEND inputs "/System/Library/CoreServices/SystemVersion.plist")
+    set(system_dependencies "^/usr/lib/" "^/System/Library/")
+else()
+    message(FATAL_ERROR "Unsupported implementation fingerprint host")
 endif()
-# Loader overrides can select libraries other than the ELF search paths below.
-foreach(variable IN ITEMS LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT)
+foreach(variable IN LISTS loader_overrides)
     if(DEFINED ENV{${variable}} AND NOT "$ENV{${variable}}" STREQUAL "")
         message(FATAL_ERROR "Cannot establish tool runtime coverage with ${variable} set")
     endif()
 endforeach()
-find_program(dependency_inspector NAMES objdump REQUIRED)
-set(CMAKE_GET_RUNTIME_DEPENDENCIES_PLATFORM "linux+elf")
-set(CMAKE_GET_RUNTIME_DEPENDENCIES_TOOL "objdump")
 set(CMAKE_GET_RUNTIME_DEPENDENCIES_COMMAND "${dependency_inspector}")
 set(tool_roots "${COMPILER}" ${TOOLS} "${dependency_inspector}")
 list(REMOVE_DUPLICATES tool_roots)
@@ -35,6 +49,7 @@ foreach(tool IN LISTS tool_roots)
 endforeach()
 file(GET_RUNTIME_DEPENDENCIES
     EXECUTABLES ${tool_roots}
+    PRE_EXCLUDE_REGEXES ${system_dependencies}
     RESOLVED_DEPENDENCIES_VAR tool_libraries
     UNRESOLVED_DEPENDENCIES_VAR unresolved_libraries
     CONFLICTING_DEPENDENCIES_PREFIX conflicting_libraries)

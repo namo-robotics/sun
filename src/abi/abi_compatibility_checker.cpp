@@ -291,7 +291,9 @@ void AbiCompatibilityChecker::validateContract(
   // baseline rather than borrowing features from the build host.
   llvm::StringMap<bool> availableFeatures;
   if (expected.architecture() ==
-      llvm::Triple(llvm::sys::getDefaultTargetTriple()).getArchName().str()) {
+      llvm::Triple::getArchTypeName(
+          llvm::Triple(llvm::sys::getDefaultTargetTriple()).getArch())
+          .str()) {
     availableFeatures = llvm::sys::getHostCPUFeatures();
   } else {
     const auto triple = llvm::Triple::normalize(
@@ -341,7 +343,8 @@ void AbiCompatibilityChecker::validateContract(
         "native initialization or thread-local storage requires native "
         "linking; the JIT does not implement it");
   for (const auto& rule : contract.requirements())
-    if (rule.name().starts_with("native.elf.") &&
+    if ((rule.name().starts_with("native.elf.") ||
+         rule.name().starts_with("native.macho.")) &&
         rule.name() != nativeArchiveRule(contract.target()))
       fail("native object rule does not match the target");
   // Boundary records are checked against decoded payloads by this checker. The

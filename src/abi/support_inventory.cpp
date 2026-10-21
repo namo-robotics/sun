@@ -55,8 +55,9 @@ std::string compatibilitySupportJson() {
   for (const auto& rule : compilerAbiSupport().emission_defaults())
     defaults[rule.name()] = rule.version();
   llvm::json::Array profiles;
-  for (const auto* triple : {"x86_64-linux-gnu", "x86_64-linux-musl",
-                             "aarch64-linux-gnu", "aarch64-linux-musl"}) {
+  for (const auto* triple :
+       {"x86_64-linux-gnu", "x86_64-linux-musl", "aarch64-linux-gnu",
+        "aarch64-linux-musl", "x86_64-apple-darwin", "aarch64-apple-darwin"}) {
     const auto target = compatibilityTarget(triple);
     profiles.push_back(
         llvm::json::Object{{"architecture", target.architecture()},
@@ -77,7 +78,8 @@ std::string compatibilitySupportJson() {
       {"implementation_bindings", std::move(bindings)},
       {"emission_defaults", std::move(defaults)},
       {"native_constraints",
-       "Linux x86-64/AArch64 GNU/musl relocatable ELF; trusted native code "
+       "Linux GNU/musl ELF and macOS Mach-O on x86-64/AArch64; trusted native "
+       "code "
        "with declared "
        "CPU/runtime requirements; isolated "
        "symbols; external references recorded in the contract and resolved by "

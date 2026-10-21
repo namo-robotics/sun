@@ -1,0 +1,9 @@
+/** Tries v2 in place of the shapes user's exact v1 dependency. */
+function main() i32 {
+  var point = shapes.Point();
+  return shapes_user.read(point) - 42;
+}
+
+manifest {
+  libraries: ["shapes_v2.moon", "shapes_user.moon"]
+}

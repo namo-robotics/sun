@@ -1,5 +1,5 @@
-/** Exposes a signature referring to the original library's type. */
-public module bridge {
+/** Exposes a signature referring to the v1 library's type. */
+public module shapes_user {
 
   /** Reads the exact Point declaration imported when this library was built. */
   public function read(point: ref shapes.Point) i32 {
@@ -8,5 +8,5 @@ public module bridge {
 }
 
 manifest {
-  libraries: ["original.moon"]
+  libraries: ["shapes_v1.moon"]
 }

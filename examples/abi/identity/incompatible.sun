@@ -1,9 +1,0 @@
-/** Must reject a replacement for the bridge's exact dependency. */
-function main() i32 {
-  var point = shapes.Point();
-  return bridge.read(point) - 42;
-}
-
-manifest {
-  libraries: ["replacement.moon", "bridge.moon"]
-}

@@ -15,7 +15,7 @@ test('ABI documentation includes each project config and its exact Sun sources',
   execFileSync(process.execPath, [join(docs, 'scripts/gen-examples.mjs')])
   const host = readFileSync(join(docs, 'pages/abi/examples.mdx'), 'utf8')
   await compile(host)
-  for (const name of ['target', 'identity', 'generics']) {
+  for (const name of ['target', 'identity']) {
     const directory = join(root, 'examples/abi', name)
     const partial = `abi-${name}.mdx`
     assert.ok(host.includes(`generated/${partial}`), `Missing import for ${name}`)

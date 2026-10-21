@@ -23,7 +23,7 @@ std::string nativeArchiveRule(const TargetProfile& target);
 void addNativeRequirements(BundleContract& contract,
                            const std::vector<std::string>& cpuFeatures,
                            const std::vector<std::string>& runtimeServices);
-/** Checks ELF targets, symbol isolation, and runtime references.
+/** Checks ELF and Mach-O targets, symbol isolation, and runtime references.
  * Relocation support and application are delegated to the selected linker.
  * Machine code is trusted to obey the declared CPU and runtime requirements;
  * the compatibility checker validates the bundle's declarations separately.

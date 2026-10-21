@@ -4,13 +4,18 @@ docs-config: true
 ---
 # Exact dependency identity
 
-`bridge.moon` was compiled against the original `shapes.Point`. Supplying that
-exact library works. Replacing it with another library must fail, even though
-both versions have one `i32` field and the same public names.
+`shapes_user.sun` is built against the `Point` declaration in `shapes_v1.sun`.
+Its compiled library requires that exact dependency.
 
-Only the constructor changes from `42` to `43`. This creates a different bundle
-and declaration identity; it does not change the storage layout. Sun reports a
-missing exact dependency rather than silently substituting the new type.
+| Library | Change | Accepted by the existing shapes user? |
+| --- | --- | --- |
+| `shapes_v1.sun` | Original single-field `Point` | Yes |
+| `shapes_v1.1.sun` | Constructor returns `43` instead of `42`; same layout | No |
+| `shapes_v2.sun` | Adds a second field | No |
+
+The version names describe the examples; they do not grant compatibility.
+The current exact-dependency check rejects both replacements. Even matching
+layouts do not make separately built Sun declarations interchangeable.
 
 ## Run
 
@@ -18,12 +23,13 @@ From the repository root:
 
 ```bash
 bash examples/abi/identity/build.sh
-bash examples/abi/identity/test.sh
+bash examples/abi/identity/build-incompatible.sh
 ```
 
-The build script builds the bridge with `original.moon`. `main.sun` selects the bridge plus `original.moon` (passes);
-`incompatible.sun` selects the bridge plus `replacement.moon` (fails).
-The successful program verifies the imported result is `42`.
+`build-incompatible.sh` compiles `main_incompatible.sun` and prints the expected error.
 
-`sun-config.json` declares the successful build products and their library search
-path. The test script checks the deliberately failing consumer separately.
+`sun-config.json` builds all three shapes libraries, `shapes_user.moon`, and
+`main.sun`, which uses v1 and returns success. `main_incompatible.sun` tries
+v2 with the same compiled shapes user. The v1.1 library is included for comparison.
+
+Run `bash examples/abi/identity/test.sh` to check both consumers automatically.

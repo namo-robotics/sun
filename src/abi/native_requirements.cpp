@@ -5,6 +5,7 @@
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Object/Archive.h>
 #include <llvm/Object/ELFObjectFile.h>
+#include <llvm/Object/MachO.h>
 
 #include <set>
 
@@ -20,16 +21,24 @@ namespace {
   sun::support::logAndThrowError(
       "Native archive compatibility cannot be established: " + reason);
 }
+/** Recognizes supported desktop Apple target profiles, including OS versions.
+ */
+bool isMacOS(const TargetProfile& profile) {
+  const auto& abi = profile.platform_abi();
+  return (abi.starts_with("darwin") || abi.starts_with("macos")) &&
+         abi.ends_with(":");
+}
 }  // namespace
 
 std::string nativeArchiveRule(const TargetProfile& profile) {
   if ((profile.architecture() != "x86_64" &&
        profile.architecture() != "aarch64") ||
-      (profile.platform_abi() != "linux:gnu" &&
+      (!isMacOS(profile) && profile.platform_abi() != "linux:gnu" &&
        profile.platform_abi() != "linux:musl") ||
       profile.pointer_bits() != 64 || !profile.little_endian())
-    unsupported("expected a Linux x86-64 or AArch64 GNU/musl profile");
-  return "native.elf." + profile.architecture() + ".declared";
+    unsupported("expected a Linux GNU/musl or macOS x86-64/AArch64 profile");
+  return std::string(isMacOS(profile) ? "native.macho." : "native.elf.") +
+         profile.architecture() + ".declared";
 }
 
 void addNativeRequirements(BundleContract& contract,
@@ -37,9 +46,11 @@ void addNativeRequirements(BundleContract& contract,
                            const std::vector<std::string>& runtimeServices) {
   if (cpuFeatures.empty() && runtimeServices.empty()) return;
   const auto nativeRule = nativeArchiveRule(contract.target());
-  const auto triple =
-      contract.target().architecture() + "-unknown-linux-" +
-      (contract.target().platform_abi() == "linux:musl" ? "musl" : "gnu");
+  const auto triple = contract.target().architecture() +
+                      (isMacOS(contract.target()) ? "-apple-darwin"
+                       : contract.target().platform_abi() == "linux:musl"
+                           ? "-unknown-linux-musl"
+                           : "-unknown-linux-gnu");
   compatibilityTarget(triple);
   std::string error;
   const auto* target = llvm::TargetRegistry::lookupTarget(triple, error);
@@ -95,22 +106,50 @@ void validateNativeArchives(const std::vector<NativeArchiveInput>& archives,
       auto binary = child.getAsBinary();
       if (!binary) unsupported(llvm::toString(binary.takeError()));
       const auto* object =
-          llvm::dyn_cast<llvm::object::ELFObjectFileBase>(binary->get());
-      if (!object || object->getEMachine() != machine ||
-          object->getEType() != llvm::ELF::ET_REL ||
-          !object->isLittleEndian() || object->getBytesInAddress() != 8)
+          llvm::dyn_cast<llvm::object::ObjectFile>(binary->get());
+      if (!object || !object->isLittleEndian() ||
+          object->getBytesInAddress() != 8)
+        unsupported("expected a 64-bit little-endian object member");
+      const auto* elf = llvm::dyn_cast<llvm::object::ELFObjectFileBase>(object);
+      const auto* macho = llvm::dyn_cast<llvm::object::MachOObjectFile>(object);
+      const bool matches =
+          isMacOS(profile)
+              ? macho &&
+                    macho->getHeader64().filetype == llvm::MachO::MH_OBJECT &&
+                    macho->getHeader64().cputype ==
+                        (profile.architecture() == "x86_64"
+                             ? llvm::MachO::CPU_TYPE_X86_64
+                             : llvm::MachO::CPU_TYPE_ARM64)
+              : elf && elf->getEMachine() == machine &&
+                    elf->getEType() == llvm::ELF::ET_REL;
+      if (!matches)
         unsupported("expected a relocatable little-endian " +
-                    profile.architecture() + " ELF member");
+                    profile.architecture() +
+                    (isMacOS(profile) ? " Mach-O member" : " ELF member"));
       for (const auto& section : object->sections()) {
-        llvm::object::ELFSectionRef elfSection(section);
-        if ((elfSection.getFlags() & llvm::ELF::SHF_TLS) && runtimeServices)
-          runtimeServices->insert("thread_local");
-        if (elfSection.getType() == llvm::ELF::SHT_INIT_ARRAY ||
-            elfSection.getType() == llvm::ELF::SHT_FINI_ARRAY ||
-            elfSection.getType() == llvm::ELF::SHT_PREINIT_ARRAY) {
-          if (runtimeServices) runtimeServices->insert("initializers");
+        if (elf) {
+          llvm::object::ELFSectionRef elfSection(section);
+          if ((elfSection.getFlags() & llvm::ELF::SHF_TLS) && runtimeServices)
+            runtimeServices->insert("thread_local");
+          if (runtimeServices &&
+              (elfSection.getType() == llvm::ELF::SHT_INIT_ARRAY ||
+               elfSection.getType() == llvm::ELF::SHT_FINI_ARRAY ||
+               elfSection.getType() == llvm::ELF::SHT_PREINIT_ARRAY))
+            runtimeServices->insert("initializers");
+        } else {
+          const auto type =
+              macho->getSection64(section.getRawDataRefImpl()).flags &
+              llvm::MachO::SECTION_TYPE;
+          if (runtimeServices) {
+            if (type >= llvm::MachO::S_THREAD_LOCAL_REGULAR &&
+                type <= llvm::MachO::S_THREAD_LOCAL_INIT_FUNCTION_POINTERS)
+              runtimeServices->insert("thread_local");
+            if (type == llvm::MachO::S_MOD_INIT_FUNC_POINTERS ||
+                type == llvm::MachO::S_MOD_TERM_FUNC_POINTERS)
+              runtimeServices->insert("initializers");
+          }
         }
-        if (elfSection.getType() != llvm::ELF::SHT_NOBITS) {
+        if (!section.isVirtual()) {
           auto contents = section.getContents();
           if (!contents) unsupported(llvm::toString(contents.takeError()));
         }
@@ -123,6 +162,8 @@ void validateNativeArchives(const std::vector<NativeArchiveInput>& archives,
         if (!(*flags & llvm::object::BasicSymbolRef::SF_Global) ||
             name->empty())
           continue;
+        // Mach-O adds an assembler underscore to every external C name.
+        if (macho && name->starts_with("_")) *name = name->drop_front();
         if (*flags & llvm::object::BasicSymbolRef::SF_Undefined)
           references.insert(name->str());
         else {
