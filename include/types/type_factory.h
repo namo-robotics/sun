@@ -176,20 +176,48 @@ class Types {
    * Parse a type name string to TypePtr
    */
   static TypePtr fromString(const std::string& name) {
-    if (name == "void") return Void();
-    if (name == "bool") return Bool();
-    if (name == "i8") return Int8();
-    if (name == "i16") return Int16();
-    if (name == "i32") return Int32();
-    if (name == "i64") return Int64();
-    if (name == "u8") return UInt8();
-    if (name == "u16") return UInt16();
-    if (name == "u32") return UInt32();
-    if (name == "u64") return UInt64();
-    if (name == "f32") return Float32();
-    if (name == "f64") return Float64();
-    if (name == "char") return Char();
-    if (name == "slice") return Slice();
+    if (name == "void") {
+      return Void();
+    }
+    if (name == "bool") {
+      return Bool();
+    }
+    if (name == "i8") {
+      return Int8();
+    }
+    if (name == "i16") {
+      return Int16();
+    }
+    if (name == "i32") {
+      return Int32();
+    }
+    if (name == "i64") {
+      return Int64();
+    }
+    if (name == "u8") {
+      return UInt8();
+    }
+    if (name == "u16") {
+      return UInt16();
+    }
+    if (name == "u32") {
+      return UInt32();
+    }
+    if (name == "u64") {
+      return UInt64();
+    }
+    if (name == "f32") {
+      return Float32();
+    }
+    if (name == "f64") {
+      return Float64();
+    }
+    if (name == "char") {
+      return Char();
+    }
+    if (name == "slice") {
+      return Slice();
+    }
     return nullptr;  // Unknown type
   }
 };

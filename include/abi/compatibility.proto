@@ -1,0 +1,89 @@
+// Serialized ABI requirements shared by bundle producers and consumers.
+syntax = "proto3";
+
+/** Groups ABI compatibility descriptions independently of the Moon container. */
+package sun.abi.proto;
+
+/** Effective machine properties, independent of target triple spelling. */
+message TargetProfile {
+  string architecture = 1;
+  string platform_abi = 2;
+  string data_layout = 3;
+  uint32 pointer_bits = 4;
+  bool little_endian = 5;
+  repeated string cpu_features = 6;
+}
+
+/** A required implementation rule, or an experimental implementation closure. */
+message ContractRequirement {
+  string name = 1;
+  string implementation = 2;
+}
+
+/** Diagnostic build provenance; never authorizes compatibility. */
+message ProducerIdentity {
+  string build = 1;
+  // Zero means unknown; comparable only within the same nonempty release series.
+  uint64 release_order = 2;
+  string release_series = 3;
+  // Relevant loaded runtime bytes are diagnostic, not a compatibility gate.
+  string runtime_fingerprint = 4;
+}
+
+/** Maps one exact declaration to its revision-independent nominal origin. */
+message NominalDeclaration {
+  string key = 1;
+  string identity = 2;
+}
+
+/** Records the semantic ABI and declaration identities of one named library artifact. */
+message LibraryAbiSnapshot {
+  string library_id = 1;
+  string artifact_hash = 2;
+  string abi_hash = 3;
+  repeated NominalDeclaration declarations = 4;
+}
+
+/** One complete experimental contract for all code embedded in the bundle. */
+message BundleContract {
+  uint32 encoding_schema = 1;
+  TargetProfile target = 2;
+  repeated ContractRequirement requirements = 3;
+  repeated bytes boundary_records = 4;
+  string compatibility_hash = 5;
+  ProducerIdentity producer = 6;
+  bool experimental = 7;
+  // Canonical declarations and retained bodies, including private semantic inputs.
+  repeated bytes semantic_records = 8;
+  // Diagnostic external references, excluded from compatibility hashing and authorization.
+  repeated string native_link_symbols = 9;
+  // Keep the removed native archive diagnostics field unavailable for reuse.
+  reserved 10;
+  reserved "native_build_provenance";
+  // Producer-declared nominal namespace; never authorizes replacement alone.
+  optional string library_id = 11;
+  // Recomputed from validated metadata; code symbols remain artifact-specific.
+  optional LibraryAbiSnapshot library_abi = 12;
+  // Requirements of direct and transitive dependencies, including embedded code.
+  repeated LibraryAbiSnapshot dependency_abis = 13;
+}
+
+/** One implemented rule version available to the compiler. */
+message SupportedRule {
+  string name = 1;
+  string version = 2;
+  string binding = 3;
+}
+
+/** Selects the rule version used when the compiler emits a requirement. */
+message EmissionDefault {
+  string name = 1;
+  string version = 2;
+}
+
+/** Build-validated compiler capabilities, separate from bundle requirements. */
+message CompilerAbiSupport {
+  uint32 schema = 1;
+  repeated SupportedRule rules = 2;
+  repeated EmissionDefault emission_defaults = 3;
+}

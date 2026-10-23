@@ -38,8 +38,9 @@ Analysis analyze(const std::string& source, bool withStdlib = false) {
   sun::driver::initTestEnvironment();
   Analysis analysis;
   analysis.driver = Driver::createForAOT("definition_test");
-  if (withStdlib)
+  if (withStdlib) {
     analysis.driver->setMoonImports(sun::driver::getStdlibMoonImports());
+  }
   analysis.program = analysis.driver->analyzeString(source, kPath);
   return analysis;
 }
@@ -53,7 +54,9 @@ size_t offsetOf(const std::string& source, const std::string& needle,
   size_t from = 0;
   for (int i = 0; i <= occurrence; ++i) {
     pos = source.find(needle, from);
-    if (pos == std::string::npos) break;
+    if (pos == std::string::npos) {
+      break;
+    }
     from = pos + 1;
   }
   EXPECT_NE(pos, std::string::npos) << "needle not found: " << needle;
@@ -66,7 +69,9 @@ std::optional<sun::lsp::SymbolLocation> definitionAt(const std::string& source,
                                                      bool withStdlib = false,
                                                      int occurrence = 0) {
   size_t pos = offsetOf(source, needle, occurrence);
-  if (pos == std::string::npos) return std::nullopt;
+  if (pos == std::string::npos) {
+    return std::nullopt;
+  }
   Analysis analysis = analyze(source, withStdlib);
   if (!analysis.program.ast) {
     ADD_FAILURE() << "program did not parse: "
@@ -388,8 +393,9 @@ TEST(Tooling_Lsp_Definition, MergedFiles) {
 }
 
 TEST(Tooling_Lsp_Definition, StdlibDeclarations) {
-  if (sun::driver::getStdlibMoonImports().empty())
+  if (sun::driver::getStdlibMoonImports().empty()) {
     GTEST_SKIP() << "stdlib.moon not built";
+  }
   std::string source = R"(
 using std;
 class Config {

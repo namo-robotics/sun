@@ -126,8 +126,9 @@ class ASTDeserializer {
   template <typename FieldDecl, typename FieldProto>
   FieldDecl deserializeField(const FieldProto& proto) const {
     FieldDecl field;
-    if (proto.has_declaration_identity())
+    if (proto.has_declaration_identity()) {
       deserializeIdentity(proto.declaration_identity(), field.declaration);
+    }
     field.name = proto.name();
     field.type = deserializeTypeAnnotation(proto.type());
     if (proto.has_location()) {

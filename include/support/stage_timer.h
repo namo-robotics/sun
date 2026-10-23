@@ -37,7 +37,9 @@ class StageTimings {
    * entry file is parsed twice, once to find its manifest) are summed.
    */
   static void report() {
-    if (!enabled() || entries().empty()) return;
+    if (!enabled() || entries().empty()) {
+      return;
+    }
 
     std::vector<std::pair<std::string, double>> totals;
     double total = 0.0;
@@ -94,7 +96,9 @@ class ScopedStage {
 
   /** Records the elapsed time for the stage when its scope ends. */
   ~ScopedStage() {
-    if (!StageTimings::enabled()) return;
+    if (!StageTimings::enabled()) {
+      return;
+    }
     auto elapsed = std::chrono::steady_clock::now() - start_;
     StageTimings::add(
         name_, std::chrono::duration<double, std::milli>(elapsed).count());

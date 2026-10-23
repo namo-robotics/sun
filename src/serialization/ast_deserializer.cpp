@@ -54,14 +54,18 @@ std::vector<sun::ast::TypeParameter> ASTDeserializer::deserializeTypeParameters(
     params.reserve(owner.type_params_size());
     for (const auto& tp : owner.type_params()) {
       auto& parameter = params.emplace_back(tp.name());
-      if (!tp.has_constraint()) continue;
+      if (!tp.has_constraint()) {
+        continue;
+      }
 
       auto& constraint = parameter.constraint.emplace(tp.constraint());
-      for (const auto& argument : tp.constraint_arguments())
+      for (const auto& argument : tp.constraint_arguments()) {
         constraint.typeArguments.push_back(deserializeTypeAnnotation(argument));
-      if (tp.has_declaration_key())
+      }
+      if (tp.has_declaration_key()) {
         constraint.declarationKey =
             PortableDeclarationKey::fromString(tp.declaration_key());
+      }
     }
     return params;
   }
@@ -75,22 +79,28 @@ std::vector<sun::ast::TypeParameter> ASTDeserializer::deserializeTypeParameters(
 void ASTDeserializer::deserializeIdentity(
     const pbc::DeclarationIdentity& proto,
     sun::semantic_analysis::DeclarationIdentity& identity) const {
-  if (!config_.import_declarations) return;
-  if (proto.key().empty())
+  if (!config_.import_declarations) {
+    return;
+  }
+  if (proto.key().empty()) {
     sun::support::logAndThrowError(
         "Imported declaration has no portable identity");
+  }
   auto validate = [](const std::string& value) {
     PortableDeclarationKey::fromString(value);
     return value;
   };
   sun::semantic_analysis::LibraryDeclarationIdentity imported;
   imported.key = validate(proto.key());
-  for (const auto& value : proto.parameters())
+  for (const auto& value : proto.parameters()) {
     imported.parameters.push_back(validate(value));
-  for (const auto& value : proto.type_parameters())
+  }
+  for (const auto& value : proto.type_parameters()) {
     imported.typeParameters.push_back(validate(value));
-  for (const auto& value : proto.lifetime_parameters())
+  }
+  for (const auto& value : proto.lifetime_parameters()) {
     imported.lifetimeParameters.push_back(validate(value));
+  }
   identity.imported = std::move(imported);
 }
 
@@ -116,8 +126,9 @@ ASTDeserializer::deserializeConstantValue(
       break;
   }
   ConstantValue::Elements elements;
-  for (const auto& element : proto.array().elements())
+  for (const auto& element : proto.array().elements()) {
     elements.push_back(deserializeConstantValue(element));
+  }
   return ConstantValue{nullptr, std::move(elements)};
 }
 
@@ -154,9 +165,10 @@ sun::ast::TypeAnnotation ASTDeserializer::deserializeTypeAnnotation(
     const pbc::TypeAnnotation& type) const {
   sun::ast::TypeAnnotation result;
   result.baseName = type.base_name();
-  if (type.has_declaration_key())
+  if (type.has_declaration_key()) {
     result.declarationKey =
         PortableDeclarationKey::fromString(type.declaration_key());
+  }
 
   if (type.has_element_type()) {
     result.elementType = std::make_unique<sun::ast::TypeAnnotation>(
@@ -180,7 +192,9 @@ sun::ast::TypeAnnotation ASTDeserializer::deserializeTypeAnnotation(
 
   for (const auto& dim : type.array_dimensions()) {
     sun::ast::ArrayDimension dimension;
-    if (dim.has_size()) dimension.size = dim.size();
+    if (dim.has_size()) {
+      dimension.size = dim.size();
+    }
     dimension.constantName = dim.constant_name();
     result.arrayDimensions.push_back(std::move(dimension));
   }
@@ -204,13 +218,15 @@ void ASTDeserializer::deserializeExprBase(const pbc::ASTNode& node,
   if (node.has_location()) {
     expr->setLocation(deserializePosition(node.location()));
   }
-  if (node.has_declaration_identity())
+  if (node.has_declaration_identity()) {
     deserializeIdentity(node.declaration_identity(),
                         expr->declarationIdentity());
+  }
   expr->setSourceFileId(node.source_file_id());
-  if (node.has_module_declaration_key())
+  if (node.has_module_declaration_key()) {
     expr->setModuleDeclaration(
         PortableDeclarationKey::fromString(node.module_declaration_key()));
+  }
   expr->setPrecompiled(node.precompiled());
   expr->setSkipCodegen(node.skip_codegen());
   expr->setSymbolPrefix(node.symbol_prefix());
@@ -247,9 +263,10 @@ std::unique_ptr<sun::ast::PrototypeAST> ASTDeserializer::deserializePrototype(
   auto result = std::make_unique<sun::ast::PrototypeAST>(
       proto.name(), std::move(args), std::move(returnType),
       deserializeTypeParameters(proto), std::move(variadicParam));
-  if (proto.has_declaration_identity())
+  if (proto.has_declaration_identity()) {
     deserializeIdentity(proto.declaration_identity(),
                         result->declarationIdentity());
+  }
   result->setLifetimeParameters(toLifetimeParameters(proto));
 
   // Restore the declared capture list, as written
@@ -588,14 +605,18 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeVariableCreation(
       proto.is_const());
   var->setCExtern(proto.is_c_extern());
   var->setExplicitCAbi(proto.explicit_c_abi());
-  if (proto.has_link_name()) var->setLinkName(proto.link_name());
+  if (proto.has_link_name()) {
+    var->setLinkName(proto.link_name());
+  }
   var->setVisibility(fromProto(proto.visibility()));
   var->setDoc(proto.doc());
-  if (proto.has_constant_value())
+  if (proto.has_constant_value()) {
     var->setImportedConstant(deserializeConstantValue(proto.constant_value()));
-  if (proto.has_declaration_identity())
+  }
+  if (proto.has_declaration_identity()) {
     deserializeIdentity(proto.declaration_identity(),
                         var->declarationIdentity());
+  }
   return var;
 }
 
@@ -710,14 +731,16 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeMatch(
     arms.emplace_back(std::move(pattern), armProto.is_wildcard(),
                       std::move(body));
     arms.back().hasPayloadParens = armProto.has_payload_parens();
-    if (armProto.has_binding_type())
+    if (armProto.has_binding_type()) {
       arms.back().bindingType =
           deserializeTypeAnnotation(armProto.binding_type());
+    }
     for (const auto& bindingProto : armProto.bindings()) {
       sun::ast::PatternBinding binding;
-      if (bindingProto.has_declaration_identity())
+      if (bindingProto.has_declaration_identity()) {
         deserializeIdentity(bindingProto.declaration_identity(),
                             binding.declaration);
+      }
       binding.name = bindingProto.name();
       binding.isWildcard = bindingProto.is_wildcard();
       if (bindingProto.has_location()) {
@@ -877,7 +900,12 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeManifest(
   }
 
   return std::make_unique<sun::ast::ManifestAST>(
-      std::move(suns), std::move(moons), std::move(protos));
+      std::move(suns), std::move(moons), std::move(protos),
+      std::vector<sun::ast::ManifestArchiveDependency>{},
+      std::vector<sun::ast::ManifestTargetBlock>{},
+      std::vector<sun::ast::ManifestSunDependency>{},
+      proto.has_library_id() ? std::optional<std::string>(proto.library_id())
+                             : std::nullopt);
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeModule(
@@ -887,11 +915,13 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeModule(
       std::make_unique<sun::ast::ModuleAST>(proto.name(), std::move(body));
   mod->setVisibility(fromProto(proto.visibility()));
   mod->setDoc(proto.doc());
-  if (proto.has_name_location())
+  if (proto.has_name_location()) {
     mod->setNameLocation(deserializePosition(proto.name_location()));
-  if (proto.has_declaration_identity())
+  }
+  if (proto.has_declaration_identity()) {
     deserializeIdentity(proto.declaration_identity(),
                         mod->declarationIdentity());
+  }
   return mod;
 }
 
@@ -934,9 +964,10 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
   for (const auto& ifaceProto : proto.implemented_interfaces()) {
     sun::ast::ImplementedInterfaceAST iface;
     iface.name = ifaceProto.name();
-    if (ifaceProto.has_declaration_key())
+    if (ifaceProto.has_declaration_key()) {
       iface.declarationKey =
           PortableDeclarationKey::fromString(ifaceProto.declaration_key());
+    }
     for (const auto& typeArg : ifaceProto.type_arguments()) {
       iface.typeArguments.push_back(deserializeTypeAnnotation(typeArg));
     }
@@ -946,8 +977,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
   std::vector<sun::ast::ClassFieldDecl> fields;
   for (const auto& fieldProto : proto.fields()) {
     auto field = deserializeField<sun::ast::ClassFieldDecl>(fieldProto);
-    if (fieldProto.has_initializer())
+    if (fieldProto.has_initializer()) {
       field.initializer = deserialize(fieldProto.initializer());
+    }
     fields.push_back(std::move(field));
   }
 
@@ -977,9 +1009,10 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
   classDef->setAlignment(proto.alignment());
   classDef->setVisibility(fromProto(proto.visibility()));
   classDef->setDoc(proto.doc());
-  if (proto.has_declaration_identity())
+  if (proto.has_declaration_identity()) {
     deserializeIdentity(proto.declaration_identity(),
                         classDef->declarationIdentity());
+  }
   return classDef;
 }
 
@@ -1004,14 +1037,16 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeInterfaceDef(
   auto iface = std::make_unique<sun::ast::InterfaceDefinitionAST>(
       proto.name(), deserializeTypeParameters(proto), std::move(fields),
       std::move(methods));
-  if (proto.has_parent())
+  if (proto.has_parent()) {
     iface->setParent(deserializeTypeAnnotation(proto.parent()));
+  }
   iface->setLifetimeParameters(toLifetimeParameters(proto));
   iface->setVisibility(fromProto(proto.visibility()));
   iface->setDoc(proto.doc());
-  if (proto.has_declaration_identity())
+  if (proto.has_declaration_identity()) {
     deserializeIdentity(proto.declaration_identity(),
                         iface->declarationIdentity());
+  }
   return iface;
 }
 
@@ -1020,9 +1055,10 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeEnumDef(
   std::vector<sun::ast::EnumVariantDecl> variants;
   for (const auto& variantProto : proto.variants()) {
     sun::ast::EnumVariantDecl variant;
-    if (variantProto.has_declaration_identity())
+    if (variantProto.has_declaration_identity()) {
       deserializeIdentity(variantProto.declaration_identity(),
                           variant.declaration);
+    }
     variant.name = variantProto.name();
     variant.value = variantProto.value();
     variant.hasExplicitValue = variantProto.has_explicit_value();
@@ -1040,9 +1076,10 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeEnumDef(
       deserializeTypeParameters(proto), proto.underlying_type());
   enumDef->setVisibility(fromProto(proto.visibility()));
   enumDef->setDoc(proto.doc());
-  if (proto.has_declaration_identity())
+  if (proto.has_declaration_identity()) {
     deserializeIdentity(proto.declaration_identity(),
                         enumDef->declarationIdentity());
+  }
   return enumDef;
 }
 
@@ -1065,8 +1102,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeTryCatch(
   std::vector<sun::ast::CatchClause> catchClauses;
   for (const auto& cc : proto.catch_clauses()) {
     sun::ast::CatchClause catchClause;
-    if (cc.has_declaration_identity())
+    if (cc.has_declaration_identity()) {
       deserializeIdentity(cc.declaration_identity(), catchClause.declaration);
+    }
     catchClause.bindingName = cc.binding_name();
     if (cc.has_binding_type()) {
       catchClause.bindingType = deserializeTypeAnnotation(cc.binding_type());

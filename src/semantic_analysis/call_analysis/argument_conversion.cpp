@@ -24,7 +24,9 @@ namespace {
  * by read get this far, checked by isAssignableTo).
  */
 ArgConversion byValue(const TypePtr& argType) {
-  if (typeMovesOnRead(argType)) return ArgConversion::Move;
+  if (typeMovesOnRead(argType)) {
+    return ArgConversion::Move;
+  }
   return ArgConversion::PassValue;
 }
 
@@ -33,8 +35,9 @@ ArgConversion byValue(const TypePtr& argType) {
  * the same element type: the argument's storage is viewed with its rank erased.
  */
 bool decaysToView(const TypePtr& value, const TypePtr& target) {
-  if (!value || !target || !value->isArray() || !target->isArray())
+  if (!value || !target || !value->isArray() || !target->isArray()) {
     return false;
+  }
   auto* valueArray = static_cast<const ArrayType*>(value.get());
   auto* targetArray = static_cast<const ArrayType*>(target.get());
   return targetArray->isUnsized() && !valueArray->isUnsized() &&
@@ -76,7 +79,9 @@ const char* toString(ArgConversion conversion) {
 std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
                                               const TypePtr& paramType,
                                               bool cVariadicTail) {
-  if (!argType || (paramType && paramType->isInterface())) return std::nullopt;
+  if (!argType || (paramType && paramType->isInterface())) {
+    return std::nullopt;
+  }
 
   // Past the declared parameters: a C `...` tail, or a variadic pack
   if (!paramType) {
@@ -99,16 +104,20 @@ std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
     if (argType->isRawPointer() && target) {
       const TypePtr& pointee =
           static_cast<const RawPointerType*>(argType.get())->getPointeeType();
-      if (pointee && pointee->equals(*target))
+      if (pointee && pointee->equals(*target)) {
         return ArgConversion::RawPtrAsRef;
+      }
     }
     if (value && value->isClass() && target && target->isInterface()) {
       return ArgConversion::ClassToRefInterface;
     }
     if (value && value->isInterface() && target && target->isInterface() &&
-        !value->equals(*target))
+        !value->equals(*target)) {
       return ArgConversion::InterfaceRefUpcast;
-    if (decaysToView(value, target)) return ArgConversion::ArrayToView;
+    }
+    if (decaysToView(value, target)) {
+      return ArgConversion::ArrayToView;
+    }
     return ArgConversion::Borrow;
   }
 
@@ -119,11 +128,14 @@ std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
   if (argType->isRawPointer() && paramType->isPrimitive()) {
     const TypePtr& pointee =
         static_cast<const RawPointerType*>(argType.get())->getPointeeType();
-    if (pointee && pointee->equals(*paramType))
+    if (pointee && pointee->equals(*paramType)) {
       return ArgConversion::DerefRawPtr;
+    }
   }
 
-  if (value && paramType->equals(*value)) return byValue(argType);
+  if (value && paramType->equals(*value)) {
+    return byValue(argType);
+  }
 
   // Numeric: only widening has a lowering. Same-width signedness changes
   // share a representation; a narrowing or an int/float mix has no lowering,
@@ -131,10 +143,15 @@ std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
   int argBits = value ? value->numericBitWidth() : 0;
   int paramBits = paramType->numericBitWidth();
   if (argBits && paramBits) {
-    if (value->isFloatingPoint() != paramType->isFloatingPoint())
+    if (value->isFloatingPoint() != paramType->isFloatingPoint()) {
       return std::nullopt;
-    if (argBits < paramBits) return ArgConversion::WidenNumeric;
-    if (argBits == paramBits) return ArgConversion::PassValue;
+    }
+    if (argBits < paramBits) {
+      return ArgConversion::WidenNumeric;
+    }
+    if (argBits == paramBits) {
+      return ArgConversion::PassValue;
+    }
     return std::nullopt;
   }
 

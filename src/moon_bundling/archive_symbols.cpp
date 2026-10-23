@@ -54,8 +54,9 @@ std::string memberName(const Archive::Child& child) {
  * the `as "..."` names in extern declarations never do.
  */
 std::string bareName(llvm::StringRef objectName, bool machO) {
-  if (machO && objectName.starts_with("_"))
+  if (machO && objectName.starts_with("_")) {
     return objectName.drop_front().str();
+  }
   return objectName.str();
 }
 
@@ -71,13 +72,17 @@ std::string objectName(const std::string& bare, bool machO) {
 llvm::Expected<std::unique_ptr<llvm::object::Binary>> openMember(
     const Archive::Child& child) {
   auto buffer = child.getMemoryBufferRef();
-  if (!buffer) return buffer.takeError();
+  if (!buffer) {
+    return buffer.takeError();
+  }
   if (llvm::identify_magic(buffer->getBuffer()) == llvm::file_magic::bitcode) {
     return makeError("member '" + memberName(child) +
                      "' is LLVM bitcode (an LTO build), not a native object");
   }
   auto binary = child.getAsBinary();
-  if (!binary) return binary.takeError();
+  if (!binary) {
+    return binary.takeError();
+  }
   if ((*binary)->isMachOUniversalBinary()) {
     return makeError("member '" + memberName(child) +
                      "' is a universal binary; carry one architecture");
@@ -99,8 +104,12 @@ llvm::Error forEachMember(const Archive& archive,
   llvm::Error err = llvm::Error::success();
   for (const Archive::Child& child : archive.children(err)) {
     auto binary = openMember(child);
-    if (!binary) return binary.takeError();
-    if (auto visitErr = visit(child, **binary)) return visitErr;
+    if (!binary) {
+      return binary.takeError();
+    }
+    if (auto visitErr = visit(child, **binary)) {
+      return visitErr;
+    }
   }
   return err;
 }
@@ -109,7 +118,9 @@ llvm::Error forEachMember(const Archive& archive,
  * `$hash$_name` -> `name`; anything else unchanged.
  */
 std::string stripBundlePrefix(const std::string& symbol) {
-  if (symbol.size() < 3 || symbol[0] != '$') return symbol;
+  if (symbol.size() < 3 || symbol[0] != '$') {
+    return symbol;
+  }
   size_t close = symbol.find('$', 1);
   if (close == std::string::npos || close + 1 >= symbol.size() ||
       symbol[close + 1] != '_') {
@@ -129,7 +140,9 @@ std::string computeArchiveSetHash(
   }
   std::sort(lines.begin(), lines.end());
   std::string input;
-  for (const auto& line : lines) input += line;
+  for (const auto& line : lines) {
+    input += line;
+  }
   return computeSha256Hex(input).substr(0, 16);
 }
 
@@ -138,7 +151,9 @@ std::string computeArchiveSetHash(
 llvm::Expected<ArchiveSymbolScan> scanArchiveSymbols(
     llvm::MemoryBufferRef archiveBytes) {
   auto archive = Archive::create(archiveBytes);
-  if (!archive) return archive.takeError();
+  if (!archive) {
+    return archive.takeError();
+  }
 
   ArchiveSymbolScan scan;
   bool machO = false;
@@ -157,14 +172,24 @@ llvm::Expected<ArchiveSymbolScan> scanArchiveSymbols(
         auto& object = llvm::cast<SymbolicFile>(bin);
         for (const BasicSymbolRef& symbol : object.symbols()) {
           auto flags = symbol.getFlags();
-          if (!flags) return flags.takeError();
-          if (!(*flags & BasicSymbolRef::SF_Global)) continue;
-          if (*flags & BasicSymbolRef::SF_FormatSpecific) continue;
+          if (!flags) {
+            return flags.takeError();
+          }
+          if (!(*flags & BasicSymbolRef::SF_Global)) {
+            continue;
+          }
+          if (*flags & BasicSymbolRef::SF_FormatSpecific) {
+            continue;
+          }
           std::string name;
           llvm::raw_string_ostream nameStream(name);
-          if (auto printErr = symbol.printName(nameStream)) return printErr;
+          if (auto printErr = symbol.printName(nameStream)) {
+            return printErr;
+          }
           nameStream.flush();
-          if (name.empty()) continue;
+          if (name.empty()) {
+            continue;
+          }
           if (*flags & BasicSymbolRef::SF_Undefined) {
             scan.undefined.insert(bareName(name, machO));
           } else {
@@ -173,9 +198,13 @@ llvm::Expected<ArchiveSymbolScan> scanArchiveSymbols(
         }
         return llvm::Error::success();
       });
-  if (err) return std::move(err);
+  if (err) {
+    return std::move(err);
+  }
   // A reference satisfied by another member is internal to the archive
-  for (const auto& name : scan.defined) scan.undefined.erase(name);
+  for (const auto& name : scan.defined) {
+    scan.undefined.erase(name);
+  }
   return scan;
 }
 
@@ -184,7 +213,9 @@ llvm::Expected<std::string> renameArchiveSymbols(
     llvm::MemoryBufferRef archiveBytes,
     const std::map<std::string, std::string>& renames) {
   auto archive = Archive::create(archiveBytes);
-  if (!archive) return archive.takeError();
+  if (!archive) {
+    return archive.takeError();
+  }
 
   // The rename table is built once the object format is known, since the
   // spelling differs; objcopy keeps only references into it.
@@ -218,18 +249,24 @@ llvm::Expected<std::string> renameArchiveSymbols(
 
         // Keeps the member's name, mode and timestamps; only the bytes change
         auto member = llvm::NewArchiveMember::getOldMember(child, true);
-        if (!member) return member.takeError();
+        if (!member) {
+          return member.takeError();
+        }
         member->Buf = llvm::MemoryBuffer::getMemBufferCopy(bytes, name);
         member->MemberName = member->Buf->getBufferIdentifier();
         members.push_back(std::move(*member));
         return llvm::Error::success();
       });
-  if (err) return std::move(err);
+  if (err) {
+    return std::move(err);
+  }
 
   auto written = llvm::writeArchiveToBuffer(
       members, llvm::SymtabWritingMode::NormalSymtab, (*archive)->kind(),
       /*Deterministic=*/true, /*Thin=*/false);
-  if (!written) return written.takeError();
+  if (!written) {
+    return written.takeError();
+  }
   return (*written)->getBuffer().str();
 }
 

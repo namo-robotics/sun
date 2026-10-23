@@ -64,12 +64,16 @@ std::string AstDotGenerator::escapeLabel(const std::string& s) {
 }
 
 std::string AstDotGenerator::getNodeLabel(const ExprAST* node) {
-  if (!node) return "null";
+  if (!node) {
+    return "null";
+  }
   return escapeLabel(node->dotLabel());
 }
 
 int AstDotGenerator::visitNode(const ExprAST* node) {
-  if (!node) return -1;
+  if (!node) {
+    return -1;
+  }
 
   int id = nodeCounter++;
   std::string label = getNodeLabel(node);
@@ -82,7 +86,9 @@ int AstDotGenerator::visitNode(const ExprAST* node) {
 }
 
 void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
-  if (!node) return;
+  if (!node) {
+    return;
+  }
 
   auto emitEdge = [&](int childId, const std::string& label = "") {
     if (childId >= 0) {

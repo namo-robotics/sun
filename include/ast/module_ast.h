@@ -38,7 +38,9 @@ class ModuleAST : public ExprAST {
   /** Visits replaceable child expressions so tree passes can rewrite them in
    * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
-    if (body) body->forEachChildSlot(fn);
+    if (body) {
+      body->forEachChildSlot(fn);
+    }
   }
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
@@ -71,7 +73,9 @@ class ModuleAST : public ExprAST {
   /** Return the next module in the same dotted declaration, or null. */
   const ModuleAST* getShorthandChild() const {
     const auto& statements = body->getBody();
-    if (statements.size() != 1) return nullptr;
+    if (statements.size() != 1) {
+      return nullptr;
+    }
     const auto* child =
         dynamic_cast<const ModuleAST*>(statements.front().get());
     return child && child->getLocation().offset == getLocation().offset

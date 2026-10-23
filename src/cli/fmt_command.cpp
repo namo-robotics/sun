@@ -33,8 +33,9 @@ enum class FormatOutcome { Unchanged, Changed, Failed };
 std::vector<std::string> components(const std::string& path) {
   std::vector<std::string> result;
   std::istringstream input(path);
-  for (std::string part; std::getline(input, part, '/');)
+  for (std::string part; std::getline(input, part, '/');) {
     result.push_back(std::move(part));
+  }
   return result;
 }
 
@@ -48,20 +49,25 @@ bool matchesPattern(const std::string& pattern, const std::string& path) {
     const auto& part = patterns[p];
     if (part == "**") {
       if (p > 0 && p + 1 == patterns.size()) {
-        for (size_t i = parts.size(); i > 0; --i) matched[i] = matched[i - 1];
+        for (size_t i = parts.size(); i > 0; --i) {
+          matched[i] = matched[i - 1];
+        }
         matched[0] = false;
       }
-      for (size_t i = 1; i <= parts.size(); ++i)
+      for (size_t i = 1; i <= parts.size(); ++i) {
         matched[i] = matched[i] || matched[i - 1];
+      }
       continue;
     }
     auto glob = llvm::GlobPattern::create(part);
-    if (!glob)
+    if (!glob) {
       sun::support::logAndThrowError("sun_fmt.ignore: invalid pattern '" +
-                                    pattern + "': " +
-                                    llvm::toString(glob.takeError()));
-    for (size_t i = parts.size(); i > 0; --i)
+                                     pattern +
+                                     "': " + llvm::toString(glob.takeError()));
+    }
+    for (size_t i = parts.size(); i > 0; --i) {
       matched[i] = matched[i - 1] && glob->match(parts[i - 1]);
+    }
     matched[0] = false;
   }
   return matched.back();
@@ -70,51 +76,77 @@ bool matchesPattern(const std::string& pattern, const std::string& path) {
 /** Caches inherited project settings and evaluates ordered ignore patterns. */
 class FormatIgnores {
  public:
-  /** Enables configured exclusions unless the caller explicitly bypasses them. */
+  /** Enables configured exclusions unless the caller explicitly bypasses them.
+   */
   explicit FormatIgnores(bool disabled) : disabled_(disabled) {}
 
-  /** Checks a path and its ancestors; excluded directories cannot be re-entered. */
+  /** Checks a path and its ancestors; excluded directories cannot be
+   * re-entered. */
   bool ignores(const std::filesystem::path& path, bool directory) {
-    if (disabled_) return false;
+    if (disabled_) {
+      return false;
+    }
     const auto absolute = std::filesystem::absolute(path).lexically_normal();
     const auto configDir = directory ? absolute : absolute.parent_path();
     auto found = configs_.find(configDir);
-    if (found == configs_.end())
-      found = configs_
-                  .emplace(configDir, sun::driver::SunConfig::findFrom(configDir))
-                  .first;
-    if (!found->second) return false;
+    if (found == configs_.end()) {
+      found =
+          configs_
+              .emplace(configDir, sun::driver::SunConfig::findFrom(configDir))
+              .first;
+    }
+    if (!found->second) {
+      return false;
+    }
     const auto& rules = found->second->fmtIgnore;
     for (auto candidate = absolute; candidate != candidate.parent_path();
          candidate = candidate.parent_path(), directory = true) {
       bool ignored = false;
       for (const auto& rule : rules) {
         auto relative = candidate.lexically_relative(rule.baseDir);
-        if (relative.empty() || relative == "." || *relative.begin() == "..")
+        if (relative.empty() || relative == "." || *relative.begin() == "..") {
           continue;
+        }
         std::string pattern = rule.pattern;
-        if (pattern.front() == '#') continue;
+        if (pattern.front() == '#') {
+          continue;
+        }
         const bool negate = pattern.front() == '!';
-        if (negate) pattern.erase(0, 1);
-        if (pattern.empty()) continue;
+        if (negate) {
+          pattern.erase(0, 1);
+        }
+        if (pattern.empty()) {
+          continue;
+        }
         const bool directoryOnly = pattern.back() == '/';
-        if (directoryOnly) pattern.pop_back();
-        if (directoryOnly && !directory) continue;
+        if (directoryOnly) {
+          pattern.pop_back();
+        }
+        if (directoryOnly && !directory) {
+          continue;
+        }
         const bool anchored = !pattern.empty() && pattern.front() == '/';
-        if (anchored) pattern.erase(0, 1);
+        if (anchored) {
+          pattern.erase(0, 1);
+        }
         const auto target = !anchored && pattern.find('/') == std::string::npos
                                 ? candidate.filename().generic_string()
                                 : relative.generic_string();
-        if (matchesPattern(pattern, target)) ignored = !negate;
+        if (matchesPattern(pattern, target)) {
+          ignored = !negate;
+        }
       }
-      if (ignored) return true;
+      if (ignored) {
+        return true;
+      }
     }
     return false;
   }
 
  private:
   bool disabled_;
-  std::map<std::filesystem::path, std::optional<sun::driver::SunConfig>> configs_;
+  std::map<std::filesystem::path, std::optional<sun::driver::SunConfig>>
+      configs_;
 };
 
 /**
@@ -140,8 +172,9 @@ bool collectSunFiles(const std::string& dir, std::vector<std::string>& out,
     const std::filesystem::path& path = it->path();
     std::string name = path.filename().string();
     if (it->is_directory(ec)) {
-      if ((name.size() > 1 && name[0] == '.') || ignores.ignores(path, true))
+      if ((name.size() > 1 && name[0] == '.') || ignores.ignores(path, true)) {
         it.disable_recursion_pending();
+      }
       continue;
     }
     // *.inja.sun files are templates, not Sun programs: their splices
@@ -168,11 +201,14 @@ bool expandInputs(const std::vector<std::string>& inputs,
   for (const auto& input : inputs) {
     std::error_code ec;
     const bool directory = std::filesystem::is_directory(input, ec);
-    if (std::filesystem::exists(input, ec) && ignores.ignores(input, directory)) {
+    if (std::filesystem::exists(input, ec) &&
+        ignores.ignores(input, directory)) {
       sun::support::messageStream("info")
           << input << ": skipped (sun_fmt.ignore)\n";
     } else if (directory) {
-      if (!collectSunFiles(input, files, ignores)) ok = false;
+      if (!collectSunFiles(input, files, ignores)) {
+        ok = false;
+      }
     } else if (!std::filesystem::exists(input, ec)) {
       sun::support::messageStream("error")
           << input << ": no such file or directory\n";
@@ -235,9 +271,12 @@ FormatOutcome formatFile(const std::string& file, bool checkMode) {
     return FormatOutcome::Failed;
   }
 
-  if (formatted == source) return FormatOutcome::Unchanged;
+  if (formatted == source) {
+    return FormatOutcome::Unchanged;
+  }
   if (checkMode) {
-    sun::support::messageStream("info") << file << ": needs formatting\n";
+    llvm::outs() << sun::support::messagePrefix("info", llvm::outs()) << file
+                 << ": needs formatting\n";
     return FormatOutcome::Changed;
   }
   return rewriteFile(file, formatted) ? FormatOutcome::Changed
@@ -276,8 +315,12 @@ int runFmtCommand(const std::vector<std::string>& args) {
     }
   }
 
-  if (hadError) return 2;
-  if (options.checkMode && hadDiff) return 1;
+  if (hadError) {
+    return 2;
+  }
+  if (options.checkMode && hadDiff) {
+    return 1;
+  }
   return 0;
 }
 

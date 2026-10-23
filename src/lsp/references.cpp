@@ -92,7 +92,9 @@ class Collector {
   int indexOf(const Declaration& declaration, const std::string& file) {
     DeclarationKey key = keyOf(declaration, file);
     for (size_t i = 0; i < targets_.size(); ++i) {
-      if (targets_[i] == key) return static_cast<int>(i);
+      if (targets_[i] == key) {
+        return static_cast<int>(i);
+      }
     }
     return -1;
   }
@@ -120,10 +122,14 @@ class Collector {
   /** Adds a source range to the collected declaration or use locations. */
   void add(const std::string& file, int offset, int end,
            bool isDeclaration = false) {
-    if (end <= offset) return;
+    if (end <= offset) {
+      return;
+    }
     auto [entry, inserted] = ranges_.emplace(
         std::make_tuple(normalize(file), offset, end), isDeclaration);
-    if (!inserted && !isDeclaration) entry->second = false;
+    if (!inserted && !isDeclaration) {
+      entry->second = false;
+    }
   }
 
   /** Returns collected reference locations, optionally including declarations.
@@ -131,10 +137,14 @@ class Collector {
   std::vector<SymbolLocation> results(bool includeDeclarations) {
     std::vector<SymbolLocation> locations;
     for (const auto& [span, isDeclaration] : ranges_) {
-      if (isDeclaration && !includeDeclarations) continue;
+      if (isDeclaration && !includeDeclarations) {
+        continue;
+      }
       const auto& [file, offset, end] = span;
       const std::string* source = text(file);
-      if (!source) continue;
+      if (!source) {
+        continue;
+      }
       Position range;
       range.filePath = file;
       range.offset = offset;
@@ -181,10 +191,14 @@ void forEachNestedAnnotation(
     const std::function<void(const sun::ast::TypeAnnotation&)>& fn) {
   fn(annotation);
   for (const auto& arg : annotation.typeArguments) {
-    if (arg) forEachNestedAnnotation(*arg, fn);
+    if (arg) {
+      forEachNestedAnnotation(*arg, fn);
+    }
   }
   for (const auto& param : annotation.paramTypes) {
-    if (param) forEachNestedAnnotation(*param, fn);
+    if (param) {
+      forEachNestedAnnotation(*param, fn);
+    }
   }
   if (annotation.elementType) {
     forEachNestedAnnotation(*annotation.elementType, fn);
@@ -214,7 +228,9 @@ class DeclaredNameFinder {
 
   /** Visits declarations to collect the source ranges of their names. */
   void visit(const ExprAST& node, const std::string& inheritedFile) {
-    if (node.getType() == ASTNodeType::MOON_SCOPE) return;
+    if (node.getType() == ASTNodeType::MOON_SCOPE) {
+      return;
+    }
     const Position& loc = node.getLocation();
     const std::string& file = loc.filePath ? *loc.filePath : inheritedFile;
     const std::string* text = file.empty() ? nullptr : out_.text(file);
@@ -234,7 +250,9 @@ class DeclaredNameFinder {
   void addWord(const std::string& file, const std::string& text,
                const std::string& name, int from, int to) {
     int at = findWord(text, name, from, to);
-    if (at >= 0) out_.add(file, at, at + static_cast<int>(name.size()));
+    if (at >= 0) {
+      out_.add(file, at, at + static_cast<int>(name.size()));
+    }
   }
 
   /** Collects references found in a node's type annotations. */
@@ -243,9 +261,13 @@ class DeclaredNameFinder {
     forEachAnnotation(node, [&](const sun::ast::TypeAnnotation& written) {
       forEachNestedAnnotation(
           written, [&](const sun::ast::TypeAnnotation& annotation) {
-            if (!annotation.span.endOffset) return;
+            if (!annotation.span.endOffset) {
+              return;
+            }
             const ExprAST* decl = findAnnotatedType(program_, annotation);
-            if (!decl || !out_.matches(declarationOf(*decl), file)) return;
+            if (!decl || !out_.matches(declarationOf(*decl), file)) {
+              return;
+            }
             addWord(file, text, declarationName(*decl), annotation.span.offset,
                     *annotation.span.endOffset);
           });
@@ -257,19 +279,28 @@ class DeclaredNameFinder {
    */
   void collectImplements(const ClassDefinitionAST& cls, const std::string& file,
                          const std::string& text) {
-    if (cls.getImplementedInterfaces().empty()) return;
+    if (cls.getImplementedInterfaces().empty()) {
+      return;
+    }
     const Position& span = cls.getLocation();
-    if (!span.endOffset) return;
+    if (!span.endOffset) {
+      return;
+    }
     int end = *span.endOffset;
     size_t brace = text.find('{', span.offset);
-    if (brace != std::string::npos)
+    if (brace != std::string::npos) {
       end = std::min(end, static_cast<int>(brace));
+    }
     int from = findWord(text, cls.getName(), span.offset, end);
-    if (from < 0) return;
+    if (from < 0) {
+      return;
+    }
     from += static_cast<int>(cls.getName().size());
     for (const auto& iface : cls.getImplementedInterfaces()) {
       const ExprAST* decl = findDeclaration(program_, iface.name, {});
-      if (!decl || !out_.matches(declarationOf(*decl), file)) continue;
+      if (!decl || !out_.matches(declarationOf(*decl), file)) {
+        continue;
+      }
       addWord(file, text, iface.name, from, end);
     }
   }
@@ -281,7 +312,9 @@ class DeclaredNameFinder {
                            const std::string& text) {
     auto consider = [&](const Declaration& declaration) {
       int index = out_.indexOf(declaration, file);
-      if (index < 0) return;
+      if (index < 0) {
+        return;
+      }
       Position range = nameRangeOf(declaration, text);
       out_.add(file, range.offset, range.endOffset.value_or(range.offset),
                true);
@@ -381,7 +414,9 @@ class UseFinder {
 
   /** Visits expressions to collect references to the selected declarations. */
   void visit(const ExprAST& node, const std::string& inheritedFile) {
-    if (node.getType() == ASTNodeType::MOON_SCOPE) return;
+    if (node.getType() == ASTNodeType::MOON_SCOPE) {
+      return;
+    }
     Bindings bindings;
     if (const ExprAST* specialization = firstSpecialization(node, bindings)) {
       visit(*specialization, inheritedFile);
@@ -401,12 +436,16 @@ class UseFinder {
       chainFile_ = file;
     }
     bool pushed = loc.endOffset.has_value();
-    if (pushed) chain_.push_back(&node);
+    if (pushed) {
+      chain_.push_back(&node);
+    }
 
     consider(node, file);
     forEachChild(node, [&](const ExprAST& child) { visit(child, file); });
 
-    if (pushed) chain_.pop_back();
+    if (pushed) {
+      chain_.pop_back();
+    }
     if (newFile) {
       chain_.swap(saved);
       chainFile_ = savedFile;
@@ -421,7 +460,9 @@ class UseFinder {
   static std::optional<Position> identifierRange(const Position& loc,
                                                  const std::string& name,
                                                  const std::string& text) {
-    if (loc.endOffset && sliceSpan(text, loc) == name) return loc;
+    if (loc.endOffset && sliceSpan(text, loc) == name) {
+      return loc;
+    }
     if (textHas(text, loc.offset, name)) {
       return rangeAt(loc, loc.offset, static_cast<int>(name.size()));
     }
@@ -435,27 +476,37 @@ class UseFinder {
                                              const std::string& member,
                                              const Position& loc,
                                              const std::string& text) {
-    if (!loc.endOffset) return std::nullopt;
+    if (!loc.endOffset) {
+      return std::nullopt;
+    }
     int from = object.getLocation().endOffset.value_or(loc.offset);
     int at = findWord(text, member, from, *loc.endOffset);
-    if (at < 0) return std::nullopt;
+    if (at < 0) {
+      return std::nullopt;
+    }
     return rangeAt(loc, at, static_cast<int>(member.size()));
   }
 
   /** Collects a resolved reference within an optional source range. */
   void considerRange(const ExprAST& node, const std::string& file,
                      const std::optional<Position>& range) {
-    if (!range) return;
+    if (!range) {
+      return;
+    }
     std::optional<Declaration> declaration =
         resolveSymbol(program_, chain_, node, &declarations_);
-    if (!declaration || !out_.matches(*declaration, file)) return;
+    if (!declaration || !out_.matches(*declaration, file)) {
+      return;
+    }
     out_.add(file, range->offset, *range->endOffset);
   }
 
   /** Checks whether a node refers to one of the selected declarations. */
   void consider(const ExprAST& node, const std::string& file) {
     const std::string* text = file.empty() ? nullptr : out_.text(file);
-    if (!text) return;
+    if (!text) {
+      return;
+    }
     const Position& loc = node.getLocation();
     switch (node.getType()) {
       case ASTNodeType::VARIABLE_REFERENCE:
@@ -487,7 +538,9 @@ class UseFinder {
       case ASTNodeType::MEMBER_ACCESS: {
         const auto& access =
             static_cast<const sun::ast::MemberAccessAST&>(node);
-        if (!access.getObject()) break;
+        if (!access.getObject()) {
+          break;
+        }
         considerRange(node, file,
                       memberRange(*access.getObject(), access.getMemberName(),
                                   loc, *text));
@@ -496,7 +549,9 @@ class UseFinder {
       case ASTNodeType::MEMBER_ASSIGNMENT: {
         const auto& assignment =
             static_cast<const sun::ast::MemberAssignmentAST&>(node);
-        if (!assignment.getObject()) break;
+        if (!assignment.getObject()) {
+          break;
+        }
         considerRange(node, file,
                       memberRange(*assignment.getObject(),
                                   assignment.getMemberName(), loc, *text));
@@ -518,12 +573,18 @@ class UseFinder {
                       const std::string& file, const std::string& text) {
     const sun::types::Type* type =
         stripReference(literal.getResolvedType().get());
-    if (!type) return;
+    if (!type) {
+      return;
+    }
     const ExprAST* definition = findTypeDefinition(program_, *type);
-    if (!definition) return;
+    if (!definition) {
+      return;
+    }
     for (const auto& field : literal.getFields()) {
       std::optional<Declaration> member = findMember(*definition, field.name);
-      if (!member || !out_.matches(*member, file)) continue;
+      if (!member || !out_.matches(*member, file)) {
+        continue;
+      }
       int offset = field.location.offset;
       if (textHas(text, offset, field.name)) {
         out_.add(file, offset, offset + static_cast<int>(field.name.size()));
@@ -533,7 +594,9 @@ class UseFinder {
 
   /** Indexes declarations in traversal order, matching single-symbol lookup. */
   void indexDeclarations(const ExprAST& node) {
-    if (auto id = node.getDeclarationId()) declarations_.emplace(id, &node);
+    if (auto id = node.getDeclarationId()) {
+      declarations_.emplace(id, &node);
+    }
     forEachChild(node, [&](const ExprAST& child) { indexDeclarations(child); });
   }
 
@@ -555,7 +618,9 @@ namespace {
  */
 void forEachTypeDefinition(const ExprAST& node,
                            const std::function<void(const ExprAST&)>& fn) {
-  if (node.getType() == ASTNodeType::MOON_SCOPE) return;
+  if (node.getType() == ASTNodeType::MOON_SCOPE) {
+    return;
+  }
   if (node.getType() == ASTNodeType::CLASS_DEFINITION ||
       node.getType() == ASTNodeType::INTERFACE_DEFINITION) {
     fn(node);
@@ -585,13 +650,19 @@ class GroupBuilder {
 
   /** Builds the group of related members that must be renamed together. */
   MemberGroup around(const Declaration& member) {
-    if (member.name.empty()) return {{member}, ""};
+    if (member.name.empty()) {
+      return {{member}, ""};
+    }
     const ExprAST* owner = nullptr;
     forEachTypeDefinition(program_, [&](const ExprAST& def) {
       std::optional<Declaration> own = findMember(def, member.name);
-      if (own && sameDeclaration(*own, member)) owner = &def;
+      if (own && sameDeclaration(*own, member)) {
+        owner = &def;
+      }
     });
-    if (!owner) return {{member}, ""};
+    if (!owner) {
+      return {{member}, ""};
+    }
     name_ = member.name;
     add(member);
     if (owner->getType() == ASTNodeType::INTERFACE_DEFINITION) {
@@ -607,7 +678,9 @@ class GroupBuilder {
           continue;
         }
         std::optional<Declaration> shared = findMember(*decl, name_);
-        if (!shared) continue;
+        if (!shared) {
+          continue;
+        }
         add(*shared);
         addImplementers(*decl);
       }
@@ -625,7 +698,9 @@ class GroupBuilder {
   /** Adds a declaration to the related-member rename group. */
   void add(const Declaration& declaration) {
     DeclarationKey key = declarationKey(declaration, documentPath_);
-    if (std::find(keys_.begin(), keys_.end(), key) != keys_.end()) return;
+    if (std::find(keys_.begin(), keys_.end(), key) != keys_.end()) {
+      return;
+    }
     keys_.push_back(std::move(key));
     group_.members.push_back(declaration);
   }
@@ -635,7 +710,9 @@ class GroupBuilder {
    */
   void addImplementers(const ExprAST& interface) {
     forEachTypeDefinition(program_, [&](const ExprAST& def) {
-      if (def.getType() != ASTNodeType::CLASS_DEFINITION) return;
+      if (def.getType() != ASTNodeType::CLASS_DEFINITION) {
+        return;
+      }
       const auto& cls = static_cast<const ClassDefinitionAST&>(def);
       bool implements = false;
       for (const auto& iface : cls.getImplementedInterfaces()) {
@@ -646,8 +723,12 @@ class GroupBuilder {
           break;
         }
       }
-      if (!implements) return;
-      if (std::optional<Declaration> own = findMember(def, name_)) add(*own);
+      if (!implements) {
+        return;
+      }
+      if (std::optional<Declaration> own = findMember(def, name_)) {
+        add(*own);
+      }
     });
   }
 
@@ -697,7 +778,9 @@ std::vector<SymbolLocation> computeReferences(const BlockExprAST& program,
   std::string documentPath = normalizePath(filePath);
   std::optional<Declaration> declaration =
       findDeclarationAt(program, documentPath, source, byteOffset);
-  if (!declaration) return {};
+  if (!declaration) {
+    return {};
+  }
 
   Occurrences occurrences = findOccurrences(
       program, documentPath, source,

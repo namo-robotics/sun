@@ -146,7 +146,9 @@ class EntrypointManager {
 
     std::set<std::string> seen;
     for (const auto& path : configuredPaths_) {
-      if (!seen.insert(normalizePath(path)).second) continue;
+      if (!seen.insert(normalizePath(path)).second) {
+        continue;
+      }
       auto config = parseEntrypoint(path);
       if (config) {
         // Map all covered files to this entrypoint
@@ -295,8 +297,11 @@ static void refreshEntrypoints() {
           sun::driver::SunConfig::loadFile(configPath);
       for (auto& entry : config.entrypoints) {
         // Project discovery never fetches remote source repositories.
-        if (!entry.git.empty()) continue;
-        entry.path = ManifestProcessor::expandPathVariables(entry.path, &config);
+        if (!entry.git.empty()) {
+          continue;
+        }
+        entry.path =
+            ManifestProcessor::expandPathVariables(entry.path, &config);
         entry.testBinaryName = ManifestProcessor::expandPathVariables(
             entry.testBinaryName, &config);
         combined.push_back(entry.path);
@@ -322,7 +327,9 @@ static void refreshEntrypoints() {
  */
 static bool applyPathVariables(const llvm::json::Object& config) {
   const llvm::json::Object* vars = config.getObject("pathVariables");
-  if (!vars) return false;
+  if (!vars) {
+    return false;
+  }
   ManifestProcessor::clearPathVariables();
   for (const auto& [name, value] : *vars) {
     if (auto str = value.getAsString()) {
@@ -340,7 +347,9 @@ static bool applyPathVariables(const llvm::json::Object& config) {
 static std::optional<std::vector<std::string>> readEntrypoints(
     const llvm::json::Object& config) {
   const llvm::json::Array* entrypoints = config.getArray("entrypoints");
-  if (!entrypoints) return std::nullopt;
+  if (!entrypoints) {
+    return std::nullopt;
+  }
   std::vector<std::string> paths;
   for (const auto& entry : *entrypoints) {
     if (auto str = entry.getAsString()) {
@@ -361,7 +370,9 @@ static std::optional<std::vector<std::string>> readEntrypoints(
 static std::optional<std::vector<std::string>> readSunConfigs(
     const llvm::json::Object& config) {
   const llvm::json::Array* configs = config.getArray("sun_configs");
-  if (!configs) return std::nullopt;
+  if (!configs) {
+    return std::nullopt;
+  }
   std::vector<std::string> paths;
   for (const auto& entry : *configs) {
     if (auto str = entry.getAsString()) {
@@ -482,9 +493,15 @@ std::string percentDecode(std::string_view encoded) {
   decoded.reserve(encoded.size());
 
   auto hexToInt = [](char ch) -> int {
-    if (ch >= '0' && ch <= '9') return ch - '0';
-    if (ch >= 'a' && ch <= 'f') return 10 + (ch - 'a');
-    if (ch >= 'A' && ch <= 'F') return 10 + (ch - 'A');
+    if (ch >= '0' && ch <= '9') {
+      return ch - '0';
+    }
+    if (ch >= 'a' && ch <= 'f') {
+      return 10 + (ch - 'a');
+    }
+    if (ch >= 'A' && ch <= 'F') {
+      return 10 + (ch - 'A');
+    }
     return -1;
   };
 
@@ -640,7 +657,9 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
 
   while (true) {
     sun::parsing::Token tok = lexer.getNextToken();
-    if (tok.kind == TokenKind::TOK_EOF) break;
+    if (tok.kind == TokenKind::TOK_EOF) {
+      break;
+    }
 
     if (tok.kind == TokenKind::COMMENT ||
         tok.kind == TokenKind::BLOCK_COMMENT) {
@@ -653,12 +672,16 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
       while (pos <= tok.text.size()) {
         size_t nl = tok.text.find('\n', pos);
         size_t segEnd = (nl == std::string::npos) ? tok.text.size() : nl;
-        while (segEnd > pos && tok.text[segEnd - 1] == '\r') --segEnd;
+        while (segEnd > pos && tok.text[segEnd - 1] == '\r') {
+          --segEnd;
+        }
         int segLen = static_cast<int>(segEnd - pos);
         if (segLen > 0) {
           tokens.push_back({commentLine, commentCol, segLen, Comment, 0});
         }
-        if (nl == std::string::npos) break;
+        if (nl == std::string::npos) {
+          break;
+        }
         pos = nl + 1;
         ++commentLine;
         commentCol = 0;
@@ -671,7 +694,9 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
     int length = static_cast<int>(tok.text.size());
     if (length == 0) {
       length = tok.end.column - tok.start.column;
-      if (length <= 0) length = 1;
+      if (length <= 0) {
+        length = 1;
+      }
     }
 
     // Try the simple mapping first
@@ -700,37 +725,38 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
     }
 
     // Handle context tracking for keywords that affect following tokens
-    if (tok.kind == TokenKind::CLASS || tok.kind == TokenKind::PACKED_CLASS)
+    if (tok.kind == TokenKind::CLASS || tok.kind == TokenKind::PACKED_CLASS) {
       afterClass = true;
-    else if (tok.kind == TokenKind::ENUM)
+    } else if (tok.kind == TokenKind::ENUM) {
       afterEnum = true;
-    else if (tok.kind == TokenKind::MODULE)
+    } else if (tok.kind == TokenKind::MODULE) {
       afterModule = true;
-    else if (tok.kind == TokenKind::INTERFACE)
+    } else if (tok.kind == TokenKind::INTERFACE) {
       afterInterface = true;
-    else if (tok.kind == TokenKind::IMPLEMENTS ||
-             tok.kind == TokenKind::EXTENDS)
+    } else if (tok.kind == TokenKind::IMPLEMENTS ||
+               tok.kind == TokenKind::EXTENDS) {
       inInterfaceList = true;
-    else if (tok.kind == TokenKind::FUNCTION ||
-             tok.kind == TokenKind::TEST_FUNCTION)
+    } else if (tok.kind == TokenKind::FUNCTION ||
+               tok.kind == TokenKind::TEST_FUNCTION) {
       afterFunction = true;
-    else if (tok.kind == TokenKind::COLON)
+    } else if (tok.kind == TokenKind::COLON) {
       afterColon = true;
-    else if (tok.kind == TokenKind::ARROW)
+    } else if (tok.kind == TokenKind::ARROW) {
       afterArrow = true;
-    else if (tok.kind == TokenKind::DOT)
+    } else if (tok.kind == TokenKind::DOT) {
       afterDot = true;
-    else if (tok.kind == TokenKind::LESS) {
+    } else if (tok.kind == TokenKind::LESS) {
       // Could be generic or comparison - check context
       if (prevKind == TokenKind::IDENTIFIER || afterClass || afterInterface ||
-          afterFunction)
+          afterFunction) {
         angleBracketDepth++;
-    } else if (tok.kind == TokenKind::GREATER && angleBracketDepth > 0)
+      }
+    } else if (tok.kind == TokenKind::GREATER && angleBracketDepth > 0) {
       angleBracketDepth--;
-    else if (tok.kind == TokenKind::RIGHT_SHIFT && angleBracketDepth > 0)
+    } else if (tok.kind == TokenKind::RIGHT_SHIFT && angleBracketDepth > 0) {
       // '>>' closing two nested generic lists lexes as one token
       angleBracketDepth = std::max(0, angleBracketDepth - 2);
-    else if (tok.kind == TokenKind::COMMA) {
+    } else if (tok.kind == TokenKind::COMMA) {
       afterColon = false;
       afterArrow = false;
     } else if (tok.kind == TokenKind::PAREN_OPEN) {
@@ -745,10 +771,12 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
       afterClass = afterInterface = inInterfaceList = afterFunction = false;
       afterColon = afterArrow = afterDot = false;
       if (tok.kind == TokenKind::BRACE_OPEN ||
-          tok.kind == TokenKind::SEMI_COLON)
+          tok.kind == TokenKind::SEMI_COLON) {
         angleBracketDepth = 0;
-    } else if (tok.kind == TokenKind::BRACE_CLOSE)
+      }
+    } else if (tok.kind == TokenKind::BRACE_CLOSE) {
       angleBracketDepth = 0;
+    }
 
     // Identifiers need context-based classification
     else if (tok.kind == TokenKind::IDENTIFIER) {
@@ -785,10 +813,11 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
         lastIdent = {true, line, col, length, tok.text};
       } else if (isTypeContext) {
         if (angleBracketDepth > 0 && tok.text.size() <= 2 &&
-            std::isupper(tok.text[0]))
+            std::isupper(tok.text[0])) {
           tokenType = TypeParameter;
-        else
+        } else {
           tokenType = Type;
+        }
       } else if (afterDot) {
         // Member access - could be property or method
         // Default to property, will be reclassified to method if followed by (
@@ -806,8 +835,9 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
     // Special case for literal length (includes the quotes). Without this a
     // literal has length 0 and is dropped below.
     if (tok.kind == TokenKind::STRING || tok.kind == TokenKind::CHAR_LITERAL ||
-        tok.kind == TokenKind::BYTE_LITERAL)
+        tok.kind == TokenKind::BYTE_LITERAL) {
       length = tok.end.column - tok.start.column;
+    }
 
     if (tokenType >= 0 && length > 0) {
       tokens.push_back({line, col, length, tokenType, 0});
@@ -1040,7 +1070,9 @@ const AnalyzedDocument* getAnalyzedDocument(const OpenDocument& document) {
     } else {
       program = driver->analyzeString(document.text, document.path);
     }
-    if (!program.ast) return nullptr;
+    if (!program.ast) {
+      return nullptr;
+    }
 
     AnalyzedDocument analyzed;
     analyzed.contentHash = std::move(hash);
@@ -1140,7 +1172,9 @@ int main() {
     std::string methodName = method->str();
 
     if (methodName == "initialize") {
-      if (!id) continue;
+      if (!id) {
+        continue;
+      }
 
       // Parse initializationOptions. Path variables are applied before
       // entrypoints are resolved, since manifests may reference them.
@@ -1238,7 +1272,9 @@ int main() {
     }
 
     if (methodName == "shutdown") {
-      if (!id) continue;
+      if (!id) {
+        continue;
+      }
       shutdownRequested = true;
       sendResponse(*id, llvm::json::Value(nullptr));
       continue;
@@ -1258,13 +1294,17 @@ int main() {
       if (llvm::json::Value* rawTextDocument = params->get("textDocument")) {
         textDocument = rawTextDocument->getAsObject();
       }
-      if (!textDocument) continue;
+      if (!textDocument) {
+        continue;
+      }
 
       std::optional<llvm::StringRef> uri = textDocument->getString("uri");
       std::optional<llvm::StringRef> text = textDocument->getString("text");
       int version =
           static_cast<int>(textDocument->getInteger("version").value_or(0));
-      if (!uri || !text) continue;
+      if (!uri || !text) {
+        continue;
+      }
 
       OpenDocument document;
       document.uri = uri->str();
@@ -1287,28 +1327,40 @@ int main() {
       if (llvm::json::Value* rawTextDocument = params->get("textDocument")) {
         textDocument = rawTextDocument->getAsObject();
       }
-      if (!textDocument) continue;
+      if (!textDocument) {
+        continue;
+      }
 
       std::optional<llvm::StringRef> uri = textDocument->getString("uri");
       int version =
           static_cast<int>(textDocument->getInteger("version").value_or(0));
-      if (!uri) continue;
+      if (!uri) {
+        continue;
+      }
 
       auto documentIter = openDocuments.find(uri->str());
-      if (documentIter == openDocuments.end()) continue;
+      if (documentIter == openDocuments.end()) {
+        continue;
+      }
 
       llvm::json::Array* contentChanges = nullptr;
       if (llvm::json::Value* rawContentChanges =
               params->get("contentChanges")) {
         contentChanges = rawContentChanges->getAsArray();
       }
-      if (!contentChanges || contentChanges->empty()) continue;
+      if (!contentChanges || contentChanges->empty()) {
+        continue;
+      }
 
       llvm::json::Object* firstChange = (*contentChanges)[0].getAsObject();
-      if (!firstChange) continue;
+      if (!firstChange) {
+        continue;
+      }
 
       std::optional<llvm::StringRef> text = firstChange->getString("text");
-      if (!text) continue;
+      if (!text) {
+        continue;
+      }
 
       OpenDocument& document = documentIter->second;
       document.text = text->str();
@@ -1328,13 +1380,19 @@ int main() {
       if (llvm::json::Value* rawTextDocument = params->get("textDocument")) {
         textDocument = rawTextDocument->getAsObject();
       }
-      if (!textDocument) continue;
+      if (!textDocument) {
+        continue;
+      }
 
       std::optional<llvm::StringRef> uri = textDocument->getString("uri");
-      if (!uri) continue;
+      if (!uri) {
+        continue;
+      }
 
       auto documentIter = openDocuments.find(uri->str());
-      if (documentIter == openDocuments.end()) continue;
+      if (documentIter == openDocuments.end()) {
+        continue;
+      }
 
       OpenDocument& document = documentIter->second;
       sun::lsp::refreshEntrypoints();
@@ -1351,10 +1409,14 @@ int main() {
       if (llvm::json::Value* rawTextDocument = params->get("textDocument")) {
         textDocument = rawTextDocument->getAsObject();
       }
-      if (!textDocument) continue;
+      if (!textDocument) {
+        continue;
+      }
 
       std::optional<llvm::StringRef> uri = textDocument->getString("uri");
-      if (!uri) continue;
+      if (!uri) {
+        continue;
+      }
 
       std::string uriString = uri->str();
       sun::lsp::openSourceOverrides.erase(
@@ -1402,7 +1464,9 @@ int main() {
     }
 
     if (methodName == "textDocument/semanticTokens/full" && params) {
-      if (!id) continue;
+      if (!id) {
+        continue;
+      }
 
       llvm::json::Object* textDocument = nullptr;
       if (llvm::json::Value* rawTextDocument = params->get("textDocument")) {
@@ -1440,7 +1504,9 @@ int main() {
     }
 
     if (methodName == "textDocument/formatting" && params) {
-      if (!id) continue;
+      if (!id) {
+        continue;
+      }
 
       llvm::json::Object* textDocument = nullptr;
       if (llvm::json::Value* rawTextDocument = params->get("textDocument")) {
@@ -1499,7 +1565,9 @@ int main() {
     }
 
     if (methodName == "textDocument/hover" && params) {
-      if (!id) continue;
+      if (!id) {
+        continue;
+      }
 
       llvm::json::Object* textDocument = nullptr;
       if (llvm::json::Value* rawTextDocument = params->get("textDocument")) {
@@ -1574,7 +1642,9 @@ int main() {
     }
 
     if (methodName == "textDocument/definition" && params) {
-      if (!id) continue;
+      if (!id) {
+        continue;
+      }
 
       llvm::json::Object* textDocument = nullptr;
       if (llvm::json::Value* rawTextDocument = params->get("textDocument")) {
@@ -1637,7 +1707,9 @@ int main() {
     }
 
     if (methodName == "textDocument/references" && params) {
-      if (!id) continue;
+      if (!id) {
+        continue;
+      }
 
       llvm::json::Object* textDocument = nullptr;
       if (llvm::json::Value* rawTextDocument = params->get("textDocument")) {
@@ -1709,7 +1781,9 @@ int main() {
     if ((methodName == "textDocument/prepareRename" ||
          methodName == "textDocument/rename") &&
         params) {
-      if (!id) continue;
+      if (!id) {
+        continue;
+      }
       bool isRename = methodName == "textDocument/rename";
 
       llvm::json::Object* textDocument = nullptr;
@@ -1806,7 +1880,9 @@ int main() {
       std::string currentUri;
       llvm::json::Array edits;
       auto flush = [&]() {
-        if (!currentUri.empty()) changes[currentUri] = std::move(edits);
+        if (!currentUri.empty()) {
+          changes[currentUri] = std::move(edits);
+        }
         edits = llvm::json::Array();
       };
       for (const auto& site : rename->sites) {
@@ -1833,7 +1909,9 @@ int main() {
     // and the range of the name token. An unanalyzable document answers with
     // an empty list, not an error.
     if (methodName == "sun/tests" && params) {
-      if (!id) continue;
+      if (!id) {
+        continue;
+      }
 
       llvm::json::Object* textDocument = nullptr;
       if (llvm::json::Value* rawTextDocument = params->get("textDocument")) {
@@ -1898,7 +1976,9 @@ int main() {
     // binary (from a sun-config entrypoints entry, when there is one), and
     // the sources whose timestamps say whether that binary is fresh.
     if (methodName == "sun/workspaceTests") {
-      if (!id) continue;
+      if (!id) {
+        continue;
+      }
 
       sun::lsp::refreshEntrypoints();
       sun::lsp::diagnosticsCache.clear();

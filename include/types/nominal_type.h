@@ -31,8 +31,9 @@ class NominalType : public Type {
   /** Reports whether both nominal types refer to the same declaration identity.
    */
   bool sameDeclaration(const NominalType& other) const {
-    if (!declarationId_ || !other.declarationId_)
+    if (!declarationId_ || !other.declarationId_) {
       logAndThrowError("Nominal equality requires declaration identities");
+    }
     return declarationId_ == other.declarationId_ &&
            declarationSession_ == other.declarationSession_;
   }

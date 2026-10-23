@@ -15,10 +15,14 @@ namespace sun::semantic_analysis::type_analysis {
 
 /** Unwraps a static_ptr unless it points to a class. */
 StaticPointerType* asNonClassStaticPtr(const TypePtr& type) {
-  if (!type || !type->isStaticPointer()) return nullptr;
+  if (!type || !type->isStaticPointer()) {
+    return nullptr;
+  }
   auto* staticPtr = static_cast<StaticPointerType*>(type.get());
   const auto& pointee = staticPtr->getPointeeType();
-  if (pointee && pointee->isClass()) return nullptr;
+  if (pointee && pointee->isClass()) {
+    return nullptr;
+  }
   return staticPtr;
 }
 
@@ -65,7 +69,9 @@ TypePtr resolveStaticPtrMethodType(const StaticPointerType& ptrType,
   if (argCount != 0) {
     logAndThrowError("static_ptr." + name + "() takes no arguments", loc);
   }
-  if (name == "length") return Types::Int64();
+  if (name == "length") {
+    return Types::Int64();
+  }
   return Types::RawPointer(ptrType.getPointeeType());
 }
 

@@ -39,7 +39,9 @@ class StructLiteralAST : public ExprAST {
   /** Creates the analysis annotations required by this node when first needed.
    */
   void ensureAnalysis() const override {
-    if (!analysis_) analysis_ = std::make_unique<StructLiteralAnalysis>();
+    if (!analysis_) {
+      analysis_ = std::make_unique<StructLiteralAnalysis>();
+    }
   }
 
  public:
@@ -59,14 +61,18 @@ class StructLiteralAST : public ExprAST {
   /** Visits replaceable child expressions so tree passes can rewrite them in
    * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
-    for (auto& field : fields_) fn(field.value);
+    for (auto& field : fields_) {
+      fn(field.value);
+    }
   }
 
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string result = "{";
     for (size_t i = 0; i < fields_.size(); ++i) {
-      if (i > 0) result += ",";
+      if (i > 0) {
+        result += ",";
+      }
       result += " " + fields_[i].name + ": " + fields_[i].value->toString();
     }
     return result + " }";

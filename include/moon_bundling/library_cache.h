@@ -57,6 +57,9 @@ class LibraryCache {
    * @param bundlePath Path to a .moon file
    */
   void addBundle(const std::filesystem::path& bundlePath);
+  /** Registers the exact validated snapshot, replacing stale bytes at its path.
+   */
+  void addBundle(std::unique_ptr<MoonReader> reader);
 
   /** Forgets readers for a replaced bundle after its previous compilation ends.
    * Search paths and other explicitly registered bundles remain available. */
@@ -138,9 +141,10 @@ class LibraryCache {
    * Set the compilation target. When several discovered bundles claim the
    * same module (e.g. the host build/stdlib.moon and the cross
    * build/aarch64-linux-gnu/stdlib.moon), the one compiled for this target
-   * wins. Empty means the host.
+   * wins. Empty means the host. Driver setup can retain preflight state by
+   * disabling the default checker reset.
    */
-  void setTargetTriple(const std::string& triple);
+  void setTargetTriple(const std::string& triple, bool resetChecker = true);
 
   /**
    * The compilation target set above (empty = host).

@@ -27,7 +27,9 @@ struct QualifiedName {
    */
   std::string display() const {
     std::string displayPath = displayModulePath(scopePath);
-    if (displayPath.empty()) return baseName;
+    if (displayPath.empty()) {
+      return baseName;
+    }
     return displayPath + "." + baseName;
   }
 
@@ -46,7 +48,9 @@ struct QualifiedName {
 
   /** Orders values for use in sorted containers. */
   bool operator<(const QualifiedName& other) const {
-    if (scopePath != other.scopePath) return scopePath < other.scopePath;
+    if (scopePath != other.scopePath) {
+      return scopePath < other.scopePath;
+    }
     return baseName < other.baseName;
   }
 
@@ -71,7 +75,9 @@ struct QualifiedName {
   static std::string joinPath(const std::vector<std::string>& path) {
     std::string result;
     for (const auto& segment : path) {
-      if (!result.empty()) result += ".";
+      if (!result.empty()) {
+        result += ".";
+      }
       result += segment;
     }
     return result;

@@ -46,7 +46,9 @@ Analysis analyze(const std::string& source, bool withStdlib = false) {
   sun::driver::initTestEnvironment();
   Analysis analysis;
   analysis.driver = Driver::createForAOT("rename_test");
-  if (withStdlib) analysis.driver->setMoonImports(getStdlibMoonImports());
+  if (withStdlib) {
+    analysis.driver->setMoonImports(getStdlibMoonImports());
+  }
   analysis.program = analysis.driver->analyzeString(source, kPath);
   return analysis;
 }
@@ -60,7 +62,9 @@ size_t offsetOf(const std::string& source, const std::string& needle,
   size_t from = 0;
   for (int i = 0; i <= occurrence; ++i) {
     pos = source.find(needle, from);
-    if (pos == std::string::npos) break;
+    if (pos == std::string::npos) {
+      break;
+    }
     from = pos + 1;
   }
   EXPECT_NE(pos, std::string::npos) << "needle not found: " << needle;
@@ -72,7 +76,9 @@ std::optional<Rename> renameAt(const std::string& source,
                                const std::string& needle, int occurrence = 0,
                                bool withStdlib = false) {
   size_t pos = offsetOf(source, needle, occurrence);
-  if (pos == std::string::npos) return std::nullopt;
+  if (pos == std::string::npos) {
+    return std::nullopt;
+  }
   Analysis analysis = analyze(source, withStdlib);
   if (!analysis.program.ast) {
     ADD_FAILURE() << "program did not parse: "
@@ -109,10 +115,14 @@ std::string describe(const std::string& source,
                      const std::vector<SymbolLocation>& sites) {
   std::string text;
   for (const auto& site : sites) {
-    if (!text.empty()) text += ", ";
+    if (!text.empty()) {
+      text += ", ";
+    }
     text += std::to_string(site.range.offset) + " (" + rangeText(source, site) +
             ")";
-    if (site.filePath != kPath) text += " in " + site.filePath;
+    if (site.filePath != kPath) {
+      text += " in " + site.filePath;
+    }
   }
   return text.empty() ? "nothing" : text;
 }
@@ -152,7 +162,9 @@ testing::AssertionResult renames(const std::string& source,
   }
   std::string wantedText;
   for (const auto& [offset, name] : wanted) {
-    if (!wantedText.empty()) wantedText += ", ";
+    if (!wantedText.empty()) {
+      wantedText += ", ";
+    }
     wantedText += std::to_string(offset) + " (" + name + ")";
   }
   std::vector<int> got;
@@ -165,7 +177,9 @@ testing::AssertionResult renames(const std::string& source,
     got.push_back(site.range.offset);
   }
   std::vector<int> want;
-  for (const auto& [offset, name] : wanted) want.push_back(offset);
+  for (const auto& [offset, name] : wanted) {
+    want.push_back(offset);
+  }
   if (got != want) {
     return testing::AssertionFailure()
            << "rename sites of " << needle << " are "
@@ -193,7 +207,9 @@ std::string applyEdits(const std::string& text,
                        const std::string& newName) {
   std::string edited = text;
   for (auto site = sites.rbegin(); site != sites.rend(); ++site) {
-    if (site->filePath != kPath) continue;
+    if (site->filePath != kPath) {
+      continue;
+    }
     int end = site->range.endOffset.value_or(site->range.offset);
     edited.replace(site->range.offset, end - site->range.offset, newName);
   }
@@ -536,7 +552,9 @@ TEST(Tooling_Lsp_Rename, MergedFiles) {
 }
 
 TEST(Tooling_Lsp_Rename, StdlibInterfaceMemberRefused) {
-  if (getStdlibMoonImports().empty()) GTEST_SKIP() << "stdlib.moon not built";
+  if (getStdlibMoonImports().empty()) {
+    GTEST_SKIP() << "stdlib.moon not built";
+  }
   // The member group of `next` reaches the stdlib's IIterator, whose own
   // uses cannot be edited, so the rename is refused
   std::string source = R"(
@@ -565,12 +583,16 @@ function main() i64 {
       << rename->refusal;
   // The class's own sites are still listed, in the document
   for (const auto& site : rename->sites) {
-    if (site.filePath == kPath) EXPECT_EQ(rangeText(source, site), "next");
+    if (site.filePath == kPath) {
+      EXPECT_EQ(rangeText(source, site), "next");
+    }
   }
 }
 
 TEST(Tooling_Lsp_Rename, LibrarySymbolRefused) {
-  if (getStdlibMoonImports().empty()) GTEST_SKIP() << "stdlib.moon not built";
+  if (getStdlibMoonImports().empty()) {
+    GTEST_SKIP() << "stdlib.moon not built";
+  }
   std::string source = R"(
 using std;
 function main() i64 {

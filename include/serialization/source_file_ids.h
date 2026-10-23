@@ -24,7 +24,9 @@ void remapSourceFiles(google::protobuf::Message& message, Remap&& remap) {
         field->cpp_type() ==
             google::protobuf::FieldDescriptor::CPPTYPE_UINT64) {
       auto id = reflection->GetUInt64(message, field);
-      if (id) reflection->SetUInt64(&message, field, remap(id));
+      if (id) {
+        reflection->SetUInt64(&message, field, remap(id));
+      }
     } else if (field->cpp_type() ==
                google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
       if (field->is_repeated()) {
@@ -46,7 +48,9 @@ inline SourceFileId loadedSourceFileId(const std::string& bundle,
   static std::map<std::pair<std::string, SourceFileId>, SourceFileId> files;
   std::lock_guard<std::mutex> lock(mutex);
   auto [it, inserted] = files.try_emplace({bundle, local}, 0);
-  if (inserted) it->second = sun::support::nextSourceFileId();
+  if (inserted) {
+    it->second = sun::support::nextSourceFileId();
+  }
   return it->second;
 }
 

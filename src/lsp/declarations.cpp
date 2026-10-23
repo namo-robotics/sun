@@ -63,7 +63,9 @@ std::string sliceSpan(const std::string& source, const Position& loc) {
 // ---------------------------------------------------------------------------
 
 bool NodeFinder::visit(const ExprAST& node) {
-  if (node.getType() == ASTNodeType::MOON_SCOPE) return false;
+  if (node.getType() == ASTNodeType::MOON_SCOPE) {
+    return false;
+  }
   const Position& loc = node.getLocation();
   // A merged module keeps its first declaration's location, but its children
   // can come from other files or later declarations in the same file.
@@ -71,8 +73,12 @@ bool NodeFinder::visit(const ExprAST& node) {
   bool matchesFile = isDocumentFile(loc);
   bool hasSpan =
       matchesFile && loc.endOffset.has_value() && spanContains(loc, offset_);
-  if (!isModule && (!matchesFile || (loc.endOffset && !hasSpan))) return false;
-  if (hasSpan) chain_.push_back(&node);
+  if (!isModule && (!matchesFile || (loc.endOffset && !hasSpan))) {
+    return false;
+  }
+  if (hasSpan) {
+    chain_.push_back(&node);
+  }
   bool found = false;
   // Defaults live in class scope. Their analyzed copies are in constructor
   // prefixes, whose function spans do not cover the field declarations.
@@ -92,15 +98,21 @@ bool NodeFinder::visit(const ExprAST& node) {
     }
   }
   forEachChild(node, [&](const ExprAST& child) {
-    if (!found) found = visit(child);
+    if (!found) {
+      found = visit(child);
+    }
   });
   return hasSpan || found;
 }
 
 bool NodeFinder::isDocumentFile(const Position& loc) {
-  if (!loc.filePath) return true;
+  if (!loc.filePath) {
+    return true;
+  }
   auto cached = fileMatches_.find(*loc.filePath);
-  if (cached != fileMatches_.end()) return cached->second;
+  if (cached != fileMatches_.end()) {
+    return cached->second;
+  }
   bool matches = *loc.filePath == documentPath_ ||
                  normalizePath(*loc.filePath) == documentPath_;
   fileMatches_.emplace(*loc.filePath, matches);
@@ -112,7 +124,9 @@ bool NodeFinder::isDocumentFile(const Position& loc) {
 const ExprAST* firstSpecialization(const ExprAST& node, Bindings& bindings) {
   if (node.getType() == ASTNodeType::CLASS_DEFINITION) {
     const auto& cls = static_cast<const ClassDefinitionAST&>(node);
-    if (!cls.isGeneric() || cls.getSpecializations().empty()) return nullptr;
+    if (!cls.isGeneric() || cls.getSpecializations().empty()) {
+      return nullptr;
+    }
     const auto& spec = cls.getSpecializations().begin()->second;
     // Class-level bindings are recorded on every cloned method
     for (const auto& method : spec->getMethods()) {
@@ -140,7 +154,9 @@ std::optional<Target> locate(const BlockExprAST& program,
                              const std::string& documentPath, int offset) {
   NodeFinder finder(documentPath, offset);
   finder.visit(program);
-  if (finder.chain().empty()) return std::nullopt;
+  if (finder.chain().empty()) {
+    return std::nullopt;
+  }
   Target target{finder.chain(), {}};
 
   // The same offset is looked up inside the first specialization and its
@@ -151,9 +167,13 @@ std::optional<Target> locate(const BlockExprAST& program,
     Bindings bindings;
     const ExprAST* specialization =
         firstSpecialization(*target.chain[i], bindings);
-    if (!specialization) continue;
+    if (!specialization) {
+      continue;
+    }
     NodeFinder inner(documentPath, offset);
-    if (!inner.visit(*specialization) || inner.chain().empty()) break;
+    if (!inner.visit(*specialization) || inner.chain().empty()) {
+      break;
+    }
     std::vector<const ExprAST*> chain(target.chain.begin(),
                                       target.chain.begin() + i);
     chain.insert(chain.end(), inner.chain().begin(), inner.chain().end());
@@ -274,10 +294,14 @@ void forEachDeclaration(const ExprAST& node,
 /** Find analyzed source syntax by its selected declaration identity. */
 const ExprAST* findDeclarationById(const ExprAST& node,
                                    sun::semantic_analysis::DeclarationId id) {
-  if (node.getDeclarationId() == id) return &node;
+  if (node.getDeclarationId() == id) {
+    return &node;
+  }
   const ExprAST* found = nullptr;
   forEachChild(node, [&](const ExprAST& child) {
-    if (!found) found = findDeclarationById(child, id);
+    if (!found) {
+      found = findDeclarationById(child, id);
+    }
   });
   return found;
 }
@@ -294,7 +318,9 @@ Declaration declarationOf(const ExprAST& node) {
       !declaration.location.endOffset) {
     const Position& proto =
         static_cast<const FunctionAST&>(node).getProto().getLocation();
-    if (proto.endOffset) declaration.location = proto;
+    if (proto.endOffset) {
+      declaration.location = proto;
+    }
   }
   return declaration;
 }
@@ -306,8 +332,12 @@ const ExprAST* findDeclaration(const BlockExprAST& program,
   const ExprAST* byName = nullptr;
   const ExprAST* byQualifiedName = nullptr;
   forEachDeclaration(program, [&](const ExprAST& decl) {
-    if (declarationName(decl) != name) return;
-    if (!byName) byName = &decl;
+    if (declarationName(decl) != name) {
+      return;
+    }
+    if (!byName) {
+      byName = &decl;
+    }
     if (!qualified.empty() && declarationQualifiedName(decl) == qualified) {
       byQualifiedName = &decl;
     }
@@ -364,7 +394,9 @@ const ExprAST* findTypeDefinition(const BlockExprAST& program,
   }
   // Names from the type registry may carry a scope path; keep the last part
   size_t dot = name.rfind('.');
-  if (dot != std::string::npos) name = name.substr(dot + 1);
+  if (dot != std::string::npos) {
+    name = name.substr(dot + 1);
+  }
   return findDeclaration(program, name, qualified);
 }
 
@@ -375,12 +407,15 @@ std::optional<Declaration> findMember(const ExprAST& definition,
     case ASTNodeType::CLASS_DEFINITION: {
       const auto& cls = static_cast<const ClassDefinitionAST&>(definition);
       for (const auto& method : cls.getMethods()) {
-        if (method.function && method.function->getProto().getName() == member)
+        if (method.function &&
+            method.function->getProto().getName() == member) {
           return declarationOf(*method.function);
+        }
       }
       for (const auto& field : cls.getFields()) {
-        if (field.name == member)
+        if (field.name == member) {
           return Declaration{field.location, field.doc, nullptr, field.name};
+        }
       }
       return std::nullopt;
     }
@@ -388,21 +423,25 @@ std::optional<Declaration> findMember(const ExprAST& definition,
       const auto& iface =
           static_cast<const InterfaceDefinitionAST&>(definition);
       for (const auto& method : iface.getMethods()) {
-        if (method.function && method.function->getProto().getName() == member)
+        if (method.function &&
+            method.function->getProto().getName() == member) {
           return declarationOf(*method.function);
+        }
       }
       for (const auto& field : iface.getFields()) {
-        if (field.name == member)
+        if (field.name == member) {
           return Declaration{field.location, field.doc, nullptr, field.name};
+        }
       }
       return std::nullopt;
     }
     case ASTNodeType::ENUM_DEFINITION: {
       const auto& enumDef = static_cast<const EnumDefinitionAST&>(definition);
       for (const auto& variant : enumDef.getVariants()) {
-        if (variant.name == member)
+        if (variant.name == member) {
           return Declaration{variant.location, variant.doc, nullptr,
                              variant.name};
+        }
       }
       return std::nullopt;
     }
@@ -422,7 +461,9 @@ std::optional<Declaration> findLocalDeclaration(
       const ExprAST* latest = nullptr;
       for (const auto& stmt :
            static_cast<const BlockExprAST&>(ancestor).getBody()) {
-        if (!stmt || stmt->getLocation().offset >= offset) continue;
+        if (!stmt || stmt->getLocation().offset >= offset) {
+          continue;
+        }
         if (stmt->getType() == ASTNodeType::VARIABLE_CREATION &&
             static_cast<const VariableCreationAST&>(*stmt).getName() == name) {
           latest = stmt.get();
@@ -432,7 +473,9 @@ std::optional<Declaration> findLocalDeclaration(
           latest = stmt.get();
         }
       }
-      if (latest) return declarationOf(*latest);
+      if (latest) {
+        return declarationOf(*latest);
+      }
     } else if (ancestor.getType() == ASTNodeType::FOR_IN_LOOP) {
       if (static_cast<const ForInExprAST&>(ancestor).getLoopVar() == name) {
         return Declaration{ancestor.getLocation(), "", &ancestor, name};
@@ -470,7 +513,9 @@ std::optional<Declaration> findLocalDeclaration(
               found = Declaration{header, "", &ancestor, name};
             }
           });
-      if (found) return found;
+      if (found) {
+        return found;
+      }
     } else if (ancestor.getType() == ASTNodeType::FUNCTION ||
                ancestor.getType() == ASTNodeType::LAMBDA) {
       // Parameters have no declaration of their own to document
@@ -479,7 +524,9 @@ std::optional<Declaration> findLocalDeclaration(
               ? static_cast<const FunctionAST&>(ancestor).getProto()
               : static_cast<const sun::ast::LambdaAST&>(ancestor).getProto();
       for (const auto& arg : proto.getArgs()) {
-        if (arg.first == name) return std::nullopt;
+        if (arg.first == name) {
+          return std::nullopt;
+        }
       }
     }
   }
@@ -500,10 +547,14 @@ std::optional<Declaration> findMemberDeclaration(
     }
     const auto& ref = static_cast<const VariableReferenceAST&>(object);
     QualifiedName qualified;
-    if (ref.hasQualifiedName()) qualified = ref.getQualifiedName();
+    if (ref.hasQualifiedName()) {
+      qualified = ref.getQualifiedName();
+    }
     const ExprAST* definition =
         findDeclaration(program, ref.getName(), qualified);
-    if (!definition) return std::nullopt;
+    if (!definition) {
+      return std::nullopt;
+    }
     return findMember(*definition, member);
   }
   if (objectType->getKind() == sun::types::Type::Kind::Module) {
@@ -514,7 +565,9 @@ std::optional<Declaration> findMemberDeclaration(
     return std::nullopt;
   }
   const ExprAST* definition = findTypeDefinition(program, *objectType);
-  if (!definition) return std::nullopt;
+  if (!definition) {
+    return std::nullopt;
+  }
   return findMember(*definition, member);
 }
 
@@ -526,11 +579,15 @@ std::optional<Declaration> findDeclarationOf(
     const ExprAST* declaration = nullptr;
     if (declarations) {
       auto found = declarations->find(target);
-      if (found != declarations->end()) declaration = found->second;
+      if (found != declarations->end()) {
+        declaration = found->second;
+      }
     } else {
       declaration = findDeclarationById(program, target);
     }
-    if (declaration) return declarationOf(*declaration);
+    if (declaration) {
+      return declarationOf(*declaration);
+    }
   }
   switch (node.getType()) {
     case ASTNodeType::VARIABLE_REFERENCE: {
@@ -539,7 +596,9 @@ std::optional<Declaration> findDeclarationOf(
         return local;
       }
       QualifiedName qualified;
-      if (ref.hasQualifiedName()) qualified = ref.getQualifiedName();
+      if (ref.hasQualifiedName()) {
+        qualified = ref.getQualifiedName();
+      }
       if (const ExprAST* decl =
               findDeclaration(program, ref.getName(), qualified)) {
         return declarationOf(*decl);
@@ -569,7 +628,9 @@ std::optional<Declaration> findDeclarationOf(
     }
     case ASTNodeType::MEMBER_ACCESS: {
       const auto& access = static_cast<const sun::ast::MemberAccessAST&>(node);
-      if (!access.getObject()) return std::nullopt;
+      if (!access.getObject()) {
+        return std::nullopt;
+      }
       return findMemberDeclaration(program, *access.getObject(),
                                    access.getMemberName(),
                                    access.getQualifiedName());
@@ -577,7 +638,9 @@ std::optional<Declaration> findDeclarationOf(
     case ASTNodeType::MEMBER_ASSIGNMENT: {
       const auto& assignment =
           static_cast<const sun::ast::MemberAssignmentAST&>(node);
-      if (!assignment.getObject()) return std::nullopt;
+      if (!assignment.getObject()) {
+        return std::nullopt;
+      }
       return findMemberDeclaration(program, *assignment.getObject(),
                                    assignment.getMemberName(), {});
     }
@@ -590,7 +653,9 @@ std::optional<Declaration> findDeclarationOf(
 std::string sourceFor(const Position& declaration,
                       const std::string& documentPath,
                       const std::string& documentSource) {
-  if (!declaration.filePath) return documentSource;
+  if (!declaration.filePath) {
+    return documentSource;
+  }
   const std::string& path = *declaration.filePath;
   if (path == documentPath || normalizePath(path) == documentPath) {
     return documentSource;
@@ -620,7 +685,9 @@ namespace {
  */
 const sun::ast::TypeAnnotation* annotationAt(
     const sun::ast::TypeAnnotation& annotation, int offset) {
-  if (!spanContains(annotation.span, offset)) return nullptr;
+  if (!spanContains(annotation.span, offset)) {
+    return nullptr;
+  }
   for (const auto& arg : annotation.typeArguments) {
     if (arg) {
       if (const sun::ast::TypeAnnotation* inner = annotationAt(*arg, offset)) {
@@ -656,10 +723,15 @@ const sun::ast::TypeAnnotation* annotationAt(
 /** Visits type annotations directly associated with a syntax node. */
 void forEachAnnotation(const ExprAST& node, const AnnotationFn& fn) {
   auto visitProto = [&](const PrototypeAST& proto) {
-    for (const auto& arg : proto.getArgs()) fn(arg.second);
-    if (proto.hasReturnType()) fn(*proto.getReturnType());
-    if (proto.hasVariadicTypeAnnotation())
+    for (const auto& arg : proto.getArgs()) {
+      fn(arg.second);
+    }
+    if (proto.hasReturnType()) {
+      fn(*proto.getReturnType());
+    }
+    if (proto.hasVariadicTypeAnnotation()) {
       fn(proto.getVariadicTypeAnnotation());
+    }
   };
 
   switch (node.getType()) {
@@ -671,7 +743,9 @@ void forEachAnnotation(const ExprAST& node, const AnnotationFn& fn) {
       break;
     case ASTNodeType::VARIABLE_CREATION: {
       const auto& decl = static_cast<const VariableCreationAST&>(node);
-      if (decl.hasTypeAnnotation()) fn(*decl.getTypeAnnotation());
+      if (decl.hasTypeAnnotation()) {
+        fn(*decl.getTypeAnnotation());
+      }
       break;
     }
     case ASTNodeType::FOR_IN_LOOP:
@@ -683,9 +757,13 @@ void forEachAnnotation(const ExprAST& node, const AnnotationFn& fn) {
       break;
     case ASTNodeType::CLASS_DEFINITION: {
       const auto& cls = static_cast<const ClassDefinitionAST&>(node);
-      for (const auto& field : cls.getFields()) fn(field.type);
+      for (const auto& field : cls.getFields()) {
+        fn(field.type);
+      }
       for (const auto& iface : cls.getImplementedInterfaces()) {
-        for (const auto& arg : iface.typeArguments) fn(arg);
+        for (const auto& arg : iface.typeArguments) {
+          fn(arg);
+        }
       }
       break;
     }
@@ -699,28 +777,36 @@ void forEachAnnotation(const ExprAST& node, const AnnotationFn& fn) {
     case ASTNodeType::ENUM_DEFINITION: {
       for (const auto& variant :
            static_cast<const EnumDefinitionAST&>(node).getVariants()) {
-        for (const auto& payload : variant.payloadTypes) fn(payload);
+        for (const auto& payload : variant.payloadTypes) {
+          fn(payload);
+        }
       }
       break;
     }
     case ASTNodeType::GENERIC_CALL: {
       for (const auto& arg : static_cast<const sun::ast::GenericCallAST&>(node)
                                  .getTypeArguments()) {
-        if (arg) fn(*arg);
+        if (arg) {
+          fn(*arg);
+        }
       }
       break;
     }
     case ASTNodeType::MEMBER_ACCESS: {
       for (const auto& arg : static_cast<const sun::ast::MemberAccessAST&>(node)
                                  .getTypeArguments()) {
-        if (arg) fn(*arg);
+        if (arg) {
+          fn(*arg);
+        }
       }
       break;
     }
     case ASTNodeType::TRY_CATCH: {
       for (const auto& clause :
            static_cast<const TryCatchExprAST&>(node).getCatchClauses()) {
-        if (clause.bindingType) fn(*clause.bindingType);
+        if (clause.bindingType) {
+          fn(*clause.bindingType);
+        }
       }
       break;
     }
@@ -733,7 +819,9 @@ void forEachAnnotation(const ExprAST& node, const AnnotationFn& fn) {
 const sun::ast::TypeAnnotation* annotationIn(const ExprAST& node, int offset) {
   const sun::ast::TypeAnnotation* hit = nullptr;
   forEachAnnotation(node, [&](const sun::ast::TypeAnnotation& annotation) {
-    if (!hit) hit = annotationAt(annotation, offset);
+    if (!hit) {
+      hit = annotationAt(annotation, offset);
+    }
   });
   return hit;
 }
@@ -750,10 +838,16 @@ const ExprAST* findAnnotatedType(const BlockExprAST& program,
   }
   std::string name = named->baseName;
   size_t dot = name.rfind('.');
-  if (dot != std::string::npos) name = name.substr(dot + 1);
-  if (name.empty()) return nullptr;
+  if (dot != std::string::npos) {
+    name = name.substr(dot + 1);
+  }
+  if (name.empty()) {
+    return nullptr;
+  }
   const ExprAST* decl = findDeclaration(program, name, {});
-  if (!decl) return nullptr;
+  if (!decl) {
+    return nullptr;
+  }
   switch (decl->getType()) {
     case ASTNodeType::CLASS_DEFINITION:
     case ASTNodeType::INTERFACE_DEFINITION:
@@ -786,7 +880,9 @@ void forEachCatchBinding(const TryCatchExprAST& tryCatch,
                          const CatchBindingFn& fn) {
   const Position* previous = &tryCatch.getTryBlock().getLocation();
   for (const auto& clause : tryCatch.getCatchClauses()) {
-    if (!clause.body) continue;
+    if (!clause.body) {
+      continue;
+    }
     const Position& body = clause.body->getLocation();
     if (previous->endOffset) {
       Position header = *previous;
@@ -818,9 +914,13 @@ bool inHeader(const ExprAST& node, int offset, const std::string& source) {
 std::optional<Declaration> parameterUnder(const ExprAST& owner, int offset,
                                           const std::string& source) {
   const PrototypeAST* proto = prototypeOf(owner);
-  if (!proto) return std::nullopt;
+  if (!proto) {
+    return std::nullopt;
+  }
   std::vector<std::string> names = proto->getArgNames();
-  if (proto->hasVariadicParam()) names.push_back(proto->getVariadicParamName());
+  if (proto->hasVariadicParam()) {
+    names.push_back(proto->getVariadicParamName());
+  }
   for (const auto& name : names) {
     std::optional<Position> range = parameterRange(owner, name, source);
     if (range && spanContains(*range, offset)) {
@@ -879,7 +979,9 @@ std::optional<Declaration> ownDeclaration(const ExprAST& node, int offset,
       forEachCatchBinding(
           static_cast<const TryCatchExprAST&>(node),
           [&](const sun::ast::CatchClause& clause, const Position& header) {
-            if (found || !spanContains(header, offset)) return;
+            if (found || !spanContains(header, offset)) {
+              return;
+            }
             int at = findWord(source, clause.bindingName, header.offset,
                               *header.endOffset);
             int length = static_cast<int>(clause.bindingName.size());
@@ -909,7 +1011,9 @@ std::optional<Declaration> ownDeclaration(const ExprAST& node, int offset,
       node.getType() != ASTNodeType::FOR_IN_LOOP) {
     return std::nullopt;
   }
-  if (!inHeader(node, offset, source)) return std::nullopt;
+  if (!inHeader(node, offset, source)) {
+    return std::nullopt;
+  }
   if (node.getType() == ASTNodeType::FOR_IN_LOOP) {
     return Declaration{node.getLocation(), "", &node,
                        static_cast<const ForInExprAST&>(node).getLoopVar()};
@@ -927,15 +1031,22 @@ std::optional<Declaration> resolveSymbol(
   } else if (node.getType() == ASTNodeType::VARIABLE_ASSIGNMENT) {
     name = static_cast<const sun::ast::VariableAssignmentAST&>(node).getName();
   }
-  if (name.empty())
+  if (name.empty()) {
     return findDeclarationOf(program, chain, node, declarations);
-  if (auto local = findLocalDeclaration(chain, node, name)) return local;
-  if (auto parameter = findParameter(chain, name)) return parameter;
+  }
+  if (auto local = findLocalDeclaration(chain, node, name)) {
+    return local;
+  }
+  if (auto parameter = findParameter(chain, name)) {
+    return parameter;
+  }
   if (node.getType() == ASTNodeType::VARIABLE_REFERENCE) {
     return findDeclarationOf(program, chain, node, declarations);
   }
   const ExprAST* decl = findDeclaration(program, name, {});
-  if (!decl) return std::nullopt;
+  if (!decl) {
+    return std::nullopt;
+  }
   return declarationOf(*decl);
 }
 
@@ -952,9 +1063,13 @@ std::optional<Declaration> findLiteralField(
     int offset, const std::string& source) {
   const sun::types::Type* type =
       stripReference(literal.getResolvedType().get());
-  if (!type) return std::nullopt;
+  if (!type) {
+    return std::nullopt;
+  }
   const ExprAST* definition = findTypeDefinition(program, *type);
-  if (!definition) return std::nullopt;
+  if (!definition) {
+    return std::nullopt;
+  }
   for (const auto& field : literal.getFields()) {
     int start = field.location.offset;
     int end = start + static_cast<int>(field.name.size());
@@ -977,12 +1092,16 @@ std::optional<Declaration> declarationUnder(const BlockExprAST& program,
         program, static_cast<const sun::ast::StructLiteralAST&>(node), offset,
         source);
   }
-  if (auto own = ownDeclaration(node, offset, source)) return own;
+  if (auto own = ownDeclaration(node, offset, source)) {
+    return own;
+  }
   // Typed patterns contain a reference-shaped node for the binding name.
   // Resolve the declaration in the enclosing match before treating it as a use.
   for (auto it = target.chain.rbegin(); it != target.chain.rend(); ++it) {
     if ((*it)->getType() == ASTNodeType::MATCH) {
-      if (auto own = ownDeclaration(**it, offset, source)) return own;
+      if (auto own = ownDeclaration(**it, offset, source)) {
+        return own;
+      }
     }
   }
   return resolveSymbol(program, target.chain, node);
@@ -998,7 +1117,9 @@ std::optional<Declaration> findDeclarationAt(const BlockExprAST& program,
   // spans, so the redirected lookup below cannot see them.
   NodeFinder finder(documentPath, byteOffset);
   finder.visit(program);
-  if (finder.chain().empty()) return std::nullopt;
+  if (finder.chain().empty()) {
+    return std::nullopt;
+  }
   if (const sun::ast::TypeAnnotation* annotation =
           annotationIn(*finder.chain().back(), byteOffset)) {
     if (const ExprAST* decl = findAnnotatedType(program, *annotation)) {
@@ -1007,7 +1128,9 @@ std::optional<Declaration> findDeclarationAt(const BlockExprAST& program,
   }
 
   std::optional<Target> target = locate(program, documentPath, byteOffset);
-  if (!target) return std::nullopt;
+  if (!target) {
+    return std::nullopt;
+  }
   return declarationUnder(program, *target, byteOffset, source);
 }
 

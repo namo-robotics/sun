@@ -494,7 +494,9 @@ std::string irFor(const std::string& source) {
   std::stringstream buffer;
   buffer << in.rdbuf();
   in.close();
-  if (std::filesystem::exists(folder)) std::filesystem::remove_all(folder);
+  if (std::filesystem::exists(folder)) {
+    std::filesystem::remove_all(folder);
+  }
   return buffer.str();
 }
 }  // namespace

@@ -66,7 +66,9 @@ TEST(Tooling_Lsp_TextPositions, RoundTrip) {
     unsigned char byte = offset < static_cast<int>(text.size())
                              ? static_cast<unsigned char>(text[offset])
                              : 0;
-    if ((byte & 0xC0) == 0x80) continue;
+    if ((byte & 0xC0) == 0x80) {
+      continue;
+    }
     auto position = lspPositionFromByteOffset(text, offset);
     EXPECT_EQ(
         byteOffsetFromLspPosition(text, position.line, position.character),

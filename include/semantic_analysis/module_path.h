@@ -26,7 +26,9 @@ inline bool isLibraryHashSegment(const std::string& seg) {
  * string when the segment is not a library hash.
  */
 inline std::string libraryHashOf(const std::string& seg) {
-  if (!isLibraryHashSegment(seg)) return "";
+  if (!isLibraryHashSegment(seg)) {
+    return "";
+  }
   return seg.substr(1, seg.size() - 2);
 }
 
@@ -34,7 +36,9 @@ inline std::string libraryHashOf(const std::string& seg) {
 inline ModulePath visibleModulePath(const ModulePath& path) {
   ModulePath out;
   for (const auto& seg : path) {
-    if (!seg.empty() && !isLibraryHashSegment(seg)) out.push_back(seg);
+    if (!seg.empty() && !isLibraryHashSegment(seg)) {
+      out.push_back(seg);
+    }
   }
   return out;
 }
@@ -45,7 +49,9 @@ inline ModulePath visibleModulePath(const ModulePath& path) {
 inline std::string displayModulePath(const ModulePath& path) {
   std::string out;
   for (const auto& seg : visibleModulePath(path)) {
-    if (!out.empty()) out += '.';
+    if (!out.empty()) {
+      out += '.';
+    }
     out += seg;
   }
   return out;
@@ -57,13 +63,17 @@ inline ModulePath splitModulePath(const std::string& dotted) {
   std::string cur;
   for (char c : dotted) {
     if (c == '.') {
-      if (!cur.empty()) out.push_back(cur);
+      if (!cur.empty()) {
+        out.push_back(cur);
+      }
       cur.clear();
     } else {
       cur += c;
     }
   }
-  if (!cur.empty()) out.push_back(cur);
+  if (!cur.empty()) {
+    out.push_back(cur);
+  }
   return out;
 }
 

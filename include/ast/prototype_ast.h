@@ -135,7 +135,9 @@ class PrototypeAST {
    */
   bool hasRefCaptures() const {
     for (const auto& cap : getCaptures()) {
-      if (cap.kind != CaptureKind::ByValue) return true;
+      if (cap.kind != CaptureKind::ByValue) {
+        return true;
+      }
     }
     return false;
   }
@@ -175,17 +177,23 @@ class PrototypeAST {
   }
   /** Clear the resolved signature while retaining declaration identities. */
   void clearComputedAnalysis() const {
-    if (!analysis_) return;
+    if (!analysis_) {
+      return;
+    }
     auto identity = std::move(analysis_->declaration);
     analysis_ = std::make_unique<PrototypeAnalysis>();
     analysis_->declaration = std::move(identity);
   }
   /** Drop all annotations when discarding the owning session. */
   void resetAnalysisSession() const {
-    if (!analysis_) return;
+    if (!analysis_) {
+      return;
+    }
     auto imported = std::move(analysis_->declaration.imported);
     analysis_.reset();
-    if (imported) analysis().declaration.imported = std::move(imported);
+    if (imported) {
+      analysis().declaration.imported = std::move(imported);
+    }
   }
   /** Returns the analysis stored by this object. */
   const PrototypeAnalysis* getAnalysis() const { return analysis_.get(); }
@@ -401,7 +409,9 @@ class PrototypeAST {
    */
   std::vector<std::string> getAllParamNames() const {
     std::vector<std::string> names = getArgNames();
-    if (!hasVariadicParam()) return names;
+    if (!hasVariadicParam()) {
+      return names;
+    }
     const VariadicParam& pack = getVariadicParam();
     for (size_t i = 0; i < getResolvedVariadicTypes().size(); ++i) {
       names.push_back(pack.elementName(i));
@@ -417,16 +427,24 @@ class PrototypeAST {
    * argument, which is not a parameter at all, simply answers null.
    */
   TypePtr paramTypeNamed(const std::string& name) const {
-    if (!hasResolvedParamTypes()) return nullptr;
+    if (!hasResolvedParamTypes()) {
+      return nullptr;
+    }
     const std::vector<TypePtr>& fixed = getResolvedParamTypes();
     for (size_t i = 0; i < args.size() && i < fixed.size(); ++i) {
-      if (args[i].first == name) return fixed[i];
+      if (args[i].first == name) {
+        return fixed[i];
+      }
     }
-    if (!hasVariadicParam()) return nullptr;
+    if (!hasVariadicParam()) {
+      return nullptr;
+    }
     const VariadicParam& pack = getVariadicParam();
     const std::vector<TypePtr>& packTypes = getResolvedVariadicTypes();
     for (size_t i = 0; i < packTypes.size(); ++i) {
-      if (pack.elementName(i) == name) return packTypes[i];
+      if (pack.elementName(i) == name) {
+        return packTypes[i];
+      }
     }
     return nullptr;
   }

@@ -38,14 +38,18 @@ namespace sun::codegen {
 // live for the whole program.
 Constant* CodegenVisitor::arrayDimsTable(const std::vector<size_t>& dims) {
   std::string name = "arr.dims";
-  for (size_t dim : dims) name += "." + std::to_string(dim);
+  for (size_t dim : dims) {
+    name += "." + std::to_string(dim);
+  }
   llvm::Type* i64Ty = llvm::Type::getInt64Ty(ctx.getContext());
   llvm::ArrayType* tableType = llvm::ArrayType::get(i64Ty, dims.size());
   if (GlobalVariable* existing = module->getGlobalVariable(name, true)) {
     return existing;
   }
   std::vector<Constant*> values;
-  for (size_t dim : dims) values.push_back(ConstantInt::get(i64Ty, dim));
+  for (size_t dim : dims) {
+    values.push_back(ConstantInt::get(i64Ty, dim));
+  }
   auto* table = new GlobalVariable(*module, tableType, /*isConstant=*/true,
                                    GlobalValue::PrivateLinkage,
                                    ConstantArray::get(tableType, values), name);
@@ -68,8 +72,12 @@ Value* CodegenVisitor::emitArrayView(Value* storagePtr,
 }
 
 Value* CodegenVisitor::loadArrayView(Value* value) {
-  if (!value) return nullptr;
-  if (!value->getType()->isPointerTy()) return value;
+  if (!value) {
+    return nullptr;
+  }
+  if (!value->getType()->isPointerTy()) {
+    return value;
+  }
   StructType* fatType =
       sun::types::ArrayType::getArrayStructType(ctx.getContext());
   return ctx.builder->CreateLoad(fatType, value, "view.load");
@@ -95,9 +103,13 @@ void CodegenVisitor::emitArrayTransfer(Value* dest, Value* src,
     src = temp;
     move = false;
   }
-  if (dest == src) return;
+  if (dest == src) {
+    return;
+  }
   ctx.builder->CreateMemCpy(dest, align, src, align, size);
-  if (!move) return;
+  if (!move) {
+    return;
+  }
   // The destination owns the elements now. The source's own drop must
   // release nothing; ownership tracking excludes the moved storage.
   scopes.markClassAllocationAsDeinited(
@@ -187,7 +199,9 @@ Value* CodegenVisitor::codegen(const sun::ast::ArrayLiteralAST& expr) {
 
   for (size_t i = 0; i < elements.size(); ++i) {
     Value* elemVal = codegen(*elements[i]);
-    if (!elemVal) return nullptr;
+    if (!elemVal) {
+      return nullptr;
+    }
     Value* slotPtr = ctx.builder->CreateGEP(
         storageType, storage,
         {ctx.builder->getInt64(0), ctx.builder->getInt64(i)}, "arr.elem.ptr");
@@ -216,7 +230,9 @@ Value* CodegenVisitor::codegen(const IndexAST& expr) {
   if (auto* classType =
           sun::codegen::support::tryGetType<ClassType>(targetType)) {
     Value* targetVal = codegen(*expr.getTarget());
-    if (!targetVal) return nullptr;
+    if (!targetVal) {
+      return nullptr;
+    }
     if (expr.hasSlices()) {
       return codegenClassSlice(expr, targetVal, classType);
     }
@@ -228,7 +244,9 @@ Value* CodegenVisitor::codegen(const IndexAST& expr) {
           targetType, "index target", expr.getLocation());
 
   Value* elemPtr = codegenIndexElementPtr(expr);
-  if (!elemPtr) return nullptr;
+  if (!elemPtr) {
+    return nullptr;
+  }
 
   // A compound element is reached by its address, like a class field: it is
   // borrowed or moved from there, never loaded as a second copy
@@ -249,7 +267,9 @@ Value* CodegenVisitor::codegen(const IndexAST& expr) {
 
 Value* CodegenVisitor::codegenIndexElementPtr(const IndexAST& expr) {
   Value* base = codegen(*expr.getTarget());
-  if (!base) return nullptr;
+  if (!base) {
+    return nullptr;
+  }
 
   TypePtr arrayType =
       sun::types::unwrapRef(expr.getTarget()->getResolvedType());
@@ -271,7 +291,9 @@ Value* CodegenVisitor::codegenIndexElementPtr(const IndexAST& expr) {
       return nullptr;
     }
     Value* idx = codegen(*sliceExpr->getStart());
-    if (!idx) return nullptr;
+    if (!idx) {
+      return nullptr;
+    }
     if (idx->getType()->isIntegerTy() &&
         idx->getType()->getIntegerBitWidth() < 64) {
       idx = ctx.builder->CreateSExt(idx, i64Ty, "idx.ext");
@@ -345,10 +367,14 @@ Value* CodegenVisitor::codegen(const sun::ast::IndexedAssignmentAST& expr) {
           targetType, "index target", indexExpr.getLocation());
 
   Value* elemPtr = codegenIndexElementPtr(indexExpr);
-  if (!elemPtr) return nullptr;
+  if (!elemPtr) {
+    return nullptr;
+  }
 
   Value* value = codegen(*expr.getValue());
-  if (!value) return nullptr;
+  if (!value) {
+    return nullptr;
+  }
 
   // The slot held a value: release it before the new one moves in
   const TypePtr& elemSunType = sunArrayType.getElementType();
@@ -377,14 +403,18 @@ Value* CodegenVisitor::codegenArrayQuery(
   const auto& dims = arrayType->getDimensions();
 
   if (name == "ndims") {
-    if (!arrayType->isUnsized()) return ctx.builder->getInt64(dims.size());
+    if (!arrayType->isUnsized()) {
+      return ctx.builder->getInt64(dims.size());
+    }
     Value* view = loadArrayView(codegen(*member.getObject()));
     Value* ndims = ctx.builder->CreateExtractValue(view, 1, "view.ndims");
     return ctx.builder->CreateZExt(ndims, i64Ty, "ndims.i64");
   }
 
   Value* index = codegen(*call.getArgs()[0]);
-  if (!index) return nullptr;
+  if (!index) {
+    return nullptr;
+  }
   if (index->getType()->isIntegerTy() &&
       index->getType()->getIntegerBitWidth() < 64) {
     index = ctx.builder->CreateSExt(index, i64Ty, "dim.idx");
@@ -394,7 +424,9 @@ Value* CodegenVisitor::codegenArrayQuery(
   if (!arrayType->isUnsized()) {
     if (auto* constIndex = dyn_cast<ConstantInt>(index)) {
       uint64_t i = constIndex->getZExtValue();
-      if (i < dims.size()) return ctx.builder->getInt64(dims[i]);
+      if (i < dims.size()) {
+        return ctx.builder->getInt64(dims[i]);
+      }
     }
     dimsPtr = arrayDimsTable(dims);
   } else {
@@ -434,7 +466,9 @@ Value* CodegenVisitor::boxIndicesToArrayRef(const IndexAST& expr) {
     }
 
     Value* idxVal = codegen(*sliceExpr.getStart());
-    if (!idxVal) return nullptr;
+    if (!idxVal) {
+      return nullptr;
+    }
     if (idxVal->getType()->isIntegerTy() &&
         idxVal->getType()->getIntegerBitWidth() < 64) {
       idxVal = ctx.builder->CreateSExt(idxVal, i64Ty, "idx.ext");
@@ -468,7 +502,9 @@ Value* CodegenVisitor::emitClassIndexCall(
 Value* CodegenVisitor::codegenClassIndex(const IndexAST& expr, Value* objectPtr,
                                          ClassType* classType) {
   Value* idxView = boxIndicesToArrayRef(expr);
-  if (!idxView) return nullptr;
+  if (!idxView) {
+    return nullptr;
+  }
   return emitClassIndexCall(objectPtr, idxView, expr.getTargetDeclarationId());
 }
 
@@ -516,7 +552,9 @@ Value* CodegenVisitor::codegenClassSlice(const IndexAST& expr, Value* objectPtr,
 
       if (sliceExpr.hasStart()) {
         startVal = codegen(*sliceExpr.getStart());
-        if (!startVal) return nullptr;
+        if (!startVal) {
+          return nullptr;
+        }
         if (startVal->getType()->isIntegerTy() &&
             startVal->getType()->getIntegerBitWidth() < 64) {
           startVal = ctx.builder->CreateSExt(startVal, i64Ty, "start.ext");
@@ -527,7 +565,9 @@ Value* CodegenVisitor::codegenClassSlice(const IndexAST& expr, Value* objectPtr,
 
       if (sliceExpr.hasEnd()) {
         endVal = codegen(*sliceExpr.getEnd());
-        if (!endVal) return nullptr;
+        if (!endVal) {
+          return nullptr;
+        }
         if (endVal->getType()->isIntegerTy() &&
             endVal->getType()->getIntegerBitWidth() < 64) {
           endVal = ctx.builder->CreateSExt(endVal, i64Ty, "end.ext");
@@ -546,7 +586,9 @@ Value* CodegenVisitor::codegenClassSlice(const IndexAST& expr, Value* objectPtr,
       }
 
       startVal = codegen(*sliceExpr.getStart());
-      if (!startVal) return nullptr;
+      if (!startVal) {
+        return nullptr;
+      }
       if (startVal->getType()->isIntegerTy() &&
           startVal->getType()->getIntegerBitWidth() < 64) {
         startVal = ctx.builder->CreateSExt(startVal, i64Ty, "start.ext");
@@ -595,7 +637,9 @@ Value* CodegenVisitor::codegenClassSlice(const IndexAST& expr, Value* objectPtr,
 Value* CodegenVisitor::emitClassSetIndexCall(
     Value* objectPtr, Value* idxView, Value* value,
     const sun::types::ClassMethod* method) {
-  if (!method) logAndThrowError("Indexed assignment has no selected setter");
+  if (!method) {
+    logAndThrowError("Indexed assignment has no selected setter");
+  }
   Function* methodFunc = functions.lookupFunctionById(method->declarationId);
 
   // Coerce the value to the __setindex__ value-parameter type (e.g. an i64
@@ -624,13 +668,19 @@ Value* CodegenVisitor::codegenClassSetIndex(
     const IndexAST& indexExpr, const sun::ast::ExprAST* valueExpr,
     const sun::types::ClassMethod* method) {
   Value* objectPtr = codegen(*indexExpr.getTarget());
-  if (!objectPtr) return nullptr;
+  if (!objectPtr) {
+    return nullptr;
+  }
 
   Value* idxView = boxIndicesToArrayRef(indexExpr);
-  if (!idxView) return nullptr;
+  if (!idxView) {
+    return nullptr;
+  }
 
   Value* valueVal = codegen(*valueExpr);
-  if (!valueVal) return nullptr;
+  if (!valueVal) {
+    return nullptr;
+  }
 
   return emitClassSetIndexCall(objectPtr, idxView, valueVal, method);
 }

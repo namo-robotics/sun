@@ -43,14 +43,17 @@ TypePtr rebindInterfaceLifetimes(
         reference->isMutable());
     result->setLifetimeName(name(reference->getLifetimeName()));
     auto arguments = reference->getClassLifetimeArgs();
-    for (auto& argument : arguments) argument = name(argument);
+    for (auto& argument : arguments) {
+      argument = name(argument);
+    }
     result->setClassLifetimeArgs(std::move(arguments));
     return result;
   }
   if (auto* lambda = dynamic_cast<const sun::types::LambdaType*>(type.get())) {
     auto parameters = lambda->getParamTypes();
-    for (auto& parameter : parameters)
+    for (auto& parameter : parameters) {
       parameter = rebindInterfaceLifetimes(parameter, bindings);
+    }
     auto result = std::make_shared<sun::types::LambdaType>(
         rebindInterfaceLifetimes(lambda->getReturnType(), bindings),
         std::move(parameters), lambda->canThrow(), lambda->requiresUnsafe());
@@ -74,11 +77,15 @@ bool sameInterfaceLifetimes(const TypePtr& left, const TypePtr& right) {
     auto* b = dynamic_cast<const sun::types::LambdaType*>(right.get());
     if (!b || a->getLifetimeName() != b->getLifetimeName() ||
         a->getParamTypes().size() != b->getParamTypes().size() ||
-        !sameInterfaceLifetimes(a->getReturnType(), b->getReturnType()))
+        !sameInterfaceLifetimes(a->getReturnType(), b->getReturnType())) {
       return false;
-    for (size_t i = 0; i < a->getParamTypes().size(); ++i)
-      if (!sameInterfaceLifetimes(a->getParamTypes()[i], b->getParamTypes()[i]))
+    }
+    for (size_t i = 0; i < a->getParamTypes().size(); ++i) {
+      if (!sameInterfaceLifetimes(a->getParamTypes()[i],
+                                  b->getParamTypes()[i])) {
         return false;
+      }
+    }
   }
   return true;
 }
@@ -86,10 +93,13 @@ bool sameInterfaceLifetimes(const TypePtr& left, const TypePtr& right) {
 
 void InterfaceAnalyzer::ensureClassInterfaces(DeclarationId declaration) {
   if (preparedTypes_.contains(declaration) ||
-      preparingTypes_.contains(declaration))
+      preparingTypes_.contains(declaration)) {
     return;
+  }
   auto found = ctx_.classDefinitions.find(declaration);
-  if (found == ctx_.classDefinitions.end()) return;
+  if (found == ctx_.classDefinitions.end()) {
+    return;
+  }
   preparingTypes_.insert(declaration);
   SemanticContext::ScopeSwitchGuard scope(ctx_, found->second.scope);
   SemanticContext::SourceFileGuard file(ctx_,
@@ -100,11 +110,12 @@ void InterfaceAnalyzer::ensureClassInterfaces(DeclarationId declaration) {
          found->second.node->getImplementedInterfaces()) {
       auto interfaceType = std::dynamic_pointer_cast<InterfaceType>(
           resolver_.typeAnnotationToType(reference.toAnnotation(), true));
-      if (!interfaceType)
+      if (!interfaceType) {
         logAndThrowError("Class '" + found->second.node->getName() +
                              "' implements unknown interface '" +
                              reference.name + "'",
                          found->second.node->getLocation());
+      }
       classType->addImplementedInterface(*interfaceType);
     }
     preparedTypes_.insert(declaration);
@@ -117,10 +128,13 @@ void InterfaceAnalyzer::ensureClassInterfaces(DeclarationId declaration) {
 
 void InterfaceAnalyzer::ensureInterfaceShape(DeclarationId declaration) {
   if (preparedTypes_.contains(declaration) ||
-      preparingTypes_.contains(declaration))
+      preparingTypes_.contains(declaration)) {
     return;
+  }
   auto found = ctx_.interfaceDefinitions.find(declaration);
-  if (found == ctx_.interfaceDefinitions.end()) return;
+  if (found == ctx_.interfaceDefinitions.end()) {
+    return;
+  }
   preparingTypes_.insert(declaration);
   SemanticContext::ScopeSwitchGuard scope(ctx_, found->second.scope);
   SemanticContext::SourceFileGuard file(ctx_,
@@ -138,78 +152,94 @@ void InterfaceAnalyzer::ensureInterfaceShape(DeclarationId declaration) {
 void InterfaceAnalyzer::mergeInterfaceParent(
     InterfaceType& interfaceType,
     const sun::ast::InterfaceDefinitionAST& definition) {
-  if (!definition.getParent()) return;
+  if (!definition.getParent()) {
+    return;
+  }
   const auto root = definition.getDeclarationId();
-  if (!resolvingInterfaceParents_.insert(root).second)
+  if (!resolvingInterfaceParents_.insert(root).second) {
     logAndThrowError(
         "Interface inheritance cycle involving '" + definition.getName() + "'",
         definition.getLocation());
+  }
   std::shared_ptr<InterfaceType> parent;
   try {
     parent = std::dynamic_pointer_cast<InterfaceType>(
         resolver_.typeAnnotationToType(*definition.getParent(), true));
-    if (!parent || parent->isGenericDefinition())
+    if (!parent || parent->isGenericDefinition()) {
       logAndThrowError(
           "Interface parent must be a fully applied interface type",
           definition.getParent()->span);
+    }
     if (parent->getDeclarationId() == interfaceType.getDeclarationId() ||
         preparingTypes_.contains(parent->getDeclarationId()) ||
-        parent->extendsInterface(interfaceType))
+        parent->extendsInterface(interfaceType)) {
       logAndThrowError("Interface inheritance cycle involving '" +
                            definition.getName() + "'",
                        definition.getLocation());
+    }
   } catch (...) {
     resolvingInterfaceParents_.erase(root);
     throw;
   }
   resolvingInterfaceParents_.erase(root);
   const auto& lifetimeArguments = definition.getParent()->lifetimeArguments;
-  if (lifetimeArguments.size() != parent->getLifetimeParams().size())
+  if (lifetimeArguments.size() != parent->getLifetimeParams().size()) {
     logAndThrowError(
         "Interface parent has the wrong number of lifetime arguments",
         definition.getParent()->span);
+  }
   std::map<std::string, std::string> lifetimeBindings;
-  for (size_t i = 0; i < lifetimeArguments.size(); ++i)
+  for (size_t i = 0; i < lifetimeArguments.size(); ++i) {
     lifetimeBindings.emplace(parent->getLifetimeParams()[i],
                              lifetimeArguments[i]);
+  }
   auto fields = parent->getFields();
-  for (auto& field : fields)
+  for (auto& field : fields) {
     field.type = rebindInterfaceLifetimes(field.type, lifetimeBindings);
+  }
   for (const auto& field : interfaceType.getFields()) {
-    if (parent->getField(field.name))
+    if (parent->getField(field.name)) {
       logAndThrowError(
           "Interface field '" + field.name + "' redeclares an inherited field",
           definition.getLocation());
+    }
     fields.push_back(field);
   }
   auto methods = parent->getMethods();
   for (auto& method : methods) {
     method.returnType =
         rebindInterfaceLifetimes(method.returnType, lifetimeBindings);
-    for (auto& parameter : method.paramTypes)
+    for (auto& parameter : method.paramTypes) {
       parameter = rebindInterfaceLifetimes(parameter, lifetimeBindings);
+    }
   }
   for (const auto& local : interfaceType.getMethods()) {
     bool replaced = false;
     for (auto& inherited : methods) {
       if (local.name != inherited.name ||
           local.typeParameters.size() != inherited.typeParameters.size() ||
-          local.paramTypes.size() != inherited.paramTypes.size())
+          local.paramTypes.size() != inherited.paramTypes.size()) {
         continue;
+      }
       SemanticContext::ScopeSwitchGuard methodScope(ctx_, ctx_.scope());
-      if (!inherited.typeParameters.empty())
+      if (!inherited.typeParameters.empty()) {
         ctx_.enterTypeParamScope(inherited.typeParameters,
                                  local.genericArguments);
+      }
       bool sameParameters = true;
-      for (size_t i = 0; i < local.paramTypes.size(); ++i)
+      for (size_t i = 0; i < local.paramTypes.size(); ++i) {
         sameParameters &= local.paramTypes[i]->equals(
             *resolver_.substituteTypeParameters(inherited.paramTypes[i]));
-      if (!sameParameters) continue;
+      }
+      if (!sameParameters) {
+        continue;
+      }
       bool sameContract =
           sameInterfaceLifetimes(local.returnType, inherited.returnType);
-      for (size_t i = 0; i < local.paramTypes.size(); ++i)
+      for (size_t i = 0; i < local.paramTypes.size(); ++i) {
         sameContract &= sameInterfaceLifetimes(local.paramTypes[i],
                                                inherited.paramTypes[i]);
+      }
       for (size_t i = 0; i < local.genericArguments.size(); ++i) {
         const auto& a = local.genericConstraints.at(i);
         const auto& b = inherited.genericConstraints.at(i);
@@ -227,10 +257,11 @@ void InterfaceAnalyzer::mergeInterfaceParent(
           local.visibility != inherited.visibility ||
           local.isConst != inherited.isConst ||
           local.isUnsafe != inherited.isUnsafe ||
-          (local.canThrow && !inherited.canThrow))
+          (local.canThrow && !inherited.canThrow)) {
         logAndThrowError("Interface method '" + local.name +
                              "' changes its inherited contract",
                          definition.getLocation());
+      }
       ctx_.requireAccessible(methodRef(*parent, inherited),
                              definition.getLocation());
       auto aliases = inherited.inheritedDeclarations;
@@ -240,7 +271,9 @@ void InterfaceAnalyzer::mergeInterfaceParent(
       replaced = true;
       break;
     }
-    if (!replaced) methods.push_back(local);
+    if (!replaced) {
+      methods.push_back(local);
+    }
   }
   interfaceType.setInheritedShape(parent, std::move(fields),
                                   std::move(methods));
@@ -252,11 +285,12 @@ void InterfaceAnalyzer::inheritInterfaceFields(
   for (const auto& ifaceRef : classDef.getImplementedInterfaces()) {
     auto interfaceType = std::dynamic_pointer_cast<InterfaceType>(
         resolver_.typeAnnotationToType(ifaceRef.toAnnotation(), true));
-    if (!interfaceType)
+    if (!interfaceType) {
       logAndThrowError("Class '" + classDef.getName() +
                            "' implements unknown interface '" + ifaceRef.name +
                            "'",
                        classDef.getLocation());
+    }
     std::string interfaceDisplayName = interfaceType->toDisplayString();
 
     // Add interface fields to class (interface fields are inherited)
@@ -301,15 +335,21 @@ void InterfaceAnalyzer::validateInterfaceImplementation(
   for (const auto& reference : classDef.getImplementedInterfaces()) {
     auto type = std::dynamic_pointer_cast<InterfaceType>(
         resolver_.typeAnnotationToType(reference.toAnnotation(), true));
-    if (type) interfaces.push_back(type);
+    if (type) {
+      interfaces.push_back(type);
+    }
   }
   for (const auto& interfaceType : interfaces) {
     bool redundant = false;
-    for (const auto& other : interfaces)
+    for (const auto& other : interfaces) {
       if (!other->equals(*interfaceType) &&
-          other->extendsInterface(*interfaceType))
+          other->extendsInterface(*interfaceType)) {
         redundant = true;
-    if (redundant) continue;
+      }
+    }
+    if (redundant) {
+      continue;
+    }
     std::string interfaceDisplayName = interfaceType->toDisplayString();
 
     // Check that class implements all required methods and add default methods
@@ -321,8 +361,9 @@ void InterfaceAnalyzer::validateInterfaceImplementation(
         const auto& proto = classMethod.function->getProto();
         if (proto.getName() != interfaceMethod.name ||
             proto.getTypeParameters().size() !=
-                interfaceMethod.typeParameters.size())
+                interfaceMethod.typeParameters.size()) {
           continue;
+        }
 
         requiredReturnType = interfaceMethod.returnType;
         requiredParamTypes = interfaceMethod.paramTypes;
@@ -332,15 +373,17 @@ void InterfaceAnalyzer::validateInterfaceImplementation(
         SemanticContext::ScopeSwitchGuard candidateScope(ctx_, ctx_.scope());
         if (!interfaceMethod.typeParameters.empty()) {
           std::vector<TypePtr> parameters;
-          for (size_t i = 0; i < proto.getTypeParameters().size(); ++i)
+          for (size_t i = 0; i < proto.getTypeParameters().size(); ++i) {
             parameters.push_back(proto.getTypeParameters()[i].toSunType(
                 ctx_.results().declarations,
                 proto.declarationIdentity().typeParameters.at(i)));
+          }
           ctx_.enterTypeParamScope(interfaceMethod.typeParameters, parameters);
           requiredReturnType =
               resolver_.substituteTypeParameters(requiredReturnType);
-          for (auto& type : requiredParamTypes)
+          for (auto& type : requiredParamTypes) {
             type = resolver_.substituteTypeParameters(type);
+          }
         }
         auto* candidate = classType->getMethodForArgs(interfaceMethod.name,
                                                       requiredParamTypes);
@@ -355,28 +398,32 @@ void InterfaceAnalyzer::validateInterfaceImplementation(
                                                      requiredParamTypes);
         if (previous && previous->defaultImplementation) {
           if (interfaceMethod.hasDefaultImpl &&
-              previous->defaultImplementation != interfaceMethod.declarationId)
+              previous->defaultImplementation !=
+                  interfaceMethod.declarationId) {
             logAndThrowError("Conflicting interface defaults for method '" +
                                  interfaceMethod.name +
                                  "'; implement it explicitly",
                              classDef.getLocation());
+          }
           classMethodInfo = previous;
         }
       }
       if (classMethodInfo && classMethodInfo->defaultImplementation &&
           interfaceMethod.hasDefaultImpl &&
           classMethodInfo->defaultImplementation !=
-              interfaceMethod.declarationId)
+              interfaceMethod.declarationId) {
         logAndThrowError("Conflicting interface defaults for method '" +
                              interfaceMethod.name +
                              "'; implement it explicitly",
                          classDef.getLocation());
+      }
       if (classMethodInfo) {
         classType->bindInterfaceMethod(interfaceMethod.declarationId,
                                        classMethodInfo->declarationId);
-        for (auto inherited : interfaceMethod.inheritedDeclarations)
+        for (auto inherited : interfaceMethod.inheritedDeclarations) {
           classType->bindInterfaceMethod(inherited,
                                          classMethodInfo->declarationId);
+        }
         // A public interface member is reachable through the interface, so
         // the implementing method must be public too
         if (interfaceMethod.visibility ==
@@ -436,8 +483,9 @@ void InterfaceAnalyzer::validateInterfaceImplementation(
                     std::find(interfaceMethod.inheritedDeclarations.begin(),
                               interfaceMethod.inheritedDeclarations.end(),
                               requirement.declarationId) !=
-                        interfaceMethod.inheritedDeclarations.end())
+                        interfaceMethod.inheritedDeclarations.end()) {
                   classType->markStaticOnlyInterface(*ancestor);
+                }
               }
             }
           }
@@ -531,8 +579,9 @@ void InterfaceAnalyzer::validateInterfaceImplementation(
                   .declarations.get(classType->getDeclarationId())
                   .module,
               {}, interfaceMethod.declarationId);
-          if (method.name == "deinit")
+          if (method.name == "deinit") {
             classType->deinitializer = method.declarationId;
+          }
           method.defaultImplementation = interfaceMethod.declarationId;
           // Defaults are checked against the concrete receiver. This keeps
           // inherited field offsets and calls to overridden methods correct.
@@ -568,8 +617,9 @@ void InterfaceAnalyzer::validateInterfaceImplementation(
           }
           classType->bindInterfaceMethod(interfaceMethod.declarationId,
                                          method.declarationId);
-          for (auto inherited : interfaceMethod.inheritedDeclarations)
+          for (auto inherited : interfaceMethod.inheritedDeclarations) {
             classType->bindInterfaceMethod(inherited, method.declarationId);
+          }
           method.visibility = interfaceMethod.visibility;
           method.isConst = interfaceMethod.isConst;
           method.isUnsafe = interfaceMethod.isUnsafe;
@@ -649,9 +699,10 @@ void InterfaceAnalyzer::prepareInterfaceShape(
   }
   {
     SemanticContext::LifetimeScopeGuard receiverLifetime(ctx_, true);
-    if (interfaceDef.getParent())
+    if (interfaceDef.getParent()) {
       sema_.declarations().checkAnnotationLifetimes(*interfaceDef.getParent(),
                                                     interfaceDef.getLocation());
+    }
     for (const auto& field : interfaceDef.getFields()) {
       sema_.declarations().checkAnnotationLifetimes(field.type, field.location);
     }
@@ -681,10 +732,11 @@ void InterfaceAnalyzer::prepareInterfaceShape(
 
     if (interfaceDef.getParent()) {
       std::vector<TypePtr> arguments;
-      for (size_t i = 0; i < interfaceDef.getTypeParameters().size(); ++i)
+      for (size_t i = 0; i < interfaceDef.getTypeParameters().size(); ++i) {
         arguments.push_back(interfaceDef.getTypeParameters()[i].toSunType(
             ctx_.results().declarations,
             interfaceDef.declarationIdentity().typeParameters.at(i)));
+      }
       generics_.instantiateGenericInterface(
           interfaceDef.getQualifiedName().lookupName(), arguments);
     }
@@ -723,28 +775,31 @@ void InterfaceAnalyzer::prepareInterfaceShape(
     // Apply computed info to prototype
     sema_.declarations().applyFunctionInfoToProto(proto, methodInfo);
 
-    if (!methodSignatures.insert(proto, methodInfo.paramTypes))
+    if (!methodSignatures.insert(proto, methodInfo.paramTypes)) {
       logAndThrowError(
           "Interface method '" + proto.getName() + "' is already defined",
           methodDecl.function->getLocation());
+    }
     // Add method to interface type (include generic type parameters)
     auto& method = interfaceType->addMethod(
         proto.getName(), methodInfo.returnType, methodInfo.paramTypes,
         methodDecl.hasDefaultImpl, proto.getTypeParameterNames());
     method.declarationId = proto.getDeclarationId();
-    for (size_t i = 0; i < proto.getTypeParameters().size(); ++i)
+    for (size_t i = 0; i < proto.getTypeParameters().size(); ++i) {
       method.genericArguments.push_back(proto.getTypeParameters()[i].toSunType(
           ctx_.results().declarations,
           proto.declarationIdentity().typeParameters.at(i)));
+    }
     {
       SemanticContext::ScopeSwitchGuard constraints(ctx_, ctx_.scope());
       ctx_.enterTypeParamScope(method.typeParameters, method.genericArguments);
-      for (const auto& parameter : proto.getTypeParameters())
+      for (const auto& parameter : proto.getTypeParameters()) {
         method.genericConstraints.push_back(
             parameter.constraint
                 ? resolver_.typeAnnotationToType(
                       parameter.constraint->toAnnotation(), true)
                 : nullptr);
+      }
     }
     method.visibility =
         sun::semantic_analysis::methodVisibility(*methodDecl.function);
@@ -764,9 +819,13 @@ void InterfaceAnalyzer::analyzeInterfaceDefinition(
   ctx_.interfaceDefinitions.emplace(
       id, SemanticContext::InterfaceDefinition{&interfaceDef, ctx_.scope()});
   ensureInterfaceShape(id);
-  if (!analyzedInterfaceBodies_.insert(id).second) return;
+  if (!analyzedInterfaceBodies_.insert(id).second) {
+    return;
+  }
   interfaceDef.setResolvedType(Types::Void());
-  if (interfaceDef.isGeneric()) return;
+  if (interfaceDef.isGeneric()) {
+    return;
+  }
   auto interfaceType = ctx_.types()->getInterface(id);
   const auto& qualifiedInterface = interfaceDef.getQualifiedName();
   auto pseudoId = ctx_.results().declarations.add(
@@ -774,9 +833,10 @@ void InterfaceAnalyzer::analyzeInterfaceDefinition(
       "__interface_" + interfaceDef.getName(), id,
       ctx_.results().declarations.get(id).module, {}, id, "interface-receiver");
   auto pseudoClass = ctx_.types()->getClass(pseudoId);
-  for (const auto& field : interfaceType->getFields())
+  for (const auto& field : interfaceType->getFields()) {
     pseudoClass->addField(field.name, field.type, field.declarationId)
         .visibility = field.visibility;
+  }
   for (const auto& method : interfaceType->getMethods()) {
     auto& member =
         pseudoClass->addMethod(method.name, method.returnType,
@@ -826,11 +886,12 @@ TypePtr InterfaceAnalyzer::resolveInterfaceMemberType(
   const InterfaceMethod* method =
       ctx_.accessibleMethod(*ifaceType, memberName, memberAccess.getLocation());
   if (method) {
-    if (method->returnType && method->returnType->isInterface())
+    if (method->returnType && method->returnType->isInterface()) {
       logAndThrowError(
           "An interface return requirement can only be called on a concrete "
           "implementation",
           memberAccess.getLocation());
+    }
     memberAccess.setTargetDeclarationId(method->declarationId);
     return Types::Function(method->returnType, method->paramTypes,
                            method->canThrow, method->isUnsafe);

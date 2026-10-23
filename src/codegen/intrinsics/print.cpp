@@ -39,7 +39,9 @@ static Value* emitLibcWriteInline(IRBuilder<>& builder, llvm::Module* module,
 static Function* getOrCreatePrintI32Helper(llvm::Module* module,
                                            LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_print_i32");
-  if (func) return func;
+  if (func) {
+    return func;
+  }
 
   // Create function: void __sun_print_i32(i32 %val)
   llvm::FunctionType* funcType = llvm::FunctionType::get(
@@ -151,7 +153,9 @@ static Function* getOrCreatePrint64Helper(llvm::Module* module,
                                           LLVMContext& llvmCtx, bool isSigned) {
   const char* name = isSigned ? "__sun_print_i64" : "__sun_print_u64";
   Function* func = module->getFunction(name);
-  if (func) return func;
+  if (func) {
+    return func;
+  }
 
   constexpr int kBufSize = 24;
 
@@ -247,7 +251,9 @@ static Function* getOrCreatePrint64Helper(llvm::Module* module,
 static Function* getOrCreatePrintNewlineHelper(llvm::Module* module,
                                                LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_print_newline");
-  if (func) return func;
+  if (func) {
+    return func;
+  }
 
   llvm::FunctionType* funcType =
       llvm::FunctionType::get(llvm::Type::getVoidTy(llvmCtx), {}, false);
@@ -276,7 +282,9 @@ static Function* getOrCreatePrintNewlineHelper(llvm::Module* module,
 static Function* getOrCreatePrintStringHelper(llvm::Module* module,
                                               LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_print_string");
-  if (func) return func;
+  if (func) {
+    return func;
+  }
 
   // Create function: void __sun_print_string(i8* %str)
   llvm::FunctionType* funcType = llvm::FunctionType::get(
@@ -337,7 +345,9 @@ Value* IntrinsicsGenerator::codegenPrintI32(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* val = codegen(*expr.getArgs()[0]);
-  if (!val) return nullptr;
+  if (!val) {
+    return nullptr;
+  }
 
   if (!val->getType()->isIntegerTy(32)) {
     val = ctx.builder->CreateSExtOrTrunc(val, llvm::Type::getInt32Ty(llvmCtx));
@@ -356,7 +366,9 @@ Value* IntrinsicsGenerator::codegenPrintI64(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* val = codegen(*expr.getArgs()[0]);
-  if (!val) return nullptr;
+  if (!val) {
+    return nullptr;
+  }
 
   if (!val->getType()->isIntegerTy(64)) {
     val = ctx.builder->CreateSExtOrTrunc(val, llvm::Type::getInt64Ty(llvmCtx));
@@ -377,7 +389,9 @@ Value* IntrinsicsGenerator::codegenPrintU64(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* val = codegen(*expr.getArgs()[0]);
-  if (!val) return nullptr;
+  if (!val) {
+    return nullptr;
+  }
 
   if (!val->getType()->isIntegerTy(64)) {
     val = ctx.builder->CreateZExtOrTrunc(val, llvm::Type::getInt64Ty(llvmCtx));
@@ -399,7 +413,9 @@ Value* IntrinsicsGenerator::codegenPrintF64(const CallExprAST& expr) {
   // TODO: implement proper float printing
   LLVMContext& llvmCtx = ctx.getContext();
   Value* val = codegen(*expr.getArgs()[0]);
-  if (!val) return nullptr;
+  if (!val) {
+    return nullptr;
+  }
 
   val = ctx.builder->CreateFPToSI(val, llvm::Type::getInt32Ty(llvmCtx));
   Function* helper = getOrCreatePrintI32Helper(module, llvmCtx);
@@ -424,7 +440,9 @@ Value* IntrinsicsGenerator::codegenPrintString(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* val = codegen(*expr.getArgs()[0]);
-  if (!val) return nullptr;
+  if (!val) {
+    return nullptr;
+  }
 
   // Overload 1: static_ptr<u8> (string literals)
   // Fat pointer struct { ptr, i64 } - extract the raw data pointer (element 0)
@@ -446,7 +464,9 @@ Value* IntrinsicsGenerator::codegenPrintString(const CallExprAST& expr) {
 static Function* getOrCreatePrintCharHelper(llvm::Module* module,
                                             LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_print_char");
-  if (func) return func;
+  if (func) {
+    return func;
+  }
 
   llvm::FunctionType* funcType = llvm::FunctionType::get(
       llvm::Type::getVoidTy(llvmCtx), {llvm::Type::getInt32Ty(llvmCtx)}, false);
@@ -521,7 +541,9 @@ Value* IntrinsicsGenerator::codegenPrintChar(const CallExprAST& expr) {
   }
   LLVMContext& llvmCtx = ctx.getContext();
   Value* val = codegen(*expr.getArgs()[0]);
-  if (!val) return nullptr;
+  if (!val) {
+    return nullptr;
+  }
   Function* helper = getOrCreatePrintCharHelper(module, llvmCtx);
   return ctx.builder->CreateCall(helper, {val});
 }
@@ -538,7 +560,9 @@ Value* IntrinsicsGenerator::codegenPrintBytes(const CallExprAST& expr) {
   LLVMContext& llvmCtx = ctx.getContext();
   Value* ptr = codegen(*expr.getArgs()[0]);
   Value* len = codegen(*expr.getArgs()[1]);
-  if (!ptr || !len) return nullptr;
+  if (!ptr || !len) {
+    return nullptr;
+  }
 
   // Ensure len is i64
   if (!len->getType()->isIntegerTy(64)) {

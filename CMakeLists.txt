@@ -34,8 +34,16 @@ set(CMAKE_PCH_INSTANTIATE_TEMPLATES ON)
 # lld links debug binaries much faster than the default bfd linker
 # (clang-only, like the -Xclang PCH flags below — GCC configures still work).
 # Not on macOS: Apple's clang has no bundled lld and ld64 is fine.
+set(SUN_BUILD_LINKER "${CMAKE_LINKER}")
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT APPLE)
-    add_link_options(-fuse-ld=lld)
+    execute_process(COMMAND "${CMAKE_CXX_COMPILER}" -print-prog-name=ld.lld
+        OUTPUT_VARIABLE SUN_BUILD_LINKER OUTPUT_STRIP_TRAILING_WHITESPACE
+        COMMAND_ERROR_IS_FATAL ANY)
+    if(NOT IS_ABSOLUTE "${SUN_BUILD_LINKER}")
+        find_program(SUN_LLD_EXECUTABLE NAMES "${SUN_BUILD_LINKER}" REQUIRED)
+        set(SUN_BUILD_LINKER "${SUN_LLD_EXECUTABLE}")
+    endif()
+    add_link_options("-fuse-ld=${SUN_BUILD_LINKER}")
 endif()
 
 # Allow Debug/Release selection via command line or IDE (don't hardcode)
@@ -109,8 +117,9 @@ set(AST_PROTO_FILES
     ${AST_PROTO_DIR}/analysis.proto
 )
 
-# Moon proto files (imports AST protos)
-set(MOON_PROTO_FILES
+# Bundle and ABI schemas (Moon also imports the AST schemas).
+set(BUNDLE_PROTO_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/abi/compatibility.proto
     ${MOON_PROTO_DIR}/moon.proto
 )
 
@@ -136,7 +145,7 @@ foreach(PROTO_FILE ${AST_PROTO_FILES})
 endforeach()
 
 # Generate C++ from Moon proto files (needs both proto paths for imports)
-foreach(PROTO_FILE ${MOON_PROTO_FILES})
+foreach(PROTO_FILE ${BUNDLE_PROTO_FILES})
     get_filename_component(PROTO_NAME ${PROTO_FILE} NAME_WE)
     list(APPEND PROTO_SRCS ${CMAKE_CURRENT_BINARY_DIR}/${PROTO_NAME}.pb.cc)
     list(APPEND PROTO_HDRS ${CMAKE_CURRENT_BINARY_DIR}/${PROTO_NAME}.pb.h)
@@ -148,12 +157,30 @@ foreach(PROTO_FILE ${MOON_PROTO_FILES})
         ARGS --cpp_out=${CMAKE_CURRENT_BINARY_DIR}
              --proto_path=${AST_PROTO_DIR}
              --proto_path=${MOON_PROTO_DIR}
+             --proto_path=${CMAKE_CURRENT_SOURCE_DIR}/include/abi
              ${PROTO_FILE}
         DEPENDS ${PROTO_FILE} ${AST_PROTO_FILES}
+                ${CMAKE_CURRENT_SOURCE_DIR}/include/abi/compatibility.proto
         COMMENT "Running protoc on ${PROTO_NAME}.proto"
         VERBATIM
     )
 endforeach()
+
+# Validate and embed support before compiling any ABI consumer.
+add_executable(sun_embed_abi_support
+    cmake/abi/embed_support.cpp src/abi/support_manifest.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/compatibility.pb.cc)
+target_include_directories(sun_embed_abi_support PRIVATE include ${CMAKE_CURRENT_BINARY_DIR})
+target_link_libraries(sun_embed_abi_support PRIVATE protobuf::libprotobuf)
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/sun_abi_support.h
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/generated
+    COMMAND sun_embed_abi_support ${CMAKE_CURRENT_SOURCE_DIR}/src/abi/compiler_support.textproto
+        ${CMAKE_CURRENT_BINARY_DIR}/generated/sun_abi_support.h
+    DEPENDS sun_embed_abi_support src/abi/compiler_support.textproto
+    COMMENT "Validating and embedding compiler ABI support"
+    VERBATIM)
+add_custom_target(sun_abi_support DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/generated/sun_abi_support.h)
 
 message(STATUS "Proto sources: ${PROTO_SRCS}")
 message(STATUS "Proto headers: ${PROTO_HDRS}")
@@ -316,6 +343,22 @@ add_library(sun_lib
     # AST serialization
     src/serialization/ast_serializer.cpp
     src/serialization/ast_deserializer.cpp
+    # Structured terminal diagnostics
+    src/support/terminal_format.cpp
+    # ABI requirements and compatibility decisions
+    src/abi/compatibility.cpp
+    src/abi/payload_requirements.cpp
+    src/abi/semantic_requirements.cpp
+    src/abi/native_requirements.cpp
+    src/abi/nominal_identity.cpp
+    src/abi/library_abi_snapshot.cpp
+    src/abi/support_inventory.cpp
+    src/abi/support_manifest.cpp
+    src/abi/lowering_descriptors.cpp
+    src/abi/boundary_requirements.cpp
+    src/abi/producer_identity.cpp
+    src/abi/abi_compatibility_checker.cpp
+    src/abi/abi_validation_scope.cpp
     # Precompiled library support (moon format)
     src/moon_bundling/moon.cpp
     src/moon_bundling/archive_symbols.cpp
@@ -437,6 +480,11 @@ target_precompile_headers(sun_lib PRIVATE
     include/codegen/intrinsics/intrinsics.h
     include/codegen/intrinsics/intrinsics_generator.h
 )
+# This file must include LLVM Mach-O headers before Protobuf introduces Apple
+# Mach macros. The shared precompiled header would reverse that order.
+set_source_files_properties(src/abi/native_requirements.cpp PROPERTIES
+    SKIP_PRECOMPILE_HEADERS ON)
+
 # clang embeds a timestamp in PCHs by default, which defeats ccache
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(sun_lib PRIVATE -Xclang -fno-pch-timestamp)
@@ -483,18 +531,43 @@ add_custom_command(
 add_custom_target(intrinsic_source DEPENDS ${INTRINSIC_HEADER})
 add_dependencies(sun_lib intrinsic_source)
 
+# Release automation supplies a monotonic order within its named release series.
+# Zero and an empty series identify builds without official ordering provenance.
+set(SUN_RELEASE_ORDER "0" CACHE STRING "Official release order, or zero when unknown")
+set(SUN_RELEASE_SERIES "" CACHE STRING "Namespace for official release ordering")
+include(cmake/abi/ReleaseIdentity.cmake)
+
 set(SUN_VERSION_HEADER ${CMAKE_BINARY_DIR}/generated/sun_version.h)
 add_custom_target(sun_version
     COMMAND ${CMAKE_COMMAND}
         -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
         -DOUTPUT_FILE=${SUN_VERSION_HEADER}
         -DSUN_VERSION=${SUN_VERSION}
+        -DSUN_RELEASE_ORDER=${SUN_RELEASE_ORDER}
+        -DSUN_RELEASE_SERIES=${SUN_RELEASE_SERIES}
         -P ${CMAKE_SOURCE_DIR}/cmake/GitVersion.cmake
     BYPRODUCTS ${SUN_VERSION_HEADER}
-    COMMENT "Updating sun_version.h")
+    COMMENT "Updating sun_version.h"
+    VERBATIM)
 # The compiler's version is part of every .moon bundle's content hash
 # (moon_builder.cpp), so the library needs the header too.
 add_dependencies(sun_lib sun_version)
+
+# Conservative experimental semantics include source, external headers and tools.
+add_custom_target(sun_compatibility_fingerprint
+    COMMAND ${CMAKE_COMMAND}
+        -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -DBINARY_DIR=${CMAKE_BINARY_DIR}
+        -DCOMPILER=${CMAKE_CXX_COMPILER}
+        "-DTOOLS=${CMAKE_C_COMPILER};${SUN_BUILD_LINKER};${CMAKE_AR};${CMAKE_RANLIB};${CMAKE_COMMAND};$<TARGET_FILE:protobuf::protoc>"
+        "-DEXTERNAL_INCLUDES=${LLVM_INCLUDE_DIRS};${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES}"
+        -P ${CMAKE_SOURCE_DIR}/cmake/abi/CompatibilityFingerprint.cmake
+    DEPENDS ${PROTO_SRCS} ${PROTO_HDRS}
+    BYPRODUCTS ${CMAKE_BINARY_DIR}/generated/sun_compatibility.h
+    COMMENT "Updating experimental compatibility implementation fingerprint"
+    VERBATIM)
+add_dependencies(sun_compatibility_fingerprint sun_abi_support)
+add_dependencies(sun_lib sun_compatibility_fingerprint sun_abi_support)
 
 add_executable(sun src/cli/main.cpp)
 find_package(LibArchive REQUIRED)
@@ -541,87 +614,69 @@ if(NOT SKIP_STDLIB)
     set(TLS_ENTRYPOINT ${CMAKE_SOURCE_DIR}/tls/tls.sun)
     set(TLS_TEST_BIN ${CMAKE_BINARY_DIR}/tls_tests)
 
-    # The canonical build drives everything from sun-config.json: one
-    # `sun -c sun-config.json` builds stdlib.moon, the stdlib test binary,
-    # tls.moon and the tls test binary, exactly as a developer running the
-    # same command would get (config entrypoints resolve relative to the
-    # config's folder). Out-of-tree builds and builds without tests use
-    # explicit per-artifact commands.
-    # AArch64 Linux config outputs use a target directory. Explicit commands
-    # retain the native CMake output paths on those hosts.
-    if(BUILD_TESTING AND CMAKE_BINARY_DIR STREQUAL ${CMAKE_SOURCE_DIR}/build
-       AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$"))
-        add_custom_target(sun_config_products ALL
-            COMMAND $<TARGET_FILE:sun> -c ${SUN_BUNDLE_FLAGS}
-                    ${CMAKE_SOURCE_DIR}/sun-config.json
-            BYPRODUCTS ${STDLIB_MOON} ${STDLIB_TEST_BIN}_test ${TLS_MOON} ${TLS_TEST_BIN}_test
+    # Keep whole-config packaging available explicitly. Independent product targets
+    # let compiler tests rebuild stdlib without packaging unrelated native bundles.
+    add_custom_target(sun_config_products
+        COMMAND $<TARGET_FILE:sun> -c ${SUN_BUNDLE_FLAGS}
+                ${CMAKE_SOURCE_DIR}/sun-config.json
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Checking all sun-config.json products"
+        COMMAND_EXPAND_LISTS
+        VERBATIM)
+    add_dependencies(sun_config_products sun)
+
+    add_custom_target(stdlib_moon ALL
+        COMMAND bash ${BUILD_MOON_SCRIPT} $<TARGET_FILE:sun>
+                ${STDLIB_ENTRYPOINT} ${STDLIB_MOON} ${SUN_BUNDLE_FLAGS}
+        BYPRODUCTS ${STDLIB_MOON}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Checking precompiled stdlib.moon"
+        COMMAND_EXPAND_LISTS
+        VERBATIM
+    )
+    add_dependencies(stdlib_moon sun)
+
+    if(BUILD_TESTING)
+        add_custom_target(stdlib_sun_tests ALL
+            COMMAND $<TARGET_FILE:sun> -c
+                    ${SUN_BUNDLE_FLAGS}
+                    -o ${STDLIB_TEST_BIN} ${STDLIB_ENTRYPOINT}
+            BYPRODUCTS ${STDLIB_TEST_BIN}_test
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            COMMENT "Checking sun-config.json products (stdlib.moon, stdlib tests, tls.moon, tls tests)"
+            COMMENT "Checking stdlib Sun test binary"
             COMMAND_EXPAND_LISTS
             VERBATIM
         )
-        add_dependencies(sun_config_products sun)
-        # One target owns the shared command; the per-artifact names other
-        # rules depend on all lead to it.
-        foreach(product stdlib_moon stdlib_sun_tests tls_moon tls_sun_tests)
-            add_custom_target(${product} ALL)
-            add_dependencies(${product} sun_config_products)
-        endforeach()
-    else()
-        add_custom_target(stdlib_moon ALL
-            COMMAND bash ${BUILD_MOON_SCRIPT} $<TARGET_FILE:sun>
-                    ${STDLIB_ENTRYPOINT} ${STDLIB_MOON} ${SUN_BUNDLE_FLAGS}
-            BYPRODUCTS ${STDLIB_MOON}
+        add_dependencies(stdlib_sun_tests sun)
+    endif()
+
+    # --lib-path points at this build directory, including out-of-tree builds.
+    add_custom_target(tls_moon ALL
+        COMMAND bash ${BUILD_MOON_SCRIPT} $<TARGET_FILE:sun>
+                ${TLS_ENTRYPOINT} ${TLS_MOON} ${SUN_BUNDLE_FLAGS}
+        BYPRODUCTS ${TLS_MOON}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Checking precompiled tls.moon (with static OpenSSL)"
+        COMMAND_EXPAND_LISTS
+        VERBATIM
+    )
+    # tls imports stdlib.moon, so that has to be current first
+    add_dependencies(tls_moon sun stdlib_moon)
+
+    if(BUILD_TESTING)
+        # A library with tests compiles to just its test binary.
+        add_custom_target(tls_sun_tests ALL
+            COMMAND $<TARGET_FILE:sun> -c
+                    ${SUN_BUNDLE_FLAGS}
+                    --lib-path ${CMAKE_BINARY_DIR}
+                    -o ${TLS_TEST_BIN} ${TLS_ENTRYPOINT}
+            BYPRODUCTS ${TLS_TEST_BIN}_test
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            COMMENT "Checking precompiled stdlib.moon"
+            COMMENT "Checking tls Sun test binary"
             COMMAND_EXPAND_LISTS
             VERBATIM
         )
-        add_dependencies(stdlib_moon sun)
-
-        if(BUILD_TESTING)
-            add_custom_target(stdlib_sun_tests ALL
-                COMMAND $<TARGET_FILE:sun> -c
-                        ${SUN_BUNDLE_FLAGS}
-                        -o ${STDLIB_TEST_BIN} ${STDLIB_ENTRYPOINT}
-                BYPRODUCTS ${STDLIB_TEST_BIN}_test
-                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-                COMMENT "Checking stdlib Sun test binary"
-                COMMAND_EXPAND_LISTS
-                VERBATIM
-            )
-            add_dependencies(stdlib_sun_tests sun)
-        endif()
-
-        # --lib-path points at this build directory, which in this
-        # branch need not be <source>/build.
-        add_custom_target(tls_moon ALL
-            COMMAND bash ${BUILD_MOON_SCRIPT} $<TARGET_FILE:sun>
-                    ${TLS_ENTRYPOINT} ${TLS_MOON} ${SUN_BUNDLE_FLAGS}
-            BYPRODUCTS ${TLS_MOON}
-            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            COMMENT "Checking precompiled tls.moon (with static OpenSSL)"
-            COMMAND_EXPAND_LISTS
-            VERBATIM
-        )
-        # tls imports stdlib.moon, so that has to be current first
-        add_dependencies(tls_moon sun stdlib_moon)
-
-        if(BUILD_TESTING)
-            # A library with tests compiles to just its test binary.
-            add_custom_target(tls_sun_tests ALL
-                COMMAND $<TARGET_FILE:sun> -c
-                        ${SUN_BUNDLE_FLAGS}
-                        --lib-path ${CMAKE_BINARY_DIR}
-                        -o ${TLS_TEST_BIN} ${TLS_ENTRYPOINT}
-                BYPRODUCTS ${TLS_TEST_BIN}_test
-                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-                COMMENT "Checking tls Sun test binary"
-                COMMAND_EXPAND_LISTS
-                VERBATIM
-            )
-            add_dependencies(tls_sun_tests sun stdlib_moon)
-        endif()
+        add_dependencies(tls_sun_tests sun stdlib_moon)
     endif()
 
     # Cross-compiled stdlib bundles live in per-target directories under the

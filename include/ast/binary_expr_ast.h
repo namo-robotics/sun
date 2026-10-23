@@ -46,7 +46,9 @@ class BinaryExprAST : public CallExprAST {
   }
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
-    if (Callee) return CallExprAST::toString();
+    if (Callee) {
+      return CallExprAST::toString();
+    }
     return "(" + LHS->toString() + " " + op.text + " " + RHS->toString() + ")";
   }
   /** Returns the operator applied by this expression. */

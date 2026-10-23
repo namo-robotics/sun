@@ -3,6 +3,7 @@
 
 #include "codegen/llvm_type_resolver.h"
 
+#include "abi/lowering_descriptors.h"
 #include "llvm/IR/DerivedTypes.h"
 
 using sun::types::ClassType;
@@ -44,10 +45,14 @@ StructType* LLVMTypeResolver::getStaticPtrType() {
 
 void LLVMTypeResolver::prepareEnumFieldStorage(const ClassType& classType) {
   for (const auto& field : classType.getFields()) {
-    if (!field.type) continue;
+    if (!field.type) {
+      continue;
+    }
     if (field.type->isEnum()) {
       const auto& enumType = static_cast<const EnumType&>(*field.type);
-      if (enumType.hasPayload()) getEnumStorageType(enumType);
+      if (enumType.hasPayload()) {
+        getEnumStorageType(enumType);
+      }
     } else if (field.type->isClass()) {
       prepareEnumFieldStorage(static_cast<const ClassType&>(*field.type));
     }
@@ -55,88 +60,43 @@ void LLVMTypeResolver::prepareEnumFieldStorage(const ClassType& classType) {
 }
 
 StructType* LLVMTypeResolver::getEnumStorageType(const EnumType& enumType) {
-  if (enumType.cachedStorageType) return enumType.cachedStorageType;
+  if (enumType.cachedStorageType) {
+    return enumType.cachedStorageType;
+  }
   if (!dataLayout) {
     sun::support::logAndThrowError(
         "payload enum '" + enumType.getDisplayName() +
         "' layout requires a module DataLayout (compiler bug)");
   }
 
-  uint64_t maxSize = 8;  // at least { i32 tag } rounded to a unit
-  Align maxAlign(4);     // at least the i32 tag
-  for (const auto& v : enumType.getVariants()) {
-    if (!v.hasPayload()) continue;
-    StructType* variantStruct = getEnumVariantStruct(enumType, v.name);
-    maxSize = std::max(
-        maxSize, dataLayout->getTypeAllocSize(variantStruct).getFixedValue());
-    maxAlign = std::max(maxAlign, dataLayout->getABITypeAlign(variantStruct));
+  std::vector<std::vector<llvm::Type*>> payloads;
+  for (const auto& variant : enumType.getVariants()) {
+    std::vector<llvm::Type*> fields;
+    for (const auto& type : variant.payloadTypes) {
+      fields.push_back(type->isReference() &&
+                               sun::types::unwrapRef(type)->isInterface()
+                           ? sun::types::InterfaceType::getFatPointerType(ctx)
+                           : resolve(type));
+    }
+    payloads.push_back(std::move(fields));
   }
-
-  const uint64_t unitBytes = maxAlign.value();
-  llvm::Type* unitTy =
-      unitBytes > 8 ? static_cast<llvm::Type*>(llvm::FixedVectorType::get(
-                          llvm::Type::getInt8Ty(ctx), unitBytes))
-                    : llvm::Type::getIntNTy(ctx, unitBytes * 8);
-  const uint64_t tagArea = alignTo(4, unitBytes);
-  const uint64_t payloadBytes = maxSize > tagArea ? maxSize - tagArea : 0;
-  const uint64_t numUnits = (payloadBytes + unitBytes - 1) / unitBytes;
-
-  // Share equal layouts without merging different same-named declarations.
-  StructType* storage = StructType::get(
-      ctx,
-      {llvm::Type::getInt32Ty(ctx), llvm::ArrayType::get(unitTy, numUnits)});
-
-  // The storage must be able to hold every variant view
-  for (const auto& [name, variantStruct] : enumType.cachedVariantStructs) {
-    (void)name;
-    assert(dataLayout->getTypeAllocSize(storage) >=
-               dataLayout->getTypeAllocSize(variantStruct) &&
-           "enum storage smaller than a variant");
+  const auto descriptor =
+      sun::abi::EnumLayout::build(ctx, *dataLayout, payloads);
+  for (size_t i = 0; i < payloads.size(); ++i) {
+    enumType.cachedVariantStructs[enumType.getVariants()[i].name] =
+        descriptor.variants[i];
   }
-
-  enumType.cachedStorageType = storage;
-  return storage;
+  enumType.cachedStorageType = descriptor.storage;
+  return descriptor.storage;
 }
 
 StructType* LLVMTypeResolver::getEnumVariantStruct(
     const EnumType& enumType, const std::string& variantName) {
-  auto it = enumType.cachedVariantStructs.find(variantName);
-  if (it != enumType.cachedVariantStructs.end()) return it->second;
-
-  const sun::types::EnumVariant* variant = enumType.getVariant(variantName);
-  assert(variant && variant->hasPayload() &&
-         "variant struct requested for unknown or unit variant");
-
-  // Payloads must start at the enum's unit boundary (the storage struct is
-  // { i32 tag, [N x unit] }): a small payload placed in the tag's alignment
-  // padding would live outside the storage aggregate's fields and be lost
-  // by aggregate load/store moves. Pad the tag up to the enum-wide max
-  // payload alignment first.
-  Align maxAlign(4);
-  if (dataLayout) {
-    for (const auto& v : enumType.getVariants()) {
-      for (const auto& pt : v.payloadTypes) {
-        maxAlign = std::max(maxAlign, dataLayout->getABITypeAlign(resolve(pt)));
-      }
-    }
-  }
-  const uint64_t tagArea = alignTo(4, maxAlign.value());
-
-  std::vector<llvm::Type*> fields;
-  fields.push_back(llvm::Type::getInt32Ty(ctx));  // tag
-  if (tagArea > 4) {
-    fields.push_back(
-        llvm::ArrayType::get(llvm::Type::getInt8Ty(ctx), tagArea - 4));
-  }
-  for (const auto& payloadType : variant->payloadTypes) {
-    fields.push_back(payloadType->isReference() &&
-                             sun::types::unwrapRef(payloadType)->isInterface()
-                         ? sun::types::InterfaceType::getFatPointerType(ctx)
-                         : resolve(payloadType));
-  }
-  auto* variantStruct = StructType::get(ctx, fields);
-  enumType.cachedVariantStructs[variantName] = variantStruct;
-  return variantStruct;
+  getEnumStorageType(enumType);
+  const auto found = enumType.cachedVariantStructs.find(variantName);
+  assert(found != enumType.cachedVariantStructs.end() &&
+         "variant struct requested for unknown variant");
+  return found->second;
 }
 
 // -----------------------------------------------------------------------------
@@ -144,7 +104,9 @@ StructType* LLVMTypeResolver::getEnumVariantStruct(
 // -----------------------------------------------------------------------------
 
 llvm::Type* LLVMTypeResolver::resolve(const sun::types::TypePtr& type) {
-  if (!type) return nullptr;
+  if (!type) {
+    return nullptr;
+  }
   return resolve(*type);
 }
 
@@ -305,33 +267,16 @@ std::vector<llvm::Type*> LLVMTypeResolver::resolveParamTypes(
 
 llvm::FunctionType* LLVMTypeResolver::resolveFunctionSignature(
     const sun::types::FunctionType& funcType) {
-  // Build parameter types: first is hidden closure pointer, then user params
-  std::vector<llvm::Type*> paramTypes;
-  paramTypes.push_back(PointerType::getUnqual(ctx));  // Hidden closure ptr
-
-  for (const auto& param : funcType.getParamTypes()) {
-    paramTypes.push_back(resolve(param));
-  }
-
-  // Resolve return type
-  llvm::Type* returnType = resolveReturnType(funcType);
-
-  return llvm::FunctionType::get(returnType, paramTypes, false);
+  return sun::abi::CallDescriptor::sun(resolveReturnType(funcType),
+                                       resolveParamTypes(funcType), true)
+      .signature;
 }
 
 llvm::FunctionType* LLVMTypeResolver::resolveDirectFunctionSignature(
     const sun::types::FunctionType& funcType) {
-  // Build parameter types: NO hidden closure pointer, just user params
-  std::vector<llvm::Type*> paramTypes;
-
-  for (const auto& param : funcType.getParamTypes()) {
-    paramTypes.push_back(resolve(param));
-  }
-
-  // Resolve return type
-  llvm::Type* returnType = resolveReturnType(funcType);
-
-  return llvm::FunctionType::get(returnType, paramTypes, false);
+  return sun::abi::CallDescriptor::sun(resolveReturnType(funcType),
+                                       resolveParamTypes(funcType))
+      .signature;
 }
 
 // -----------------------------------------------------------------------------
@@ -354,18 +299,9 @@ std::vector<llvm::Type*> LLVMTypeResolver::resolveParamTypes(
 
 llvm::FunctionType* LLVMTypeResolver::resolveLambdaSignature(
     const LambdaType& lambdaType) {
-  // Build parameter types: first is hidden fat pointer, then user params
-  std::vector<llvm::Type*> paramTypes;
-  paramTypes.push_back(PointerType::getUnqual(ctx));  // Hidden fat ptr
-
-  for (const auto& param : lambdaType.getParamTypes()) {
-    paramTypes.push_back(resolve(param));
-  }
-
-  // Resolve return type
-  llvm::Type* returnType = resolveReturnType(lambdaType);
-
-  return llvm::FunctionType::get(returnType, paramTypes, false);
+  return sun::abi::CallDescriptor::sun(resolveReturnType(lambdaType),
+                                       resolveParamTypes(lambdaType), true)
+      .signature;
 }
 
 // -----------------------------------------------------------------------------
@@ -374,7 +310,9 @@ llvm::FunctionType* LLVMTypeResolver::resolveLambdaSignature(
 
 llvm::Type* LLVMTypeResolver::resolveForReturn(
     const sun::types::TypePtr& type) {
-  if (!type) return nullptr;
+  if (!type) {
+    return nullptr;
+  }
   return resolveForReturn(*type);
 }
 
@@ -382,8 +320,9 @@ llvm::Type* LLVMTypeResolver::resolveForReturn(const sun::types::Type& type) {
   // Return an interface borrow as a view value; its storage belongs to the
   // caller, so a view created during an upcast never escapes a callee frame.
   if (auto* reference = dynamic_cast<const sun::types::ReferenceType*>(&type)) {
-    if (reference->getReferencedType()->isInterface())
+    if (reference->getReferencedType()->isInterface()) {
       return sun::types::InterfaceType::getFatPointerType(ctx);
+    }
   }
   return resolve(type);
 }

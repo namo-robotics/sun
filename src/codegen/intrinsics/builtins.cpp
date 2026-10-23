@@ -209,7 +209,8 @@ const std::map<std::string, BuiltinEmitter>& builtinTable() {
       {"_simd_f32x8_sub",
        [](auto& g, const auto& e) { return g.codegenSimdF32(e, 8, "sub"); }},
       {"_simd_f32x8_mul_add",
-       [](auto& g, const auto& e) { return g.codegenSimdF32(e, 8, "mul_add"); }},
+       [](auto& g,
+          const auto& e) { return g.codegenSimdF32(e, 8, "mul_add"); }},
       {"_simd_f32x8_fma",
        [](auto& g, const auto& e) { return g.codegenSimdF32(e, 8, "fma"); }},
       {"_simd_f32x8_mul",
@@ -223,7 +224,8 @@ const std::map<std::string, BuiltinEmitter>& builtinTable() {
       {"_simd_f32x4_sub",
        [](auto& g, const auto& e) { return g.codegenSimdF32(e, 4, "sub"); }},
       {"_simd_f32x4_mul_add",
-       [](auto& g, const auto& e) { return g.codegenSimdF32(e, 4, "mul_add"); }},
+       [](auto& g,
+          const auto& e) { return g.codegenSimdF32(e, 4, "mul_add"); }},
       {"_simd_f32x4_fma",
        [](auto& g, const auto& e) { return g.codegenSimdF32(e, 4, "fma"); }},
       {"_simd_f32x4_mul",
@@ -231,13 +233,13 @@ const std::map<std::string, BuiltinEmitter>& builtinTable() {
       {"_mul_hi_u64",
        [](auto& g, const auto& e) { return g.codegenMulHiU64Intrinsic(e); }},
       {"_ctlz_u64",
-       [](auto& g, const auto& e) {
-         return g.codegenCountZerosIntrinsic(e, /*leading=*/true);
-       }},
+       [](auto& g,
+          const auto&
+              e) { return g.codegenCountZerosIntrinsic(e, /*leading=*/true); }},
       {"_cttz_u64",
-       [](auto& g, const auto& e) {
-         return g.codegenCountZerosIntrinsic(e, /*leading=*/false);
-       }},
+       [](auto& g,
+          const auto&
+              e) { return g.codegenCountZerosIntrinsic(e, /*leading=*/false); }},
       {"_bswap_u16",
        [](auto& g,
           const auto&
@@ -352,9 +354,10 @@ Value* IntrinsicsGenerator::codegenAssertCTargetIntrinsic(
     const CallExprAST& expr) {
   const auto& args = expr.getArgs();
   if (args.size() != 1 ||
-      args[0]->getType() != sun::ast::ASTNodeType::STRING_LITERAL)
+      args[0]->getType() != sun::ast::ASTNodeType::STRING_LITERAL) {
     sun::support::logAndThrowError(
         "_assert_c_target requires one string literal", expr.getLocation());
+  }
   const auto& expected =
       static_cast<const sun::ast::StringLiteralAST&>(*args[0]).getValue();
   const auto actual = module->getTargetTriple();
@@ -365,15 +368,18 @@ Value* IntrinsicsGenerator::codegenAssertCTargetIntrinsic(
     // platform. Keep architecture, vendor, environment, and layout checks.
     expectedTriple.setOSName("darwin");
     actualTriple.setOSName("darwin");
-    if (expectedTriple.getArchName() == "arm64")
+    if (expectedTriple.getArchName() == "arm64") {
       expectedTriple.setArchName("aarch64");
-    if (actualTriple.getArchName() == "arm64")
+    }
+    if (actualTriple.getArchName() == "arm64") {
       actualTriple.setArchName("aarch64");
+    }
   }
-  if (expectedTriple.str() != actualTriple.str())
+  if (expectedTriple.str() != actualTriple.str()) {
     sun::support::logAndThrowError("C binding target mismatch: expected '" +
                                        expected + "', actual '" + actual + "'",
                                    expr.getLocation());
+  }
   return ConstantInt::get(llvm::Type::getInt1Ty(ctx.getContext()), 0);
 }
 

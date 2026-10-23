@@ -32,7 +32,9 @@ std::unique_ptr<InterpolatedStringAST> InterpolatedStringParser::parseToAst(
   auto node =
       std::make_unique<InterpolatedStringAST>(content, std::move(segments));
   Position loc = start;
-  if (!filePath.empty()) loc.filePath = filePath;
+  if (!filePath.empty()) {
+    loc.filePath = filePath;
+  }
   loc.setEnd(end.line, end.column, end.offset);
   node->setLocation(std::move(loc));
   node->inheritSourceFile(sourceFile);
@@ -210,19 +212,29 @@ void InterpolatedStringParser::rebasePositions(ExprAST& expr, int lineBase,
                                                const std::string& filePath) {
   Position loc = expr.getLocation();
   // Fragment positions are 1-based relative to the fragment start
-  if (loc.line == 1) loc.column += colBase - 1;
+  if (loc.line == 1) {
+    loc.column += colBase - 1;
+  }
   loc.line += lineBase - 1;
   loc.offset += offsetBase;
-  if (loc.endOffset) *loc.endOffset += offsetBase;
+  if (loc.endOffset) {
+    *loc.endOffset += offsetBase;
+  }
   if (loc.endLine) {
-    if (*loc.endLine == 1 && loc.endColumn) *loc.endColumn += colBase - 1;
+    if (*loc.endLine == 1 && loc.endColumn) {
+      *loc.endColumn += colBase - 1;
+    }
     *loc.endLine += lineBase - 1;
   }
-  if (!filePath.empty()) loc.filePath = filePath;
+  if (!filePath.empty()) {
+    loc.filePath = filePath;
+  }
   expr.setLocation(std::move(loc));
 
   expr.forEachChildSlot([&](std::unique_ptr<ExprAST>& child) {
-    if (child) rebasePositions(*child, lineBase, colBase, offsetBase, filePath);
+    if (child) {
+      rebasePositions(*child, lineBase, colBase, offsetBase, filePath);
+    }
   });
 }
 
@@ -262,7 +274,9 @@ std::unique_ptr<sun::ast::BlockExprAST> InterpolatedStringParser::desugar(
   // is also the floor below which a reserve call would achieve nothing.
   size_t literalBytes = 0;
   for (const auto& segment : node.getSegments()) {
-    if (segment.isLiteral) literalBytes += segment.cookedText.size();
+    if (segment.isLiteral) {
+      literalBytes += segment.cookedText.size();
+    }
   }
   if (literalBytes > 16) {
     std::vector<std::unique_ptr<ExprAST>> reserveArgs;
@@ -285,7 +299,9 @@ std::unique_ptr<sun::ast::BlockExprAST> InterpolatedStringParser::desugar(
       appendArgs.push_back(makeStringLiteral(segment.cookedText, loc));
       methodName = "append_literal";  // Use specific method for literals
     } else {
-      if (!segment.expression) continue;
+      if (!segment.expression) {
+        continue;
+      }
       appendArgs.push_back(std::move(segment.expression));
       methodName = "append";  // Use overloaded append for expressions
     }

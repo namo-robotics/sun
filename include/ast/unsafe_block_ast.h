@@ -32,7 +32,9 @@ class UnsafeBlockAST : public ExprAST {
   /** Visits replaceable child expressions so tree passes can rewrite them in
    * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
-    if (body) body->forEachChildSlot(fn);
+    if (body) {
+      body->forEachChildSlot(fn);
+    }
   }
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {

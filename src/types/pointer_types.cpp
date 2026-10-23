@@ -5,7 +5,9 @@
 namespace sun::types {
 bool RawPointerType::equals(const Type& other) const {
   // Raw pointer is compatible with null
-  if (other.isNullPointer()) return true;
+  if (other.isNullPointer()) {
+    return true;
+  }
   // NOT compatible with static_ptr in either direction here: equals is used
   // symmetrically, and only one direction is sound. The static_ptr → raw_ptr
   // narrowing lives in the explicit conversion rules (isAssignableTo, the

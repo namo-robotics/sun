@@ -58,7 +58,9 @@ class InterpolatedStringAST : public ExprAST {
    * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     for (auto& segment : segments_) {
-      if (!segment.isLiteral) fn(segment.expression);
+      if (!segment.isLiteral) {
+        fn(segment.expression);
+      }
     }
   }
 

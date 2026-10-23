@@ -59,11 +59,14 @@ struct MoonImport {
    */
   std::string getAliasedModule(const std::string& original) const {
     auto it = moduleRemap.find(original);
-    if (it != moduleRemap.end()) return it->second;
+    if (it != moduleRemap.end()) {
+      return it->second;
+    }
     std::string best;
     for (const auto& [from, to] : moduleRemap) {
-      if (original.starts_with(from + ".") && from.size() > best.size())
+      if (original.starts_with(from + ".") && from.size() > best.size()) {
         best = from;
+      }
     }
     return best.empty() ? original
                         : moduleRemap.at(best) + original.substr(best.size());

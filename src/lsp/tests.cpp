@@ -26,7 +26,9 @@ void collect(const BlockExprAST& block, std::vector<std::string>& modulePath,
              const std::string& documentPath, const std::string& source,
              std::vector<TestItem>& out) {
   for (const auto& stmt : block.getBody()) {
-    if (!stmt) continue;
+    if (!stmt) {
+      continue;
+    }
     if (stmt->getType() == ASTNodeType::MODULE) {
       const auto& module = static_cast<const sun::ast::ModuleAST&>(*stmt);
       modulePath.push_back(module.getName());
@@ -34,9 +36,13 @@ void collect(const BlockExprAST& block, std::vector<std::string>& modulePath,
       modulePath.pop_back();
       continue;
     }
-    if (stmt->getType() != ASTNodeType::FUNCTION) continue;
+    if (stmt->getType() != ASTNodeType::FUNCTION) {
+      continue;
+    }
     const auto& function = static_cast<const sun::ast::FunctionAST&>(*stmt);
-    if (!function.isTest()) continue;
+    if (!function.isTest()) {
+      continue;
+    }
 
     const sun::support::Position& span = function.getLocation();
     if (!span.filePath || normalizePath(*span.filePath) != documentPath) {
@@ -45,7 +51,9 @@ void collect(const BlockExprAST& block, std::vector<std::string>& modulePath,
 
     const std::string& name = function.getProto().getName();
     TestItem item;
-    for (const auto& segment : modulePath) item.id += segment + ".";
+    for (const auto& segment : modulePath) {
+      item.id += segment + ".";
+    }
     item.id += name;
     item.label = name;
     item.location =
@@ -78,7 +86,9 @@ void collectSpans(const BlockExprAST& block,
                   std::vector<std::string>& modulePath,
                   std::vector<TestSpan>& out) {
   for (const auto& stmt : block.getBody()) {
-    if (!stmt) continue;
+    if (!stmt) {
+      continue;
+    }
     if (stmt->getType() == ASTNodeType::MODULE) {
       const auto& module = static_cast<const sun::ast::ModuleAST&>(*stmt);
       modulePath.push_back(module.getName());
@@ -86,15 +96,23 @@ void collectSpans(const BlockExprAST& block,
       modulePath.pop_back();
       continue;
     }
-    if (stmt->getType() != ASTNodeType::FUNCTION) continue;
+    if (stmt->getType() != ASTNodeType::FUNCTION) {
+      continue;
+    }
     const auto& function = static_cast<const sun::ast::FunctionAST&>(*stmt);
-    if (!function.isTest()) continue;
+    if (!function.isTest()) {
+      continue;
+    }
 
     const sun::support::Position& span = function.getLocation();
-    if (!span.filePath) continue;
+    if (!span.filePath) {
+      continue;
+    }
 
     TestSpan item;
-    for (const auto& segment : modulePath) item.id += segment + ".";
+    for (const auto& segment : modulePath) {
+      item.id += segment + ".";
+    }
     item.id += function.getProto().getName();
     item.label = function.getProto().getName();
     item.span = span;

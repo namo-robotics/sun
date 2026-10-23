@@ -42,7 +42,9 @@ class FunctionRegistry {
    */
   void snapshotPrecompiled(llvm::Module& module) {
     for (auto& f : module) {
-      if (!f.getName().empty()) precompiled_.insert(f.getName().str());
+      if (!f.getName().empty()) {
+        precompiled_.insert(f.getName().str());
+      }
     }
   }
 

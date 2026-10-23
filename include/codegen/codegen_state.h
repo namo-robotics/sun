@@ -110,8 +110,9 @@ class CodegenState {
                                 const std::string& role = "function") const {
     const auto& table = analysis->declarations;
     const auto& record = table.get(id);
-    if (role == "function" && record.name == "main" && !record.owner)
+    if (role == "function" && record.name == "main" && !record.owner) {
       return "main";
+    }
     return sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
                id, table)
         .symbol(role);
@@ -195,11 +196,15 @@ class CodegenState {
     /** Saves the current LLVM insertion point for later restoration. */
     explicit InsertPointGuard(CodegenState& s)
         : state(s), block(s.ctx.builder->GetInsertBlock()) {
-      if (block) point = s.ctx.builder->GetInsertPoint();
+      if (block) {
+        point = s.ctx.builder->GetInsertPoint();
+      }
     }
     /** Restores the previous LLVM instruction insertion point. */
     ~InsertPointGuard() {
-      if (block) state.ctx.builder->SetInsertPoint(block, point);
+      if (block) {
+        state.ctx.builder->SetInsertPoint(block, point);
+      }
     }
     /** Saves the current LLVM insertion point for later restoration. */
     InsertPointGuard(const InsertPointGuard&) = delete;

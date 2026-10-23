@@ -161,11 +161,17 @@ Value* IntrinsicsGenerator::codegenSocket(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* domain = codegen(*expr.getArgs()[0]);
-  if (!domain) return nullptr;
+  if (!domain) {
+    return nullptr;
+  }
   Value* type = codegen(*expr.getArgs()[1]);
-  if (!type) return nullptr;
+  if (!type) {
+    return nullptr;
+  }
   Value* protocol = codegen(*expr.getArgs()[2]);
-  if (!protocol) return nullptr;
+  if (!protocol) {
+    return nullptr;
+  }
 
   if (!domain->getType()->isIntegerTy(32)) {
     domain =
@@ -195,11 +201,17 @@ Value* IntrinsicsGenerator::codegenBind(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* fd = codegen(*expr.getArgs()[0]);
-  if (!fd) return nullptr;
+  if (!fd) {
+    return nullptr;
+  }
   Value* addr = codegen(*expr.getArgs()[1]);
-  if (!addr) return nullptr;
+  if (!addr) {
+    return nullptr;
+  }
   Value* addrlen = codegen(*expr.getArgs()[2]);
-  if (!addrlen) return nullptr;
+  if (!addrlen) {
+    return nullptr;
+  }
 
   if (!fd->getType()->isIntegerTy(32)) {
     fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
@@ -222,9 +234,13 @@ Value* IntrinsicsGenerator::codegenListen(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* fd = codegen(*expr.getArgs()[0]);
-  if (!fd) return nullptr;
+  if (!fd) {
+    return nullptr;
+  }
   Value* backlog = codegen(*expr.getArgs()[1]);
-  if (!backlog) return nullptr;
+  if (!backlog) {
+    return nullptr;
+  }
 
   if (!fd->getType()->isIntegerTy(32)) {
     fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
@@ -249,11 +265,17 @@ Value* IntrinsicsGenerator::codegenAccept(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* fd = codegen(*expr.getArgs()[0]);
-  if (!fd) return nullptr;
+  if (!fd) {
+    return nullptr;
+  }
   Value* addr = codegen(*expr.getArgs()[1]);
-  if (!addr) return nullptr;
+  if (!addr) {
+    return nullptr;
+  }
   Value* addrlen = codegen(*expr.getArgs()[2]);
-  if (!addrlen) return nullptr;
+  if (!addrlen) {
+    return nullptr;
+  }
 
   if (!fd->getType()->isIntegerTy(32)) {
     fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
@@ -274,11 +296,17 @@ Value* IntrinsicsGenerator::codegenConnect(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* fd = codegen(*expr.getArgs()[0]);
-  if (!fd) return nullptr;
+  if (!fd) {
+    return nullptr;
+  }
   Value* addr = codegen(*expr.getArgs()[1]);
-  if (!addr) return nullptr;
+  if (!addr) {
+    return nullptr;
+  }
   Value* addrlen = codegen(*expr.getArgs()[2]);
-  if (!addrlen) return nullptr;
+  if (!addrlen) {
+    return nullptr;
+  }
 
   if (!fd->getType()->isIntegerTy(32)) {
     fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
@@ -303,13 +331,21 @@ Value* IntrinsicsGenerator::codegenSend(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* fd = codegen(*expr.getArgs()[0]);
-  if (!fd) return nullptr;
+  if (!fd) {
+    return nullptr;
+  }
   Value* buf = codegen(*expr.getArgs()[1]);
-  if (!buf) return nullptr;
+  if (!buf) {
+    return nullptr;
+  }
   Value* len = codegen(*expr.getArgs()[2]);
-  if (!len) return nullptr;
+  if (!len) {
+    return nullptr;
+  }
   Value* flags = codegen(*expr.getArgs()[3]);
-  if (!flags) return nullptr;
+  if (!flags) {
+    return nullptr;
+  }
 
   if (!fd->getType()->isIntegerTy(32)) {
     fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
@@ -337,13 +373,21 @@ Value* IntrinsicsGenerator::codegenRecv(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* fd = codegen(*expr.getArgs()[0]);
-  if (!fd) return nullptr;
+  if (!fd) {
+    return nullptr;
+  }
   Value* buf = codegen(*expr.getArgs()[1]);
-  if (!buf) return nullptr;
+  if (!buf) {
+    return nullptr;
+  }
   Value* len = codegen(*expr.getArgs()[2]);
-  if (!len) return nullptr;
+  if (!len) {
+    return nullptr;
+  }
   Value* flags = codegen(*expr.getArgs()[3]);
-  if (!flags) return nullptr;
+  if (!flags) {
+    return nullptr;
+  }
 
   if (!fd->getType()->isIntegerTy(32)) {
     fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
@@ -369,9 +413,13 @@ Value* IntrinsicsGenerator::codegenShutdown(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* fd = codegen(*expr.getArgs()[0]);
-  if (!fd) return nullptr;
+  if (!fd) {
+    return nullptr;
+  }
   Value* how = codegen(*expr.getArgs()[1]);
-  if (!how) return nullptr;
+  if (!how) {
+    return nullptr;
+  }
 
   if (!fd->getType()->isIntegerTy(32)) {
     fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
@@ -396,15 +444,25 @@ Value* IntrinsicsGenerator::codegenSetSockOpt(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* fd = codegen(*expr.getArgs()[0]);
-  if (!fd) return nullptr;
+  if (!fd) {
+    return nullptr;
+  }
   Value* level = codegen(*expr.getArgs()[1]);
-  if (!level) return nullptr;
+  if (!level) {
+    return nullptr;
+  }
   Value* optname = codegen(*expr.getArgs()[2]);
-  if (!optname) return nullptr;
+  if (!optname) {
+    return nullptr;
+  }
   Value* optval = codegen(*expr.getArgs()[3]);
-  if (!optval) return nullptr;
+  if (!optval) {
+    return nullptr;
+  }
   Value* optlen = codegen(*expr.getArgs()[4]);
-  if (!optlen) return nullptr;
+  if (!optlen) {
+    return nullptr;
+  }
 
   if (!fd->getType()->isIntegerTy(32)) {
     fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
@@ -439,15 +497,25 @@ Value* IntrinsicsGenerator::codegenGetSockOpt(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* fd = codegen(*expr.getArgs()[0]);
-  if (!fd) return nullptr;
+  if (!fd) {
+    return nullptr;
+  }
   Value* level = codegen(*expr.getArgs()[1]);
-  if (!level) return nullptr;
+  if (!level) {
+    return nullptr;
+  }
   Value* optname = codegen(*expr.getArgs()[2]);
-  if (!optname) return nullptr;
+  if (!optname) {
+    return nullptr;
+  }
   Value* optval = codegen(*expr.getArgs()[3]);
-  if (!optval) return nullptr;
+  if (!optval) {
+    return nullptr;
+  }
   Value* optlen = codegen(*expr.getArgs()[4]);
-  if (!optlen) return nullptr;
+  if (!optlen) {
+    return nullptr;
+  }
 
   if (!fd->getType()->isIntegerTy(32)) {
     fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
@@ -522,7 +590,9 @@ static Function* getOrCreateSockaddrCallHelper(llvm::Module* module,
                                                const char* wrapperName,
                                                llvm::FunctionCallee callee) {
   Function* func = module->getFunction(wrapperName);
-  if (func) return func;
+  if (func) {
+    return func;
+  }
 
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
   llvm::FunctionType* funcTy =
@@ -572,7 +642,9 @@ static Function* getOrCreateConnectIPv4Helper(llvm::Module* module,
 static Function* getOrCreateAcceptFdHelper(llvm::Module* module,
                                            LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_accept_fd");
-  if (func) return func;
+  if (func) {
+    return func;
+  }
 
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
@@ -601,11 +673,17 @@ Value* IntrinsicsGenerator::codegenBindIPv4(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* fd = codegen(*expr.getArgs()[0]);
-  if (!fd) return nullptr;
+  if (!fd) {
+    return nullptr;
+  }
   Value* ip = codegen(*expr.getArgs()[1]);
-  if (!ip) return nullptr;
+  if (!ip) {
+    return nullptr;
+  }
   Value* port = codegen(*expr.getArgs()[2]);
-  if (!port) return nullptr;
+  if (!port) {
+    return nullptr;
+  }
 
   if (!fd->getType()->isIntegerTy(32)) {
     fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
@@ -632,11 +710,17 @@ Value* IntrinsicsGenerator::codegenConnectIPv4(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* fd = codegen(*expr.getArgs()[0]);
-  if (!fd) return nullptr;
+  if (!fd) {
+    return nullptr;
+  }
   Value* ip = codegen(*expr.getArgs()[1]);
-  if (!ip) return nullptr;
+  if (!ip) {
+    return nullptr;
+  }
   Value* port = codegen(*expr.getArgs()[2]);
-  if (!port) return nullptr;
+  if (!port) {
+    return nullptr;
+  }
 
   if (!fd->getType()->isIntegerTy(32)) {
     fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
@@ -662,7 +746,9 @@ Value* IntrinsicsGenerator::codegenAcceptFd(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* fd = codegen(*expr.getArgs()[0]);
-  if (!fd) return nullptr;
+  if (!fd) {
+    return nullptr;
+  }
 
   if (!fd->getType()->isIntegerTy(32)) {
     fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
@@ -704,7 +790,9 @@ static void extractSockaddrInParts(IRBuilder<>& builder, LLVMContext& llvmCtx,
 static Function* getOrCreateSendToIPv4Helper(llvm::Module* module,
                                              LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_sendto_ipv4");
-  if (func) return func;
+  if (func) {
+    return func;
+  }
 
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
   auto* i64Ty = llvm::Type::getInt64Ty(llvmCtx);
@@ -742,7 +830,9 @@ static Function* getOrCreateSendToIPv4Helper(llvm::Module* module,
 static Function* getOrCreateRecvFromIPv4Helper(llvm::Module* module,
                                                LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_recvfrom_ipv4");
-  if (func) return func;
+  if (func) {
+    return func;
+  }
 
   auto* i8Ty = llvm::Type::getInt8Ty(llvmCtx);
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
@@ -787,7 +877,9 @@ static Function* getOrCreateRecvFromIPv4Helper(llvm::Module* module,
 static Function* getOrCreateGetSockNameIPv4Helper(llvm::Module* module,
                                                   LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_getsockname_ipv4");
-  if (func) return func;
+  if (func) {
+    return func;
+  }
 
   auto* i8Ty = llvm::Type::getInt8Ty(llvmCtx);
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
@@ -834,17 +926,29 @@ Value* IntrinsicsGenerator::codegenSendToIPv4(const CallExprAST& expr) {
   auto* i64Ty = llvm::Type::getInt64Ty(llvmCtx);
 
   Value* fd = codegen(*expr.getArgs()[0]);
-  if (!fd) return nullptr;
+  if (!fd) {
+    return nullptr;
+  }
   Value* buf = codegen(*expr.getArgs()[1]);
-  if (!buf) return nullptr;
+  if (!buf) {
+    return nullptr;
+  }
   Value* len = codegen(*expr.getArgs()[2]);
-  if (!len) return nullptr;
+  if (!len) {
+    return nullptr;
+  }
   Value* flags = codegen(*expr.getArgs()[3]);
-  if (!flags) return nullptr;
+  if (!flags) {
+    return nullptr;
+  }
   Value* ip = codegen(*expr.getArgs()[4]);
-  if (!ip) return nullptr;
+  if (!ip) {
+    return nullptr;
+  }
   Value* port = codegen(*expr.getArgs()[5]);
-  if (!port) return nullptr;
+  if (!port) {
+    return nullptr;
+  }
 
   if (!fd->getType()->isIntegerTy(32)) {
     fd = ctx.builder->CreateSExtOrTrunc(fd, i32Ty);
@@ -882,17 +986,29 @@ Value* IntrinsicsGenerator::codegenRecvFromIPv4(const CallExprAST& expr) {
   auto* i64Ty = llvm::Type::getInt64Ty(llvmCtx);
 
   Value* fd = codegen(*expr.getArgs()[0]);
-  if (!fd) return nullptr;
+  if (!fd) {
+    return nullptr;
+  }
   Value* buf = codegen(*expr.getArgs()[1]);
-  if (!buf) return nullptr;
+  if (!buf) {
+    return nullptr;
+  }
   Value* len = codegen(*expr.getArgs()[2]);
-  if (!len) return nullptr;
+  if (!len) {
+    return nullptr;
+  }
   Value* flags = codegen(*expr.getArgs()[3]);
-  if (!flags) return nullptr;
+  if (!flags) {
+    return nullptr;
+  }
   Value* outIp = codegen(*expr.getArgs()[4]);
-  if (!outIp) return nullptr;
+  if (!outIp) {
+    return nullptr;
+  }
   Value* outPort = codegen(*expr.getArgs()[5]);
-  if (!outPort) return nullptr;
+  if (!outPort) {
+    return nullptr;
+  }
 
   if (!fd->getType()->isIntegerTy(32)) {
     fd = ctx.builder->CreateSExtOrTrunc(fd, i32Ty);
@@ -922,11 +1038,17 @@ Value* IntrinsicsGenerator::codegenGetSockNameIPv4(const CallExprAST& expr) {
   LLVMContext& llvmCtx = ctx.getContext();
 
   Value* fd = codegen(*expr.getArgs()[0]);
-  if (!fd) return nullptr;
+  if (!fd) {
+    return nullptr;
+  }
   Value* outIp = codegen(*expr.getArgs()[1]);
-  if (!outIp) return nullptr;
+  if (!outIp) {
+    return nullptr;
+  }
   Value* outPort = codegen(*expr.getArgs()[2]);
-  if (!outPort) return nullptr;
+  if (!outPort) {
+    return nullptr;
+  }
 
   if (!fd->getType()->isIntegerTy(32)) {
     fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));

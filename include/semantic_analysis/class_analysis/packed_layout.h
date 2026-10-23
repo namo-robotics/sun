@@ -57,11 +57,15 @@ inline bool isFieldAccess(const ExprAST& expr,
   while (cur && cur->getType() == sun::ast::ASTNodeType::MEMBER_ACCESS) {
     const auto& access = static_cast<const sun::ast::MemberAccessAST&>(*cur);
     const ExprAST* object = access.getObject();
-    if (!object) break;
+    if (!object) {
+      break;
+    }
 
     if (const sun::types::ClassType* owner = accessedClass(*object)) {
       if (owner->isPacked()) {
-        if (ownerName) *ownerName = owner->getDisplayName();
+        if (ownerName) {
+          *ownerName = owner->getDisplayName();
+        }
         return true;
       }
     }
@@ -75,7 +79,9 @@ inline bool isFieldAccess(const ExprAST& expr,
  */
 inline llvm::Align fieldAlign(const sun::types::ClassType* owner,
                               llvm::Type* fieldTy, const llvm::DataLayout& DL) {
-  if (owner && owner->isPacked()) return llvm::Align(1);
+  if (owner && owner->isPacked()) {
+    return llvm::Align(1);
+  }
   return DL.getABITypeAlign(fieldTy);
 }
 
@@ -84,7 +90,9 @@ inline llvm::Align fieldAlign(const sun::types::ClassType* owner,
  */
 inline llvm::Align lvalueAlign(const ExprAST& target, llvm::Type* slotTy,
                                const llvm::DataLayout& DL) {
-  if (isFieldAccess(target)) return llvm::Align(1);
+  if (isFieldAccess(target)) {
+    return llvm::Align(1);
+  }
   return DL.getABITypeAlign(slotTy);
 }
 
@@ -95,7 +103,9 @@ inline llvm::Align lvalueAlign(const ExprAST& target, llvm::Type* slotTy,
  * interior padding the user asked to remove.
  */
 inline std::string rejectFieldType(const sun::types::TypePtr& fieldType) {
-  if (!fieldType) return {};
+  if (!fieldType) {
+    return {};
+  }
   if (fieldType->isArray() &&
       static_cast<const sun::types::ArrayType*>(fieldType.get())->isUnsized()) {
     return "has unsized array type. An unsized array is a view of storage "

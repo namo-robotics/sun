@@ -37,9 +37,10 @@ thread_local std::set<std::string> activeDependencies;
  */
 void runGit(const std::vector<std::string>& arguments) {
   auto program = llvm::sys::findProgramByName("git");
-  if (!program)
+  if (!program) {
     sun::support::logAndThrowError(
         "Git source entrypoints require git on PATH");
+  }
   std::vector<std::string> storage = {*program,
                                       "-c",
                                       "core.hooksPath=/dev/null",
@@ -66,10 +67,13 @@ void runGit(const std::vector<std::string>& arguments) {
 /** Selects the source cache without sharing compiled outputs across targets. */
 std::filesystem::path cacheDirectory() {
   if (const char* cache = std::getenv("SUN_GIT_CACHE")) {
-    if (*cache) return std::filesystem::absolute(cache);
+    if (*cache) {
+      return std::filesystem::absolute(cache);
+    }
   }
-  if (const char* home = std::getenv("HOME"))
+  if (const char* home = std::getenv("HOME")) {
     return std::filesystem::path(home) / ".sun/cache/git";
+  }
   sun::support::logAndThrowError(
       "set SUN_GIT_CACHE or HOME to cache Git sources");
 }
@@ -102,8 +106,9 @@ void validateGitSource(const ConfigEntrypoint& entry) {
     sun::support::logAndThrowError(
         "Git entrypoint 'version' must be a commit ID, branch, or tag name");
   }
-  if (entry.type != ConfigEntrypoint::Type::Library)
+  if (entry.type != ConfigEntrypoint::Type::Library) {
     sun::support::logAndThrowError("Git entrypoints must have type 'library'");
+  }
   const std::filesystem::path path(entry.path);
   if (path.empty() || path.is_absolute() ||
       std::any_of(path.begin(), path.end(),
@@ -149,8 +154,9 @@ std::string resolveGitEntrypoint(const ConfigEntrypoint& entry, bool refresh) {
       std::ofstream ready(pointer);
       ready << staging.filename().string() << '\n';
       ready.close();
-      if (!ready)
+      if (!ready) {
         sun::support::logAndThrowError("could not write Git cache marker");
+      }
       // Publish only complete snapshots; concurrent readers keep their old
       // paths.
       fs::rename(pointer, cache / "current");
@@ -164,16 +170,19 @@ std::string resolveGitEntrypoint(const ConfigEntrypoint& entry, bool refresh) {
   const auto source = fs::weakly_canonical(checkout / entry.path);
   const auto relative = source.lexically_relative(fs::canonical(checkout));
   if (relative.empty() || *relative.begin() == ".." ||
-      !fs::is_regular_file(source))
+      !fs::is_regular_file(source)) {
     sun::support::logAndThrowError(
         "Git entrypoint is missing or escapes its checkout: " + entry.path);
+  }
   return source.string();
 }
 GitDependencyBuildScope::GitDependencyBuildScope(bool debugInfo, bool optimize,
                                                  bool forceRebuild,
                                                  bool refresh)
     : previous_(dependencyOptions), previousRefresh_(refreshDependencies) {
-  if (buildDepth++ == 0) refreshedDependencies.clear();
+  if (buildDepth++ == 0) {
+    refreshedDependencies.clear();
+  }
   dependencyOptions.debugInfo = debugInfo;
   dependencyOptions.optimize = optimize;
   dependencyOptions.forceRebuild = forceRebuild;
@@ -197,15 +206,18 @@ class DependencyBuildGuard {
  public:
   /** Registers the selection before any recursive build or lock acquisition. */
   explicit DependencyBuildGuard(std::string key) : key_(std::move(key)) {
-    if (activeDependencies.count(key_))
+    if (activeDependencies.count(key_)) {
       sun::support::logAndThrowError("cyclic Git library dependency");
+    }
     if (activeDependencies.empty()) {
       const auto cache = cacheDirectory();
       std::filesystem::create_directories(cache);
       lock_ = open((cache / ".build.lock").c_str(),
                    O_CREAT | O_RDWR | O_CLOEXEC | O_NOFOLLOW, 0600);
       if (lock_ < 0 || flock(lock_, LOCK_EX) != 0) {
-        if (lock_ >= 0) close(lock_);
+        if (lock_ >= 0) {
+          close(lock_);
+        }
         sun::support::logAndThrowError("could not lock Git dependency cache");
       }
     }
@@ -214,7 +226,9 @@ class DependencyBuildGuard {
   /** Releases cycle membership and the outer graph lock on every exit path. */
   ~DependencyBuildGuard() {
     activeDependencies.erase(key_);
-    if (lock_ >= 0) close(lock_);
+    if (lock_ >= 0) {
+      close(lock_);
+    }
   }
 };
 
@@ -256,65 +270,82 @@ std::filesystem::path resolveGitDependency(const SunConfig& consumer,
   const bool refresh =
       refreshDependencies && !refreshedDependencies.count(repository);
   const fs::path inputFile = resolveGitEntrypoint(source, refresh);
-  if (refresh) refreshedDependencies.insert(repository);
+  if (refresh) {
+    refreshedDependencies.insert(repository);
+  }
   // Direct source builds use the consumer's settings without loading the
   // repository's project config; config selections use library-owned defaults.
   auto config =
       direct ? consumer : SunConfig::loadFile(inputFile, consumer.targetTriple);
   // Keep the consumer and its dependencies on the same local libraries.
   std::vector<std::string> consumerPaths;
-  for (const auto& path : consumer.sunPath)
+  for (const auto& path : consumer.sunPath) {
     consumerPaths.push_back(
         ManifestProcessor::expandPathVariables(path, &consumer));
-  if (direct) config.sunPath.clear();
+  }
+  if (direct) {
+    config.sunPath.clear();
+  }
   config.sunPath.insert(config.sunPath.begin(), consumerPaths.begin(),
                         consumerPaths.end());
   ConfigEntrypoint directEntry;
   directEntry.path = inputFile.string();
   directEntry.type = ConfigEntrypoint::Type::Library;
   const ConfigEntrypoint* selected = direct ? &directEntry : nullptr;
-  if (!direct)
+  if (!direct) {
     for (const auto& entry : config.entrypoints) {
-      if (!dep.entrypoint.empty() && entry.name != dep.entrypoint) continue;
-      if (entry.type != ConfigEntrypoint::Type::Library) {
-        if (!dep.entrypoint.empty())
-          sun::support::logAndThrowError(
-              "Git dependency entrypoint must be a library: " + dep.entrypoint);
+      if (!dep.entrypoint.empty() && entry.name != dep.entrypoint) {
         continue;
       }
-      if (selected)
+      if (entry.type != ConfigEntrypoint::Type::Library) {
+        if (!dep.entrypoint.empty()) {
+          sun::support::logAndThrowError(
+              "Git dependency entrypoint must be a library: " + dep.entrypoint);
+        }
+        continue;
+      }
+      if (selected) {
         sun::support::logAndThrowError("ambiguous Git library dependency " +
                                        name + "; specify entrypoint");
+      }
       selected = &entry;
     }
-  if (!selected)
+  }
+  if (!selected) {
     sun::support::logAndThrowError("Git dependency " + name +
                                    " has no matching library entrypoint");
-  if (!selected->git.empty())
+  }
+  if (!selected->git.empty()) {
     sun::support::logAndThrowError(
         "selected library must belong to its dependency repository");
+  }
 
   SourceConfigScope configScope(config);
   const fs::path entrypoint = fs::weakly_canonical(
       ManifestProcessor::expandPathVariables(selected->path, &config));
   auto checkout = inputFile.parent_path();
   while (!fs::is_directory(checkout / ".sun-git-source")) {
-    if (checkout == checkout.parent_path())
+    if (checkout == checkout.parent_path()) {
       sun::support::logAndThrowError("missing Git checkout boundary");
+    }
     checkout = checkout.parent_path();
   }
   const auto relative = entrypoint.lexically_relative(checkout);
   if (relative.empty() || *relative.begin() == ".." ||
-      !fs::is_regular_file(entrypoint))
+      !fs::is_regular_file(entrypoint)) {
     sun::support::logAndThrowError(
         "dependency library is missing or escapes its checkout");
+  }
   fs::path filename = selected->outputName.empty()
                           ? entrypoint.stem()
                           : fs::path(selected->outputName).filename();
-  if (filename.extension() != ".moon") filename += ".moon";
-  if (filename.string().find('$') != std::string::npos)
+  if (filename.extension() != ".moon") {
+    filename += ".moon";
+  }
+  if (filename.string().find('$') != std::string::npos) {
     sun::support::logAndThrowError(
         "dependency library output filename must be fixed");
+  }
   const auto settings =
       std::string(dependencyOptions.debugInfo ? "debug" : "release") +
       (dependencyOptions.optimize ? "-optimized" : "-unoptimized");

@@ -13,12 +13,14 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "ast/block_expr_ast.h"
 #include "ast/manifest_ast.h"
 #include "driver/sun_config.h"
 #include "moon_bundling/moon_import.h"
+#include "moon_bundling/native_archive.h"
 
 /** Coordinates compilation, dependency loading, linking, and program execution.
  */
@@ -26,11 +28,12 @@ namespace sun::driver {
 
 /** Dependencies and settings after manifest paths and targets are resolved. */
 struct ResolvedManifest {
+  std::optional<std::string> libraryId;
   std::vector<std::string> sunFiles;  // resolved .sun paths (manifest order)
   std::vector<sun::moon_bundling::MoonImport>
-      moonImports;                        // resolved .moon imports
-  std::vector<std::string> protoFiles;    // resolved .proto paths
-  std::vector<std::string> archiveFiles;  // resolved native .a archives
+      moonImports;                      // resolved .moon imports
+  std::vector<std::string> protoFiles;  // resolved .proto paths
+  std::vector<sun::moon_bundling::NativeArchive> nativeArchives;
   // resolved `test_files:` paths; merged into the source set only when
   // compiling the test binary, never for production builds
   std::vector<std::string> testSunFiles;

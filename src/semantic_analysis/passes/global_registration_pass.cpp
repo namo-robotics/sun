@@ -11,8 +11,9 @@ void GlobalRegistrationPass::run(const sun::ast::BlockExprAST& block) const {
       block, [&](const sun::ast::VariableCreationAST& global) {
         // A library's globals and C globals have no initializer to analyze
         if (global.isPrecompiled() || global.isCExtern() ||
-            !global.hasQualifiedName() || !global.getDeclarationId())
+            !global.hasQualifiedName() || !global.getDeclarationId()) {
           return;
+        }
         declarations_.registerGlobal(global.getQualifiedName(),
                                      global.getDeclarationId());
       });

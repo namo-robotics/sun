@@ -53,8 +53,9 @@ SunConfig loadConfigInput(const std::string& input,
     sun::support::SunPath::addSearchPath(path);
     LibraryCache::instance().addSearchPath(path);
   }
-  for (const auto& [name, value] : config.pathVariables)
+  for (const auto& [name, value] : config.pathVariables) {
     sun::driver::ManifestProcessor::setDefaultPathVariable(name, value);
+  }
   std::set<std::pair<std::string, std::string>> refreshed;
   for (auto& entry : config.entrypoints) {
     entry.path = sun::driver::ManifestProcessor::expandPathVariables(entry.path,
@@ -98,6 +99,10 @@ void applyBuildRunSettings(const BuildRunOptions& options) {
 
 /** Prints an early-exit message to its selected output stream. */
 int reportEarlyExit(const EarlyExit& earlyExit) {
+  if (earlyExit.stream == EarlyExit::Stream::RawOut) {
+    llvm::outs() << earlyExit.text;
+    return earlyExit.exitCode;
+  }
   auto& stream =
       earlyExit.stream == EarlyExit::Stream::Out ? llvm::outs() : llvm::errs();
   const std::string prefix = sun::support::messagePrefix(
@@ -106,7 +111,9 @@ int reportEarlyExit(const EarlyExit& earlyExit) {
   while (start < earlyExit.text.size()) {
     size_t end = earlyExit.text.find('\n', start);
     stream << prefix << earlyExit.text.substr(start, end - start) << "\n";
-    if (end == std::string::npos) break;
+    if (end == std::string::npos) {
+      break;
+    }
     start = end + 1;
   }
   return earlyExit.exitCode;

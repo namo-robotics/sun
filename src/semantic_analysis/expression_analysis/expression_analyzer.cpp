@@ -50,12 +50,15 @@ using sun::types::unwrapRef;
 
 void ExpressionAnalyzer::rejectBorrowOfByValueCapture(const ExprAST& target,
                                                       const Position& loc) {
-  if (target.getType() != ASTNodeType::VARIABLE_REFERENCE) return;
+  if (target.getType() != ASTNodeType::VARIABLE_REFERENCE) {
+    return;
+  }
   const auto& varRef =
       static_cast<const sun::ast::VariableReferenceAST&>(target);
   VariableInfo* varInfo = ctx_.currentScope().lookupVariable(varRef.getName());
-  if (!varInfo || varInfo->captureKind != sun::ast::CaptureKind::ByValue)
+  if (!varInfo || varInfo->captureKind != sun::ast::CaptureKind::ByValue) {
     return;
+  }
   const std::string& name = varRef.getName();
   logAndThrowError(
       "Cannot borrow '" + name +
@@ -161,8 +164,12 @@ void ExpressionAnalyzer::analyzeStructLiteral(
   // is exactly the class of bug this syntax exists to prevent.
   std::string missing;
   for (const auto& classField : classType->getFields()) {
-    if (seen.count(classField.name)) continue;
-    if (!missing.empty()) missing += ", ";
+    if (seen.count(classField.name)) {
+      continue;
+    }
+    if (!missing.empty()) {
+      missing += ", ";
+    }
     missing += classField.name;
   }
   if (!missing.empty()) {
@@ -177,7 +184,9 @@ void ExpressionAnalyzer::analyzeStructLiteral(
 void ExpressionAnalyzer::checkExternVariableAccessAllowed(
     const VariableInfo& info, const std::string& displayName,
     const Position& loc) const {
-  if (!info.isCExtern || ctx_.isInUnsafeBlock()) return;
+  if (!info.isCExtern || ctx_.isInUnsafeBlock()) {
+    return;
+  }
   logAndThrowError(
       "Accessing extern variable '" + displayName +
           "' requires an unsafe block: C-owned storage is outside the borrow "
@@ -189,18 +198,24 @@ void ExpressionAnalyzer::checkExternVariableAccessAllowed(
 void ExpressionAnalyzer::maybeResolveBoundMethodRef(
     MemberAccessAST& memberAccess, TypePtr expectedType) {
   TypePtr objectType = unwrapRef(memberAccess.getObject()->getResolvedType());
-  if (!objectType) return;
+  if (!objectType) {
+    return;
+  }
 
   // Unwrap raw_ptr<Class> / static_ptr<Class> (mirrors member resolution)
   if (objectType->isRawPointer()) {
     TypePtr pointee = static_cast<sun::types::RawPointerType*>(objectType.get())
                           ->getPointeeType();
-    if (pointee && pointee->isClass()) objectType = pointee;
+    if (pointee && pointee->isClass()) {
+      objectType = pointee;
+    }
   } else if (objectType->isStaticPointer()) {
     TypePtr pointee =
         static_cast<sun::types::StaticPointerType*>(objectType.get())
             ->getPointeeType();
-    if (pointee && pointee->isClass()) objectType = pointee;
+    if (pointee && pointee->isClass()) {
+      objectType = pointee;
+    }
   }
 
   const std::string& memberName = memberAccess.getMemberName();
@@ -218,17 +233,24 @@ void ExpressionAnalyzer::maybeResolveBoundMethodRef(
     return;
   }
 
-  if (!objectType->isClass()) return;
+  if (!objectType->isClass()) {
+    return;
+  }
   const auto* classType =
       static_cast<const sun::types::ClassType*>(objectType.get());
-  if (classType->getField(memberName)) return;
+  if (classType->getField(memberName)) {
+    return;
+  }
 
   std::vector<const ClassMethod*> overloads;
   for (const auto& m : classType->getMethods()) {
-    if (m.name == memberName) overloads.push_back(&m);
+    if (m.name == memberName) {
+      overloads.push_back(&m);
+    }
   }
-  if (overloads.empty())
+  if (overloads.empty()) {
     return;  // not a method (member resolution already checked this)
+  }
 
   const ClassMethod* chosen = nullptr;
   if (overloads.size() == 1) {
@@ -245,7 +267,9 @@ void ExpressionAnalyzer::maybeResolveBoundMethodRef(
         matches.push_back(m);
       }
     }
-    if (matches.size() == 1) chosen = matches[0];
+    if (matches.size() == 1) {
+      chosen = matches[0];
+    }
   }
 
   if (!chosen) {

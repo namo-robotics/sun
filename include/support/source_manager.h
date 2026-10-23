@@ -57,7 +57,9 @@ class SourceManager {
   std::optional<std::string> getSource(const std::string& filePath) const {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = sources_.find(filePath);
-    if (it == sources_.end()) return std::nullopt;
+    if (it == sources_.end()) {
+      return std::nullopt;
+    }
     return it->second;
   }
 
@@ -68,21 +70,31 @@ class SourceManager {
   std::string getLine(const std::string& filePath, int lineNum) const {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = sources_.find(filePath);
-    if (it == sources_.end()) return "";
+    if (it == sources_.end()) {
+      return "";
+    }
 
     auto offsetIt = lineOffsets_.find(filePath);
-    if (offsetIt == lineOffsets_.end()) return "";
+    if (offsetIt == lineOffsets_.end()) {
+      return "";
+    }
 
     const auto& offsets = offsetIt->second;
-    if (lineNum < 1 || lineNum > static_cast<int>(offsets.size())) return "";
+    if (lineNum < 1 || lineNum > static_cast<int>(offsets.size())) {
+      return "";
+    }
 
     size_t start = offsets[lineNum - 1];
     size_t end;
     if (lineNum < static_cast<int>(offsets.size())) {
       end = offsets[lineNum];
       // Skip newline character at end of line
-      if (end > start && it->second[end - 1] == '\n') end--;
-      if (end > start && it->second[end - 1] == '\r') end--;
+      if (end > start && it->second[end - 1] == '\n') {
+        end--;
+      }
+      if (end > start && it->second[end - 1] == '\r') {
+        end--;
+      }
     } else {
       end = it->second.size();
     }
@@ -146,7 +158,9 @@ class SourceManager {
    */
   void computeLineOffsets(const std::string& filePath) {
     auto it = sources_.find(filePath);
-    if (it == sources_.end()) return;
+    if (it == sources_.end()) {
+      return;
+    }
 
     std::vector<size_t> offsets;
     offsets.push_back(0);  // Line 1 starts at offset 0

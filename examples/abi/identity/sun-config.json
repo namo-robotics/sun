@@ -1,0 +1,33 @@
+{
+  "root": true,
+  "sun_path": [
+    "."
+  ],
+  "entrypoints": [
+    {
+      "path": "shapes_v1.sun",
+      "type": "library",
+      "output_name": "shapes_v1"
+    },
+    {
+      "path": "shapes_v1.1.sun",
+      "type": "library",
+      "output_name": "shapes_v1.1"
+    },
+    {
+      "path": "shapes_v2.sun",
+      "type": "library",
+      "output_name": "shapes_v2"
+    },
+    {
+      "path": "shapes_user.sun",
+      "type": "library",
+      "output_name": "shapes_user"
+    },
+    {
+      "path": "main_v1.1.sun",
+      "type": "binary",
+      "output_name": "revised"
+    }
+  ]
+}

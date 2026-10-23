@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <unordered_map>
 
+#include "abi/lowering_descriptors.h"
 #include "ast/type_constraint.h"
 #include "semantic_analysis/qualified_name.h"
 #include "semantic_analysis/visibility.h"
@@ -175,7 +176,9 @@ class ClassType : public NominalType {
     if (isSpecialized() && !typeArguments.empty()) {
       std::string result = base + "<";
       for (size_t i = 0; i < typeArguments.size(); ++i) {
-        if (i > 0) result += ", ";
+        if (i > 0) {
+          result += ", ";
+        }
         result += typeArguments[i]->toDisplayString();
       }
       result += ">";
@@ -220,8 +223,11 @@ class ClassType : public NominalType {
   /** Updates a builtin method contract when the standard String type is known.
    */
   void setMethodReturnType(const std::string& name, TypePtr type) {
-    for (auto& method : methods)
-      if (method.name == name) method.returnType = type;
+    for (auto& method : methods) {
+      if (method.name == name) {
+        method.returnType = type;
+      }
+    }
   }
 
   /** Record the concrete method selected for an interface declaration. */
@@ -233,8 +239,9 @@ class ClassType : public NominalType {
   /** Retrieve the concrete method selected during conformance checking. */
   DeclarationId getInterfaceMethod(DeclarationId requirement) const {
     auto found = interfaceImplementations_.find(requirement);
-    if (found == interfaceImplementations_.end())
+    if (found == interfaceImplementations_.end()) {
       logAndThrowError("Interface method implementation has not been resolved");
+    }
     return found->second;
   }
   /** Provides the interfaces implemented by this class. */
@@ -283,25 +290,36 @@ class ClassType : public NominalType {
 
   /** Retrieve a selected field independently of its spelling and layout. */
   const ClassField* getField(DeclarationId id) const {
-    if (!id) return nullptr;
-    for (const auto& field : fields)
-      if (field.declarationId == id) return &field;
+    if (!id) {
+      return nullptr;
+    }
+    for (const auto& field : fields) {
+      if (field.declarationId == id) {
+        return &field;
+      }
+    }
     return nullptr;
   }
 
   /** Returns the field stored by this object. */
   const ClassField* getField(const std::string& fieldName) const {
     for (const auto& field : fields) {
-      if (field.name == fieldName) return &field;
+      if (field.name == fieldName) {
+        return &field;
+      }
     }
     return nullptr;
   }
 
   /** Retrieve a selected method without repeating overload resolution. */
   const ClassMethod* getMethod(DeclarationId declaration) const {
-    if (!declaration) return nullptr;
+    if (!declaration) {
+      return nullptr;
+    }
     for (const auto& method : methods) {
-      if (method.declarationId == declaration) return &method;
+      if (method.declarationId == declaration) {
+        return &method;
+      }
     }
     logAndThrowError("Selected method does not belong to this class");
   }
@@ -309,7 +327,9 @@ class ClassType : public NominalType {
   /** Returns the method stored by this object. */
   const ClassMethod* getMethod(const std::string& methodName) const {
     for (const auto& method : methods) {
-      if (method.name == methodName) return &method;
+      if (method.name == methodName) {
+        return &method;
+      }
     }
     return nullptr;
   }
@@ -355,7 +375,9 @@ class ClassType : public NominalType {
    */
   const ClassMethod* getConstructor() const {
     for (const auto& method : methods) {
-      if (method.isConstructor) return &method;
+      if (method.isConstructor) {
+        return &method;
+      }
     }
     return nullptr;
   }
@@ -366,7 +388,9 @@ class ClassType : public NominalType {
       // Show specialized type like "List<i32>"
       std::string result = baseGenericName + "<";
       for (size_t i = 0; i < typeArguments.size(); ++i) {
-        if (i > 0) result += ", ";
+        if (i > 0) {
+          result += ", ";
+        }
         result += typeArguments[i]->toString();
       }
       result += ">";
@@ -376,7 +400,9 @@ class ClassType : public NominalType {
       // Show generic definition like "List<T>"
       std::string result = name_ + "<";
       for (size_t i = 0; i < typeParameters.size(); ++i) {
-        if (i > 0) result += ", ";
+        if (i > 0) {
+          result += ", ";
+        }
         result += typeParameters[i];
       }
       result += ">";
@@ -407,7 +433,9 @@ class ClassType : public NominalType {
    * Get the actual struct type for the class
    */
   llvm::StructType* getStructType(llvm::LLVMContext& ctx) const {
-    if (cachedLLVMType) return cachedLLVMType;
+    if (cachedLLVMType) {
+      return cachedLLVMType;
+    }
 
     // LLVM shares layouts by their fields and packing. Source names do not
     // identify layouts: separate declarations may have the same spelling.
@@ -421,15 +449,8 @@ class ClassType : public NominalType {
         fieldTypes.push_back(field.type->toLLVMType(ctx));
       }
     }
-    // A zero-length vector array contributes alignment without a source field.
-    // Keeping it last preserves source field indices and rounds the array
-    // stride.
-    if (alignment_) {
-      auto* marker =
-          llvm::FixedVectorType::get(llvm::Type::getInt8Ty(ctx), alignment_);
-      fieldTypes.push_back(llvm::ArrayType::get(marker, 0));
-    }
-    cachedLLVMType = llvm::StructType::get(ctx, fieldTypes, isPacked_);
+    cachedLLVMType = sun::abi::AggregateLayout::build(ctx, fieldTypes,
+                                                      isPacked_, alignment_);
     return cachedLLVMType;
   }
 
@@ -439,9 +460,10 @@ class ClassType : public NominalType {
   /** Sets the minimum alignment before the class layout is materialized. */
   void setAlignment(uint64_t alignment) {
     if (alignment &&
-        (isPacked_ || (alignment & (alignment - 1)) || alignment > 65536))
+        (isPacked_ || (alignment & (alignment - 1)) || alignment > 65536)) {
       logAndThrowError(
           "Invalid explicit class alignment in declaration metadata");
+    }
     alignment_ = alignment;
   }
 

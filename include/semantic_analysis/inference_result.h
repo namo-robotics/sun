@@ -9,7 +9,9 @@ namespace sun::semantic_analysis {
 inline sun::types::TypePtr requireInferredType(
     sun::semantic_analysis::type_analysis::TypeResult result,
     const sun::support::Position& location, const std::string& message) {
-  if (auto* type = std::get_if<sun::types::TypePtr>(&result)) return *type;
+  if (auto* type = std::get_if<sun::types::TypePtr>(&result)) {
+    return *type;
+  }
   sun::support::logAndThrowError(message, location);
 }
 }  // namespace sun::semantic_analysis

@@ -7,6 +7,7 @@ syntax = "proto3";
 package sun.moon;
 
 import "ast.proto";
+import "compatibility.proto";
 
 option cc_enable_arenas = true;
 
@@ -40,10 +41,35 @@ message DeclarationRecord {
   string module = 5;
 }
 
+/** References a compiled bitcode image and its module declarations. */
+message LibraryModule {
+  ModuleMetadata metadata = 1;
+  uint64 bitcode_offset = 2;
+  uint64 bitcode_size = 3;
+}
+
+/** Identifies an embedded native archive and its byte range in the container. */
+message LibraryArchive {
+  string archive_set_hash = 1;
+  string name = 2;
+  uint64 offset = 3;
+  uint64 size = 4;
+}
+
+/** Describes a complete library; large compiled payloads remain external byte ranges. */
+message MoonLibrary {
+  sun.abi.proto.BundleContract bundle_contract = 1;
+  string content_hash = 2;
+  repeated LibraryModule modules = 3;
+  repeated LibraryArchive native_archives = 4;
+}
+
 /**
  * Module metadata stored in .moon bundle files.
  */
 message ModuleMetadata {
+  reserved 21; // Bundle contracts now belong to MoonLibrary.
+  reserved "bundle_contract";
   repeated string module_declarations = 17;
   repeated DeclarationRecord declarations = 18;
   // Compile-only C binding requirements, rechecked in every importing target.

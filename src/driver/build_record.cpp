@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <sstream>
 
+#include "abi/abi_compatibility_checker.h"
 #include "moon_bundling/moon.h"
 
 /** Coordinates compilation, dependency loading, linking, and program execution.
@@ -42,18 +43,30 @@ std::string renderRecord(const BuildRecord& record) {
 std::optional<BuildRecord> parseRecord(const std::string& text) {
   std::istringstream lines(text);
   std::string line;
-  if (!std::getline(lines, line) || line != kRecordHeader) return std::nullopt;
+  if (!std::getline(lines, line) || line != kRecordHeader) {
+    return std::nullopt;
+  }
   BuildRecord record;
   while (std::getline(lines, line)) {
     const size_t equals = line.find('=');
-    if (equals == std::string::npos) continue;
+    if (equals == std::string::npos) {
+      continue;
+    }
     const std::string key = line.substr(0, equals);
     const std::string value = line.substr(equals + 1);
-    if (key == "hash") record.inputHash = value;
-    if (key == "tests") record.hasTests = value == "1";
-    if (key == "executable") record.hasExecutable = value == "1";
+    if (key == "hash") {
+      record.inputHash = value;
+    }
+    if (key == "tests") {
+      record.hasTests = value == "1";
+    }
+    if (key == "executable") {
+      record.hasExecutable = value == "1";
+    }
   }
-  if (record.inputHash.empty()) return std::nullopt;
+  if (record.inputHash.empty()) {
+    return std::nullopt;
+  }
   return record;
 }
 
@@ -78,7 +91,9 @@ void embedBuildRecord(llvm::Module& module, const BuildRecord& record) {
 /** Reads build provenance from a compiled artifact. */
 std::optional<BuildRecord> readBuildRecord(const std::string& path) {
   std::error_code ec;
-  if (!std::filesystem::is_regular_file(path, ec)) return std::nullopt;
+  if (!std::filesystem::is_regular_file(path, ec)) {
+    return std::nullopt;
+  }
   auto binary = llvm::object::ObjectFile::createObjectFile(path);
   if (!binary) {
     llvm::consumeError(binary.takeError());
@@ -90,7 +105,9 @@ std::optional<BuildRecord> readBuildRecord(const std::string& path) {
       llvm::consumeError(name.takeError());
       continue;
     }
-    if (*name != kElfSection && *name != kMachOSectionName) continue;
+    if (*name != kElfSection && *name != kMachOSectionName) {
+      continue;
+    }
     auto contents = section.getContents();
     if (!contents) {
       llvm::consumeError(contents.takeError());
@@ -104,20 +121,33 @@ std::optional<BuildRecord> readBuildRecord(const std::string& path) {
 /** Reads the recorded input digest from a Moon library. */
 std::optional<std::string> readMoonInputHash(const std::string& path) {
   std::error_code ec;
-  if (!std::filesystem::is_regular_file(path, ec)) return std::nullopt;
+  if (!std::filesystem::is_regular_file(path, ec)) {
+    return std::nullopt;
+  }
   // A bundle in another format version cannot be opened, and was certainly
   // not built from the current inputs: report no digest so it is rebuilt.
   std::unique_ptr<sun::moon_bundling::MoonReader> reader;
   try {
     reader = sun::moon_bundling::MoonReader::open(path);
+    if (reader) {
+      sun::abi::CompilationContext context{
+          reader->getTargetTriple(), sun::abi::NativeExecution::NativeLink};
+      context.producerWarnings = false;
+      sun::abi::AbiCompatibilityChecker checker(std::move(context));
+      checker.validate(*reader);
+    }
   } catch (const sun::support::SunError&) {
     return std::nullopt;
   }
-  if (!reader) return std::nullopt;
+  if (!reader) {
+    return std::nullopt;
+  }
   const auto modules = reader->listModules();
   const auto* first =
       modules.empty() ? nullptr : reader->getMetadata(modules[0]);
-  if (!first || first->content_hash().empty()) return std::nullopt;
+  if (!first || first->content_hash().empty()) {
+    return std::nullopt;
+  }
   return first->content_hash();
 }
 

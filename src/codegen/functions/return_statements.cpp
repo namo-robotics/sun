@@ -22,17 +22,20 @@ Value* FunctionGenerator::codegen(const sun::ast::ReturnExprAST& expr) {
       auto source = sun::types::unwrapRef(expr.getValue()->getResolvedType());
       if (target && target->isInterface()) {
         Value* value = gen_.tryCodegenAddress(*expr.getValue());
-        if (!value) value = codegen(*expr.getValue());
+        if (!value) {
+          value = codegen(*expr.getValue());
+        }
         auto* targetInterface =
             static_cast<sun::types::InterfaceType*>(target.get());
-        if (source->isInterface())
+        if (source->isInterface()) {
           value = gen_.classGenerator().upcastInterface(
               value, static_cast<sun::types::InterfaceType*>(source.get()),
               targetInterface);
-        else
+        } else {
           value = gen_.classGenerator().createInterfaceFatPointer(
               value, static_cast<sun::types::ClassType*>(source.get()),
               targetInterface);
+        }
         scopes().emitScopeCleanup();
         ctx.builder->CreateRet(value);
         return nullptr;
@@ -50,7 +53,9 @@ Value* FunctionGenerator::codegen(const sun::ast::ReturnExprAST& expr) {
             view = gen_.loadArrayView(codegen(*expr.getValue()));
           } else {
             Value* storage = gen_.tryCodegenAddress(*expr.getValue());
-            if (!storage) storage = codegen(*expr.getValue());
+            if (!storage) {
+              storage = codegen(*expr.getValue());
+            }
             if (storage && storage->getType()->isPointerTy()) {
               view = gen_.emitArrayView(storage, arrayType->getDimensions());
             }
@@ -90,7 +95,9 @@ Value* FunctionGenerator::codegen(const sun::ast::ReturnExprAST& expr) {
     // Return with a value
     // IMPORTANT: Evaluate return expression FIRST (may transfer ownership)
     Value* retVal = codegen(*expr.getValue());
-    if (!retVal) return nullptr;
+    if (!retVal) {
+      return nullptr;
+    }
     // Move semantics: borrow checker marks expressions as "moved" when
     // ownership transfers (return, assignment, pass-by-value). Skip deinit.
     if (sun::types::typeMovesOnRead(expr.getValue()->getResolvedType()) &&
@@ -112,10 +119,11 @@ Value* FunctionGenerator::codegen(const sun::ast::ReturnExprAST& expr) {
             static_cast<const sun::types::EnumType&>(*expr.getTargetType())
                 .getVariants()
                 .front()
-                .name)
+                .name) {
       scopes().emitCleanupToDepth(scopes().functionBoundaryDepth(), true);
-    else
+    } else {
       scopes().emitScopeCleanup();
+    }
 
     // A void function may still be written `return <expr>;` when the
     // expression is itself void — `return _thread_join<T>(c);` in a

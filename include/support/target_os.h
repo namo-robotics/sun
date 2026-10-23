@@ -34,9 +34,15 @@ inline llvm::Triple resolvedTargetTriple(const std::string& targetTriple) {
  * The Sun OS name for a triple, or nullopt for an OS Sun has no name for.
  */
 inline std::optional<std::string> targetOsName(const llvm::Triple& triple) {
-  if (triple.isOSLinux()) return "linux";
-  if (triple.isOSDarwin()) return "macos";
-  if (triple.isOSWindows()) return "windows";
+  if (triple.isOSLinux()) {
+    return "linux";
+  }
+  if (triple.isOSDarwin()) {
+    return "macos";
+  }
+  if (triple.isOSWindows()) {
+    return "windows";
+  }
   return std::nullopt;
 }
 

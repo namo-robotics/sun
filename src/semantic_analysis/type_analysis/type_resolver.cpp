@@ -39,7 +39,9 @@ namespace {
  */
 TypePtr returnTypeOf(const TypePtr& target,
                      std::optional<sun::support::Position> at) {
-  if (!target) return nullptr;
+  if (!target) {
+    return nullptr;
+  }
   if (auto* lambda = sun::codegen::support::tryGetType<LambdaType>(target)) {
     return lambda->getReturnType();
   }
@@ -72,7 +74,9 @@ std::shared_ptr<InterfaceType> TypeResolver::resolveConstraintInterface(
 }
 
 TypePtr TypeResolver::substituteTypeParameters(TypePtr type) {
-  if (!type) return nullptr;
+  if (!type) {
+    return nullptr;
+  }
 
   // If it's a type parameter, look up binding in scope stack. A projected one
   // asks after its base and then applies the projection to whatever that
@@ -80,7 +84,9 @@ TypePtr TypeResolver::substituteTypeParameters(TypePtr type) {
   if (type->isTypeParameter()) {
     auto* tp = dynamic_cast<sun::types::TypeParameterType*>(type.get());
     auto bound = ctx_.findTypeParameter(tp->getProjectionBase());
-    if (!bound) return type;
+    if (!bound) {
+      return type;
+    }
     return tp->getProjection() == sun::types::TypeProjection::ReturnType
                ? returnTypeOf(bound, std::nullopt)
                : bound;
@@ -126,7 +132,9 @@ TypePtr TypeResolver::substituteTypeParameters(TypePtr type) {
     for (const auto& param : ft->getParamTypes()) {
       auto newParam = substituteTypeParameters(param);
       newParams.push_back(newParam);
-      if (newParam != param) changed = true;
+      if (newParam != param) {
+        changed = true;
+      }
     }
     if (changed) {
       return Types::Function(newRet, std::move(newParams), ft->canThrow(),
@@ -143,7 +151,9 @@ TypePtr TypeResolver::substituteTypeParameters(TypePtr type) {
     for (const auto& param : lt->getParamTypes()) {
       auto newParam = substituteTypeParameters(param);
       newParams.push_back(newParam);
-      if (newParam != param) changed = true;
+      if (newParam != param) {
+        changed = true;
+      }
     }
     if (changed) {
       auto substituted = Types::Lambda(newRet, std::move(newParams),
@@ -171,7 +181,9 @@ TypePtr TypeResolver::substituteTypeParameters(TypePtr type) {
       for (const auto& arg : typeArgs) {
         auto newArg = substituteTypeParameters(arg);
         newArgs.push_back(newArg);
-        if (newArg != arg) changed = true;
+        if (newArg != arg) {
+          changed = true;
+        }
       }
       if (changed) {
         // Re-instantiate the generic with substituted type args
@@ -197,13 +209,16 @@ TypePtr TypeResolver::substituteTypeParameters(TypePtr type) {
       for (const auto& arg : typeArgs) {
         auto newArg = substituteTypeParameters(arg);
         newArgs.push_back(newArg);
-        if (newArg != arg) changed = true;
+        if (newArg != arg) {
+          changed = true;
+        }
       }
       if (changed) {
         auto* info = ctx_.lookupGenericInterface(
             it->sourceDeclaration(ctx_.results().declarations));
-        if (!info)
+        if (!info) {
           logAndThrowError("Selected generic interface is not registered");
+        }
         return generics_.instantiateGenericInterface(*info, newArgs);
       }
     }
@@ -221,12 +236,16 @@ TypePtr TypeResolver::substituteTypeParameters(TypePtr type) {
       for (const auto& arg : typeArgs) {
         auto newArg = substituteTypeParameters(arg);
         newArgs.push_back(newArg);
-        if (newArg != arg) changed = true;
+        if (newArg != arg) {
+          changed = true;
+        }
       }
       if (changed) {
         auto* info = ctx_.lookupGenericEnum(
             et->sourceDeclaration(ctx_.results().declarations));
-        if (!info) logAndThrowError("Selected generic enum is not registered");
+        if (!info) {
+          logAndThrowError("Selected generic enum is not registered");
+        }
         return generics_.instantiateGenericEnum(*info, newArgs);
       }
     }
@@ -264,7 +283,9 @@ std::vector<TypePtr> TypeResolver::resolveTypeArguments(
 size_t TypeResolver::resolveArrayDimension(
     const sun::ast::ArrayDimension& dimension) {
   // A number, or a name that was resolved before
-  if (dimension.size) return *dimension.size;
+  if (dimension.size) {
+    return *dimension.size;
+  }
 
   const std::string& name = dimension.constantName;
   const std::string what = "array size '" + name + "'";
@@ -282,39 +303,48 @@ size_t TypeResolver::resolveArrayDimension(
     sema_.declarations().ensureGlobalAnalyzed(name);
     info = ctx_.currentScope().lookupVariable(name);
   }
-  if (!info) reject("is not the name of a constant that is visible here");
-  if (!info->isGlobal)
+  if (!info) {
+    reject("is not the name of a constant that is visible here");
+  }
+  if (!info->isGlobal) {
     reject("must be a constant declared at file or module scope, but '" + name +
            "' is a local variable");
-  if (!info->isConst)
+  }
+  if (!info->isConst) {
     reject("must be a constant, but '" + name +
            "' is a 'var'; declare it with 'const'");
+  }
 
   using sun::semantic_analysis::constants::GlobalInitKind;
   const auto& declarations = ctx_.declarationTable();
   const auto* declaration = findVariableNode(declarations, info->declarationId);
-  if (!declaration)
+  if (!declaration) {
     reject(
         "must be known at compile time, but the compiler has no value for '" +
         name + "'");
+  }
   const auto& constant = *declaration;
   const auto* decision = constant.getGlobalInit();
-  if (!decision)
+  if (!decision) {
     decision = &constants::ConstantEvaluator(declarations)
                     .evaluateGlobalInitializer(constant);
-  if (decision->kind != GlobalInitKind::Image || !decision->value)
+  }
+  if (decision->kind != GlobalInitKind::Image || !decision->value) {
     reject("must be known at compile time, but '" + name +
            "' is initialized at startup because " +
            (decision->reason ? decision->reason->message
                              : std::string("it cannot be evaluated")));
+  }
 
   const auto& value = *decision->value;
-  if (!value.isInteger() || !value.type || !value.type->isIntegral())
+  if (!value.isInteger() || !value.type || !value.type->isIntegral()) {
     reject("must be an integer, but '" + name + "' has type '" +
            (value.type ? value.type->toDisplayString() : "unknown") + "'");
-  if (!value.isUnsigned() && value.getInteger().isNegative())
+  }
+  if (!value.isUnsigned() && value.getInteger().isNegative()) {
     reject("must not be negative, but '" + name + "' is " +
            value.toDisplayString());
+  }
 
   dimension.size = static_cast<size_t>(value.getInteger().getZExtValue());
   return *dimension.size;
@@ -323,11 +353,12 @@ size_t TypeResolver::resolveArrayDimension(
 TypePtr TypeResolver::typeAnnotationToType(
     const sun::ast::TypeAnnotation& annot, bool allowInterface) {
   auto type = resolveAnnotation(annot);
-  if (type && type->isInterface() && !allowInterface)
+  if (type && type->isInterface() && !allowInterface) {
     logAndThrowError("Interface '" + type->toDisplayString() +
                          "' cannot own a value; use ref or const ref, or own a "
                          "concrete type",
                      annot.span);
+  }
   return type;
 }
 
@@ -336,25 +367,33 @@ TypePtr TypeResolver::resolveAnnotation(const sun::ast::TypeAnnotation& annot) {
     auto id = ctx_.requireDeclaration(*annot.declarationKey, "", std::nullopt,
                                       annot.baseName);
     std::vector<TypePtr> arguments;
-    for (const auto& argument : annot.typeArguments)
+    for (const auto& argument : annot.typeArguments) {
       arguments.push_back(typeAnnotationToType(*argument));
+    }
     auto kind = ctx_.results().declarations.get(id).kind;
     if (!arguments.empty()) {
       if (kind == DeclarationKind::Class) {
         auto* info = ctx_.lookupGenericClass(id);
-        if (info) return generics_.instantiateGenericClass(*info, arguments);
+        if (info) {
+          return generics_.instantiateGenericClass(*info, arguments);
+        }
       } else if (kind == DeclarationKind::Interface) {
         auto* info = ctx_.lookupGenericInterface(id);
-        if (info)
+        if (info) {
           return generics_.instantiateGenericInterface(*info, arguments);
+        }
       } else if (kind == DeclarationKind::Enum) {
         auto* info = ctx_.lookupGenericEnum(id);
-        if (info) return generics_.instantiateGenericEnum(*info, arguments);
+        if (info) {
+          return generics_.instantiateGenericEnum(*info, arguments);
+        }
       }
       logAndThrowError("Imported generic type has no registered template",
                        annot.span);
     }
-    if (kind == DeclarationKind::Class) return ctx_.types()->getClass(id);
+    if (kind == DeclarationKind::Class) {
+      return ctx_.types()->getClass(id);
+    }
     if (kind == DeclarationKind::Interface) {
       sema_.interfaces().ensureInterfaceShape(id);
       return ctx_.types()->getInterface(id);
@@ -400,7 +439,9 @@ TypePtr TypeResolver::resolveAnnotation(const sun::ast::TypeAnnotation& annot) {
     } else {
       referencedType = typeAnnotationToType(*annot.elementType, true);
     }
-    if (!referencedType) return nullptr;
+    if (!referencedType) {
+      return nullptr;
+    }
     auto refType =
         Types::Reference(referencedType, /*isMutable=*/!annot.constRef);
     // A named lifetime on the position ('ref 'a Bus') rides along as
@@ -498,8 +539,9 @@ TypePtr TypeResolver::resolveAnnotation(const sun::ast::TypeAnnotation& annot) {
     }
     std::vector<size_t> dimensions;
     dimensions.reserve(annot.arrayDimensions.size());
-    for (const auto& dimension : annot.arrayDimensions)
+    for (const auto& dimension : annot.arrayDimensions) {
       dimensions.push_back(resolveArrayDimension(dimension));
+    }
     return Types::Array(elemType, dimensions);
   }
 
@@ -654,15 +696,21 @@ TypePtr TypeResolver::resolveAnnotation(const sun::ast::TypeAnnotation& annot) {
 // without codegen help. Classes are not viewed (a class holding a borrow of
 // its receiver is not a pattern the stdlib uses).
 TypePtr TypeResolver::createConstView(TypePtr type) {
-  if (!type) return type;
+  if (!type) {
+    return type;
+  }
   if (type->isReference()) {
     auto* ref = static_cast<const ReferenceType*>(type.get());
-    if (!ref->isMutable()) return type;
+    if (!ref->isMutable()) {
+      return type;
+    }
     return Types::Reference(ref->getReferencedType(), /*isMutable=*/false);
   }
   if (type->isEnum()) {
     auto* enumType = static_cast<const sun::types::EnumType*>(type.get());
-    if (!enumType->isGenericSpecialization()) return type;
+    if (!enumType->isGenericSpecialization()) {
+      return type;
+    }
     std::vector<TypePtr> args;
     bool changed = false;
     for (const auto& arg : enumType->getGenericArgs()) {
@@ -670,10 +718,14 @@ TypePtr TypeResolver::createConstView(TypePtr type) {
       changed = changed || viewed != arg;
       args.push_back(viewed);
     }
-    if (!changed) return type;
+    if (!changed) {
+      return type;
+    }
     auto* info = ctx_.lookupGenericEnum(
         enumType->sourceDeclaration(ctx_.results().declarations));
-    if (!info) logAndThrowError("Selected generic enum is not registered");
+    if (!info) {
+      logAndThrowError("Selected generic enum is not registered");
+    }
     return generics_.instantiateGenericEnum(*info, args);
   }
   return type;

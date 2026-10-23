@@ -57,7 +57,9 @@ class FunctionAST : public ExprAST {
   /** Visits replaceable child expressions so tree passes can rewrite them in
    * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
-    if (Body) Body->forEachChildSlot(fn);
+    if (Body) {
+      Body->forEachChildSlot(fn);
+    }
   }
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
@@ -66,13 +68,18 @@ class FunctionAST : public ExprAST {
                          Proto->getName() + "(";
     const auto& args = Proto->getArgs();
     for (size_t i = 0; i < args.size(); ++i) {
-      if (i > 0) result += ", ";
+      if (i > 0) {
+        result += ", ";
+      }
       result += args[i].first + ": " + args[i].second.toString();
     }
     result += ")";
-    if (Proto->hasReturnType())
+    if (Proto->hasReturnType()) {
       result += " " + Proto->getReturnType()->toString();
-    if (Body) result += " " + Body->toString();
+    }
+    if (Body) {
+      result += " " + Body->toString();
+    }
     return result;
   }
 
@@ -188,7 +195,9 @@ class FunctionAST : public ExprAST {
   /** Looks up the instance previously created for the supplied type arguments.
    */
   std::shared_ptr<FunctionAST> getSpecialization(DeclarationId id) const {
-    if (!analysis_) return nullptr;
+    if (!analysis_) {
+      return nullptr;
+    }
     auto& specs = static_cast<FunctionAnalysis&>(*analysis_).specializations;
     auto it = specs.find(id);
     return it != specs.end() ? it->second : nullptr;
@@ -199,8 +208,9 @@ class FunctionAST : public ExprAST {
     std::string label =
         std::string(IsTest ? "test_function \n" : "function \n") +
         Proto->getName();
-    if (Proto->hasReturnType())
+    if (Proto->hasReturnType()) {
       label += " -> " + Proto->getReturnType()->toString();
+    }
     return label;
   }
 };

@@ -2,12 +2,11 @@
 
 #include <gtest/gtest.h>
 
-#include <string>
 #include <filesystem>
 #include <fstream>
+#include <string>
 
 #include "cli/fmt_command.h"
-
 #include "parsing/formatter.h"
 #include "support/error.h"
 
@@ -250,7 +249,8 @@ TEST(Tooling_Fmt, NoBlankAfterOpenBrace) {
             "}\n");
 }
 
-/** Keeps empty modules compact and separates comment-only module contents once. */
+/** Keeps empty modules compact and separates comment-only module contents once.
+ */
 TEST(Tooling_Fmt, ModuleOpeningBlankLine) {
   EXPECT_EQ(fmt("module empty {}"), "module empty {}\n");
   const std::string expected = "module notes {\n\n  /** Contents. */\n}\n";
@@ -286,16 +286,17 @@ TEST(Tooling_Fmt, InsertsBlankLinesBetweenFunctions) {
 
 /** Separates every pair of declaration kinds before attached documentation. */
 TEST(Tooling_Fmt, BlankLinesBetweenDeclarationKinds) {
-  const std::string first[] = {
-      "function left() void {}", "class Left {}", "interface Left {}",
-      "enum Left { Value }", "module left {}"};
-  const std::string second[] = {
-      "function right() void {}", "class Right {}", "interface Right {}",
-      "enum Right { Value }", "module right {}"};
+  const std::string first[] = {"function left() void {}", "class Left {}",
+                               "interface Left {}", "enum Left { Value }",
+                               "module left {}"};
+  const std::string second[] = {"function right() void {}", "class Right {}",
+                                "interface Right {}", "enum Right { Value }",
+                                "module right {}"};
   for (const auto& left : first) {
     for (const auto& right : second) {
       SCOPED_TRACE(left + " -> " + right);
-      const auto expected = fmt(left) + "\n/** Next declaration. */\n" + fmt(right);
+      const auto expected =
+          fmt(left) + "\n/** Next declaration. */\n" + fmt(right);
       EXPECT_EQ(fmt(left + "\n/** Next declaration. */\n" + right), expected);
       EXPECT_EQ(fmt(expected), expected);
       EXPECT_EQ(fmt(left + "\n" + right), fmt(left) + "\n" + fmt(right));
@@ -340,7 +341,8 @@ TEST(Tooling_Fmt, InsertsBlankLinesBetweenDocumentedMethods) {
   EXPECT_EQ(fmt(expected), expected);
 }
 
-/** Keeps field groups together and separates documented methods on both sides. */
+/** Keeps field groups together and separates documented methods on both sides.
+ */
 TEST(Tooling_Fmt, BlankLinesBetweenFieldsAndMethods) {
   const std::string source =
       "class Node {\n"
@@ -600,11 +602,12 @@ TEST(Tooling_Fmt, NestedModulesStayNested) {
             "}\n");
 }
 
-/** Separates imports from documented declarations while keeping imports together. */
+/** Separates imports from documented declarations while keeping imports
+ * together. */
 TEST(Tooling_Fmt, UsingBeforeDeclaration) {
-  for (const std::string declaration : {
-           "function draw() void {}", "class Drawing {}", "interface Shape {}",
-           "enum Color { Red }", "module drawing {}"}) {
+  for (const std::string declaration :
+       {"function draw() void {}", "class Drawing {}", "interface Shape {}",
+        "enum Color { Red }", "module drawing {}"}) {
     const std::string imports = "using std;\nusing std.Vec;\n";
     const std::string comment = "/** Draws a shape. */\n";
     const std::string input = imports + comment + declaration;
@@ -828,9 +831,13 @@ namespace {
 std::vector<std::filesystem::path> corpusFiles() {
   std::vector<std::filesystem::path> files;
   for (const char* dir : {"tests/programs", "stdlib", "examples"}) {
-    if (!std::filesystem::exists(dir)) continue;
+    if (!std::filesystem::exists(dir)) {
+      continue;
+    }
     for (const auto& entry : std::filesystem::directory_iterator(dir)) {
-      if (entry.path().extension() == ".sun") files.push_back(entry.path());
+      if (entry.path().extension() == ".sun") {
+        files.push_back(entry.path());
+      }
     }
   }
   // Namespace directories replace the former flat stdlib source layout.
@@ -892,7 +899,9 @@ TEST(Tooling_Fmt_Corpus, IdempotentAndStructurePreserving) {
     } catch (const sun::support::SunError&) {
       continue;  // legacy files (import statements) don't parse standalone
     }
-    if (!ast) continue;
+    if (!ast) {
+      continue;
+    }
     ++checked;
 
     std::string formatted =
@@ -1189,7 +1198,8 @@ TEST(Tooling_Fmt, ClassAlignment) {
   EXPECT_EQ(fmt(formatted), formatted);
 }
 
-/** Exercises project exclusions through the formatter command without changing cwd. */
+/** Exercises project exclusions through the formatter command without changing
+ * cwd. */
 class Tooling_FmtIgnore : public ::testing::Test {
  protected:
   std::filesystem::path dir;
@@ -1214,18 +1224,22 @@ class Tooling_FmtIgnore : public ::testing::Test {
   /** Reads a fixture so tests can verify which files were changed. */
   std::string read(const std::string& path) {
     std::ifstream input(dir / path);
-    return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    return {std::istreambuf_iterator<char>(input),
+            std::istreambuf_iterator<char>()};
   }
 
   /** Runs check mode on one project path with an optional override. */
   int check(const std::string& path, bool noIgnore = false) {
     std::vector<std::string> args = {"--check", (dir / path).string()};
-    if (noIgnore) args.push_back("--no-ignore");
+    if (noIgnore) {
+      args.push_back("--no-ignore");
+    }
     return sun::cli::runFmtCommand(args);
   }
 };
 
-/** Excluded directories are pruned and explicitly named files respect exclusions. */
+/** Excluded directories are pruned and explicitly named files respect
+ * exclusions. */
 TEST_F(Tooling_FmtIgnore, DirectoriesAndOverride) {
   write("sun-config.json", R"({"root":true,"sun_fmt":{"ignore":["/build/"]}})");
   write("build/bad.sun", "not valid Sun!");
@@ -1238,31 +1252,41 @@ TEST_F(Tooling_FmtIgnore, DirectoriesAndOverride) {
   EXPECT_EQ(check("build/bad.sun", true), 1);
   EXPECT_EQ(sun::cli::runFmtCommand({(dir / "build/bad.sun").string()}), 0);
   EXPECT_EQ(read("build/bad.sun"), "function f()void{}");
-  EXPECT_EQ(sun::cli::runFmtCommand({"--no-ignore", (dir / "build/bad.sun").string()}), 0);
+  EXPECT_EQ(sun::cli::runFmtCommand(
+                {"--no-ignore", (dir / "build/bad.sun").string()}),
+            0);
   EXPECT_EQ(read("build/bad.sun"), "function f() void {}\n");
 }
 
-/** Patterns support anchoring, directory components, wildcards, and ordered exceptions. */
+/** Patterns support anchoring, directory components, wildcards, and ordered
+ * exceptions. */
 TEST_F(Tooling_FmtIgnore, PatternsAndNegation) {
   write("sun-config.json", R"({"root":true,"sun_fmt":{"ignore":[
     "/root.sun", "cache/", "*.generated.sun", "src/**/skip?.sun",
     "/output/**", "!/output/keep.sun", "[ab].sun", "\\!literal.sun"
   ]}})");
-  for (const auto* path : {"root.sun", "nested/root.sun", "cache/bad.sun",
-                           "nested/cache/bad.sun", "nested/x.generated.sun",
-                           "src/skip1.sun", "src/a/b/skip2.sun", "src/skip12.sun",
-                           "output/drop.sun", "output/keep.sun", "a.sun", "!literal.sun"})
+  for (const auto* path :
+       {"root.sun", "nested/root.sun", "cache/bad.sun", "nested/cache/bad.sun",
+        "nested/x.generated.sun", "src/skip1.sun", "src/a/b/skip2.sun",
+        "src/skip12.sun", "output/drop.sun", "output/keep.sun", "a.sun",
+        "!literal.sun"}) {
     write(path, "function f()void{}");
-  for (const auto* path : {"root.sun", "cache/bad.sun", "nested/cache/bad.sun",
-                           "nested/x.generated.sun", "src/skip1.sun",
-                           "src/a/b/skip2.sun", "output/drop.sun", "a.sun", "!literal.sun"})
+  }
+  for (const auto* path :
+       {"root.sun", "cache/bad.sun", "nested/cache/bad.sun",
+        "nested/x.generated.sun", "src/skip1.sun", "src/a/b/skip2.sun",
+        "output/drop.sun", "a.sun", "!literal.sun"}) {
     EXPECT_EQ(check(path), 0) << path;
-  for (const auto* path : {"nested/root.sun", "src/skip12.sun", "output/keep.sun"})
+  }
+  for (const auto* path :
+       {"nested/root.sun", "src/skip12.sun", "output/keep.sun"}) {
     EXPECT_EQ(check(path), 1) << path;
+  }
   EXPECT_EQ(check("output"), 1);
 }
 
-/** Nearer configurations override ancestors and root boundaries stop inheritance. */
+/** Nearer configurations override ancestors and root boundaries stop
+ * inheritance. */
 TEST_F(Tooling_FmtIgnore, NestedConfiguration) {
   write("sun-config.json", R"({"root":true,"sun_fmt":{"ignore":["*.sun"]}})");
   write("nested/sun-config.json", R"({"sun_fmt":{"ignore":["!keep.sun"]}})");
@@ -1277,7 +1301,8 @@ TEST_F(Tooling_FmtIgnore, NestedConfiguration) {
 
 /** A file exception cannot reopen an excluded directory. */
 TEST_F(Tooling_FmtIgnore, ExcludedParents) {
-  write("sun-config.json", R"({"root":true,"sun_fmt":{"ignore":["cache/","!cache/keep.sun"]}})");
+  write("sun-config.json",
+        R"({"root":true,"sun_fmt":{"ignore":["cache/","!cache/keep.sun"]}})");
   write("cache/keep.sun", "function f()void{}");
   EXPECT_EQ(check("."), 0);
   EXPECT_EQ(check("cache/keep.sun"), 0);

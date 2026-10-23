@@ -47,6 +47,32 @@ const ManifestAST* parseManifest(const std::string& source,
 // Manifest grammar
 // ============================================================================
 
+/** Prepared protobuf modules compile even after their schema is removed. */
+TEST(Modules_ProtoImport, compiles_prepared_modules_without_reimporting) {
+  sun::driver::initTestEnvironment();
+  const auto dir = fs::path("tmp") / "proto_prepared_modules";
+  fs::create_directories(dir);
+  const auto schema = dir / "prepared.proto";
+  const auto source = dir / "main.sun";
+  std::ofstream(schema) << R"(
+    syntax = "proto3";
+    package prepared;
+    message Value { int32 number = 1; }
+  )";
+  std::ofstream(source) << R"(
+    /** Reads a field from the prepared protobuf message. */
+    function read(value: ref prepared.Value) i32 { return value.number; }
+  )";
+  const auto modules = sun::moon_bundling::ProtoImporter::importAll(
+      {schema.string()}, dir.string());
+  ASSERT_EQ(modules.size(), 1u);
+  ASSERT_TRUE(fs::remove(schema));
+  auto driver = sun::driver::Driver::createForAOT("prepared_proto");
+  EXPECT_NO_THROW(driver->compileFiles(
+      {source.string()}, sun::driver::getStdlibMoonImports(), {}, {}, modules));
+  fs::remove_all(dir);
+}
+
 TEST(Modules_ProtoImport, manifest_protos_key_parses) {
   std::unique_ptr<BlockExprAST> ast;
   const auto* manifest = parseManifest(R"(

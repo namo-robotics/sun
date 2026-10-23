@@ -128,9 +128,10 @@ class ASTSerializer {
    */
   template <typename FieldDecl, typename FieldProto>
   void serializeFieldInto(const FieldDecl& field, FieldProto* proto) const {
-    if (config_.declarations)
+    if (config_.declarations) {
       *proto->mutable_declaration_identity() =
           serializeIdentity(field.declaration);
+    }
     proto->set_name(field.name);
     *proto->mutable_type() = serializeTypeAnnotation(field.type);
     if (config_.include_location) {

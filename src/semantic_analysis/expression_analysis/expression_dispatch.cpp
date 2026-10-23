@@ -143,10 +143,11 @@ void ExpressionAnalyzer::analyzeExpression(ExprAST& expr,
     }
 
     case ASTNodeType::QUALIFIED_NAME:
-      if (expr.getModuleDeclaration())
+      if (expr.getModuleDeclaration()) {
         expr.setResolvedType(resolveModuleReference(expr));
-      else
+      } else {
         analyzeQualifiedName(static_cast<sun::ast::QualifiedNameAST&>(expr));
+      }
       break;
 
     case ASTNodeType::THIS: {
@@ -156,10 +157,11 @@ void ExpressionAnalyzer::analyzeExpression(ExprAST& expr,
     }
 
     case ASTNodeType::MEMBER_ACCESS:
-      if (expr.getModuleDeclaration())
+      if (expr.getModuleDeclaration()) {
         expr.setResolvedType(resolveModuleReference(expr));
-      else
+      } else {
         analyzeMemberAccess(static_cast<MemberAccessAST&>(expr), expectedType);
+      }
       break;
 
     case ASTNodeType::GENERIC_CALL:

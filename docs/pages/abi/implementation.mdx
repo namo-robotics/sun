@@ -1,0 +1,104 @@
+# Experimental Implementation
+
+Part of the [Sun ABI draft](/abi). Compatibility is experimental: compiler changes
+may require rebuilding `.moon` libraries. There is no stable compatibility promise yet.
+
+## How it works
+
+Each `.moon` library carries one **contract** describing its target, required
+compiler behavior, compiled layouts and calls, and retained generic code.
+Sun checks this contract before importing the library.
+
+For example, an x86-64 program cannot import a library built for AArch64.
+Likewise, a library requiring an unsupported compiler rule is rejected with
+rebuild guidance.
+
+The compiler's supported rules come from `src/abi/compiler_support.textproto`,
+validated and embedded during its build. Editing that manifest afterward cannot change an installed compiler.
+
+## What Sun checks
+
+- The target and required compiler rules are supported.
+- Decoded LLVM code matches the contract's recorded layouts, calls, and CPU requirements.
+- Retained declarations and generic bodies match their recorded descriptions.
+- Concrete class layouts and reconstructable function signatures agree with the compiled payload.
+- Declaration references resolve across the selected imports, and advertised precompiled methods have bodies.
+- Embedded dependencies retain their requirements.
+
+For example, if metadata claims a precompiled method exists but its body is
+missing, import fails—even if someone recomputes the contract hash.
+
+Declaration identity also matters: two libraries defining `Point { x: i32 }`
+still define different Sun types. Matching memory layouts do not make them interchangeable.
+
+These checks are incomplete: Sun does not yet independently verify every
+relationship between source-level type metadata and compiled layouts.
+Class and enum storage and Sun call signatures now share code with ABI validation.
+For example, changing a recorded class field from `i64` to `i32` is rejected even
+when the class is passed through a pointer and the contract hash is recomputed.
+Types whose layouts depend on unavailable external declarations still need further checks.
+
+## Native archives
+
+The draft accepts x86-64 and AArch64 archives: ELF on Linux GNU/musl,
+and Mach-O on macOS. It uses normal linker trust. Sun checks readable objects, matching targets, isolated symbols,
+and declared requirements. It does not audit instructions or maintain instruction,
+relocation, or external-symbol allowlists. The linker resolves native references.
+
+For example, an archive calling `malloc` is allowed; an unresolved required symbol
+still fails at link time. Archives with constructors or thread-local storage work
+with native linking, but are rejected by the JIT, which does not yet support that lifecycle.
+
+Producers can add requirements to an archive entry:
+
+```sun
+archives: [{
+  path: "libmath.a",
+  cpu_features: ["avx2"],
+  runtime: ["thread_local"]
+}]
+```
+
+These requirements are added to detected and inherited requirements. Unknown
+names fail packaging. CPU checks
+still need better handling of destination CPUs and runtime dispatch: an optional
+AVX2 kernel should not imply that the whole library requires AVX2.
+
+## Why compatible-looking builds can be rejected
+
+Unspecified compiler behavior is protected by an **implementation fingerprint**:
+a hash of compiler sources, build settings, tools, and relevant libraries.
+A changed fingerprint can require rebuilding dependencies, even after a harmless change.
+
+Coverage must include indirect dependencies. For example:
+
+```text
+compiler tool → libLLVM.so
+```
+
+Changing `libLLVM.so` can change generated code without changing the tool's own
+executable. Fingerprints now follow these linked shared-library dependencies
+recursively, and fail if one is missing or ambiguous. Discovery supports Linux
+and macOS without library-loader overrides. macOS system libraries use the OS
+build identity at build time and loaded image UUIDs at startup, because they may
+exist only in Apple’s shared cache. Dynamically
+loaded build-tool plugins and other undeclared build inputs still need coverage.
+
+Preflight and actual imports share a compilation context, including the target,
+JIT or native execution, optimization settings, and ordered link options. Changing
+these settings clears authorizations. Nested builds keep separate state.
+
+Producer versions are diagnostic only. An older producer may trigger one warning
+per imported bundle after validation; its version cannot make an incompatible
+library acceptable. Checking an existing output for build skipping does not warn.
+
+## Remaining work
+
+- Finish shared descriptions for closures and interface dispatch, and metadata-to-code checks.
+- Finish destination CPU and runtime-dispatch modeling.
+- Finish transitive fingerprint coverage.
+- Test successful compatibility across historical compilers and libraries; current historical coverage only proves rejection.
+
+Run `sun --abi-info` to inspect supported rules and profiles. Implementation lives
+in `include/abi/`, `src/abi/`, and `cmake/abi/`; tests live in `tests/abi/`.
+See the [compatibility model](/abi/compatibility) for the full proposed design.

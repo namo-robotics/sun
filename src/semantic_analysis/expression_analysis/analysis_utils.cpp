@@ -42,21 +42,26 @@ std::string ExpressionAnalyzer::immutableBaseOf(const ExprAST& place) {
         }
         // display() names the declaring module without any library-hash scope
         std::string full = match.variableInfo->qualifiedName.display();
-        if (match.variableInfo->isConst) return "constant '" + full + "'";
+        if (match.variableInfo->isConst) {
+          return "constant '" + full + "'";
+        }
         if (sun::types::isConstRef(match.variableInfo->type)) {
           return "const reference '" + full + "'";
         }
         return "";
       }
       // Through a mutable borrow the referent may be changed
-      if (sun::types::isMutableRef(objectType)) return "";
+      if (sun::types::isMutableRef(objectType)) {
+        return "";
+      }
       return immutableBaseOf(*access.getObject());
     }
 
     case ASTNodeType::INDEX: {
       const auto& index = static_cast<const sun::ast::IndexAST&>(place);
-      if (sun::types::isMutableRef(index.getTarget()->getResolvedType()))
+      if (sun::types::isMutableRef(index.getTarget()->getResolvedType())) {
         return "";
+      }
       return immutableBaseOf(*index.getTarget());
     }
 
@@ -68,17 +73,24 @@ std::string ExpressionAnalyzer::immutableBaseOf(const ExprAST& place) {
 
     case ASTNodeType::THIS: {
       VariableInfo* info = ctx_.currentScope().lookupVariable("this");
-      if (info && info->isConst) return "'this' inside a const method";
+      if (info && info->isConst) {
+        return "'this' inside a const method";
+      }
       return "";
     }
 
     case ASTNodeType::VARIABLE_REFERENCE: {
       const auto& ref = static_cast<const VariableReferenceAST&>(place);
       VariableInfo* info = ctx_.currentScope().lookupVariable(ref.getName());
-      if (!info) return "";
-      if (info->isConst) return "constant '" + ref.getName() + "'";
-      if (sun::types::isConstRef(info->type))
+      if (!info) {
+        return "";
+      }
+      if (info->isConst) {
+        return "constant '" + ref.getName() + "'";
+      }
+      if (sun::types::isConstRef(info->type)) {
         return "const reference '" + ref.getName() + "'";
+      }
       return "";
     }
 
@@ -107,7 +119,9 @@ void ExpressionAnalyzer::checkMoveSource(const ExprAST& value,
     source = static_cast<const sun::ast::ParenExprAST*>(source)->getInner();
   }
   // Only an owned compound value moves; scalars copy and borrows stay put
-  if (!sun::types::typeMovesOnRead(source->getResolvedType())) return;
+  if (!sun::types::typeMovesOnRead(source->getResolvedType())) {
+    return;
+  }
   rejectPartialMove(*source, loc);
 
   if (source->getType() == ASTNodeType::MEMBER_ACCESS) {
@@ -137,7 +151,9 @@ void ExpressionAnalyzer::checkArgumentPlaces(
     const std::vector<TypePtr>& paramTypes, const std::string& callee,
     const Position& loc) {
   for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
-    if (!args[i] || !paramTypes[i]) continue;
+    if (!args[i] || !paramTypes[i]) {
+      continue;
+    }
     TypePtr argType = args[i]->getResolvedType();
     // Any reference parameter borrows its argument, const or not
     if (paramTypes[i]->isReference()) {
@@ -146,7 +162,9 @@ void ExpressionAnalyzer::checkArgumentPlaces(
     if (sun::types::isMutableRef(paramTypes[i])) {
       // A reference argument is checked by assignability (const ref never
       // becomes ref); a place argument is borrowed here
-      if (argType && argType->isReference()) continue;
+      if (argType && argType->isReference()) {
+        continue;
+      }
       requireMutablePlace(*args[i],
                           "pass as 'ref' argument " + std::to_string(i + 1) +
                               " of '" + callee + "'",
@@ -160,7 +178,9 @@ void ExpressionAnalyzer::checkArgumentPlaces(
 void ExpressionAnalyzer::checkUnsafeCall(bool requiresUnsafe,
                                          const std::string& name,
                                          const Position& loc) const {
-  if (!requiresUnsafe || ctx_.isInUnsafeBlock()) return;
+  if (!requiresUnsafe || ctx_.isInUnsafeBlock()) {
+    return;
+  }
   logAndThrowError("Calling unsafe method '" + name +
                        "' requires an unsafe block or expression. Use `unsafe "
                        "...` or `unsafe { ... }`.",
@@ -173,7 +193,9 @@ bool ExpressionAnalyzer::checkMethodReceiver(const ExprAST& receiver,
                                              bool isConstructor,
                                              const Position& loc) {
   std::string why = immutableBaseOf(receiver);
-  if (why.empty()) return false;
+  if (why.empty()) {
+    return false;
+  }
   if (!methodIsConst && !isConstructor) {
     logAndThrowError("Cannot call non-const method '" + name + "' on " + why +
                          "; declare it 'const method' if it does not "

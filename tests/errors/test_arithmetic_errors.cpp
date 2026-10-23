@@ -21,10 +21,14 @@ using sun::driver::executeString;
  */
 static void disableExpectedCoreDump() {
   const rlimit limit{0, 0};
-  if (setrlimit(RLIMIT_CORE, &limit) != 0) _exit(125);
+  if (setrlimit(RLIMIT_CORE, &limit) != 0) {
+    _exit(125);
+  }
 #ifdef __linux__
   // Piped Linux core handlers can ignore RLIMIT_CORE; disable dumping as well.
-  if (prctl(PR_SET_DUMPABLE, 0L, 0L, 0L, 0L) != 0) _exit(125);
+  if (prctl(PR_SET_DUMPABLE, 0L, 0L, 0L, 0L) != 0) {
+    _exit(125);
+  }
 #endif
 }
 

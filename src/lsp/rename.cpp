@@ -45,7 +45,9 @@ std::optional<Rename> computeRename(const sun::ast::BlockExprAST& program,
     declaration =
         findDeclarationAt(program, documentPath, source, byteOffset - 1);
   }
-  if (!declaration) return std::nullopt;
+  if (!declaration) {
+    return std::nullopt;
+  }
 
   MemberGroup group = memberGroupOf(program, *declaration, documentPath);
   Occurrences occurrences =
@@ -57,7 +59,9 @@ std::optional<Rename> computeRename(const sun::ast::BlockExprAST& program,
   // its class without naming it, and a declaration whose name was not found
   // cannot be renamed safely
   std::optional<SymbolLocation> site = siteAt(rename, documentPath, byteOffset);
-  if (!site) return std::nullopt;
+  if (!site) {
+    return std::nullopt;
+  }
   rename.name = source.substr(
       site->range.offset,
       site->range.endOffset.value_or(site->range.offset) - site->range.offset);
@@ -78,16 +82,22 @@ std::optional<SymbolLocation> siteAt(const Rename& rename,
                                      int byteOffset) {
   std::string documentPath = normalizePath(filePath);
   for (const SymbolLocation& site : rename.sites) {
-    if (site.filePath != documentPath) continue;
+    if (site.filePath != documentPath) {
+      continue;
+    }
     int end = site.range.endOffset.value_or(site.range.offset);
-    if (site.range.offset <= byteOffset && byteOffset <= end) return site;
+    if (site.range.offset <= byteOffset && byteOffset <= end) {
+      return site;
+    }
   }
   return std::nullopt;
 }
 
 /** Validates a proposed identifier before applying a rename. */
 std::string checkNewName(const std::string& newName) {
-  if (newName.empty()) return "A name is required";
+  if (newName.empty()) {
+    return "A name is required";
+  }
   // A name the lexer rejects outright (say 1abc, an invalid literal suffix)
   // is just as invalid as one that lexes to something other than an
   // identifier.
@@ -95,8 +105,9 @@ std::string checkNewName(const std::string& newName) {
     std::istringstream stream(newName);
     sun::parsing::Lexer lexer(stream);
     sun::parsing::Token first = lexer.getNextToken();
-    if (sun::parsing::isKeyword(first.kind))
+    if (sun::parsing::isKeyword(first.kind)) {
       return "'" + newName + "' is a keyword";
+    }
     if (first.kind != sun::parsing::TokenKind::IDENTIFIER ||
         first.text != newName || !lexer.getNextToken().isEof()) {
       return "'" + newName + "' is not a valid name";

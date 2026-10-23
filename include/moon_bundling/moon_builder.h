@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -15,9 +16,22 @@
 #include <vector>
 
 #include "moon_bundling/moon_import.h"
+#include "moon_bundling/native_archive.h"
+
+/** Declares syntax-tree types consumed by metadata extraction. */
+namespace sun::ast {
+class BlockExprAST;
+}
+/** Declares semantic analysis used to validate bundle exports. */
+namespace sun::semantic_analysis {
+class SemanticAnalyzer;
+}
 
 /** Builds and loads compiled Moon libraries and their declaration metadata. */
 namespace sun::moon_bundling {
+
+/** Writes compiled modules and native archives into Moon bundles. */
+class MoonWriter;
 
 /** Inputs and build settings for producing a Moon library. */
 struct MoonBuildOptions {
@@ -43,9 +57,9 @@ struct MoonBuildReport {
   std::vector<std::string> protoFiles;  // synthesized .proto schemas
   std::vector<MoonImport> moonImports;  // bundles linked against
   std::vector<std::string> modules;     // exported module names (dotted)
-  // Native archives the manifest's own `archives:` named (resolved paths);
-  // carried with their symbols renamed under the bundle's hash
-  std::vector<std::string> archiveFiles;
+  // Resolved manifest archives and their declared requirements; carried with
+  // their symbols renamed under the bundle's hash.
+  std::vector<NativeArchive> nativeArchives;
   // File names of archives taken over from imported bundles whose code was
   // linked in, so the bundle stays self-contained for its importers
   std::vector<std::string> inheritedArchives;
@@ -72,6 +86,58 @@ class MoonBuilder {
    * Default output path for an entrypoint: <entrypoint without .sun>.moon
    */
   static std::filesystem::path defaultOutputPath(const std::string& entrypoint);
+
+ private:
+  /** Prepared input files, generated sources, archive bytes, and build hashes.
+   */
+  struct LoadedInputs;
+  /** Native symbol renames and unresolved references. */
+  struct NativeSymbols;
+  /** Validated export metadata and module names. */
+  struct ExportMetadata;
+  /** Compiled code and the metadata whose lifetime it depends on. */
+  struct CompiledBundle;
+
+  /** Resolves and loads inputs, generates sources, and computes build hashes.
+   */
+  static LoadedInputs loadInputs(const std::string& entrypoint,
+                                 const MoonBuildOptions& options);
+  /** Checks whether the existing output matches the inputs and needs no
+   * rebuild. */
+  static bool isUpToDate(const std::string& inputHash,
+                         const std::filesystem::path& outputPath,
+                         const MoonBuildOptions& options);
+  /** Adds cached exports and inherited archives to the supplied input report.
+   */
+  static MoonBuildReport readExistingReport(
+      const std::filesystem::path& bundlePath,
+      const std::string& ownArchiveSetHash, MoonBuildReport report);
+  /** Computes native symbol renames and warns about duplicate definitions. */
+  static NativeSymbols prepareNativeSymbols(const LoadedInputs& inputs);
+  /** Returns validated exports with bundle-local source identifiers. */
+  static ExportMetadata collectMetadata(
+      const sun::ast::BlockExprAST& program,
+      sun::semantic_analysis::SemanticAnalyzer& analyzer,
+      const std::string& inputHash, uint32_t staticInitOrder);
+  /** Compiles prepared inputs and returns the driver and its export metadata.
+   */
+  static CompiledBundle compile(const LoadedInputs& inputs,
+                                const NativeSymbols& symbols,
+                                const std::string& entrypoint,
+                                const MoonBuildOptions& options);
+  /** Adds archives to the writer and returns inherited archive names. */
+  static std::vector<std::string> packageNativeArchives(
+      MoonWriter& writer, const LoadedInputs& inputs,
+      const NativeSymbols& symbols,
+      const std::vector<std::string>& inheritedPaths);
+  /** Writes the bundle's JSON representation into the debug directory. */
+  static void writeDebugJson(const std::filesystem::path& outputPath,
+                             const std::filesystem::path& debugFolder);
+  /** Writes compiled code and archives, returning inherited archive names. */
+  static std::vector<std::string> writeBundle(
+      const LoadedInputs& inputs, const NativeSymbols& symbols,
+      CompiledBundle& compiled, const std::filesystem::path& outputPath,
+      const MoonBuildOptions& options);
 };
 
 }  // namespace sun::moon_bundling

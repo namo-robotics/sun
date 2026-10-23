@@ -39,7 +39,9 @@ Value* LoopGenerator::codegen(const sun::ast::ForExprAST& expr) {
   Value* loopCond;
   if (expr.getCondition()) {
     Value* condVal = codegen(*expr.getCondition());
-    if (!condVal) return nullptr;
+    if (!condVal) {
+      return nullptr;
+    }
 
     // If condVal is already a boolean (i1), use it directly
     if (condVal->getType()->isIntegerTy(1)) {
@@ -128,7 +130,9 @@ Value* LoopGenerator::codegen(const sun::ast::WhileExprAST& expr) {
 
   // Evaluate the condition
   Value* condVal = codegen(*expr.getCondition());
-  if (!condVal) return nullptr;
+  if (!condVal) {
+    return nullptr;
+  }
 
   // Convert condition to a bool
   Value* loopCond;
@@ -222,7 +226,9 @@ Value* LoopGenerator::codegen(const sun::ast::ForInExprAST& expr) {
   // Evaluate the iterable expression to get the container/iterator. The
   // iterator protocol is next(ref Container) -> Option<T>: loop until None.
   Value* iterableObj = codegen(*expr.getIterable());
-  if (!iterableObj) return nullptr;
+  if (!iterableObj) {
+    return nullptr;
+  }
 
   auto iterableType = expr.getIterable()->getResolvedType();
   if (!iterableType) {

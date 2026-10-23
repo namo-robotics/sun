@@ -40,7 +40,9 @@ inline llvm::Function* forwarder(llvm::Module* module, const char* wrapperName,
                                  llvm::ArrayRef<llvm::Type*> params,
                                  llvm::Type* retTy) {
   llvm::Function* func = module->getFunction(wrapperName);
-  if (func) return func;
+  if (func) {
+    return func;
+  }
 
   llvm::LLVMContext& llvmCtx = module->getContext();
   llvm::FunctionType* funcType = llvm::FunctionType::get(retTy, params, false);
@@ -51,7 +53,9 @@ inline llvm::Function* forwarder(llvm::Module* module, const char* wrapperName,
   llvm::IRBuilder<> builder(entryBB);
 
   std::vector<llvm::Value*> args;
-  for (auto& arg : func->args()) args.push_back(&arg);
+  for (auto& arg : func->args()) {
+    args.push_back(&arg);
+  }
   llvm::Value* result = builder.CreateCall(callee, args, "result");
   if (result->getType() != retTy) {
     result = builder.CreateIntCast(result, retTy, /*isSigned=*/true);

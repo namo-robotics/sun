@@ -131,8 +131,9 @@ Value* EnumGenerator::codegenVariantConstruction(
     ctx.builder->CreateStore(argVal, fieldPtr);
   }
 
-  for (const auto& [address, type] : pendingPayloads)
+  for (const auto& [address, type] : pendingPayloads) {
     scopes().markClassAllocationAsDeinited(address, type);
+  }
 
   // The fresh storage owns its payloads until moved into a variable/field
   // (the borrow checker marks that move; genLocalVar adopts the alloca).
@@ -271,7 +272,9 @@ Value* EnumGenerator::codegenMatch(const sun::ast::MatchExprAST& expr,
           typeResolver.getEnumVariantStruct(enumType, variantName);
       for (size_t i = 0; i < arm.bindings.size(); ++i) {
         const auto& binding = arm.bindings[i];
-        if (binding.isWildcard && !consuming) continue;
+        if (binding.isWildcard && !consuming) {
+          continue;
+        }
         unsigned idx =
             typeResolver.enumPayloadFieldIndex(enumType, variantName, i);
         Value* fieldPtr = ctx.builder->CreateStructGEP(variantTy, discPtr, idx,
@@ -281,12 +284,15 @@ Value* EnumGenerator::codegenMatch(const sun::ast::MatchExprAST& expr,
         if (arm.bindingType ||
             (payload->isReference() &&
              sun::types::unwrapRef(payload)->isInterface())) {
-          if (binding.isWildcard) continue;
+          if (binding.isWildcard) {
+            continue;
+          }
           Value* address = fieldPtr;
           auto source = sun::types::unwrapRef(payload);
           auto target = sun::types::unwrapRef(binding.resolvedType);
-          if (payload->isReference() && !source->isInterface())
+          if (payload->isReference() && !source->isInterface()) {
             address = ctx.builder->CreateLoad(fieldTy, fieldPtr);
+          }
           if (target->isInterface() && source->isClass()) {
             auto* view = gen_.classGenerator().createInterfaceFatPointer(
                 address, static_cast<sun::types::ClassType*>(source.get()),
@@ -319,8 +325,9 @@ Value* EnumGenerator::codegenMatch(const sun::ast::MatchExprAST& expr,
               gen_.createEntryBlockAlloca(TheFunction, name, fieldTy);
           ctx.builder->CreateStore(ctx.builder->CreateLoad(fieldTy, fieldPtr),
                                    alloca);
-          if (!binding.isWildcard)
+          if (!binding.isWildcard) {
             scopes().back().variables[binding.declaration.id] = alloca;
+          }
           scopes().trackClassAllocation(alloca, name, binding.resolvedType);
         } else if (binding.isWildcard) {
           continue;
@@ -376,15 +383,22 @@ Value* EnumGenerator::codegenMatch(const sun::ast::MatchExprAST& expr,
   // Variant arms
   for (size_t i = 0; i < arms.size(); ++i) {
     const auto& arm = arms[i];
-    if (arm.isWildcard) break;
+    if (arm.isWildcard) {
+      break;
+    }
     const auto tags = arm.bindingType
                           ? arm.matchedVariantTags
                           : std::vector<int64_t>{arm.resolvedVariantTag};
     for (auto variantTag : tags) {
-      if (!emittedTags.insert(variantTag).second) continue;
+      if (!emittedTags.insert(variantTag).second) {
+        continue;
+      }
       const sun::types::EnumVariant* variant = nullptr;
-      for (const auto& candidate : enumType.getVariants())
-        if (candidate.value == variantTag) variant = &candidate;
+      for (const auto& candidate : enumType.getVariants()) {
+        if (candidate.value == variantTag) {
+          variant = &candidate;
+        }
+      }
       BasicBlock* ArmBB = BasicBlock::Create(
           ctx.getContext(), "match.arm." + std::to_string(i), TheFunction);
       switchInst->addCase(

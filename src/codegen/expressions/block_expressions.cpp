@@ -13,10 +13,14 @@ namespace sun::codegen {
 // then drops whatever it still owns on the way out.
 Value* CodegenVisitor::codegen(const sun::ast::BlockExprAST& block,
                                size_t start) {
-  if (block.isEmpty()) return ConstantFP::get(ctx.getContext(), APFloat(0.0));
+  if (block.isEmpty()) {
+    return ConstantFP::get(ctx.getContext(), APFloat(0.0));
+  }
 
   functions_.declareBlockSignatures(block);
-  if (scopes.empty()) errors.emitArithmeticErrorMethods();
+  if (scopes.empty()) {
+    errors.emitArithmeticErrorMethods();
+  }
   variables.declareBlockGlobals(block);
 
   Value* lastValue = nullptr;
@@ -28,7 +32,9 @@ Value* CodegenVisitor::codegen(const sun::ast::BlockExprAST& block,
     // the last function they emitted. At file scope no function is open, so
     // clear it before each item: a global's initializer must not mistake a
     // finished function's last block for its own.
-    if (scopes.empty()) ctx.builder->ClearInsertionPoint();
+    if (scopes.empty()) {
+      ctx.builder->ClearInsertionPoint();
+    }
     if (encounteredReturn) {
       // Code after return is unreachable, skip codegen
       break;
@@ -91,7 +97,9 @@ Value* CodegenVisitor::codegen(const sun::ast::BlockExprAST& block,
     }
   }
 
-  if (scopes.empty()) errors.emitArithmeticErrorMethods(/*defineBodies=*/true);
+  if (scopes.empty()) {
+    errors.emitArithmeticErrorMethods(/*defineBodies=*/true);
+  }
 
   // If we encountered a return, the block has already been terminated
   // Return a dummy value - the caller will check for terminator

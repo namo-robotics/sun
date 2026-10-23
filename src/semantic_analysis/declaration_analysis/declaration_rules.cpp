@@ -108,7 +108,9 @@ void rejectRefEnvReturnType(
     const Position& location, bool allowNamed) {
   if (returnType && returnType->refEnv) {
     if (!returnType->isAnonymousFrameLambda()) {
-      if (allowNamed) return;
+      if (allowNamed) {
+        return;
+      }
       logAndThrowError(
           "a named frame-bound return type requires a lifetime available "
           "in this declaration",

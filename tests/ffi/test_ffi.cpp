@@ -481,7 +481,9 @@ TEST(Ffi_Link, symbols_are_unavailable_before_the_library_is_loaded) {
 }
 
 TEST(Ffi_Link, loads_library_from_search_path_and_calls_into_it) {
-  if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
+  if (ffiTestLibDir().empty()) {
+    GTEST_SKIP() << "testlib dir unknown";
+  }
 
   LinkOptions opts;
   opts.libraries = {"sun_ffi_testlib"};
@@ -501,7 +503,9 @@ TEST(Ffi_Link, loads_library_from_search_path_and_calls_into_it) {
 }
 
 TEST(Ffi_Link, loads_library_given_as_an_explicit_path) {
-  if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
+  if (ffiTestLibDir().empty()) {
+    GTEST_SKIP() << "testlib dir unknown";
+  }
 
   LinkOptions opts;
   // The host's shared-library extension: CMake builds the fixture as .dylib
@@ -518,7 +522,9 @@ TEST(Ffi_Link, loads_library_given_as_an_explicit_path) {
 TEST(Ffi_Link, finds_static_archive_when_no_shared_library_exists) {
   // -l resolution falls back to lib<name>.a in the -L directories; the
   // archive comes back by path instead of being dlopen'd (issue #133).
-  if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
+  if (ffiTestLibDir().empty()) {
+    GTEST_SKIP() << "testlib dir unknown";
+  }
 
   LinkOptions opts;
   opts.libraries = {"sun_ffi_static_testlib"};
@@ -530,7 +536,9 @@ TEST(Ffi_Link, finds_static_archive_when_no_shared_library_exists) {
 }
 
 TEST(Ffi_Link, accepts_static_archive_given_as_an_explicit_path) {
-  if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
+  if (ffiTestLibDir().empty()) {
+    GTEST_SKIP() << "testlib dir unknown";
+  }
 
   std::string path = ffiTestLibDir() + "/libsun_ffi_static_testlib.a";
   LinkOptions opts;
@@ -544,7 +552,9 @@ TEST(Ffi_Link, accepts_static_archive_given_as_an_explicit_path) {
 TEST(Ffi_Link, jit_resolves_symbols_from_a_static_archive) {
   // The end-to-end path for `sun -L. -lslot shim.sun` with libslot.a: the
   // archive is registered with the JIT's own linker, and calls into it work.
-  if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
+  if (ffiTestLibDir().empty()) {
+    GTEST_SKIP() << "testlib dir unknown";
+  }
   initTestEnvironment();
 
   auto driver = Driver::createForJIT();
@@ -645,7 +655,9 @@ TEST(Ffi_Struct, ref_param_accepted_in_extern_signature) {
 }
 
 TEST(Ffi_Struct, c_writes_through_a_ref_to_a_sun_object) {
-  if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
+  if (ffiTestLibDir().empty()) {
+    GTEST_SKIP() << "testlib dir unknown";
+  }
   LinkOptions opts;
   opts.libraries = {"sun_ffi_testlib"};
   opts.searchPaths = {ffiTestLibDir()};
@@ -740,7 +752,9 @@ namespace {
  * Loads the fixture library once; the tests below all need its symbols.
  */
 bool loadFfiTestLib() {
-  if (ffiTestLibDir().empty()) return false;
+  if (ffiTestLibDir().empty()) {
+    return false;
+  }
   LinkOptions opts;
   opts.libraries = {"sun_ffi_testlib"};
   opts.searchPaths = {ffiTestLibDir()};
@@ -754,7 +768,9 @@ bool loadFfiTestLib() {
 // ============================================================================
 
 TEST(Ffi_Callbacks, calls_a_sun_function_immediately) {
-  if (!loadFfiTestLib()) GTEST_SKIP() << "fixture library unavailable";
+  if (!loadFfiTestLib()) {
+    GTEST_SKIP() << "fixture library unavailable";
+  }
   auto value = executeString(R"(
     extern "C" function sun_ffi_call_callback(
         callback: function (i32) i32, value: i32) i32;
@@ -769,7 +785,9 @@ TEST(Ffi_Callbacks, calls_a_sun_function_immediately) {
 }
 
 TEST(Ffi_Callbacks, c_can_call_a_stored_function_after_registration_returns) {
-  if (!loadFfiTestLib()) GTEST_SKIP() << "fixture library unavailable";
+  if (!loadFfiTestLib()) {
+    GTEST_SKIP() << "fixture library unavailable";
+  }
   auto value = executeString(R"(
     extern "C" function sun_ffi_store_callback(
         callback: function (i32) i32) void;
@@ -879,7 +897,9 @@ TEST(Ffi_Callbacks, rejects_function_pointer_returns_from_c) {
 
 TEST(Ffi_StructValue, passes_a_register_class_struct) {
   // struct { int, int } travels in one integer register.
-  if (!loadFfiTestLib()) GTEST_SKIP() << "fixture library unavailable";
+  if (!loadFfiTestLib()) {
+    GTEST_SKIP() << "fixture library unavailable";
+  }
   auto value = executeString(R"(
     class Pair {
         var a: i32;
@@ -898,7 +918,9 @@ TEST(Ffi_StructValue, passes_a_register_class_struct) {
 
 TEST(Ffi_StructValue, passes_a_mixed_integer_and_sse_struct) {
   // struct { int, double } splits across an integer and an SSE register.
-  if (!loadFfiTestLib()) GTEST_SKIP() << "fixture library unavailable";
+  if (!loadFfiTestLib()) {
+    GTEST_SKIP() << "fixture library unavailable";
+  }
   auto value = executeString(R"(
     class Mixed {
         var a: i32;
@@ -917,7 +939,9 @@ TEST(Ffi_StructValue, passes_a_mixed_integer_and_sse_struct) {
 
 TEST(Ffi_StructValue, passes_a_memory_class_struct_byval) {
   // 20 bytes exceeds two eightbytes, so it goes through memory.
-  if (!loadFfiTestLib()) GTEST_SKIP() << "fixture library unavailable";
+  if (!loadFfiTestLib()) {
+    GTEST_SKIP() << "fixture library unavailable";
+  }
   auto value = executeString(R"(
     class Big {
         var a: i32; var b: i32; var c: i32; var d: i32; var e: i32;
@@ -936,7 +960,9 @@ TEST(Ffi_StructValue, passes_a_memory_class_struct_byval) {
 }
 
 TEST(Ffi_StructValue, returns_a_register_class_struct) {
-  if (!loadFfiTestLib()) GTEST_SKIP() << "fixture library unavailable";
+  if (!loadFfiTestLib()) {
+    GTEST_SKIP() << "fixture library unavailable";
+  }
   auto value = executeString(R"(
     class Pair {
         var a: i32;
@@ -959,7 +985,9 @@ TEST(Ffi_StructValue, returns_a_register_class_struct) {
 }
 
 TEST(Ffi_StructValue, returns_a_memory_class_struct_via_sret) {
-  if (!loadFfiTestLib()) GTEST_SKIP() << "fixture library unavailable";
+  if (!loadFfiTestLib()) {
+    GTEST_SKIP() << "fixture library unavailable";
+  }
   auto value = executeString(R"(
     class Big {
         var a: i32; var b: i32; var c: i32; var d: i32; var e: i32;
@@ -982,7 +1010,9 @@ TEST(Ffi_StructValue, returns_a_memory_class_struct_via_sret) {
 TEST(Ffi_StructValue, struct_followed_by_a_scalar_keeps_argument_order) {
   // A coerced struct expands into extra LLVM arguments, so the scalar after
   // it must still land in the right slot.
-  if (!loadFfiTestLib()) GTEST_SKIP() << "fixture library unavailable";
+  if (!loadFfiTestLib()) {
+    GTEST_SKIP() << "fixture library unavailable";
+  }
   auto value = executeString(R"(
     class Pair {
         var a: i32;
@@ -1002,7 +1032,9 @@ TEST(Ffi_StructValue, struct_followed_by_a_scalar_keeps_argument_order) {
 TEST(Ffi_StructValue, module_qualified_extern_call_marshals_structs) {
   // The module-qualified call path (mymod.f) used to skip ABI marshalling
   // entirely and hand the callee a raw {i32, i32} argument.
-  if (!loadFfiTestLib()) GTEST_SKIP() << "fixture library unavailable";
+  if (!loadFfiTestLib()) {
+    GTEST_SKIP() << "fixture library unavailable";
+  }
   auto value = executeString(R"(
     class Pair {
         public var a: i32;
@@ -1089,7 +1121,9 @@ TEST(Ffi, extern_global_emits_exact_symbol_after_use) {
 }
 
 TEST(Ffi_Link, extern_globals_read_write_pointer_and_struct) {
-  if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
+  if (ffiTestLibDir().empty()) {
+    GTEST_SKIP() << "testlib dir unknown";
+  }
   LinkOptions opts;
   opts.libraries = {"sun_ffi_testlib"};
   opts.searchPaths = {ffiTestLibDir()};
@@ -1118,7 +1152,9 @@ TEST(Ffi_Link, extern_globals_read_write_pointer_and_struct) {
 }
 
 TEST(Ffi_Link, compatible_native_global_redeclarations_are_idempotent) {
-  if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
+  if (ffiTestLibDir().empty()) {
+    GTEST_SKIP() << "testlib dir unknown";
+  }
   LinkOptions opts;
   opts.libraries = {"sun_ffi_testlib"};
   opts.searchPaths = {ffiTestLibDir()};
@@ -1206,9 +1242,11 @@ TEST(Ffi, native_global_and_sun_definition_have_distinct_symbols) {
   ASSERT_NE(native, nullptr);
   EXPECT_TRUE(native->isDeclaration());
   size_t sunDefinitions = 0;
-  for (const auto& global : driver->getModule().globals())
-    if (!global.isDeclaration() && global.getName().starts_with("_SUN1_"))
+  for (const auto& global : driver->getModule().globals()) {
+    if (!global.isDeclaration() && global.getName().starts_with("_SUN1_")) {
       ++sunDefinitions;
+    }
+  }
   EXPECT_EQ(sunDefinitions, 1u);
 }
 

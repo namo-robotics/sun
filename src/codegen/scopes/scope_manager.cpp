@@ -32,14 +32,18 @@ CodegenScope& ScopeManager::push(const sun::support::Position& loc) {
 }
 
 void ScopeManager::pop() {
-  if (scopes_.empty()) return;
+  if (scopes_.empty()) {
+    return;
+  }
   // Run this scope's pending drops unless the block already terminated
   // (return/break/throw paths emit their own multi-scope cleanup first).
   llvm::BasicBlock* bb = ctx.builder->GetInsertBlock();
   if (bb && !bb->getTerminator()) {
     emitCleanupForScope(scopes_.back());
   }
-  if (scopes_.back().hasDebugScope) state_.debugInfo.popLexicalBlock();
+  if (scopes_.back().hasDebugScope) {
+    state_.debugInfo.popLexicalBlock();
+  }
   scopes_.pop_back();
 }
 
@@ -65,15 +69,21 @@ AllocaInst* ScopeManager::findVariable(DeclarationId id) {
 
 bool ScopeManager::isIndirectBinding(DeclarationId id) const {
   for (auto it = scopes_.rbegin(); it != scopes_.rend(); ++it) {
-    if (it->variables.count(id)) return it->indirectBindings.count(id);
-    if (it->isFunctionBoundary) break;
+    if (it->variables.count(id)) {
+      return it->indirectBindings.count(id);
+    }
+    if (it->isFunctionBoundary) {
+      break;
+    }
   }
   return false;
 }
 
 Value* ScopeManager::compoundStorageAddress(DeclarationId id) {
   AllocaInst* alloca = findVariable(id);
-  if (!alloca) return nullptr;
+  if (!alloca) {
+    return nullptr;
+  }
   if (isIndirectBinding(id)) {
     return ctx.builder->CreateLoad(PointerType::getUnqual(ctx.getContext()),
                                    alloca, alloca->getName() + ".borrow");
@@ -87,10 +97,13 @@ Value* ScopeManager::compoundStorageAddress(DeclarationId id) {
 
 void ScopeManager::trackClassAllocation(Value* alloca, const std::string& name,
                                         TypePtr type, bool unwindOnly) {
-  if (scopes_.empty()) return;
-  if (type && (type->isEnum() || type->isArray()) &&
-      !sun::types::typeNeedsDrop(type))
+  if (scopes_.empty()) {
     return;
+  }
+  if (type && (type->isEnum() || type->isArray()) &&
+      !sun::types::typeNeedsDrop(type)) {
+    return;
+  }
   for (auto& scope : scopes_) {
     for (auto& alloc : scope.classAllocations) {
       if (alloc.alloca == alloca) {
@@ -126,10 +139,14 @@ StoragePlace storagePlace(Value* ptr) {
     auto parent = storagePlace(gep->getPointerOperand());
     auto index = gep->idx_begin();
     auto* first = dyn_cast<ConstantInt>(index->get());
-    if (!first || !first->isZero()) return {ptr, {}};
+    if (!first || !first->isZero()) {
+      return {ptr, {}};
+    }
     for (++index; index != gep->idx_end(); ++index) {
       auto* field = dyn_cast<ConstantInt>(index->get());
-      if (!field) return {ptr, {}};
+      if (!field) {
+        return {ptr, {}};
+      }
       parent.fields.push_back(field->getZExtValue());
     }
     return parent;
@@ -143,25 +160,34 @@ ClassAllocation* ScopeManager::findAllocation(Value* ptr, const TypePtr& type) {
   auto place = storagePlace(ptr);
   for (auto& scope : scopes_) {
     for (auto& alloc : scope.classAllocations) {
-      if (!type && alloc.alloca != ptr) continue;
-      if (type && (!alloc.type || !alloc.type->equals(*type))) continue;
+      if (!type && alloc.alloca != ptr) {
+        continue;
+      }
+      if (type && (!alloc.type || !alloc.type->equals(*type))) {
+        continue;
+      }
       auto candidate = storagePlace(alloc.alloca);
-      if (place.base == candidate.base && place.fields == candidate.fields)
+      if (place.base == candidate.base && place.fields == candidate.fields) {
         return &alloc;
+      }
     }
   }
   return nullptr;
 }
 
 void ScopeManager::markInitialized(Value* ptr, const TypePtr& type) {
-  if (!type || !sun::types::typeNeedsDrop(type)) return;
+  if (!type || !sun::types::typeNeedsDrop(type)) {
+    return;
+  }
   if (auto* alloc = findAllocation(ptr, type)) {
     setOwnership(*alloc, true);
   }
   auto place = storagePlace(ptr);
   for (auto& scope : scopes_) {
     for (auto& field : scope.classAllocations) {
-      if (!field.isField) continue;
+      if (!field.isField) {
+        continue;
+      }
       auto child = storagePlace(field.alloca);
       if (place.base == child.base &&
           child.fields.size() > place.fields.size() &&
@@ -178,7 +204,9 @@ ClassAllocation* ScopeManager::trackFieldAllocation(Value* ptr,
   Value* base = storagePlace(ptr).base;
   for (auto& scope : scopes_) {
     for (const auto& owner : scope.classAllocations) {
-      if (owner.isField || owner.alloca != base) continue;
+      if (owner.isField || owner.alloca != base) {
+        continue;
+      }
       ClassAllocation field{ptr, owner.varName + ".field", false, type};
       field.isField = true;
       field.ownedAt = owner.ownedAt;
@@ -191,14 +219,17 @@ ClassAllocation* ScopeManager::trackFieldAllocation(Value* ptr,
 
 void ScopeManager::setOwnership(ClassAllocation& alloc, bool owned) {
   alloc.moved = !owned;
-  if (alloc.dropFlag)
+  if (alloc.dropFlag) {
     ctx.builder->CreateStore(ConstantInt::getBool(ctx.getContext(), owned),
                              alloc.dropFlag);
+  }
 }
 
 void ScopeManager::markClassAllocationAsDeinited(Value* alloca, TypePtr type) {
   auto* alloc = findAllocation(alloca, type);
-  if (!alloc && type) alloc = trackFieldAllocation(alloca, type);
+  if (!alloc && type) {
+    alloc = trackFieldAllocation(alloca, type);
+  }
   if (alloc) {
     // A later assignment may restore ownership on only some paths.
     ensureDropFlag(*alloc);
@@ -207,7 +238,9 @@ void ScopeManager::markClassAllocationAsDeinited(Value* alloca, TypePtr type) {
 }
 
 void ScopeManager::ensureDropFlag(ClassAllocation& alloc) {
-  if (alloc.dropFlag) return;
+  if (alloc.dropFlag) {
+    return;
+  }
 
   // Where the value became owned. Nothing left to anchor to means the code
   // that took ownership is gone, so leave the decision static.
@@ -215,7 +248,9 @@ void ScopeManager::ensureDropFlag(ClassAllocation& alloc) {
   auto* anchorInst = dyn_cast_or_null<Instruction>(anchor);
   BasicBlock* anchorBlock = anchorInst ? anchorInst->getParent()
                                        : dyn_cast_or_null<BasicBlock>(anchor);
-  if (!anchorBlock || !anchorBlock->getParent()) return;
+  if (!anchorBlock || !anchorBlock->getParent()) {
+    return;
+  }
 
   llvm::Type* boolTy = llvm::Type::getInt1Ty(ctx.getContext());
   Function* func = anchorBlock->getParent();
@@ -261,9 +296,13 @@ void ScopeManager::emitFlaggedDrop(const ClassAllocation& alloc) {
 }
 
 std::optional<std::string> ScopeManager::releaseBlockResult(Value* result) {
-  if (!result || scopes_.empty()) return std::nullopt;
+  if (!result || scopes_.empty()) {
+    return std::nullopt;
+  }
   for (auto& alloc : scopes_.back().classAllocations) {
-    if (alloc.alloca != result || alloc.moved) continue;
+    if (alloc.alloca != result || alloc.moved) {
+      continue;
+    }
     // The block always reaches its own last statement, so ownership leaves it
     // on every path and the decision stays static in the scope that gets it.
     setOwnership(alloc, false);
@@ -274,12 +313,20 @@ std::optional<std::string> ScopeManager::releaseBlockResult(Value* result) {
 
 bool ScopeManager::hasLiveOwners(size_t depth) const {
   for (size_t i = depth; i < scopes_.size(); ++i) {
-    if (scopes_[i].endCatch) return true;
+    if (scopes_[i].endCatch) {
+      return true;
+    }
     // A drop flag means ownership is a run-time answer, so assume it is owned
-    for (const auto& a : scopes_[i].classAllocations)
-      if (!a.moved || a.dropFlag) return true;
-    for (const auto& a : scopes_[i].ownedAllocations)
-      if (!a.moved) return true;
+    for (const auto& a : scopes_[i].classAllocations) {
+      if (!a.moved || a.dropFlag) {
+        return true;
+      }
+    }
+    for (const auto& a : scopes_[i].ownedAllocations) {
+      if (!a.moved) {
+        return true;
+      }
+    }
   }
   return false;
 }
@@ -292,7 +339,9 @@ void ScopeManager::emitFieldCleanup(Value* objectPtr,
                                     const ClassType* classType,
                                     const std::string& baseName,
                                     FunctionCallee freeFunc) {
-  if (!classType) return;
+  if (!classType) {
+    return;
+  }
 
   StructType* structType = classType->getStructType(ctx.getContext());
 
@@ -347,7 +396,9 @@ void ScopeManager::emitFieldCleanup(Value* objectPtr,
 }
 
 void ScopeManager::emitDeinitCall(const ClassType* classType, Value* receiver) {
-  if (!classType->deinitializer) return;
+  if (!classType->deinitializer) {
+    return;
+  }
   Function* deinitFunc =
       gen_.functionRegistry().lookupFunctionById(classType->deinitializer);
   ctx.builder->CreateCall(
@@ -357,12 +408,16 @@ void ScopeManager::emitDeinitCall(const ClassType* classType, Value* receiver) {
 
 void ScopeManager::emitFieldDeinit(Value* objectPtr, const ClassType* classType,
                                    const std::string& baseName) {
-  if (!classType) return;
+  if (!classType) {
+    return;
+  }
 
   StructType* structType = classType->getStructType(ctx.getContext());
 
   for (const auto& field : classType->getFields()) {
-    if (!sun::types::typeNeedsDrop(field.type)) continue;
+    if (!sun::types::typeNeedsDrop(field.type)) {
+      continue;
+    }
     const auto name = baseName + "." + field.name;
     Value* fieldPtr =
         ctx.builder->CreateStructGEP(structType, objectPtr, field.index, name);
@@ -376,7 +431,9 @@ void ScopeManager::emitFieldDeinit(Value* objectPtr, const ClassType* classType,
  */
 void ScopeManager::emitArrayDrop(sun::types::ArrayType& arrayType,
                                  Value* storagePtr, const std::string& name) {
-  if (arrayType.isUnsized() || !sun::types::typeNeedsDrop(&arrayType)) return;
+  if (arrayType.isUnsized() || !sun::types::typeNeedsDrop(&arrayType)) {
+    return;
+  }
   const TypePtr& elemType = arrayType.getElementType();
   llvm::Type* elemLLVMType = elemType->toLLVMType(ctx.getContext());
   size_t count = arrayType.getTotalElements();
@@ -419,7 +476,9 @@ void ScopeManager::emitArrayDrop(sun::types::ArrayType& arrayType,
 
 void ScopeManager::emitDropInPlace(const TypePtr& type, Value* ptr,
                                    const std::string& name) {
-  if (!type || !ptr) return;
+  if (!type || !ptr) {
+    return;
+  }
   if (auto* alloc = findAllocation(ptr, type)) {
     if (alloc->dropFlag) {
       auto current = *alloc;
@@ -427,7 +486,9 @@ void ScopeManager::emitDropInPlace(const TypePtr& type, Value* ptr,
       emitFlaggedDrop(current);
       return;
     }
-    if (alloc->moved) return;
+    if (alloc->moved) {
+      return;
+    }
   }
   emitUnconditionalDrop(type, ptr, name);
 }
@@ -446,7 +507,9 @@ void ScopeManager::emitUnconditionalDrop(const TypePtr& type, Value* ptr,
 }
 
 void ScopeManager::emitCleanupToDepth(size_t depth, bool unwinding) {
-  if (scopes_.empty()) return;
+  if (scopes_.empty()) {
+    return;
+  }
   for (size_t i = scopes_.size(); i-- > depth;) {
     emitCleanupForScope(scopes_[i], unwinding);
   }
@@ -461,8 +524,12 @@ void ScopeManager::emitCleanupForScope(CodegenScope& scope, bool unwinding) {
   if (!currentClassScope.empty()) {
     for (auto it = currentClassScope.rbegin(); it != currentClassScope.rend();
          ++it) {
-      if (!it->alloca || !it->type || (it->unwindOnly && !unwinding)) continue;
-      if (it->isField) continue;
+      if (!it->alloca || !it->type || (it->unwindOnly && !unwinding)) {
+        continue;
+      }
+      if (it->isField) {
+        continue;
+      }
       if (it->dropFlag) {
         emitFlaggedDrop(*it);
       } else if (!it->moved) {
@@ -474,7 +541,9 @@ void ScopeManager::emitCleanupForScope(CodegenScope& scope, bool unwinding) {
   // Then, cleanup owned pointer allocations (ptr<T>)
   auto& currentScope = scope.ownedAllocations;
   if (currentScope.empty()) {
-    if (scope.endCatch) ctx.builder->CreateCall(scope.endCatch, {});
+    if (scope.endCatch) {
+      ctx.builder->CreateCall(scope.endCatch, {});
+    }
     return;
   }
 
@@ -527,7 +596,9 @@ void ScopeManager::emitCleanupForScope(CodegenScope& scope, bool unwinding) {
       ctx.builder->SetInsertPoint(skipBB);
     }
   }
-  if (scope.endCatch) ctx.builder->CreateCall(scope.endCatch, {});
+  if (scope.endCatch) {
+    ctx.builder->CreateCall(scope.endCatch, {});
+  }
 }
 
 }  // namespace sun::codegen::scopes

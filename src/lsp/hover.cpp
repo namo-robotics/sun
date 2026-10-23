@@ -46,12 +46,16 @@ std::string renderCallable(const std::string& prefix,
                            bool fatArrow, const Bindings& bindings) {
   std::string out = prefix + "(";
   for (size_t i = 0; i < params.size(); ++i) {
-    if (i > 0) out += ", ";
+    if (i > 0) {
+      out += ", ";
+    }
     out += params[i] ? renderType(*params[i], bindings) : "?";
   }
   out += fatArrow ? ") => " : ") ";
   out += returnType ? renderType(*returnType, bindings) : "void";
-  if (canThrow) out += " throws IError";
+  if (canThrow) {
+    out += " throws IError";
+  }
   return out;
 }
 
@@ -63,7 +67,9 @@ std::string renderWithArguments(const sun::types::Type& type,
                                 const std::vector<TypePtr>& arguments,
                                 const Bindings& bindings) {
   std::string display = type.toDisplayString();
-  if (arguments.empty() || bindings.empty()) return display;
+  if (arguments.empty() || bindings.empty()) {
+    return display;
+  }
   std::string out = display.substr(0, display.find('<'));
   for (size_t i = 0; i < arguments.size(); ++i) {
     out += i == 0 ? "<" : ", ";
@@ -79,7 +85,9 @@ std::string renderWithArguments(const sun::types::Type& type,
  */
 std::string renderType(const sun::types::Type& type, const Bindings& bindings) {
   for (const auto& [name, bound] : bindings) {
-    if (bound && bound->equals(type)) return name;
+    if (bound && bound->equals(type)) {
+      return name;
+    }
   }
   switch (type.getKind()) {
     case sun::types::Type::Kind::Function: {
@@ -102,7 +110,9 @@ std::string renderType(const sun::types::Type& type, const Bindings& bindings) {
     }
     case sun::types::Type::Kind::Reference: {
       const auto& ref = static_cast<const sun::types::ReferenceType&>(type);
-      if (!ref.getReferencedType()) return type.toDisplayString();
+      if (!ref.getReferencedType()) {
+        return type.toDisplayString();
+      }
       return std::string(ref.isMutable() ? "ref " : "const ref ") +
              renderType(*ref.getReferencedType(), bindings);
     }
@@ -138,10 +148,14 @@ std::string annotationText(const sun::ast::TypeAnnotation& annotation,
 /** Formats generic parameters for editor hover text. */
 std::string renderTypeParameters(
     const std::vector<sun::ast::TypeParameter>& params) {
-  if (params.empty()) return "";
+  if (params.empty()) {
+    return "";
+  }
   std::string out = "<";
   for (size_t i = 0; i < params.size(); ++i) {
-    if (i > 0) out += ", ";
+    if (i > 0) {
+      out += ", ";
+    }
     out += params[i].toString();
   }
   return out + ">";
@@ -159,12 +173,20 @@ std::string renderPrototype(const sun::ast::PrototypeAST& proto,
   // 'method'; only fallible constructors show their result type.
   bool isLifecycle = name == "init" || name == "deinit";
   std::string out;
-  if (isPublic && !isLifecycle) out += "public ";
-  if (proto.isConstMethod()) out += "const ";
-  if (proto.isUnsafeMethod()) out += "unsafe ";
+  if (isPublic && !isLifecycle) {
+    out += "public ";
+  }
+  if (proto.isConstMethod()) {
+    out += "const ";
+  }
+  if (proto.isUnsafeMethod()) {
+    out += "unsafe ";
+  }
   if (!isLifecycle) {
     out += keyword;
-    if (!name.empty()) out += " " + name;
+    if (!name.empty()) {
+      out += " " + name;
+    }
   } else {
     out += name;
   }
@@ -178,7 +200,9 @@ std::string renderPrototype(const sun::ast::PrototypeAST& proto,
     resolved = &proto.getResolvedParamTypes();
   }
   for (size_t i = 0; i < args.size(); ++i) {
-    if (i > 0) out += ", ";
+    if (i > 0) {
+      out += ", ";
+    }
     out += args[i].first + ": ";
     if (resolved && (*resolved)[i]) {
       out += renderType(*(*resolved)[i], bindings);
@@ -187,7 +211,9 @@ std::string renderPrototype(const sun::ast::PrototypeAST& proto,
     }
   }
   if (proto.hasVariadicParam()) {
-    if (!args.empty()) out += ", ";
+    if (!args.empty()) {
+      out += ", ";
+    }
     out += proto.getVariadicParamName() + "...";
     if (proto.hasVariadicTypeAnnotation()) {
       out += ": " + annotationText(proto.getVariadicTypeAnnotation(), source);
@@ -199,7 +225,9 @@ std::string renderPrototype(const sun::ast::PrototypeAST& proto,
       proto.hasResolvedReturnType()
           ? !proto.getResolvedReturnType()->isVoid()
           : proto.hasReturnType() && proto.getReturnType()->baseName != "void";
-  if (isLifecycle && !hasResult) return out;
+  if (isLifecycle && !hasResult) {
+    return out;
+  }
   if (proto.hasResolvedReturnType()) {
     out += " " + renderType(*proto.getResolvedReturnType(), bindings);
   } else if (proto.hasReturnType()) {
@@ -220,8 +248,12 @@ std::optional<Hover> hoverClass(const ClassDefinitionAST& cls, int offset,
       dynamic_cast<const sun::types::ClassType*>(cls.getResolvedType().get());
   for (const auto& field : cls.getFields()) {
     Position span = field.location;
-    if (field.type.span.endOffset) span.endOffset = field.type.span.endOffset;
-    if (!spanContains(span, offset)) continue;
+    if (field.type.span.endOffset) {
+      span.endOffset = field.type.span.endOffset;
+    }
+    if (!spanContains(span, offset)) {
+      continue;
+    }
     std::string typeText;
     if (classType) {
       if (const auto* info = classType->getField(field.name);
@@ -229,7 +261,9 @@ std::optional<Hover> hoverClass(const ClassDefinitionAST& cls, int offset,
         typeText = renderType(*info->type, bindings);
       }
     }
-    if (typeText.empty()) typeText = annotationText(field.type, source);
+    if (typeText.empty()) {
+      typeText = annotationText(field.type, source);
+    }
     std::string prefix =
         field.visibility == sun::semantic_analysis::Visibility::Public
             ? "public var "
@@ -238,7 +272,9 @@ std::optional<Hover> hoverClass(const ClassDefinitionAST& cls, int offset,
   }
 
   std::string out = cls.isPublic() ? "public " : "";
-  if (cls.isPartial()) out += "partial ";
+  if (cls.isPartial()) {
+    out += "partial ";
+  }
   out += std::string(cls.classKeyword()) + " " + cls.getName() +
          renderTypeParameters(cls.getTypeParameters());
   const auto& interfaces = cls.getImplementedInterfaces();
@@ -249,7 +285,9 @@ std::optional<Hover> hoverClass(const ClassDefinitionAST& cls, int offset,
       out += j == 0 ? "<" : ", ";
       out += annotationText(interfaces[i].typeArguments[j], source);
     }
-    if (!interfaces[i].typeArguments.empty()) out += ">";
+    if (!interfaces[i].typeArguments.empty()) {
+      out += ">";
+    }
   }
   return Hover{out, cls.getDoc(), cls.getLocation()};
 }
@@ -259,8 +297,12 @@ std::optional<Hover> hoverInterface(const InterfaceDefinitionAST& iface,
                                     int offset, const std::string& source) {
   for (const auto& field : iface.getFields()) {
     Position span = field.location;
-    if (field.type.span.endOffset) span.endOffset = field.type.span.endOffset;
-    if (!spanContains(span, offset)) continue;
+    if (field.type.span.endOffset) {
+      span.endOffset = field.type.span.endOffset;
+    }
+    if (!spanContains(span, offset)) {
+      continue;
+    }
     return Hover{
         "var " + field.name + ": " + annotationText(field.type, source),
         field.doc, span};
@@ -268,8 +310,9 @@ std::optional<Hover> hoverInterface(const InterfaceDefinitionAST& iface,
   std::string out = iface.isPublic() ? "public " : "";
   out += "interface " + iface.getName() +
          renderTypeParameters(iface.getTypeParameters());
-  if (iface.getParent())
+  if (iface.getParent()) {
     out += " extends " + annotationText(*iface.getParent(), source);
+  }
   return Hover{out, iface.getDoc(), iface.getLocation()};
 }
 
@@ -277,13 +320,17 @@ std::optional<Hover> hoverInterface(const InterfaceDefinitionAST& iface,
 std::optional<Hover> hoverEnum(const EnumDefinitionAST& enumDef, int offset,
                                const std::string& source) {
   for (const auto& variant : enumDef.getVariants()) {
-    if (!spanContains(variant.location, offset)) continue;
+    if (!spanContains(variant.location, offset)) {
+      continue;
+    }
     std::string out = enumDef.getName() + "." + variant.name;
     for (size_t i = 0; i < variant.payloadTypes.size(); ++i) {
       out += i == 0 ? "(" : ", ";
       out += annotationText(variant.payloadTypes[i], source);
     }
-    if (variant.hasPayload()) out += ")";
+    if (variant.hasPayload()) {
+      out += ")";
+    }
     return Hover{out, variant.doc, variant.location};
   }
   std::string out = enumDef.isPublic() ? "public " : "";
@@ -302,7 +349,9 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
 
   // `prefix` followed by the node's own type, when it has one
   auto typed = [&](const std::string& prefix) -> std::optional<Hover> {
-    if (!type) return std::nullopt;
+    if (!type) {
+      return std::nullopt;
+    }
     return Hover{prefix + renderType(*type, bindings), "", range};
   };
 
@@ -337,14 +386,18 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
     case ASTNodeType::REFERENCE_CREATION: {
       const auto& ref =
           static_cast<const sun::ast::ReferenceCreationAST&>(node);
-      if (!type) return std::nullopt;
+      if (!type) {
+        return std::nullopt;
+      }
       const sun::types::Type* referent = type.get();
       if (type->getKind() == sun::types::Type::Kind::Reference) {
         referent = static_cast<const sun::types::ReferenceType&>(*type)
                        .getReferencedType()
                        .get();
       }
-      if (!referent) return std::nullopt;
+      if (!referent) {
+        return std::nullopt;
+      }
       std::string prefix = ref.isMutable() ? "ref " : "const ref ";
       return Hover{
           prefix + ref.getName() + ": " + renderType(*referent, bindings), "",
@@ -389,14 +442,20 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
     }
 
     case ASTNodeType::CALL: {
-      if (!type) return std::nullopt;
+      if (!type) {
+        return std::nullopt;
+      }
       const auto& call = static_cast<const sun::ast::CallExprAST&>(node);
       std::string callee = sliceSpan(source, call.getCallee()->getLocation());
-      if (callee.empty()) callee = call.getCallee()->toString();
+      if (callee.empty()) {
+        callee = call.getCallee()->toString();
+      }
       return Hover{callee + "(...): " + renderType(*type, bindings), "", range};
     }
     case ASTNodeType::GENERIC_CALL: {
-      if (!type) return std::nullopt;
+      if (!type) {
+        return std::nullopt;
+      }
       const auto& call = static_cast<const sun::ast::GenericCallAST&>(node);
       std::string callee = call.getFunctionName();
       if (call.hasResolvedTypeArgs()) {
@@ -405,7 +464,9 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
           callee += i == 0 ? "<" : ", ";
           callee += typeArgs[i] ? renderType(*typeArgs[i], bindings) : "?";
         }
-        if (!typeArgs.empty()) callee += ">";
+        if (!typeArgs.empty()) {
+          callee += ">";
+        }
       }
       return Hover{callee + "(...): " + renderType(*type, bindings), "", range};
     }
@@ -424,10 +485,14 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
       const auto& literal =
           static_cast<const sun::ast::StructLiteralAST&>(node);
       for (const auto& field : literal.getFields()) {
-        if (!spanContains(field.location, offset)) continue;
+        if (!spanContains(field.location, offset)) {
+          continue;
+        }
         TypePtr fieldType =
             field.value ? field.value->getResolvedType() : nullptr;
-        if (!fieldType) return std::nullopt;
+        if (!fieldType) {
+          return std::nullopt;
+        }
         return Hover{field.name + ": " + renderType(*fieldType, bindings), "",
                      field.location};
       }
@@ -438,8 +503,12 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
       const auto& match = static_cast<const sun::ast::MatchExprAST&>(node);
       for (const auto& arm : match.getArms()) {
         for (const auto& binding : arm.bindings) {
-          if (binding.isWildcard || !binding.resolvedType) continue;
-          if (!spanContains(binding.location, offset)) continue;
+          if (binding.isWildcard || !binding.resolvedType) {
+            continue;
+          }
+          if (!spanContains(binding.location, offset)) {
+            continue;
+          }
           return Hover{
               binding.name + ": " + renderType(*binding.resolvedType, bindings),
               "", binding.location};
@@ -450,9 +519,13 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
 
     case ASTNodeType::DECLARE_TYPE: {
       const auto& decl = static_cast<const sun::ast::DeclareTypeAST&>(node);
-      if (!decl.hasResolvedDeclaredType()) return std::nullopt;
+      if (!decl.hasResolvedDeclaredType()) {
+        return std::nullopt;
+      }
       std::string out = "declare ";
-      if (decl.hasAlias()) out += decl.getAliasName() + " = ";
+      if (decl.hasAlias()) {
+        out += decl.getAliasName() + " = ";
+      }
       out += renderType(*decl.getResolvedDeclaredType(), bindings);
       return Hover{out, "", range};
     }
@@ -500,9 +573,13 @@ std::optional<Hover> hoverAnnotation(const ExprAST& decl,
       break;
     case ASTNodeType::DECLARE_TYPE: {
       const auto& alias = static_cast<const sun::ast::DeclareTypeAST&>(decl);
-      if (!alias.hasResolvedDeclaredType()) return std::nullopt;
+      if (!alias.hasResolvedDeclaredType()) {
+        return std::nullopt;
+      }
       std::string out = "declare ";
-      if (alias.hasAlias()) out += alias.getAliasName() + " = ";
+      if (alias.hasAlias()) {
+        out += alias.getAliasName() + " = ";
+      }
       out += renderType(*alias.getResolvedDeclaredType(), {});
       hover = Hover{out, "", decl.getLocation()};
       break;
@@ -510,7 +587,9 @@ std::optional<Hover> hoverAnnotation(const ExprAST& decl,
     default:
       return std::nullopt;
   }
-  if (hover) hover->range = annotation.span;
+  if (hover) {
+    hover->range = annotation.span;
+  }
   return hover;
 }
 
@@ -529,8 +608,9 @@ std::optional<Hover> hoverIntrinsic(const Target& target, int byteOffset,
     } else if (node->getType() == ASTNodeType::CALL) {
       const auto* callee =
           static_cast<const sun::ast::CallExprAST&>(*node).getCallee();
-      if (!callee || callee->getType() != ASTNodeType::VARIABLE_REFERENCE)
+      if (!callee || callee->getType() != ASTNodeType::VARIABLE_REFERENCE) {
         continue;
+      }
       name =
           static_cast<const sun::ast::VariableReferenceAST&>(*callee).getName();
       location = callee->getLocation();
@@ -538,19 +618,30 @@ std::optional<Hover> hoverIntrinsic(const Target& target, int byteOffset,
       continue;
     }
     const auto range = nameRange(location, name, source);
-    if (!spanContains(range, byteOffset)) continue;
+    if (!spanContains(range, byteOffset)) {
+      continue;
+    }
     std::string code;
     std::string documentation;
     for (const auto* proto : intrinsicDeclarations()) {
-      if (proto->getName() != name) continue;
-      if (!code.empty()) code += "\n";
+      if (proto->getName() != name) {
+        continue;
+      }
+      if (!code.empty()) {
+        code += "\n";
+      }
       code += renderPrototype(*proto, "function", name, false,
                               intrinsicSource(), {});
-      if (documentation.empty()) documentation = proto->getDoc();
+      if (documentation.empty()) {
+        documentation = proto->getDoc();
+      }
     }
-    if (code.empty()) continue;
-    if (requiresUnsafeBlock(name))
+    if (code.empty()) {
+      continue;
+    }
+    if (requiresUnsafeBlock(name)) {
       documentation += "\n\nRequires an unsafe block.";
+    }
     return Hover{std::move(code), std::move(documentation), range};
   }
   return std::nullopt;
@@ -573,13 +664,18 @@ std::optional<Hover> computeHover(const sun::ast::BlockExprAST& program,
                                   const std::string& source, int byteOffset) {
   std::string documentPath = normalizePath(filePath);
   std::optional<Target> target = locate(program, documentPath, byteOffset);
-  if (!target) return std::nullopt;
-  if (auto intrinsic = hoverIntrinsic(*target, byteOffset, source))
+  if (!target) {
+    return std::nullopt;
+  }
+  if (auto intrinsic = hoverIntrinsic(*target, byteOffset, source)) {
     return intrinsic;
+  }
 
   // Synthesized modules share a declaration span but have distinct names.
   for (const auto* node : target->chain) {
-    if (node->getType() != ASTNodeType::MODULE) continue;
+    if (node->getType() != ASTNodeType::MODULE) {
+      continue;
+    }
     const auto& module = static_cast<const sun::ast::ModuleAST&>(*node);
     const auto& name = module.getNameLocation();
     if (name && spanContains(*name, byteOffset)) {
@@ -596,11 +692,17 @@ std::optional<Hover> computeHover(const sun::ast::BlockExprAST& program,
           annotationIn(target->node(), byteOffset)) {
     if (const ExprAST* decl = findAnnotatedType(program, *annotation)) {
       hover = hoverAnnotation(*decl, *annotation, source);
-      if (hover) declaration = declarationOf(*decl);
+      if (hover) {
+        declaration = declarationOf(*decl);
+      }
     }
   }
-  if (!hover) hover = hoverNode(*target, byteOffset, source);
-  if (!hover) return hover;
+  if (!hover) {
+    hover = hoverNode(*target, byteOffset, source);
+  }
+  if (!hover) {
+    return hover;
+  }
 
   // A definition documents itself (the range already points at a field or
   // variant when one was hit); anything else is documented by what it names

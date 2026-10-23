@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <fstream>
 
+#include "abi/abi_compatibility_checker.h"
 #include "support/error.h"
 #include "support/sun_path.h"
 
@@ -29,44 +30,68 @@ void LibraryCache::addSearchPath(const std::filesystem::path& path) {
 }
 
 void LibraryCache::addBundle(const std::filesystem::path& bundlePath) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  auto reader = MoonReader::open(bundlePath);
+  if (reader) {
+    addBundle(std::move(reader));
+  }
+}
 
-  // Already loaded (possibly by directory discovery): just mark it as an
-  // explicit registration so selection can prefer it among equals.
+void LibraryCache::addBundle(std::unique_ptr<MoonReader> reader) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  const auto path = std::filesystem::weakly_canonical(reader->getPath());
+  std::set<MoonReader*> replaced;
   for (const auto& bundle : bundles_) {
-    if (bundle->getPath() == bundlePath) {
+    if (std::filesystem::weakly_canonical(bundle->getPath()) != path) {
+      continue;
+    }
+    if (*bundle->getBytes() == *reader->getBytes()) {
       pinnedBundles_.insert(bundle.get());
       return;
     }
+    replaced.insert(bundle.get());
   }
-
-  auto reader = MoonReader::open(bundlePath);
-  if (reader) {
-    // Index all modules in this bundle
-    for (const auto& modPath : reader->listModules()) {
-      moduleToBundle_[modPath].push_back(reader.get());
+  for (auto it = moduleToBundle_.begin(); it != moduleToBundle_.end();) {
+    std::erase_if(it->second,
+                  [&](MoonReader* old) { return replaced.count(old); });
+    if (it->second.empty()) {
+      it = moduleToBundle_.erase(it);
+    } else {
+      ++it;
     }
-    pinnedBundles_.insert(reader.get());
-    bundles_.push_back(std::move(reader));
   }
+  for (auto* old : replaced) {
+    pinnedBundles_.erase(old);
+  }
+  std::erase_if(bundles_,
+                [&](const auto& old) { return replaced.count(old.get()); });
+  for (const auto& key : reader->listModules()) {
+    moduleToBundle_[key].push_back(reader.get());
+  }
+  pinnedBundles_.insert(reader.get());
+  bundles_.push_back(std::move(reader));
 }
 
 void LibraryCache::invalidateBundle(const std::filesystem::path& bundlePath) {
   std::lock_guard<std::mutex> lock(mutex_);
   const auto path = std::filesystem::weakly_canonical(bundlePath);
   std::set<MoonReader*> replaced;
-  for (const auto& bundle : bundles_)
-    if (std::filesystem::weakly_canonical(bundle->getPath()) == path)
+  for (const auto& bundle : bundles_) {
+    if (std::filesystem::weakly_canonical(bundle->getPath()) == path) {
       replaced.insert(bundle.get());
+    }
+  }
   for (auto it = moduleToBundle_.begin(); it != moduleToBundle_.end();) {
     std::erase_if(it->second,
                   [&](MoonReader* reader) { return replaced.count(reader); });
-    if (it->second.empty())
+    if (it->second.empty()) {
       it = moduleToBundle_.erase(it);
-    else
+    } else {
       ++it;
+    }
   }
-  for (auto* reader : replaced) pinnedBundles_.erase(reader);
+  for (auto* reader : replaced) {
+    pinnedBundles_.erase(reader);
+  }
   std::erase_if(bundles_, [&](const auto& reader) {
     return replaced.count(reader.get());
   });
@@ -74,14 +99,20 @@ void LibraryCache::invalidateBundle(const std::filesystem::path& bundlePath) {
   discovered_ = false;
 }
 
-void LibraryCache::setTargetTriple(const std::string& triple) {
+void LibraryCache::setTargetTriple(const std::string& triple,
+                                   bool resetChecker) {
   std::lock_guard<std::mutex> lock(mutex_);
   targetTriple_ = triple;
+  if (resetChecker) {
+    abi::AbiCompatibilityChecker::current().beginCompilation(triple);
+  }
 }
 
 MoonReader* LibraryCache::selectBundle(
     const std::vector<MoonReader*>& candidates) const {
-  if (candidates.empty()) return nullptr;
+  if (candidates.empty()) {
+    return nullptr;
+  }
 
   llvm::Triple want(targetTriple_.empty() ? llvm::sys::getDefaultTargetTriple()
                                           : targetTriple_);
@@ -102,8 +133,12 @@ MoonReader* LibraryCache::selectBundle(
     if (!tripleStr.empty()) {
       llvm::Triple triple(tripleStr);
       bool archMatch = triple.getArch() == want.getArch();
-      if (archMatch) score += 1;
-      if (archMatch && sameOsFamily(triple, want)) score += 1;
+      if (archMatch) {
+        score += 1;
+      }
+      if (archMatch && sameOsFamily(triple, want)) {
+        score += 1;
+      }
     }
     if (score > bestScore) {
       best = reader;
@@ -116,7 +151,9 @@ MoonReader* LibraryCache::selectBundle(
 void LibraryCache::initFromEnvironment() {
   std::lock_guard<std::mutex> lock(mutex_);
 
-  if (initialized_) return;
+  if (initialized_) {
+    return;
+  }
 
   // Add lib/ and build/ subdirectories from each SUN_PATH entry
   for (const auto& path : sun::support::SunPath::getLibrarySearchPaths()) {
@@ -142,10 +179,14 @@ void LibraryCache::initFromEnvironment() {
 
 void LibraryCache::discoverBundles() {
   // Must be called with lock held
-  if (discovered_) return;
+  if (discovered_) {
+    return;
+  }
 
   for (const auto& searchPath : searchPaths_) {
-    if (!std::filesystem::exists(searchPath)) continue;
+    if (!std::filesystem::exists(searchPath)) {
+      continue;
+    }
 
     // Look for .moon files
     for (const auto& entry :
@@ -211,28 +252,45 @@ std::vector<std::string> LibraryCache::extractNativeArchives(
 
   for (const auto& moduleKey : moduleKeys) {
     auto* bundle = findBundleForModule(moduleKey);
-    if (!bundle) continue;
-    if (bundle->getNativeArchives().empty()) continue;
-    if (!seenBundles.insert(bundle).second) continue;  // one visit per bundle
+    if (!bundle) {
+      continue;
+    }
+    if (bundle->getNativeArchives().empty()) {
+      continue;
+    }
+    if (!seenBundles.insert(bundle).second) {
+      continue;  // one visit per bundle
+    }
 
+    abi::AbiCompatibilityChecker::current().validate(*bundle, targetTriple_);
     for (const auto& entry : bundle->getNativeArchives()) {
       std::vector<char> data;
-      if (!bundle->readNativeArchive(entry, data)) continue;
+      if (!bundle->readNativeArchive(entry, data)) {
+        continue;
+      }
       const std::string digest =
           computeSha256Hex(llvm::StringRef(data.data(), data.size()));
-      if (!extractedDigests.insert(digest).second) continue;
+      if (!extractedDigests.insert(digest).second) {
+        continue;
+      }
       // Grouped by archive set hash: two versions of one library must not
       // overwrite each other, and the directory name tells the builder and
       // the warnings which symbols an archive carries
       std::error_code ec;
       std::filesystem::path hashDir = destDir / entry.archiveSetHash;
       std::filesystem::create_directories(hashDir, ec);
-      if (ec) continue;
+      if (ec) {
+        continue;
+      }
       std::filesystem::path out = hashDir / entry.name;
       std::ofstream file(out, std::ios::binary);
-      if (!file) continue;
+      if (!file) {
+        continue;
+      }
       file.write(data.data(), static_cast<std::streamsize>(data.size()));
-      if (!file.good()) continue;
+      if (!file.good()) {
+        continue;
+      }
       file.close();
       extracted.push_back(out.string());
     }
@@ -255,6 +313,7 @@ const moon::ModuleMetadata* LibraryCache::getMetadata(
     return nullptr;
   }
 
+  abi::AbiCompatibilityChecker::current().validate(*bundle, targetTriple_);
   return bundle->getMetadata(moduleKey);
 }
 
@@ -267,6 +326,7 @@ std::unique_ptr<llvm::Module> LibraryCache::loadModule(
     return nullptr;
   }
 
+  abi::AbiCompatibilityChecker::current().validate(*bundle, targetTriple_);
   return bundle->loadModule(moduleKey, context);
 }
 

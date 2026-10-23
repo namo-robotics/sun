@@ -135,13 +135,19 @@ class EnumType : public NominalType {
     if (isGenericSpecialization()) {
       std::string result = genericBase_ + "<";
       for (size_t i = 0; i < genericArgs_.size(); ++i) {
-        if (i > 0) result += ", ";
+        if (i > 0) {
+          result += ", ";
+        }
         result += genericArgs_[i]->toDisplayString();
       }
       return result + ">";
     }
-    if (!baseName_.empty()) return baseName_;
-    if (!qualifiedName_.empty()) return qualifiedName_.display();
+    if (!baseName_.empty()) {
+      return baseName_;
+    }
+    if (!qualifiedName_.empty()) {
+      return qualifiedName_.display();
+    }
     return name_;
   }
 
@@ -152,7 +158,9 @@ class EnumType : public NominalType {
   void addVariant(const std::string& variantName, int64_t value,
                   DeclarationId declarationId = {}) {
     for (const auto& v : variants) {
-      if (v.name == variantName) return;
+      if (v.name == variantName) {
+        return;
+      }
     }
     variants.push_back({variantName, value, {}, declarationId});
   }
@@ -178,7 +186,9 @@ class EnumType : public NominalType {
    */
   bool hasPayload() const {
     for (const auto& v : variants) {
-      if (v.hasPayload()) return true;
+      if (v.hasPayload()) {
+        return true;
+      }
     }
     return false;
   }
@@ -186,7 +196,9 @@ class EnumType : public NominalType {
   /** Returns the variant stored by this object. */
   const EnumVariant* getVariant(const std::string& variantName) const {
     for (const auto& variant : variants) {
-      if (variant.name == variantName) return &variant;
+      if (variant.name == variantName) {
+        return &variant;
+      }
     }
     return nullptr;
   }
@@ -222,7 +234,9 @@ class EnumType : public NominalType {
    */
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
     if (hasPayload()) {
-      if (cachedStorageType) return cachedStorageType;
+      if (cachedStorageType) {
+        return cachedStorageType;
+      }
       logAndThrowError("payload enum '" + getDisplayName() +
                        "' LLVM type requires DataLayout - resolve it via "
                        "LLVMTypeResolver first");

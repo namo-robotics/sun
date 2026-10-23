@@ -42,7 +42,9 @@ std::string serialize(const BlockExprAST& block) {
 int countNodes(sun::ast::ExprAST& node, ASTNodeType type) {
   int count = node.getType() == type ? 1 : 0;
   node.forEachChildSlot([&](std::unique_ptr<sun::ast::ExprAST>& child) {
-    if (child) count += countNodes(*child, type);
+    if (child) {
+      count += countNodes(*child, type);
+    }
   });
   return count;
 }

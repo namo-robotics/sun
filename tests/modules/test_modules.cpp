@@ -1643,20 +1643,31 @@ TEST(Modules, moon_symbols_use_versioned_portable_identities) {
   auto bundled = reader->loadModule(modules[0], context);
   ASSERT_NE(bundled, nullptr);
   for (const auto& func : bundled->functions()) {
-    if (func.isDeclaration() || func.isIntrinsic()) continue;
+    if (func.isDeclaration() || func.isIntrinsic()) {
+      continue;
+    }
     // Module-private functions (lambdas) cannot be named from outside, so
     // their names need no prefix
-    if (func.hasLocalLinkage()) continue;
+    if (func.hasLocalLinkage()) {
+      continue;
+    }
     std::string name = func.getName().str();
-    if (func.hasFnAttribute("sun.cabi")) continue;
+    if (func.hasFnAttribute("sun.cabi")) {
+      continue;
+    }
     EXPECT_EQ(name.rfind(prefix, 0), 0u) << "unprefixed symbol: " << name;
   }
   for (const auto& global : bundled->globals()) {
-    if (!global.hasInitializer()) continue;
-    std::string name = global.getName().str();
-    if (global.hasLocalLinkage() || global.getName().starts_with("llvm."))
+    if (!global.hasInitializer()) {
       continue;
-    if (global.getMetadata("sun.cabi")) continue;
+    }
+    std::string name = global.getName().str();
+    if (global.hasLocalLinkage() || global.getName().starts_with("llvm.")) {
+      continue;
+    }
+    if (global.getMetadata("sun.cabi")) {
+      continue;
+    }
     EXPECT_EQ(name.rfind(prefix, 0), 0u) << "unprefixed global: " << name;
   }
 }
@@ -1758,9 +1769,13 @@ TEST(Modules, global_known_at_compile_time_needs_no_startup_code) {
     ASSERT_NE(startup, nullptr);
     // SNAPSHOT is the only variable the startup function writes
     int stores = 0;
-    for (const auto& block : *startup)
-      for (const auto& instruction : block)
-        if (llvm::isa<llvm::StoreInst>(instruction)) ++stores;
+    for (const auto& block : *startup) {
+      for (const auto& instruction : block) {
+        if (llvm::isa<llvm::StoreInst>(instruction)) {
+          ++stores;
+        }
+      }
+    }
     EXPECT_EQ(stores, 1);
   }
 }
@@ -2222,9 +2237,10 @@ TEST(Modules, global_shadowing_is_independent_of_order) {
         std::string source = globalFirst ? global + local : local + global;
         const int localLine =
             3 + (globalFirst ? 1 : 0) + (readFirst ? 1 : 0) + (module ? 1 : 0);
-        if (module)
+        if (module) {
           source = "/** Contains the conflicting names. */ module m {\n" +
                    source + "}\n";
+        }
         source +=
             "/** Supplies the program entry point. */\n"
             "function main() i32 { return 0; }\n";

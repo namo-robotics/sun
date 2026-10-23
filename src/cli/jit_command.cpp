@@ -56,7 +56,9 @@ int runJitCommand(const BuildRunOptions& options) {
   std::string inputFile = options.inputFiles[0];
   if (options.configInput) {
     std::optional<std::string> binary = findConfigBinary(inputFile);
-    if (!binary) return 1;
+    if (!binary) {
+      return 1;
+    }
     inputFile = *binary;
   }
 

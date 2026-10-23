@@ -327,31 +327,39 @@ void visitModuleReferences(
     const std::function<void(const PortableDeclarationKey&)>& visit) {
   if (message.GetDescriptor() == sun::proto::ast::ASTNode::descriptor()) {
     const auto& node = static_cast<const sun::proto::ast::ASTNode&>(message);
-    if (node.has_module_declaration_key())
+    if (node.has_module_declaration_key()) {
       visit(PortableDeclarationKey::fromString(node.module_declaration_key()));
+    }
   }
   auto* reflection = message.GetReflection();
   std::vector<const google::protobuf::FieldDescriptor*> fields;
   reflection->ListFields(message, &fields);
   for (const auto* field : fields) {
-    if (field->cpp_type() != google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE)
+    if (field->cpp_type() !=
+        google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
       continue;
+    }
     if (field->is_repeated()) {
-      for (int i = 0; i < reflection->FieldSize(message, field); ++i)
+      for (int i = 0; i < reflection->FieldSize(message, field); ++i) {
         visitModuleReferences(reflection->GetRepeatedMessage(message, field, i),
                               visit);
-    } else
+      }
+    } else {
       visitModuleReferences(reflection->GetMessage(message, field), visit);
+    }
   }
 }
 
 /** Find the original key exported for a source declaration. */
 PortableDeclarationKey exportedKey(MoonReader& reader,
                                    const std::string& name) {
-  for (const auto& module : reader.listModules())
-    for (const auto& record : reader.getMetadata(module)->declarations())
-      if (record.name() == name)
+  for (const auto& module : reader.listModules()) {
+    for (const auto& record : reader.getMetadata(module)->declarations()) {
+      if (record.name() == name) {
         return PortableDeclarationKey::fromString(record.key());
+      }
+    }
+  }
   throw std::runtime_error("Missing exported declaration: " + name);
 }
 
@@ -521,7 +529,9 @@ TEST_F(MoonExactTypes,
     const auto* md = reader->getMetadata(key);
     sun::serialization::visitDeclarationKeys(
         *md, [&](const auto& ref, auto, const auto& name) {
-          if (name.find("Value") == std::string::npos) return;
+          if (name.find("Value") == std::string::npos) {
+            return;
+          }
           EXPECT_EQ(ref, exportedKey(*dependency, "Value"));
           ++references;
         });
@@ -719,8 +729,9 @@ TEST_F(MoonExactTypes, aliases_leave_compiled_function_names_unchanged) {
   std::string originalName;
   for (const auto& function : original->functions()) {
     if (function.getName() ==
-        exportedKey(*reader, "version").symbol("function"))
+        exportedKey(*reader, "version").symbol("function")) {
       originalName = function.getName().str();
+    }
   }
   ASSERT_FALSE(originalName.empty());
   auto driver = Driver::createForJIT("canonical_symbols");
@@ -728,8 +739,9 @@ TEST_F(MoonExactTypes, aliases_leave_compiled_function_names_unchanged) {
   driver->compileString(
       "function main() i32 { return visible_alias.version(); }");
   EXPECT_NE(driver->getModule().getFunction(originalName), nullptr);
-  for (const auto& function : driver->getModule().functions())
+  for (const auto& function : driver->getModule().functions()) {
     EXPECT_FALSE(function.getName().contains("_visible_alias_"));
+  }
 }
 
 TEST_F(MoonExactTypes, failed_build_does_not_publish_metadata) {
@@ -813,9 +825,9 @@ TEST(MoonMetadata, interface_requirement_does_not_apply_to_type_arguments) {
       });
   ASSERT_EQ(uses.size(), 2);
   for (const auto& [name, kind] : uses) {
-    if (name == view)
+    if (name == view) {
       EXPECT_EQ(kind, sun::types::Type::Kind::Interface);
-    else {
+    } else {
       EXPECT_EQ(name, value);
       EXPECT_FALSE(kind);
     }
@@ -1218,11 +1230,8 @@ TEST_F(MoonExactTypes, malformed_bundle_digest_is_rejected) {
   std::ofstream output(path, std::ios::binary);
   output.write(bytes.data(), bytes.size());
   output.close();
-  auto malformed = MoonReader::open(path);
-  ASSERT_TRUE(malformed);
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      malformed->getMetadata(malformed->listModules()[0]),
-      "full lowercase SHA-256 digest");
+  EXPECT_SUN_ERROR_WITH_MESSAGE(MoonReader::open(path),
+                                "full lowercase SHA-256 digest");
 }
 
 TEST_F(MoonExactTypes,
@@ -1343,7 +1352,9 @@ TEST_F(MoonExactTypes,
   bool foundTemplate = false;
   for (const auto& module : reader->listModules()) {
     for (const auto& cls : reader->getMetadata(module)->classes()) {
-      if (cls.name() != "Box") continue;
+      if (cls.name() != "Box") {
+        continue;
+      }
       foundTemplate = true;
       EXPECT_EQ(cls.compiled_specializations_size(), 0);
     }

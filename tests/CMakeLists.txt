@@ -21,6 +21,7 @@ add_executable(sun_tests)
 
 # Must come after add_executable: target_sources() needs the target to exist.
 # Order among the groups themselves does not matter.
+add_subdirectory(abi)
 add_subdirectory(builtins)
 add_subdirectory(classes)
 add_subdirectory(constants)
@@ -102,6 +103,7 @@ add_dependencies(sun_tests sun_ffi_static_testlib_v2)
 # splits a multi-entry ENVIRONMENT list into separate property arguments.
 target_compile_definitions(sun_tests
     PRIVATE SUN_FFI_TESTLIB_DIR="${CMAKE_BINARY_DIR}/tests"
+            SUN_FFI_TESTLIB_PATH="$<TARGET_FILE:sun_ffi_testlib>"
             SUN_FFI_TESTLIB_V2_DIR="${CMAKE_BINARY_DIR}/tests/v2")
 
 # One shard uses individual discovery for IDEs and isolated reruns.
@@ -114,6 +116,7 @@ if(SUN_TEST_SHARDS GREATER 1)
     # Stateful FFI tests need fresh processes. Slow integration tests stay
     # separate so CTest can schedule them without holding up an entire shard.
     set(sun_isolated_tests
+        "ABI_Compatibility.*" "ABI_LibraryAbiSnapshot.*"
         "*Modules_NestedTypeArguments*.*" "*Errors_Arithmetic*.*"
         "EndToEnd_*.*" "Modules_GenericRegressions.*" "Tooling_Bindgen.*"
         "Ffi_Link.*" "Tooling_Backend_InputHash.*" "Modules_ProtoImport.*"

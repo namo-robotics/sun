@@ -31,7 +31,9 @@ void BodyAnalyzer::analyzeVariableAssignment(
   sema_.declarations().ensureGlobalAnalyzed(varAssign.getName());
   VariableInfo* varInfo =
       ctx_.currentScope().lookupVariable(varAssign.getName());
-  if (varInfo) varAssign.setTargetDeclarationId(varInfo->declarationId);
+  if (varInfo) {
+    varAssign.setTargetDeclarationId(varInfo->declarationId);
+  }
   // A module-level global is emitted using its declaration ID; record it so
   // codegen can find the symbol (locals keep the name as written).
   if (varInfo && varInfo->isGlobal) {
@@ -66,9 +68,10 @@ void BodyAnalyzer::analyzeVariableAssignment(
       auto* refType =
           static_cast<sun::types::ReferenceType*>(expectedTargetType.get());
       expectedTargetType = refType->getReferencedType();
-      if (expectedTargetType && expectedTargetType->isInterface())
+      if (expectedTargetType && expectedTargetType->isInterface()) {
         logAndThrowError("Cannot assign through a borrowed interface view",
                          varAssign.getLocation());
+      }
     }
   }
 
@@ -131,9 +134,10 @@ void BodyAnalyzer::analyzeCompoundAssignment(
             sun::codegen::support::tryGetType<ClassType>(receiver)) {
       const auto* method =
           ctx_.accessibleMethod(*cls, "__setindex__", compound.getLocation());
-      if (!method)
+      if (!method) {
         logAndThrowError("Class does not implement __setindex__ for assignment",
                          compound.getLocation());
+      }
       sema_.expressions().checkUnsafeCall(method->isUnsafe, "__setindex__",
                                           compound.getLocation());
       compound.setTargetDeclarationId(method->declarationId);
@@ -185,10 +189,11 @@ void BodyAnalyzer::analyzeMemberAssignment(
   }
 
   if (objectType && objectType->isRawPointer()) {
-    if (!ctx_.isInUnsafeBlock())
+    if (!ctx_.isInUnsafeBlock()) {
       logAndThrowError(
           "Dereferencing 'raw_ptr' can only be done in an unsafe block",
           memberAssign.getLocation());
+    }
     objectType = static_cast<const sun::types::RawPointerType&>(*objectType)
                      .getPointeeType();
   } else if (objectType && objectType->isStaticPointer()) {
@@ -256,9 +261,10 @@ void BodyAnalyzer::analyzeIndexedAssignment(
       const auto* method =
           ctx_.accessibleMethod(static_cast<const ClassType&>(*objType),
                                 "__setindex__", assignment.getLocation());
-      if (!method)
+      if (!method) {
         logAndThrowError("Class does not implement __setindex__ for assignment",
                          assignment.getLocation());
+      }
       assignment.setTargetDeclarationId(method->declarationId);
       sema_.expressions().checkUnsafeCall(method->isUnsafe, "__setindex__",
                                           assignment.getLocation());

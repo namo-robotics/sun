@@ -44,7 +44,9 @@ Analysis analyze(const std::string& source, bool withStdlib = false) {
   initTestEnvironment();
   Analysis analysis;
   analysis.driver = Driver::createForAOT("hover_test");
-  if (withStdlib) analysis.driver->setMoonImports(getStdlibMoonImports());
+  if (withStdlib) {
+    analysis.driver->setMoonImports(getStdlibMoonImports());
+  }
   analysis.program = analysis.driver->analyzeString(source, kPath);
   return analysis;
 }
@@ -58,7 +60,9 @@ size_t offsetOf(const std::string& source, const std::string& needle,
   size_t from = 0;
   for (int i = 0; i <= occurrence; ++i) {
     pos = source.find(needle, from);
-    if (pos == std::string::npos) break;
+    if (pos == std::string::npos) {
+      break;
+    }
     from = pos + 1;
   }
   EXPECT_NE(pos, std::string::npos) << "needle not found: " << needle;
@@ -71,7 +75,9 @@ std::optional<sun::lsp::Hover> fullHoverAt(const std::string& source,
                                            bool withStdlib = false,
                                            int occurrence = 0) {
   size_t pos = offsetOf(source, needle, occurrence);
-  if (pos == std::string::npos) return std::nullopt;
+  if (pos == std::string::npos) {
+    return std::nullopt;
+  }
   Analysis analysis = analyze(source, withStdlib);
   if (!analysis.program.ast) {
     ADD_FAILURE() << "program did not parse: "
@@ -89,7 +95,9 @@ std::optional<std::string> hoverAt(const std::string& source,
                                    bool withStdlib = false,
                                    int occurrence = 0) {
   auto hover = fullHoverAt(source, needle, withStdlib, occurrence);
-  if (!hover) return std::nullopt;
+  if (!hover) {
+    return std::nullopt;
+  }
   return hover->code;
 }
 
@@ -100,7 +108,9 @@ std::optional<std::string> docAt(const std::string& source,
                                  const std::string& needle,
                                  int occurrence = 0) {
   auto hover = fullHoverAt(source, needle, false, occurrence);
-  if (!hover) return std::nullopt;
+  if (!hover) {
+    return std::nullopt;
+  }
   return hover->documentation;
 }
 
@@ -474,7 +484,9 @@ enum Level { Low, High }
 }
 
 TEST(Tooling_Lsp_Hover, StdlibDocComments) {
-  if (getStdlibMoonImports().empty()) GTEST_SKIP() << "stdlib.moon not built";
+  if (getStdlibMoonImports().empty()) {
+    GTEST_SKIP() << "stdlib.moon not built";
+  }
   // Declarations from the stdlib bundle are documented from the source
   // files the bundle was built from
   std::string source = R"(
@@ -599,7 +611,9 @@ TEST(Tooling_Lsp_Hover, MergedFilesUseInMemoryOverride) {
 }
 
 TEST(Tooling_Lsp_Hover, StdlibVecAndLoopVariable) {
-  if (getStdlibMoonImports().empty()) GTEST_SKIP() << "stdlib.moon not built";
+  if (getStdlibMoonImports().empty()) {
+    GTEST_SKIP() << "stdlib.moon not built";
+  }
   std::string source = R"(
 using std;
 function main() i64 {

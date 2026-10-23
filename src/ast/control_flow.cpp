@@ -20,7 +20,9 @@ bool exprDiverges(const ExprAST& expr) {
     case ASTNodeType::BLOCK: {
       const auto& block = static_cast<const BlockExprAST&>(expr);
       for (const auto& stmt : block.getBody()) {
-        if (stmt && exprDiverges(*stmt)) return true;
+        if (stmt && exprDiverges(*stmt)) {
+          return true;
+        }
       }
       return false;
     }

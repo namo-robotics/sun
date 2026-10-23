@@ -157,10 +157,11 @@ std::string MoonCache::buildCurlCommand(const std::string& url,
 
   std::string quotedDest = "'";
   for (char c : dest.string()) {
-    if (c == '\'')
+    if (c == '\'') {
       quotedDest += "'\\''";
-    else
+    } else {
       quotedDest += c;
+    }
   }
   quotedDest += "'";
   validateUrl(url);
@@ -210,8 +211,9 @@ std::filesystem::path MoonCache::fetch(
 
   std::string pattern = dest.string() + ".tmp.XXXXXX";
   int descriptor = mkstemp(pattern.data());
-  if (descriptor < 0)
+  if (descriptor < 0) {
     logAndThrowError("cannot create dependency download file");
+  }
   close(descriptor);
   std::filesystem::path tmp(pattern);
   downloadWithCurl(url, tmp);

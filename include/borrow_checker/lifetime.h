@@ -120,12 +120,20 @@ class Lifetime {
    */
   bool outlives(const Lifetime& other) const {
     // Static outlives everything
-    if (kind_ == Kind::Static) return true;
-    if (other.kind_ == Kind::Static) return false;
+    if (kind_ == Kind::Static) {
+      return true;
+    }
+    if (other.kind_ == Kind::Static) {
+      return false;
+    }
 
     // Param outlives any local (caller's scope contains function body)
-    if (kind_ == Kind::Param && other.kind_ == Kind::Local) return true;
-    if (kind_ == Kind::Local && other.kind_ == Kind::Param) return false;
+    if (kind_ == Kind::Param && other.kind_ == Kind::Local) {
+      return true;
+    }
+    if (kind_ == Kind::Local && other.kind_ == Kind::Param) {
+      return false;
+    }
 
     // For same kinds, compare specifics
     if (kind_ == Kind::Param && other.kind_ == Kind::Param) {
@@ -135,8 +143,12 @@ class Lifetime {
 
     if (kind_ == Kind::Local && other.kind_ == Kind::Local) {
       // Outer scope (smaller depth) outlives inner scope
-      if (scopeDepth_ < other.scopeDepth_) return true;
-      if (scopeDepth_ > other.scopeDepth_) return false;
+      if (scopeDepth_ < other.scopeDepth_) {
+        return true;
+      }
+      if (scopeDepth_ > other.scopeDepth_) {
+        return false;
+      }
       // Same depth: only outlives if same variable
       return name_ == other.name_;
     }
@@ -147,8 +159,12 @@ class Lifetime {
     }
 
     // Param vs Anonymous: param outlives
-    if (kind_ == Kind::Param && other.kind_ == Kind::Anonymous) return true;
-    if (kind_ == Kind::Anonymous && other.kind_ == Kind::Param) return false;
+    if (kind_ == Kind::Param && other.kind_ == Kind::Anonymous) {
+      return true;
+    }
+    if (kind_ == Kind::Anonymous && other.kind_ == Kind::Param) {
+      return false;
+    }
 
     // Local vs Anonymous: depends on scope
     // Conservative: assume anonymous is at current scope

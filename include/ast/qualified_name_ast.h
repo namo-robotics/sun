@@ -36,7 +36,9 @@ class QualifiedNameAST : public ExprAST {
    * Get the namespace/module path (all parts except the last)
    */
   std::vector<std::string> getNamespacePath() const {
-    if (parts.size() <= 1) return {};
+    if (parts.size() <= 1) {
+      return {};
+    }
     return std::vector<std::string>(parts.begin(), parts.end() - 1);
   }
 
@@ -51,7 +53,9 @@ class QualifiedNameAST : public ExprAST {
   std::string getFullName() const {
     std::string result;
     for (size_t i = 0; i < parts.size(); ++i) {
-      if (i > 0) result += ".";
+      if (i > 0) {
+        result += ".";
+      }
       result += parts[i];
     }
     return result;

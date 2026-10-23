@@ -48,8 +48,12 @@ class Formatter {
     printStmts(program.getBody());
     flushCommentsBefore(static_cast<int>(src_.size()));
     // Exactly one trailing newline
-    while (!out_.empty() && out_.back() == '\n') out_.pop_back();
-    if (!out_.empty()) out_ += '\n';
+    while (!out_.empty() && out_.back() == '\n') {
+      out_.pop_back();
+    }
+    if (!out_.empty()) {
+      out_ += '\n';
+    }
     return out_;
   }
 
@@ -74,7 +78,9 @@ class Formatter {
 
   /** Returns the original source text within a position span. */
   std::string slice(const Position& p) const {
-    if (!p.endOffset.has_value()) return "";
+    if (!p.endOffset.has_value()) {
+      return "";
+    }
     return src_.substr(p.offset, *p.endOffset - p.offset);
   }
 
@@ -97,9 +103,13 @@ class Formatter {
     int depth = 0;
     for (size_t start = 0; start < source.size();) {
       auto end = source.find('\n', start);
-      if (end == std::string::npos) end = source.size();
+      if (end == std::string::npos) {
+        end = source.size();
+      }
       auto first = source.find_first_not_of(" \t\r", start);
-      if (first == std::string::npos || first > end) first = end;
+      if (first == std::string::npos || first > end) {
+        first = end;
+      }
       const bool insideToken =
           tokenIndex > 0 &&
           static_cast<size_t>(tokens[tokenIndex - 1].end.offset) > start;
@@ -113,24 +123,31 @@ class Formatter {
       if (insideToken) {
         out_.append(source, start, end - start);
       } else if (first < end) {
-        if (start != 0)
+        if (start != 0) {
           out_.append((indent_ + std::max(0, lineDepth)) * kIndentWidth, ' ');
+        }
         out_.append(source, first, end - first);
       }
       while (tokenIndex < tokens.size() &&
              static_cast<size_t>(tokens[tokenIndex].start.offset) < end) {
         const auto kind = tokens[tokenIndex++].kind;
-        if (kind == TokenKind::BRACE_OPEN || kind == TokenKind::BRACKET_OPEN)
+        if (kind == TokenKind::BRACE_OPEN || kind == TokenKind::BRACKET_OPEN) {
           ++depth;
-        if (kind == TokenKind::BRACE_CLOSE || kind == TokenKind::BRACKET_CLOSE)
+        }
+        if (kind == TokenKind::BRACE_CLOSE ||
+            kind == TokenKind::BRACKET_CLOSE) {
           --depth;
+        }
       }
-      if (end < source.size()) out_ += '\n';
+      if (end < source.size()) {
+        out_ += '\n';
+      }
       start = end + 1;
     }
     while (next_ != comments_.end() &&
-           next_->first < location.endOffset.value_or(location.offset))
+           next_->first < location.endOffset.value_or(location.offset)) {
       ++next_;
+    }
   }
 
   /** Inserts a blank line unless the output already ends with one. */
@@ -145,7 +162,9 @@ class Formatter {
    * Preserve at most one blank line from the source
    */
   void blankGap(int nextStartLine) {
-    if (lastLine_ >= 0 && nextStartLine - lastLine_ >= 2) ensureBlankLine();
+    if (lastLine_ >= 0 && nextStartLine - lastLine_ >= 2) {
+      ensureBlankLine();
+    }
   }
 
   /** Reports whether this object has comment before. */
@@ -205,10 +224,14 @@ class Formatter {
     bool separateNextDeclaration = false;
     for (size_t i = start; i < stmts.size(); ++i) {
       const auto& stmt = stmts[i];
-      if (!stmt || stmt->isPrecompiled()) continue;
+      if (!stmt || stmt->isPrecompiled()) {
+        continue;
+      }
       const Position& loc = stmt->getLocation();
       const bool isDeclaration = isSpacedDeclaration(*stmt);
-      if (separateNextDeclaration && isDeclaration) ensureBlankLine();
+      if (separateNextDeclaration && isDeclaration) {
+        ensureBlankLine();
+      }
       separateNextDeclaration =
           isDeclaration || stmt->getType() == ASTNodeType::USING;
       flushCommentsBefore(loc.offset);
@@ -225,12 +248,16 @@ class Formatter {
   void printStmt(const ExprAST& e) {
     printVisibility(e.getVisibility());
     printExpr(e);
-    if (needsSemicolon(e)) out_ += ';';
+    if (needsSemicolon(e)) {
+      out_ += ';';
+    }
   }
 
   /** Writes the access modifier for a declaration. */
   void printVisibility(sun::semantic_analysis::Visibility v) {
-    if (v == sun::semantic_analysis::Visibility::Public) out_ += "public ";
+    if (v == sun::semantic_analysis::Visibility::Public) {
+      out_ += "public ";
+    }
   }
 
   /**
@@ -242,8 +269,9 @@ class Formatter {
     if (s.compare(0, kw.size(), kw) == 0 && s.size() > kw.size() &&
         std::isspace(static_cast<unsigned char>(s[kw.size()]))) {
       size_t i = kw.size();
-      while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i])))
+      while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i]))) {
         ++i;
+      }
       s.erase(0, i);
     }
     return s;
@@ -312,7 +340,9 @@ class Formatter {
       }
       out_ += "{ ";
       for (const auto& stmt : b.getBody()) {
-        if (!stmt) continue;
+        if (!stmt) {
+          continue;
+        }
         printStmt(*stmt);
         out_ += ' ';
       }
@@ -327,10 +357,14 @@ class Formatter {
   /** Writes a type annotation using Sun source syntax. */
   void printType(const sun::ast::TypeAnnotation& t) {
     if (t.isFunction()) {
-      if (t.requiresUnsafe) out_ += "unsafe ";
+      if (t.requiresUnsafe) {
+        out_ += "unsafe ";
+      }
       out_ += "function (";
       for (size_t i = 0; i < t.paramTypes.size(); ++i) {
-        if (i) out_ += ", ";
+        if (i) {
+          out_ += ", ";
+        }
         printType(*t.paramTypes[i]);
       }
       out_ += ") ";
@@ -339,7 +373,9 @@ class Formatter {
       } else {
         out_ += "void";
       }
-      if (t.canError) out_ += " throws IError";
+      if (t.canError) {
+        out_ += " throws IError";
+      }
       return;
     }
     if (t.span.endOffset.has_value()) {
@@ -356,16 +392,22 @@ class Formatter {
   void printTypeParams(
       const std::vector<sun::ast::TypeParameter>& typeParams,
       const std::vector<sun::ast::LifetimeParameter>& lifetimes = {}) {
-    if (typeParams.empty() && lifetimes.empty()) return;
+    if (typeParams.empty() && lifetimes.empty()) {
+      return;
+    }
     out_ += '<';
     bool first = true;
     for (const auto& lifetime : lifetimes) {
-      if (!first) out_ += ", ";
+      if (!first) {
+        out_ += ", ";
+      }
       out_ += lifetime.toString();
       first = false;
     }
     for (const auto& typeParam : typeParams) {
-      if (!first) out_ += ", ";
+      if (!first) {
+        out_ += ", ";
+      }
       out_ += typeParam.name;
       if (typeParam.constraint) {
         const auto& constraint = *typeParam.constraint;
@@ -373,7 +415,9 @@ class Formatter {
         if (!constraint.typeArguments.empty()) {
           out_ += '<';
           for (size_t i = 0; i < constraint.typeArguments.size(); ++i) {
-            if (i) out_ += ", ";
+            if (i) {
+              out_ += ", ";
+            }
             printType(constraint.typeArguments[i]);
           }
           out_ += '>';
@@ -396,14 +440,18 @@ class Formatter {
     const auto& args = p.getArgs();
     bool first = true;
     for (const auto& [name, type] : args) {
-      if (!first) out_ += ", ";
+      if (!first) {
+        out_ += ", ";
+      }
       first = false;
       out_ += name;
       out_ += ": ";
       printType(type);
     }
     if (p.hasVariadicParam()) {
-      if (!first) out_ += ", ";
+      if (!first) {
+        out_ += ", ";
+      }
       out_ += p.getVariadicParamName();
       out_ += "...";
       if (p.hasVariadicTypeAnnotation()) {
@@ -412,7 +460,9 @@ class Formatter {
       }
     }
     if (p.isCVariadic()) {
-      if (!first) out_ += ", ";
+      if (!first) {
+        out_ += ", ";
+      }
       out_ += "...";
     }
     out_ += ')';
@@ -477,7 +527,9 @@ class Formatter {
     bool multiline = isMultiLine(constructSpan) && !items.empty();
     if (!multiline) {
       for (size_t i = 0; i < items.size(); ++i) {
-        if (i) out_ += ", ";
+        if (i) {
+          out_ += ", ";
+        }
         printExpr(*items[i]);
       }
       out_ += close;
@@ -490,7 +542,9 @@ class Formatter {
       flushCommentsBefore(loc.offset);
       writeIndent();
       printExpr(*items[i]);
-      if (i + 1 < items.size()) out_ += ',';
+      if (i + 1 < items.size()) {
+        out_ += ',';
+      }
       lastLine_ = endLineOf(loc);
       emitTrailingComments(endLineOf(loc));
       out_ += '\n';
@@ -523,7 +577,9 @@ class Formatter {
               [](const auto& a, const auto& b) { return a.offset < b.offset; });
     for (size_t i = 0; i < members.size(); ++i) {
       const auto& member = members[i];
-      if (i > 0 && (members[i - 1].method || member.method)) ensureBlankLine();
+      if (i > 0 && (members[i - 1].method || member.method)) {
+        ensureBlankLine();
+      }
       flushCommentsBefore(member.offset);
       blankGap(member.line);
       writeIndent();
@@ -536,7 +592,9 @@ class Formatter {
 
   /** Writes a class declaration, including its fields and methods. */
   void printClass(const sun::ast::ClassDefinitionAST& c) {
-    if (c.isPartial()) out_ += "partial ";
+    if (c.isPartial()) {
+      out_ += "partial ";
+    }
     out_ += c.classKeyword();
     out_ += ' ';
     out_ += c.getName();
@@ -545,12 +603,16 @@ class Formatter {
     if (!ifaces.empty()) {
       out_ += " implements ";
       for (size_t i = 0; i < ifaces.size(); ++i) {
-        if (i) out_ += ", ";
+        if (i) {
+          out_ += ", ";
+        }
         out_ += ifaces[i].name;
         if (!ifaces[i].typeArguments.empty()) {
           out_ += '<';
           for (size_t j = 0; j < ifaces[i].typeArguments.size(); ++j) {
-            if (j) out_ += ", ";
+            if (j) {
+              out_ += ", ";
+            }
             printType(ifaces[i].typeArguments[j]);
           }
           out_ += '>';
@@ -574,7 +636,9 @@ class Formatter {
            &f, nullptr});
     }
     for (const auto& m : c.getMethods()) {
-      if (m.function->isSynthesizedConstructor()) continue;
+      if (m.function->isSynthesizedConstructor()) {
+        continue;
+      }
       const Position& loc = m.function->getLocation();
       members.push_back(
           {loc.offset, loc.line, endLineOf(loc), nullptr, m.function.get()});
@@ -601,10 +665,16 @@ class Formatter {
                        m.method->getFieldInitializerCount());
         } else {
           printVisibility(m.method->getVisibility());
-          if (m.method->getProto().isConstMethod()) out_ += "const ";
-          if (m.method->getProto().isUnsafeMethod()) out_ += "unsafe ";
+          if (m.method->getProto().isConstMethod()) {
+            out_ += "const ";
+          }
+          if (m.method->getProto().isUnsafeMethod()) {
+            out_ += "unsafe ";
+          }
           printFunction(*m.method, /*asMethod=*/true);
-          if (m.method->isExtern()) out_ += ';';
+          if (m.method->isExtern()) {
+            out_ += ';';
+          }
         }
       }
     });
@@ -632,8 +702,9 @@ class Formatter {
     int savedLast = lastLine_;
     lastLine_ = -1;
 
-    std::vector<Member<sun::ast::InterfaceFieldDecl,
-                       sun::ast::InterfaceMethodDecl>> members;
+    std::vector<
+        Member<sun::ast::InterfaceFieldDecl, sun::ast::InterfaceMethodDecl>>
+        members;
     for (const auto& f : n.getFields()) {
       members.push_back({f.location.offset, f.location.line,
                          endLineOf(f.location), &f, nullptr});
@@ -652,8 +723,12 @@ class Formatter {
         out_ += ';';
       } else {
         printVisibility(m.method->visibility());
-        if (m.method->isConst) out_ += "const ";
-        if (m.method->function->getProto().isUnsafeMethod()) out_ += "unsafe ";
+        if (m.method->isConst) {
+          out_ += "const ";
+        }
+        if (m.method->function->getProto().isUnsafeMethod()) {
+          out_ += "unsafe ";
+        }
         if (m.method->hasDefaultImpl) {
           printFunction(*m.method->function, /*asMethod=*/true);
         } else {
@@ -681,12 +756,16 @@ class Formatter {
     if (v.hasPayload()) {
       out_ += '(';
       for (size_t j = 0; j < v.payloadTypes.size(); ++j) {
-        if (j) out_ += ", ";
+        if (j) {
+          out_ += ", ";
+        }
         printType(v.payloadTypes[j]);
       }
       out_ += ')';
     }
-    if (v.hasExplicitValue) out_ += " = " + n.getValueText(v);
+    if (v.hasExplicitValue) {
+      out_ += " = " + n.getValueText(v);
+    }
   }
 
   /** Writes an enum declaration and its alternatives. */
@@ -695,12 +774,16 @@ class Formatter {
     out_ += n.getName();
     const auto& typeParams = n.getTypeParameters();
     printTypeParams(typeParams);
-    if (!n.getUnderlyingType().empty()) out_ += " " + n.getUnderlyingType();
+    if (!n.getUnderlyingType().empty()) {
+      out_ += " " + n.getUnderlyingType();
+    }
     const auto& variants = n.getVariants();
     if (!isMultiLine(n.getLocation())) {
       out_ += " { ";
       for (size_t i = 0; i < variants.size(); ++i) {
-        if (i) out_ += ", ";
+        if (i) {
+          out_ += ", ";
+        }
         printVariant(variants[i], n);
       }
       out_ += " }";
@@ -713,7 +796,9 @@ class Formatter {
       flushCommentsBefore(variants[i].location.offset);
       writeIndent();
       printVariant(variants[i], n);
-      if (i + 1 < variants.size()) out_ += ',';
+      if (i + 1 < variants.size()) {
+        out_ += ',';
+      }
       lastLine_ = endLineOf(variants[i].location);
       emitTrailingComments(lastLine_);
       out_ += '\n';
@@ -756,7 +841,9 @@ class Formatter {
     const auto& arms = m.getArms();
     for (size_t i = 0; i < arms.size(); ++i) {
       const auto& arm = arms[i];
-      if (arm.pattern) flushCommentsBefore(arm.pattern->getLocation().offset);
+      if (arm.pattern) {
+        flushCommentsBefore(arm.pattern->getLocation().offset);
+      }
       writeIndent();
       int armEndLine = -1;
       if (arm.bindingType) {
@@ -773,7 +860,9 @@ class Formatter {
         if (arm.hasPayloadParens) {
           out_ += '(';
           for (size_t j = 0; j < arm.bindings.size(); ++j) {
-            if (j) out_ += ", ";
+            if (j) {
+              out_ += ", ";
+            }
             out_ += arm.bindings[j].isWildcard ? "_" : arm.bindings[j].name;
           }
           out_ += ')';
@@ -784,7 +873,9 @@ class Formatter {
         printExpr(*arm.body);
         armEndLine = endLineOf(arm.body->getLocation());
       }
-      if (i + 1 < arms.size()) out_ += ',';
+      if (i + 1 < arms.size()) {
+        out_ += ',';
+      }
       if (armEndLine >= 0) {
         lastLine_ = armEndLine;
         emitTrailingComments(armEndLine);
@@ -823,7 +914,9 @@ class Formatter {
     // Bodies are always blocks in the lossless tree
     printBlockML(static_cast<const BlockExprAST&>(*n.getThen()));
     const ExprAST* elseNode = n.getElse();
-    if (!elseNode) return;
+    if (!elseNode) {
+      return;
+    }
     if (elseNode->getType() == ASTNodeType::IF) {
       out_ += " else ";
       printIf(static_cast<const IfExprAST&>(*elseNode));
@@ -840,16 +933,24 @@ class Formatter {
     const auto& caps = l.getProto().getRefCaptureNames();
     const auto& owned = l.getProto().getOwnedCaptureNames();
     if (!caps.empty() || !owned.empty()) {
-      if (!l.getProto().getLifetimeParameters().empty()) out_ += ' ';
+      if (!l.getProto().getLifetimeParameters().empty()) {
+        out_ += ' ';
+      }
       out_ += "[";
       for (size_t i = 0; i < caps.size(); ++i) {
-        if (i) out_ += ", ";
-        if (l.getProto().isConstRefCapture(caps[i])) out_ += "const ";
+        if (i) {
+          out_ += ", ";
+        }
+        if (l.getProto().isConstRefCapture(caps[i])) {
+          out_ += "const ";
+        }
         out_ += "ref ";
         out_ += caps[i];
       }
       for (size_t i = 0; i < owned.size(); ++i) {
-        if (i || !caps.empty()) out_ += ", ";
+        if (i || !caps.empty()) {
+          out_ += ", ";
+        }
         out_ += owned[i];
       }
       out_ += "]";
@@ -1020,7 +1121,9 @@ class Formatter {
         out_ += '[';
         const auto& indices = n.getIndices();
         for (size_t i = 0; i < indices.size(); ++i) {
-          if (i) out_ += ", ";
+          if (i) {
+            out_ += ", ";
+          }
           printSlice(*indices[i]);
         }
         out_ += ']';
@@ -1040,7 +1143,9 @@ class Formatter {
         out_ += '<';
         const auto& typeArgs = n.getTypeArguments();
         for (size_t i = 0; i < typeArgs.size(); ++i) {
-          if (i) out_ += ", ";
+          if (i) {
+            out_ += ", ";
+          }
           printType(*typeArgs[i]);
         }
         out_ += '>';
@@ -1057,7 +1162,9 @@ class Formatter {
           out_ += '<';
           const auto& typeArgs = n.getTypeArguments();
           for (size_t i = 0; i < typeArgs.size(); ++i) {
-            if (i) out_ += ", ";
+            if (i) {
+              out_ += ", ";
+            }
             printType(*typeArgs[i]);
           }
           out_ += '>';
@@ -1104,11 +1211,17 @@ class Formatter {
       case ASTNodeType::FOR_LOOP: {
         const auto& n = static_cast<const sun::ast::ForExprAST&>(e);
         out_ += "for (";
-        if (n.getInit()) printExpr(*n.getInit());
+        if (n.getInit()) {
+          printExpr(*n.getInit());
+        }
         out_ += "; ";
-        if (n.getCondition()) printExpr(*n.getCondition());
+        if (n.getCondition()) {
+          printExpr(*n.getCondition());
+        }
         out_ += "; ";
-        if (n.getIncrement()) printExpr(*n.getIncrement());
+        if (n.getIncrement()) {
+          printExpr(*n.getIncrement());
+        }
         out_ += ") ";
         printBlockML(static_cast<const BlockExprAST&>(*n.getBody()));
         break;
@@ -1134,10 +1247,11 @@ class Formatter {
       case ASTNodeType::UNSAFE_BLOCK: {
         const auto& n = static_cast<const sun::ast::UnsafeBlockAST&>(e);
         out_ += "unsafe ";
-        if (n.isExpressionForm())
+        if (n.isExpressionForm()) {
           printExpr(*n.getBody().getLastExpr());
-        else
+        } else {
           printBlockAuto(n.getBody());
+        }
         break;
       }
 
@@ -1219,12 +1333,18 @@ class Formatter {
   /** Writes a slice expression using formatted Sun source syntax. */
   void printSlice(const sun::ast::SliceExprAST& s) {
     if (!s.isRange()) {
-      if (s.hasStart()) printExpr(*s.getStart());
+      if (s.hasStart()) {
+        printExpr(*s.getStart());
+      }
       return;
     }
-    if (s.hasStart()) printExpr(*s.getStart());
+    if (s.hasStart()) {
+      printExpr(*s.getStart());
+    }
     out_ += ':';
-    if (s.hasEnd()) printExpr(*s.getEnd());
+    if (s.hasEnd()) {
+      printExpr(*s.getEnd());
+    }
   }
 };
 

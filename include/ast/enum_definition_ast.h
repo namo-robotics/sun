@@ -142,12 +142,16 @@ class EnumDefinitionAST : public ExprAST {
         std::string(isPublic() ? "public " : "") + "enum " + name +
         (underlyingType.empty() ? "" : " " + underlyingType) + " { ";
     for (size_t i = 0; i < variants.size(); ++i) {
-      if (i > 0) result += ", ";
+      if (i > 0) {
+        result += ", ";
+      }
       result += variants[i].name;
       if (variants[i].hasPayload()) {
         result += "(";
         for (size_t j = 0; j < variants[i].payloadTypes.size(); ++j) {
-          if (j > 0) result += ", ";
+          if (j > 0) {
+            result += ", ";
+          }
           result += variants[i].payloadTypes[j].baseName;
         }
         result += ")";
@@ -165,7 +169,9 @@ class EnumDefinitionAST : public ExprAST {
    */
   bool hasAnyPayload() const {
     for (const auto& v : variants) {
-      if (v.hasPayload()) return true;
+      if (v.hasPayload()) {
+        return true;
+      }
     }
     return false;
   }
@@ -189,7 +195,9 @@ class EnumDefinitionAST : public ExprAST {
    */
   const EnumVariantDecl* getVariant(const std::string& variantName) const {
     for (const auto& variant : variants) {
-      if (variant.name == variantName) return &variant;
+      if (variant.name == variantName) {
+        return &variant;
+      }
     }
     return nullptr;
   }

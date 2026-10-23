@@ -213,12 +213,16 @@ class CodegenContext {
     auto tempCtx = std::make_unique<LLVMContext>();
     auto tempMod = std::make_unique<Module>("__anon_expr", *tempCtx);
 
-    if (jit) tempMod->setDataLayout(jit->getDataLayout());
+    if (jit) {
+      tempMod->setDataLayout(jit->getDataLayout());
+    }
 
     // Important: copy function declarations from main module
     // so we can call previously defined functions from expressions
     for (const Function& F : *mainModule) {
-      if (F.isIntrinsic()) continue;
+      if (F.isIntrinsic()) {
+        continue;
+      }
 
       // Usually copy only externally visible functions
       if (F.hasExternalLinkage() || F.hasWeakLinkage()) {

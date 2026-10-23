@@ -26,13 +26,21 @@ enum class EightbyteClass { NoClass, SSE, Integer, Memory };
  * Integer, which wins over SSE, which wins over NoClass.
  */
 EightbyteClass merge(EightbyteClass a, EightbyteClass b) {
-  if (a == b) return a;
-  if (a == EightbyteClass::NoClass) return b;
-  if (b == EightbyteClass::NoClass) return a;
-  if (a == EightbyteClass::Memory || b == EightbyteClass::Memory)
+  if (a == b) {
+    return a;
+  }
+  if (a == EightbyteClass::NoClass) {
+    return b;
+  }
+  if (b == EightbyteClass::NoClass) {
+    return a;
+  }
+  if (a == EightbyteClass::Memory || b == EightbyteClass::Memory) {
     return EightbyteClass::Memory;
-  if (a == EightbyteClass::Integer || b == EightbyteClass::Integer)
+  }
+  if (a == EightbyteClass::Integer || b == EightbyteClass::Integer) {
     return EightbyteClass::Integer;
+  }
   return EightbyteClass::SSE;
 }
 
@@ -80,12 +88,18 @@ bool classifyLeaves(llvm::Type* type, uint64_t offset,
 
   // Scalar leaf.
   uint64_t size = dl.getTypeStoreSize(type);
-  if (size == 0) return true;
+  if (size == 0) {
+    return true;
+  }
 
   uint64_t first = offset / 8;
   uint64_t last = (offset + size - 1) / 8;
-  if (last > 1) return false;       // beyond the two eightbytes we handle
-  if (first != last) return false;  // straddles a boundary -> MEMORY
+  if (last > 1) {
+    return false;  // beyond the two eightbytes we handle
+  }
+  if (first != last) {
+    return false;  // straddles a boundary -> MEMORY
+  }
 
   // Only float and double land in SSE registers; everything else Sun can
   // express in a struct (integers, bools, pointers) is INTEGER.
@@ -112,7 +126,9 @@ bool classifyLeaves(llvm::Type* type, uint64_t offset,
 llvm::Type* pieceType(const EightbyteInfo& eb, llvm::LLVMContext& ctx) {
   if (eb.cls == EightbyteClass::SSE) {
     llvm::Type* floatTy = llvm::Type::getFloatTy(ctx);
-    if (eb.usedBytes <= 4) return floatTy;
+    if (eb.usedBytes <= 4) {
+      return floatTy;
+    }
     if (eb.allFloat32) {
       return llvm::FixedVectorType::get(floatTy, 2);
     }
@@ -186,7 +202,9 @@ ArgLowering lowerAggregate(llvm::Type* type, const llvm::DataLayout& dl) {
 ArgLowering lowerArgument(llvm::Type* type, const llvm::DataLayout& dl) {
   ArgLowering result;
   result.type = type;
-  if (!isAggregate(type)) return result;  // Direct
+  if (!isAggregate(type)) {
+    return result;  // Direct
+  }
   return lowerAggregate(type, dl);
 }
 
@@ -194,7 +212,9 @@ ArgLowering lowerArgument(llvm::Type* type, const llvm::DataLayout& dl) {
 ArgLowering lowerReturn(llvm::Type* type, const llvm::DataLayout& dl) {
   ArgLowering result;
   result.type = type;
-  if (!type || type->isVoidTy() || !isAggregate(type)) return result;  // Direct
+  if (!type || type->isVoidTy() || !isAggregate(type)) {
+    return result;  // Direct
+  }
   return lowerAggregate(type, dl);
 }
 

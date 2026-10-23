@@ -32,7 +32,9 @@ namespace sun::codegen::intrinsics {
 static Function* getOrCreateFileOpenHelper(llvm::Module* module,
                                            LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_file_open");
-  if (func) return func;
+  if (func) {
+    return func;
+  }
 
   // i32 __sun_file_open(i8* path, i32 flags)
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
@@ -84,7 +86,9 @@ static Function* getOrCreateFileOpenHelper(llvm::Module* module,
 static Function* getOrCreateFileCloseHelper(llvm::Module* module,
                                             LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_file_close");
-  if (func) return func;
+  if (func) {
+    return func;
+  }
 
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
   llvm::FunctionType* funcType = llvm::FunctionType::get(i32Ty, {i32Ty}, false);
@@ -110,7 +114,9 @@ static Function* getOrCreateFileCloseHelper(llvm::Module* module,
 static Function* getOrCreateFileWriteHelper(llvm::Module* module,
                                             LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_file_write");
-  if (func) return func;
+  if (func) {
+    return func;
+  }
 
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
   auto* i64Ty = llvm::Type::getInt64Ty(llvmCtx);
@@ -168,7 +174,9 @@ static Function* getOrCreateFileWriteHelper(llvm::Module* module,
 static Function* getOrCreateFileReadHelper(llvm::Module* module,
                                            LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_file_read");
-  if (func) return func;
+  if (func) {
+    return func;
+  }
 
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
   auto* i64Ty = llvm::Type::getInt64Ty(llvmCtx);
@@ -222,9 +230,13 @@ Value* IntrinsicsGenerator::codegenFileOpen(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* path = codegen(*expr.getArgs()[0]);
-  if (!path) return nullptr;
+  if (!path) {
+    return nullptr;
+  }
   Value* flags = codegen(*expr.getArgs()[1]);
-  if (!flags) return nullptr;
+  if (!flags) {
+    return nullptr;
+  }
 
   // String literals are static_ptr<u8> which is a fat pointer struct { ptr, i64
   // } Extract the raw data pointer (element 0) for the syscall
@@ -251,7 +263,9 @@ Value* IntrinsicsGenerator::codegenFileClose(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* fd = codegen(*expr.getArgs()[0]);
-  if (!fd) return nullptr;
+  if (!fd) {
+    return nullptr;
+  }
 
   if (!fd->getType()->isIntegerTy(32)) {
     fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
@@ -270,9 +284,13 @@ Value* IntrinsicsGenerator::codegenFileWrite(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* fd = codegen(*expr.getArgs()[0]);
-  if (!fd) return nullptr;
+  if (!fd) {
+    return nullptr;
+  }
   Value* data = codegen(*expr.getArgs()[1]);
-  if (!data) return nullptr;
+  if (!data) {
+    return nullptr;
+  }
 
   if (!fd->getType()->isIntegerTy(32)) {
     fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
@@ -297,9 +315,13 @@ Value* IntrinsicsGenerator::codegenFileRead(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* fd = codegen(*expr.getArgs()[0]);
-  if (!fd) return nullptr;
+  if (!fd) {
+    return nullptr;
+  }
   Value* count = codegen(*expr.getArgs()[1]);
-  if (!count) return nullptr;
+  if (!count) {
+    return nullptr;
+  }
 
   if (!fd->getType()->isIntegerTy(32)) {
     fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
@@ -454,11 +476,17 @@ Value* IntrinsicsGenerator::codegenLseek(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* fd = codegen(*expr.getArgs()[0]);
-  if (!fd) return nullptr;
+  if (!fd) {
+    return nullptr;
+  }
   Value* offset = codegen(*expr.getArgs()[1]);
-  if (!offset) return nullptr;
+  if (!offset) {
+    return nullptr;
+  }
   Value* whence = codegen(*expr.getArgs()[2]);
-  if (!whence) return nullptr;
+  if (!whence) {
+    return nullptr;
+  }
 
   if (!fd->getType()->isIntegerTy(32)) {
     fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
@@ -486,9 +514,13 @@ Value* IntrinsicsGenerator::codegenFstat(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* fd = codegen(*expr.getArgs()[0]);
-  if (!fd) return nullptr;
+  if (!fd) {
+    return nullptr;
+  }
   Value* statBuf = codegen(*expr.getArgs()[1]);
-  if (!statBuf) return nullptr;
+  if (!statBuf) {
+    return nullptr;
+  }
 
   if (!fd->getType()->isIntegerTy(32)) {
     fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
@@ -507,7 +539,9 @@ Value* IntrinsicsGenerator::codegenFsync(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* fd = codegen(*expr.getArgs()[0]);
-  if (!fd) return nullptr;
+  if (!fd) {
+    return nullptr;
+  }
 
   if (!fd->getType()->isIntegerTy(32)) {
     fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
@@ -526,9 +560,13 @@ Value* IntrinsicsGenerator::codegenFtruncate(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* fd = codegen(*expr.getArgs()[0]);
-  if (!fd) return nullptr;
+  if (!fd) {
+    return nullptr;
+  }
   Value* length = codegen(*expr.getArgs()[1]);
-  if (!length) return nullptr;
+  if (!length) {
+    return nullptr;
+  }
 
   if (!fd->getType()->isIntegerTy(32)) {
     fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
@@ -551,7 +589,9 @@ Value* IntrinsicsGenerator::codegenUnlink(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* path = codegen(*expr.getArgs()[0]);
-  if (!path) return nullptr;
+  if (!path) {
+    return nullptr;
+  }
 
   // Extract raw pointer from static_ptr struct
   if (path->getType()->isStructTy()) {
@@ -572,9 +612,13 @@ Value* IntrinsicsGenerator::codegenRename(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* oldPath = codegen(*expr.getArgs()[0]);
-  if (!oldPath) return nullptr;
+  if (!oldPath) {
+    return nullptr;
+  }
   Value* newPath = codegen(*expr.getArgs()[1]);
-  if (!newPath) return nullptr;
+  if (!newPath) {
+    return nullptr;
+  }
 
   // Extract raw pointers from static_ptr structs
   if (oldPath->getType()->isStructTy()) {
@@ -598,9 +642,13 @@ Value* IntrinsicsGenerator::codegenMkdir(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* path = codegen(*expr.getArgs()[0]);
-  if (!path) return nullptr;
+  if (!path) {
+    return nullptr;
+  }
   Value* mode = codegen(*expr.getArgs()[1]);
-  if (!mode) return nullptr;
+  if (!mode) {
+    return nullptr;
+  }
 
   // Extract raw pointer from static_ptr struct
   if (path->getType()->isStructTy()) {
@@ -624,7 +672,9 @@ Value* IntrinsicsGenerator::codegenRmdir(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* path = codegen(*expr.getArgs()[0]);
-  if (!path) return nullptr;
+  if (!path) {
+    return nullptr;
+  }
 
   // Extract raw pointer from static_ptr struct
   if (path->getType()->isStructTy()) {
@@ -645,11 +695,17 @@ Value* IntrinsicsGenerator::codegenWrite(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* fd = codegen(*expr.getArgs()[0]);
-  if (!fd) return nullptr;
+  if (!fd) {
+    return nullptr;
+  }
   Value* buf = codegen(*expr.getArgs()[1]);
-  if (!buf) return nullptr;
+  if (!buf) {
+    return nullptr;
+  }
   Value* len = codegen(*expr.getArgs()[2]);
-  if (!len) return nullptr;
+  if (!len) {
+    return nullptr;
+  }
 
   if (!fd->getType()->isIntegerTy(32)) {
     fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
@@ -672,11 +728,17 @@ Value* IntrinsicsGenerator::codegenRead(const CallExprAST& expr) {
 
   LLVMContext& llvmCtx = ctx.getContext();
   Value* fd = codegen(*expr.getArgs()[0]);
-  if (!fd) return nullptr;
+  if (!fd) {
+    return nullptr;
+  }
   Value* buf = codegen(*expr.getArgs()[1]);
-  if (!buf) return nullptr;
+  if (!buf) {
+    return nullptr;
+  }
   Value* len = codegen(*expr.getArgs()[2]);
-  if (!len) return nullptr;
+  if (!len) {
+    return nullptr;
+  }
 
   if (!fd->getType()->isIntegerTy(32)) {
     fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));

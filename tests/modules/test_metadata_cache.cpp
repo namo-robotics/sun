@@ -1,4 +1,4 @@
-/** Checks immutable metadata reuse without serving stale bundle contents. */
+/** Checks immutable reader snapshots without serving stale bundle contents. */
 #include <gtest/gtest.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
@@ -20,6 +20,7 @@ TEST(Modules_MetadataCache, ReplacementDoesNotMutateExistingReaders) {
   llvm::Module module("cache", context);
   sun::moon::ModuleMetadata metadata;
   metadata.set_module_name("cache");
+  metadata.set_source_hash("cache");
   const std::string hash(64, 'a');
   module.setTargetTriple("x86_64-unknown-linux-gnu");
   MoonWriter original(hash);
@@ -33,7 +34,10 @@ TEST(Modules_MetadataCache, ReplacementDoesNotMutateExistingReaders) {
   const auto key = first->listModules().front();
   const auto* firstMetadata = first->getMetadata(key);
   ASSERT_NE(firstMetadata, nullptr);
-  EXPECT_EQ(second->getMetadata(key), firstMetadata);
+  const auto* secondMetadata = second->getMetadata(key);
+  ASSERT_NE(secondMetadata, nullptr);
+  EXPECT_EQ(secondMetadata->SerializeAsString(),
+            firstMetadata->SerializeAsString());
 
   module.setTargetTriple("aarch64-unknown-linux-gnu");
   MoonWriter replacement(hash);

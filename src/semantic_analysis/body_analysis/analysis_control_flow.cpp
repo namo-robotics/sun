@@ -57,20 +57,24 @@ void BodyAnalyzer::analyzeMatchExpr(sun::ast::MatchExprAST& matchExpr,
     // The first declaration is success, regardless of its name or numeric tag.
     auto validate = [&](const std::shared_ptr<sun::types::EnumType>& type,
                         const std::string& role) {
-      if (!type || type->getVariants().empty())
+      if (!type || type->getVariants().empty()) {
         logAndThrowError("'try' requires " + role + " to be a nonempty enum",
                          location);
-      if (type->getVariants().front().payloadTypes.size() > 1)
+      }
+      if (type->getVariants().front().payloadTypes.size() > 1) {
         logAndThrowError(
             "'try' requires the first enum variant to have zero or "
             "one success payload",
             location);
-      for (size_t i = 1; i < type->getVariants().size(); ++i)
-        if (type->getVariants()[i].payloadTypes.size() != 1)
+      }
+      for (size_t i = 1; i < type->getVariants().size(); ++i) {
+        if (type->getVariants()[i].payloadTypes.size() != 1) {
           logAndThrowError(
               "'try' requires each failure variant to have one "
               "payload",
               location);
+        }
+      }
     };
     validate(source, "its operand");
     validate(target, "the enclosing function's return type");
@@ -115,13 +119,15 @@ void BodyAnalyzer::analyzeMatchExpr(sun::ast::MatchExprAST& matchExpr,
           for (size_t j = 1; j < target->getVariants().size(); ++j) {
             const auto& candidate = target->getVariants()[j];
             if (!candidate.payloadTypes.front()->equals(
-                    *variant.payloadTypes.front()))
+                    *variant.payloadTypes.front())) {
               continue;
-            if (destination)
+            }
+            if (destination) {
               logAndThrowError(
                   "Ambiguous error propagation: multiple variants "
                   "accept this error",
                   location);
+            }
             destination = &candidate;
           }
           // Preserve explicit error-sum wrapping used by _Result<T, E> callers.
@@ -130,17 +136,21 @@ void BodyAnalyzer::analyzeMatchExpr(sun::ast::MatchExprAST& matchExpr,
               const auto& candidate = target->getVariants()[j];
               auto nested = std::dynamic_pointer_cast<sun::types::EnumType>(
                   candidate.payloadTypes.front());
-              if (!nested) continue;
+              if (!nested) {
+                continue;
+              }
               for (const auto& nestedVariant : nested->getVariants()) {
                 if (nestedVariant.payloadTypes.size() != 1 ||
                     !nestedVariant.payloadTypes.front()->equals(
-                        *variant.payloadTypes.front()))
+                        *variant.payloadTypes.front())) {
                   continue;
-                if (destination)
+                }
+                if (destination) {
                   logAndThrowError(
                       "Ambiguous error propagation: multiple variants "
                       "accept this error",
                       location);
+                }
                 destination = &candidate;
                 wrapper = &nestedVariant;
                 wrapperType = nested;
@@ -148,10 +158,11 @@ void BodyAnalyzer::analyzeMatchExpr(sun::ast::MatchExprAST& matchExpr,
             }
           }
         }
-        if (!destination)
+        if (!destination) {
           logAndThrowError("Cannot propagate error variant '" + variant.name +
                                "' into the enclosing enum return type",
                            location);
+        }
         if (wrapper) {
           const auto wrapperName = "$try_wrapper_" + std::to_string(i);
           ctx_.currentScope().declareEnum(wrapperName, wrapperType);
@@ -195,31 +206,35 @@ void BodyAnalyzer::analyzeMatchExpr(sun::ast::MatchExprAST& matchExpr,
   // Analyze each arm, propagating expectedType to arm bodies
   for (auto& arm : matchExpr.getArmsMutable()) {
     if (arm.bindingType) {
-      if (!arm.bindingType->isReference())
+      if (!arm.bindingType->isReference()) {
         logAndThrowError("Typed match bindings must use ref or const ref",
                          arm.pattern->getLocation());
+      }
       auto bindingType =
           sema_.typeResolver().typeAnnotationToType(*arm.bindingType);
       auto target = unwrapRef(bindingType);
       bool matches =
           discType && (discType->isTypeParameter() ||
                        (discType->isClass() && discType->equals(*target)));
-      if (discType && discType->isClass() && target->isInterface())
+      if (discType && discType->isClass() && target->isInterface()) {
         matches =
             static_cast<ClassType*>(discType.get())
                 ->implementsInterface(
                     *static_cast<sun::types::InterfaceType*>(target.get()));
-      if (!matches)
+      }
+      if (!matches) {
         logAndThrowError(
             "Typed match pattern does not match the concrete discriminant",
             arm.pattern->getLocation());
+      }
       auto source = matchExpr.getDiscriminant()->getResolvedType();
       if (sun::types::isMutableRef(bindingType) && source->isReference() &&
-          !sun::types::isMutableRef(source))
+          !sun::types::isMutableRef(source)) {
         logAndThrowError(
             "Cannot bind a mutable reference through a const match "
             "discriminant",
             arm.pattern->getLocation());
+      }
       sema_.expressions().checkMethodReceiver(
           *matchExpr.getDiscriminant(), "typed match binding",
           !sun::types::isMutableRef(bindingType), false,
@@ -229,9 +244,10 @@ void BodyAnalyzer::analyzeMatchExpr(sun::ast::MatchExprAST& matchExpr,
       auto& binding = arm.bindings.front();
       binding.resolvedType = bindingType;
       ctx_.enterScope();
-      if (!binding.isWildcard)
+      if (!binding.isWildcard) {
         ctx_.currentScope().declareVariable(binding.name, bindingType, false,
                                             false, binding.declaration.id);
+      }
       sema_.analyzeExpr(*arm.body, expectedType);
       ctx_.exitScope();
       continue;
@@ -308,8 +324,12 @@ void BodyAnalyzer::analyzeForInLoop(sun::ast::ForInExprAST& forInExpr) {
         instance.specialization
             ? ctx_.results().declarations.get(instance.specialization->source)
             : instance;
-    if (source.name == "IIterator") implementsIterator = true;
-    if (source.name == "IIterable") implementsIterable = true;
+    if (source.name == "IIterator") {
+      implementsIterator = true;
+    }
+    if (source.name == "IIterable") {
+      implementsIterable = true;
+    }
   }
   if (!implementsIterator && !implementsIterable) {
     logAndThrowError(
@@ -324,8 +344,9 @@ void BodyAnalyzer::analyzeForInLoop(sun::ast::ForInExprAST& forInExpr) {
   std::shared_ptr<ClassType> iteratorType = classType;
   if (!implementsIterator) {
     const auto* iterMethod = classType->getMethod("iter");
-    if (iterMethod)
+    if (iterMethod) {
       forInExpr.forInAnalysis().iteratorFactory = iterMethod->declarationId;
+    }
     iteratorType = iterMethod
                        ? std::dynamic_pointer_cast<ClassType>(
                              sun::types::unwrapRef(iterMethod->returnType))
@@ -439,9 +460,10 @@ void BodyAnalyzer::analyzeTryCatch(sun::ast::TryCatchExprAST& tryCatchExpr) {
           tryCatchExpr.getLocation());
     }
 
-    if (!catchClause.bindingType->isReference())
+    if (!catchClause.bindingType->isReference()) {
       logAndThrowError("Catch bindings must use ref or const ref",
                        tryCatchExpr.getLocation());
+    }
     TypePtr bindingType =
         sema_.typeResolver().typeAnnotationToType(*catchClause.bindingType);
     TypePtr errorType = sun::types::unwrapRef(bindingType);
@@ -449,12 +471,13 @@ void BodyAnalyzer::analyzeTryCatch(sun::ast::TryCatchExprAST& tryCatchExpr) {
     bool valid = isCatchAll || (errorType && errorType->isClass() &&
                                 static_cast<ClassType*>(errorType.get())
                                     ->implementsInterface(*builtinIError));
-    if (!valid)
+    if (!valid) {
       logAndThrowError(
           "catch type must reference IError or a class implementing IError, "
           "got '" +
               bindingType->toDisplayString() + "'",
           tryCatchExpr.getLocation());
+    }
 
     // A catch-all (IError) makes any following clause unreachable.
     if (sawCatchAll) {
@@ -463,7 +486,9 @@ void BodyAnalyzer::analyzeTryCatch(sun::ast::TryCatchExprAST& tryCatchExpr) {
           "be the last handler",
           tryCatchExpr.getLocation());
     }
-    if (isCatchAll) sawCatchAll = true;
+    if (isCatchAll) {
+      sawCatchAll = true;
+    }
 
     // Record resolution for codegen's typed matching.
     catchClause.isCatchAll = isCatchAll;
@@ -505,17 +530,20 @@ void BodyAnalyzer::analyzeThrowExpr(sun::ast::ThrowExprAST& throwExpr) {
         binding = scope->catchBinding;
         break;
       }
-      if (scope->asFunction()) break;
+      if (scope->asFunction()) {
+        break;
+      }
     }
     const auto& value = throwExpr.getErrorExpr();
     if (!binding ||
         value.getType() != sun::ast::ASTNodeType::VARIABLE_REFERENCE ||
         static_cast<const sun::ast::VariableReferenceAST&>(value)
-                .getTargetDeclarationId() != binding)
+                .getTargetDeclarationId() != binding) {
       logAndThrowError(
           "Cannot throw a borrowed error; only the innermost catch binding may "
           "be rethrown",
           throwExpr.getLocation());
+    }
   } else if (!errorType || !errorType->isClass() ||
              !static_cast<ClassType*>(errorType.get())
                   ->implementsInterface(*ctx_.types()->errorInterface)) {
@@ -568,12 +596,14 @@ void BodyAnalyzer::analyzeReturnExpr(sun::ast::ReturnExprAST& returnExpr) {
   }
   if (fallibleInit) {
     const ExprAST* variant = returnExpr.getValue();
-    if (auto* call = dynamic_cast<const sun::ast::CallExprAST*>(variant))
+    if (auto* call = dynamic_cast<const sun::ast::CallExprAST*>(variant)) {
       variant = call->getCallee();
+    }
     auto* member = dynamic_cast<const sun::ast::MemberAccessAST*>(variant);
-    if (!member || !initResult->hasVariant(member->getMemberName()))
+    if (!member || !initResult->hasVariant(member->getMemberName())) {
       logAndThrowError("A fallible init returns a result variant or return;",
                        returnExpr.getLocation());
+    }
   }
   if (returnExpr.hasValue()) {
     // Propagate the function's return type for return-position inference
@@ -584,11 +614,12 @@ void BodyAnalyzer::analyzeReturnExpr(sun::ast::ReturnExprAST& returnExpr) {
                       declaredReturn);
     TypePtr valueType = requireResolvedType(*returnExpr.getValue());
     if (declaredReturn && declaredReturn->isEnum() &&
-        !declaredReturn->equals(*valueType))
+        !declaredReturn->equals(*valueType)) {
       logAndThrowError("Return value has type '" +
                            valueType->toDisplayString() + "', expected '" +
                            declaredReturn->toDisplayString() + "'",
                        returnExpr.getLocation());
+    }
     // Returning by value out of a borrow would hand the caller a second
     // value backed by the borrowed storage.
     if (valueType && valueType->isReference() && declaredReturn &&
@@ -611,10 +642,11 @@ void BodyAnalyzer::analyzeReturnExpr(sun::ast::ReturnExprAST& returnExpr) {
     returnExpr.setResolvedType(valueType);
   } else {
     TypePtr declaredReturn = ctx_.currentFunctionReturnType();
-    if (declaredReturn && !declaredReturn->isVoid())
+    if (declaredReturn && !declaredReturn->isVoid()) {
       logAndThrowError("Return requires a value of type '" +
                            declaredReturn->toDisplayString() + "'",
                        returnExpr.getLocation());
+    }
     returnExpr.setResolvedType(Types::Void());
   }
 }

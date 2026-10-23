@@ -9,8 +9,12 @@ void SemanticAnalyzer::analyzeExpr(sun::ast::ExprAST &expr,
   SemanticContext::SourceFileGuard sourceFile(ctx_, expr.getSourceFileId());
   SemanticContext::LocationGuard location(ctx_, expr.getLocation());
   passes::assignLocalDeclarationName(expr, ctx_.getCurrentScopePath());
-  if (declarations_.tryAnalyzeDeclaration(expr)) return;
-  if (bodies_.tryAnalyzeStatement(expr, expectedType)) return;
+  if (declarations_.tryAnalyzeDeclaration(expr)) {
+    return;
+  }
+  if (bodies_.tryAnalyzeStatement(expr, expectedType)) {
+    return;
+  }
   expressions_.analyzeExpression(expr, expectedType);
 }
 }  // namespace sun::semantic_analysis

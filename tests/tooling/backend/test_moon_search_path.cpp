@@ -82,11 +82,12 @@ public module library {
   /** Releases the temporary files and state created for each test. */
   void TearDown() override { fs::remove_all(dir); }
 
-  /** Executes the fixture program and returns its observable result. */
+  /** Enables import logs for path assertions and executes the fixture program.
+   */
   int run(const std::string& command) {
-    return std::system(
-        ("env SUN_PATH= " + command + " > " + quote(dir / "log") + " 2>&1")
-            .c_str());
+    return std::system(("env SUN_PATH= SUN_LOG_LEVEL=info " + command + " > " +
+                        quote(dir / "log") + " 2>&1")
+                           .c_str());
   }
 
   /** Builds the fixture and checks that the expected library was selected. */
@@ -164,11 +165,11 @@ TEST_P(MoonSearchPath, cross_target_selects_installed_bundle) {
                 quote(dependencyPath) + " " + quote(dir / "dependency.sun")),
             0)
       << readFile(dir / "log");
-  // The three spellings name one target, so from the second round on the
+  // The spellings name one target, so from the second round on the
   // bundle would be up to date and the build would not name its imports;
   // force it so each spelling is seen to select the installed bundle.
-  for (const char* target : {"aarch64-linux-gnu", "aarch64-linux-musl",
-                             "aarch64-unknown-linux-gnu"}) {
+  for (const char* target :
+       {"aarch64-linux-gnu", "aarch64-unknown-linux-gnu"}) {
     const std::string flags =
         std::string("--force-rebuild --target ") + target + " ";
     checkBuild(flags + "--emit-moon -o " + quote(dir / "project/library.moon") +

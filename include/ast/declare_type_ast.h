@@ -88,7 +88,9 @@ class DeclareTypeAST : public ExprAST {
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override {
     std::string label = "DeclareType";
-    if (aliasName) label += "\n" + *aliasName;
+    if (aliasName) {
+      label += "\n" + *aliasName;
+    }
     return label;
   }
 };

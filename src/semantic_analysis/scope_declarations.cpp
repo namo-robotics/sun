@@ -57,7 +57,9 @@ void SemanticScopeBase::declareVariable(
   std::optional<Position> location;
   for (auto id = declarationId; declarations && id && !location;) {
     const auto& record = declarations->get(id);
-    if (record.astNode) location = record.astNode->getLocation();
+    if (record.astNode) {
+      location = record.astNode->getLocation();
+    }
     id = record.owner;
   }
   if (const auto* shadowedScope =
@@ -88,7 +90,9 @@ ModuleScope& SemanticScopeBase::declareModule(const std::string& name) {
     child = module;
   }
   auto* root = this;
-  while (root->parent) root = root->parent;
+  while (root->parent) {
+    root = root->parent;
+  }
   root->canonicalModules[QualifiedName(child->scopePath, "")
                              .scopePathString()] = child.get();
   return static_cast<ModuleScope&>(*child);
@@ -99,19 +103,22 @@ ModuleScope& SemanticScopeBase::declareModule(
   auto& module = declareModule(declaration.getName());
   module.declarationId = declaration.getDeclarationId();
   if (module.visibilityDeclared &&
-      module.visibility != declaration.getVisibility())
+      module.visibility != declaration.getVisibility()) {
     sun::support::logSemanticError(
         "module '" + declaration.getName() + "' was previously declared " +
             sun::semantic_analysis::visibilityKeyword(module.visibility) +
             "; all declarations of a module must agree on its visibility",
         declaration.getLocation());
+  }
   if (declaration.hasQualifiedName()) {
     module.qualifiedName = declaration.getQualifiedName();
     module.scopePath = module.qualifiedName.scopePath;
     module.scopePath.push_back(module.qualifiedName.baseName);
   }
   auto* root = this;
-  while (root->parent) root = root->parent;
+  while (root->parent) {
+    root = root->parent;
+  }
   root->canonicalModules[QualifiedName(module.scopePath, "")
                              .scopePathString()] = &module;
   module.visibility = declaration.getVisibility();
@@ -126,10 +133,13 @@ void SemanticScopeBase::declareClassDefinition(
 
 void SemanticScopeBase::declareTypeAlias(const std::string& name, TypePtr type,
                                          std::optional<Position> loc) {
-  if (typeAliases.contains(name))
+  if (typeAliases.contains(name)) {
     logAndThrowError(
         "Type alias '" + name + "' is already defined in this scope", loc);
-  if (type) typeAliases[name] = std::move(type);
+  }
+  if (type) {
+    typeAliases[name] = std::move(type);
+  }
 }
 
 void SemanticScopeBase::declareFunction(const std::string& name,
@@ -141,15 +151,17 @@ void SemanticScopeBase::declareFunction(const std::string& name,
   sun::semantic_analysis::CallableSignature sig{name, info.paramTypes};
   auto existing = functions.find(sig);
   if (existing != functions.end() && info.isForwardDeclaration &&
-      !existing->second.isForwardDeclaration)
+      !existing->second.isForwardDeclaration) {
     return;
+  }
   if (existing != functions.end() && info.declarationId &&
       existing->second.declarationId &&
       existing->second.declarationId != info.declarationId &&
       !info.isForwardDeclaration && !existing->second.isForwardDeclaration &&
-      !(info.isCExtern && existing->second.isCExtern))
+      !(info.isCExtern && existing->second.isCExtern)) {
     logAndThrowError("Function '" + name + "' is already defined in this scope",
                      loc);
+  }
   // Body checking replaces the collected signature with complete information.
   functions[sig] = info;
 }
@@ -197,8 +209,9 @@ void SemanticScopeBase::declareModuleVariable(
     it->second.visibility = visibility;
     it->second.isConst = isConst;
     it->second.isCExtern = isCExtern;
-    if (it->second.qualifiedName.empty())
+    if (it->second.qualifiedName.empty()) {
       it->second.qualifiedName = info.qualifiedName;
+    }
   }
 }
 

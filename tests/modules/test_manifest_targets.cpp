@@ -62,7 +62,9 @@ fs::path writeTargetedManifest(const std::string& name) {
 /** Reports whether a collection contains the expected fixture entry. */
 bool includes(const std::vector<std::string>& files, const std::string& name) {
   for (const auto& f : files) {
-    if (fs::path(f).filename() == name) return true;
+    if (fs::path(f).filename() == name) {
+      return true;
+    }
   }
   return false;
 }
@@ -141,11 +143,11 @@ TEST(Modules_ManifestTargets, target_blocks_may_carry_archives) {
   auto forDarwin = ManifestProcessor::fromEntrypointFile(
       (dir / "main.sun").string(), "arm64-apple-darwin");
   ASSERT_TRUE(forDarwin.has_value());
-  ASSERT_EQ(forDarwin->archiveFiles.size(), 1u);
-  EXPECT_EQ(fs::path(forDarwin->archiveFiles[0]).filename(), "libmac.a");
+  ASSERT_EQ(forDarwin->nativeArchives.size(), 1u);
+  EXPECT_EQ(fs::path(forDarwin->nativeArchives[0].path).filename(), "libmac.a");
 
   auto forLinux = ManifestProcessor::fromEntrypointFile(
       (dir / "main.sun").string(), "x86_64-linux-gnu");
   ASSERT_TRUE(forLinux.has_value());
-  EXPECT_TRUE(forLinux->archiveFiles.empty());
+  EXPECT_TRUE(forLinux->nativeArchives.empty());
 }

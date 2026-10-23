@@ -225,7 +225,9 @@ class NFA {
     numStates_ = static_cast<int>(allStates.size());
     idOf_.clear();
     idOf_.reserve(numStates_);
-    for (int i = 0; i < numStates_; ++i) idOf_[allStates[i].get()] = i;
+    for (int i = 0; i < numStates_; ++i) {
+      idOf_[allStates[i].get()] = i;
+    }
 
     accepting_.assign(numStates_, 0);
     enterGroup_.assign(numStates_, 0);
@@ -241,7 +243,9 @@ class NFA {
       groupId_[i] = st->groupId;
       groupName_[i] = &st->groupName;
       groupNameNum_[i] = st->groupNameNum;
-      if (st->groupId >= 0) maxGroupId_ = std::max(maxGroupId_, st->groupId);
+      if (st->groupId >= 0) {
+        maxGroupId_ = std::max(maxGroupId_, st->groupId);
+      }
     }
 
     // Transitive epsilon closure per state, flattened (CSR)
@@ -286,10 +290,14 @@ class NFA {
             static_cast<size_t>(i) * kAlphabet + static_cast<unsigned char>(ch);
         charOff_[slot] = static_cast<int>(charTargets_.size());
         charTargets_.push_back(static_cast<int>(targets.size()));
-        for (State* t : targets) charTargets_.push_back(idOf_[t]);
+        for (State* t : targets) {
+          charTargets_.push_back(idOf_[t]);
+        }
       }
       anyOff_[i] = static_cast<int>(anyTargets_.size());
-      for (State* t : st->anyCharTransitions) anyTargets_.push_back(idOf_[t]);
+      for (State* t : st->anyCharTransitions) {
+        anyTargets_.push_back(idOf_[t]);
+      }
     }
     anyOff_[numStates_] = static_cast<int>(anyTargets_.size());
 
@@ -307,7 +315,9 @@ class NFA {
 
   /** Builds the compiled transition tables when they are first needed. */
   void ensureCompiled() {
-    if (!compiled_) compile();
+    if (!compiled_) {
+      compile();
+    }
   }
 
  private:
@@ -319,11 +329,17 @@ class NFA {
     std::vector<std::vector<int>> revOther(numStates_);
     for (int i = 0; i < numStates_; ++i) {
       const State* st = allStates[i].get();
-      for (State* nx : st->epsilonTransitions) revEps[idOf_[nx]].push_back(i);
-      for (const auto& [ch, targets] : st->transitions) {
-        for (State* nx : targets) revOther[idOf_[nx]].push_back(i);
+      for (State* nx : st->epsilonTransitions) {
+        revEps[idOf_[nx]].push_back(i);
       }
-      for (State* nx : st->anyCharTransitions) revOther[idOf_[nx]].push_back(i);
+      for (const auto& [ch, targets] : st->transitions) {
+        for (State* nx : targets) {
+          revOther[idOf_[nx]].push_back(i);
+        }
+      }
+      for (State* nx : st->anyCharTransitions) {
+        revOther[idOf_[nx]].push_back(i);
+      }
     }
 
     std::vector<uint8_t> canReach(numStates_, 0);
@@ -362,7 +378,9 @@ class NFA {
             break;
           }
         }
-        if (ok) break;
+        if (ok) {
+          break;
+        }
       }
       if (!ok) {
         for (State* nx : st->anyCharTransitions) {
@@ -379,7 +397,9 @@ class NFA {
     while (changed) {
       changed = false;
       for (int i = 0; i < numStates_; ++i) {
-        if (reachNonEmpty_[i]) continue;
+        if (reachNonEmpty_[i]) {
+          continue;
+        }
         for (State* nx : allStates[i]->epsilonTransitions) {
           if (reachNonEmpty_[idOf_[nx]]) {
             reachNonEmpty_[i] = 1;
@@ -489,7 +509,9 @@ class DFA {
    * Look up a sorted state set, creating the DFA state if it is new
    */
   int32_t intern(const std::vector<int32_t>& set) {
-    if (auto it = interner_.find(set); it != interner_.end()) return it->second;
+    if (auto it = interner_.find(set); it != interner_.end()) {
+      return it->second;
+    }
 
     int32_t id = static_cast<int32_t>(sets_.size());
     sets_.push_back(set);
@@ -499,15 +521,23 @@ class DFA {
     uint8_t acc = 0, ext = 0;
     int32_t kind = kNoAccept;
     for (int32_t s : set) {
-      if (nfa_.accepting_[s]) acc = 1;
-      if (nfa_.reachNonEmpty_[s]) ext = 1;
-      if (nfa_.enterGroup_[s]) enterPool_.push_back(nfa_.groupId_[s]);
+      if (nfa_.accepting_[s]) {
+        acc = 1;
+      }
+      if (nfa_.reachNonEmpty_[s]) {
+        ext = 1;
+      }
+      if (nfa_.enterGroup_[s]) {
+        enterPool_.push_back(nfa_.groupId_[s]);
+      }
       if (nfa_.exitGroup_[s]) {
         exitPool_.push_back(
             {nfa_.groupId_[s], nfa_.groupName_[s], nfa_.groupNameNum_[s]});
         // Lowest declaration index wins ties, matching bestCapture()
         int32_t n = nfa_.groupNameNum_[s];
-        if (n >= 0 && (kind == kNoAccept || n < kind)) kind = n;
+        if (n >= 0 && (kind == kNoAccept || n < kind)) {
+          kind = n;
+        }
       }
     }
     enterOff_.push_back(static_cast<int32_t>(enterPool_.size()));
@@ -530,7 +560,9 @@ class DFA {
       int off = nfa_.charOff_[static_cast<size_t>(s) * kAlphabet + c];
       if (off >= 0) {
         int count = nfa_.charTargets_[off];
-        for (int k = 1; k <= count; ++k) addClosure(nfa_.charTargets_[off + k]);
+        for (int k = 1; k <= count; ++k) {
+          addClosure(nfa_.charTargets_[off + k]);
+        }
       }
       // '.' matches every byte, so it feeds every column of the table
       for (int k = nfa_.anyOff_[s]; k < nfa_.anyOff_[s + 1]; ++k) {
@@ -669,9 +701,13 @@ class DFA {
     int bestLen = -1;
     int bestName = 0;
     for (size_t g = 0; g < captureSlots_.size(); ++g) {
-      if (captureGen_[g] != gen_) continue;
+      if (captureGen_[g] != gen_) {
+        continue;
+      }
       const RegexCapture& cap = captureSlots_[g];
-      if (cap.groupNameNum < 0) continue;  // unnamed group
+      if (cap.groupNameNum < 0) {
+        continue;  // unnamed group
+      }
       int len = cap.length();
       if (len > bestLen || (len == bestLen && cap.groupNameNum < bestName)) {
         best = &cap;
@@ -687,7 +723,9 @@ class DFA {
     fullReset();
     for (char c : input) {
       step(c);
-      if (cur_ == kDead) break;
+      if (cur_ == kDead) {
+        break;
+      }
     }
   }
 
@@ -723,7 +761,9 @@ class RegexParser {
 
   /** Returns the next regular-expression character without consuming it. */
   TokenChar peek() const {
-    if (pos >= regex.size()) return {'\0', false};
+    if (pos >= regex.size()) {
+      return {'\0', false};
+    }
 
     if (regex[pos] == '\\' && pos + 1 < regex.size()) {
       return {regex[pos + 1], true};
@@ -733,7 +773,9 @@ class RegexParser {
 
   /** Returns the next regular-expression character and advances the cursor. */
   TokenChar consume() {
-    if (pos >= regex.size()) return {'\0', false};
+    if (pos >= regex.size()) {
+      return {'\0', false};
+    }
 
     if (regex[pos] == '\\' && pos + 1 < regex.size()) {
       ++pos;  // skip '\'
@@ -751,8 +793,9 @@ class RegexParser {
    */
   NFA parseCharClass() {
     TokenChar open = consume();
-    if (open.ch != '[' || open.escaped)
+    if (open.ch != '[' || open.escaped) {
       throw std::runtime_error("Expected unescaped '['");
+    }
 
     bool negated = false;
     TokenChar nextTc = peek();
@@ -769,18 +812,25 @@ class RegexParser {
 
     while (true) {
       TokenChar tc = peek();
-      if (tc.isEnd()) throw std::runtime_error("Unclosed character class");
+      if (tc.isEnd()) {
+        throw std::runtime_error("Unclosed character class");
+      }
 
-      if (tc.ch == ']' && !tc.escaped) break;
+      if (tc.ch == ']' && !tc.escaped) {
+        break;
+      }
 
       consume();  // consume the current character
 
       int c = static_cast<unsigned char>(tc.ch);
 
       if (inRange) {
-        if (prev > c) throw std::runtime_error("Invalid range: start > end");
-        for (int ch = prev; ch <= c; ++ch)
+        if (prev > c) {
+          throw std::runtime_error("Invalid range: start > end");
+        }
+        for (int ch = prev; ch <= c; ++ch) {
           chars.insert(static_cast<unsigned char>(ch));
+        }
         inRange = false;
       } else if (c == '-' && !tc.escaped && !peek().isEnd() &&
                  peek().ch != ']') {
@@ -792,7 +842,9 @@ class RegexParser {
       }
     }
 
-    if (inRange) throw std::runtime_error("Dangling '-' in character class");
+    if (inRange) {
+      throw std::runtime_error("Dangling '-' in character class");
+    }
 
     consume();  // consume ']'
 
@@ -807,7 +859,9 @@ class RegexParser {
   NFA parseAtom() {
     TokenChar tc = peek();
 
-    if (tc.isEnd()) throw std::runtime_error("Unexpected end of regex");
+    if (tc.isEnd()) {
+      throw std::runtime_error("Unexpected end of regex");
+    }
 
     if (tc.escaped) {
       // Any escaped character is treated literally
@@ -826,26 +880,30 @@ class RegexParser {
       if (nextTc.ch == '?' && !nextTc.escaped) {
         consume();  // consume '?'
         TokenChar lt = consume();
-        if (lt.ch != '<' || lt.escaped)
+        if (lt.ch != '<' || lt.escaped) {
           throw std::runtime_error("Expected '<' after '(?' for named group");
+        }
 
         // Read name until '>'
         while (true) {
           TokenChar nameTc = peek();
-          if (nameTc.isEnd())
+          if (nameTc.isEnd()) {
             throw std::runtime_error("Unclosed named RegexCapture group");
+          }
           if (nameTc.ch == '>' && !nameTc.escaped) {
             consume();  // consume '>'
             break;
           }
           consume();
-          if (nameTc.escaped || !std::isalnum(nameTc.ch) && nameTc.ch != '_')
+          if (nameTc.escaped || !std::isalnum(nameTc.ch) && nameTc.ch != '_') {
             throw std::runtime_error("Invalid character in group name");
+          }
           groupName += nameTc.ch;
         }
 
-        if (groupName.empty())
+        if (groupName.empty()) {
           throw std::runtime_error("Empty group name not allowed");
+        }
       }
 
       // Numeric form of the group name, precomputed so scanning never parses
@@ -881,8 +939,9 @@ class RegexParser {
 
       // Consume closing ')'
       TokenChar close = consume();
-      if (close.ch != ')' || close.escaped)
+      if (close.ch != ')' || close.escaped) {
         throw std::runtime_error("Expected unescaped ')'");
+      }
 
       return result;
     }
@@ -971,8 +1030,9 @@ class RegexParser {
     nextGroupId = 0;
     NFA nfa = parseUnion();
 
-    if (peek().ch != '\0')
+    if (peek().ch != '\0') {
       throw std::runtime_error("Extra characters at end of regex");
+    }
 
     return nfa;
   }

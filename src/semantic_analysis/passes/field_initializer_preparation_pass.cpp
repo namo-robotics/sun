@@ -11,9 +11,12 @@ namespace sun::semantic_analysis::passes {
 
 void FieldInitializerPreparationPass::run(ExprAST& root,
                                           bool skipImportedMoons) const {
-  if (skipImportedMoons && sun::ast::isImportedMoon(root)) return;
-  if (root.getType() == sun::ast::ASTNodeType::CLASS_DEFINITION)
+  if (skipImportedMoons && sun::ast::isImportedMoon(root)) {
+    return;
+  }
+  if (root.getType() == sun::ast::ASTNodeType::CLASS_DEFINITION) {
     prepareFieldInitializers(static_cast<sun::ast::ClassDefinitionAST&>(root));
+  }
   sun::ast::forEachChild(root, [&](const ExprAST& child) {
     run(const_cast<ExprAST&>(child), skipImportedMoons);
   });
@@ -21,7 +24,9 @@ void FieldInitializerPreparationPass::run(ExprAST& root,
 
 void FieldInitializerPreparationPass::run(
     const std::vector<sun::ast::MoonScopeAST*>& imports) const {
-  for (auto* moon : imports) run(*moon);
+  for (auto* moon : imports) {
+    run(*moon);
+  }
 }
 
 }  // namespace sun::semantic_analysis::passes

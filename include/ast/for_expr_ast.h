@@ -41,11 +41,17 @@ class ForExprAST : public ExprAST {
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string result = "for (";
-    if (Init) result += Init->toString();
+    if (Init) {
+      result += Init->toString();
+    }
     result += "; ";
-    if (Condition) result += Condition->toString();
+    if (Condition) {
+      result += Condition->toString();
+    }
     result += "; ";
-    if (Increment) result += Increment->toString();
+    if (Increment) {
+      result += Increment->toString();
+    }
     result += ") " + Body->toString();
     return result;
   }

@@ -139,9 +139,10 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
         auto type = value.getResolvedType();
         if (type && !type->isReference() &&
             (isFrameBoundExpr(value) ||
-             (classStoresRefs(type) && holderPointsIntoFrame(value))))
+             (classStoresRefs(type) && holderPointsIntoFrame(value)))) {
           reportError("cannot throw a value that borrows from this frame",
                       thrown.getLocation());
+        }
         consumeOwnedValue(value);
       }
       break;
@@ -223,7 +224,9 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
           if (isFrameBoundExpr(*arg)) {
             reportFrameBoundEscapeThroughCall(arg->getLocation());
           }
-          if (isFrameSourcedLambdaExpr(*arg)) hasFrameSourcedLambda = true;
+          if (isFrameSourcedLambdaExpr(*arg)) {
+            hasFrameSourcedLambda = true;
+          }
         }
       }
       // Same conservatism for a frame-sourced lambda: with parameter kinds
@@ -237,9 +240,13 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
           }
         }
         for (const auto& arg : gcall.getArgs()) {
-          if (!arg || isFrameSourcedLambdaExpr(*arg)) continue;
+          if (!arg || isFrameSourcedLambdaExpr(*arg)) {
+            continue;
+          }
           auto argType = arg->getResolvedType();
-          if (!sun::types::typeMovesOnRead(argType)) continue;
+          if (!sun::types::typeMovesOnRead(argType)) {
+            continue;
+          }
           const std::string* base = getBaseVariableName(*arg);
           if (base) {
             noteFrameSourcedLambdaStore(*base, envDepth, arg->getLocation());
@@ -357,13 +364,17 @@ void BorrowChecker::checkVariableCreation(
       if (init->getType() == ASTNodeType::PAREN_EXPR) {
         init = static_cast<const ParenExprAST&>(*init).getInner();
       } else if (init->getType() == ASTNodeType::MATCH &&
-                 static_cast<const sun::ast::MatchExprAST&>(*init).isPropagation()) {
+                 static_cast<const sun::ast::MatchExprAST&>(*init)
+                     .isPropagation()) {
         // Propagation retains the successful reference's original owner.
-        init = static_cast<const sun::ast::MatchExprAST&>(*init).getDiscriminant();
+        init =
+            static_cast<const sun::ast::MatchExprAST&>(*init).getDiscriminant();
       } else if (init->getType() == ASTNodeType::UNSAFE_BLOCK) {
         const auto& body =
             static_cast<const UnsafeBlockAST&>(*init).getBody().getBody();
-        if (body.empty()) break;
+        if (body.empty()) {
+          break;
+        }
         init = body.back().get();
       } else {
         break;
@@ -450,7 +461,9 @@ void BorrowChecker::checkReferenceCreation(
 void BorrowChecker::checkBorrowTargetIntact(const ExprAST& target,
                                             const Position& refPos) {
   const std::string* targetVarName = getBaseVariableName(target);
-  if (!targetVarName) return;
+  if (!targetVarName) {
+    return;
+  }
   std::string targetPath = fieldPath(target);
   if (!targetPath.empty() && movedVariables_.count(targetPath)) {
     reportError("cannot borrow moved field '" + targetPath +
@@ -550,23 +563,34 @@ void BorrowChecker::borrowRefCallInputs(const std::string& refName,
       if (source->getType() == ASTNodeType::PAREN_EXPR) {
         source = static_cast<const ParenExprAST&>(*source).getInner();
       } else if (source->getType() == ASTNodeType::MATCH &&
-                 static_cast<const sun::ast::MatchExprAST&>(*source).isPropagation()) {
-        source = static_cast<const sun::ast::MatchExprAST&>(*source).getDiscriminant();
+                 static_cast<const sun::ast::MatchExprAST&>(*source)
+                     .isPropagation()) {
+        source = static_cast<const sun::ast::MatchExprAST&>(*source)
+                     .getDiscriminant();
       } else if (source->getType() == ASTNodeType::CALL &&
                  classStoresRefs(source->getResolvedType())) {
-        const auto* callee = static_cast<const CallExprAST&>(*source).getCallee();
-        if (!callee || callee->getType() != ASTNodeType::MEMBER_ACCESS) break;
+        const auto* callee =
+            static_cast<const CallExprAST&>(*source).getCallee();
+        if (!callee || callee->getType() != ASTNodeType::MEMBER_ACCESS) {
+          break;
+        }
         source = static_cast<const MemberAccessAST&>(*callee).getObject();
       } else {
         break;
       }
       base = getBaseVariableName(*source);
     }
-    if (!base) return;
+    if (!base) {
+      return;
+    }
     // Raw pointers are the unsafe escape hatch: storage the checker cannot see
-    if (rawPointerLocals_.count(*base)) return;
+    if (rawPointerLocals_.count(*base)) {
+      return;
+    }
     TypePtr inputType = input.getResolvedType();
-    if (inputType && inputType->isRawPointer()) return;
+    if (inputType && inputType->isRawPointer()) {
+      return;
+    }
 
     auto targetInfo = resolveRefTarget(*base);
     // Result values already hold a loan established while checking this
@@ -598,7 +622,9 @@ void BorrowChecker::borrowRefCallInputs(const std::string& refName,
   const ExprAST* callee = call.getCallee();
   if (callee && callee->getType() == ASTNodeType::MEMBER_ACCESS) {
     const auto& access = static_cast<const MemberAccessAST&>(*callee);
-    if (access.getObject()) borrowInput(*access.getObject());
+    if (access.getObject()) {
+      borrowInput(*access.getObject());
+    }
   }
 
   // Arguments bound to ref parameters
@@ -613,7 +639,9 @@ void BorrowChecker::borrowRefCallInputs(const std::string& refName,
   }
   const auto& args = call.getArgs();
   for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
-    if (!args[i] || !paramTypes[i] || !paramTypes[i]->isReference()) continue;
+    if (!args[i] || !paramTypes[i] || !paramTypes[i]->isReference()) {
+      continue;
+    }
     borrowInput(*args[i]);
   }
 }
@@ -680,7 +708,9 @@ void BorrowChecker::checkVariableAssignment(
         // A frame-bound value (see frameBoundVars_) keeps its restriction
         // when reassigned to another local
         auto [it, inserted] = frameBoundVars_.try_emplace(varName, envDepth);
-        if (!inserted) it->second = std::max(it->second, envDepth);
+        if (!inserted) {
+          it->second = std::max(it->second, envDepth);
+        }
       }
     }
     // A frame-sourced lambda keeps its restriction through reassignment
@@ -700,7 +730,9 @@ void BorrowChecker::checkVariableAssignment(
                                       assign.getLocation())) {
         auto [it, inserted] =
             frameSourcedLambdas_.try_emplace(varName, envDepth);
-        if (!inserted) it->second = std::max(it->second, envDepth);
+        if (!inserted) {
+          it->second = std::max(it->second, envDepth);
+        }
       }
     }
     // A value whose type names a lifetime, written through a name that
@@ -843,7 +875,9 @@ void BorrowChecker::forbidFrameBoundByValueArgs(
     const CallExprAST& call, const std::vector<TypePtr>& paramTypes) {
   const auto& args = call.getArgs();
   for (size_t i = 0; i < args.size(); ++i) {
-    if (!args[i]) continue;
+    if (!args[i]) {
+      continue;
+    }
     if (i < paramTypes.size() && paramTypes[i] &&
         paramTypes[i]->isReference()) {
       continue;  // a borrow cannot be kept by the callee
@@ -865,25 +899,35 @@ void BorrowChecker::checkErasedLifetimeLambdaArgs(
   const auto& args = call.getArgs();
   std::vector<std::pair<LifetimeValue, Position>> sources;
   for (size_t i = 0; i < args.size(); ++i) {
-    if (!args[i]) continue;
+    if (!args[i]) {
+      continue;
+    }
     if (i < paramTypes.size() && paramTypes[i]) {
-      if (paramTypes[i]->isReference()) continue;
+      if (paramTypes[i]->isReference()) {
+        continue;
+      }
       // Explicit lifetimes are handled by the named-lifetime checker or by
       // the callee's anonymous-lifetime store checks.
       if (auto* lt =
               sun::codegen::support::tryGetType<LambdaType>(paramTypes[i])) {
-        if (!lt->getLifetimeName().empty()) continue;
+        if (!lt->getLifetimeName().empty()) {
+          continue;
+        }
       }
     }
     TypePtr argType = args[i]->getResolvedType();
     auto* argLambda = sun::codegen::support::tryGetType<LambdaType>(argType);
-    if (!argLambda || !argLambda->hasRefCaptures()) continue;
+    if (!argLambda || !argLambda->hasRefCaptures()) {
+      continue;
+    }
     LifetimeValue source = inferEnvLifetimeValue(*args[i]);
     if (source.kind != LifetimeValue::Kind::Outlives) {
       sources.emplace_back(std::move(source), args[i]->getLocation());
     }
   }
-  if (sources.empty()) return;
+  if (sources.empty()) {
+    return;
+  }
 
   auto checkDestination = [&](const std::string& base, const Position& pos) {
     LifetimeValue destination = destLifetimeValueForName(base);
@@ -892,7 +936,9 @@ void BorrowChecker::checkErasedLifetimeLambdaArgs(
         noteFrameSourcedLambdaStore(base, source.depth, pos);
         continue;
       }
-      if (lifetimeValueOutlives(source, destination)) continue;
+      if (lifetimeValueOutlives(source, destination)) {
+        continue;
+      }
       reportError(
           "cannot pass this callback to the call - its erased generic "
           "parameter may store it in '" +
@@ -910,15 +956,23 @@ void BorrowChecker::checkErasedLifetimeLambdaArgs(
     const auto& access = static_cast<const MemberAccessAST&>(*callee);
     const std::string* base =
         access.getObject() ? getBaseVariableName(*access.getObject()) : nullptr;
-    if (base) checkDestination(*base, call.getLocation());
+    if (base) {
+      checkDestination(*base, call.getLocation());
+    }
   }
 
   // Arguments passed by mutable ref (a const ref cannot be written).
   for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
-    if (!args[i] || !paramTypes[i] || !paramTypes[i]->isReference()) continue;
-    if (!sun::types::isMutableRef(paramTypes[i])) continue;
+    if (!args[i] || !paramTypes[i] || !paramTypes[i]->isReference()) {
+      continue;
+    }
+    if (!sun::types::isMutableRef(paramTypes[i])) {
+      continue;
+    }
     const std::string* base = getBaseVariableName(*args[i]);
-    if (base) checkDestination(*base, args[i]->getLocation());
+    if (base) {
+      checkDestination(*base, args[i]->getLocation());
+    }
   }
 }
 
@@ -939,10 +993,14 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
   // function, the source variable is moved and cannot be used afterward.
   // Get the callee's function type to check if params are by-value or by-ref.
   const ExprAST* callee = call.getCallee();
-  if (!callee) return;
+  if (!callee) {
+    return;
+  }
 
   TypePtr calleeType = callee->getResolvedType();
-  if (!calleeType) return;
+  if (!calleeType) {
+    return;
+  }
 
   const auto& args = call.getArgs();
 
@@ -962,10 +1020,13 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
         call, variant ? variant->payloadTypes : std::vector<TypePtr>{});
     for (size_t i = 0; i < args.size(); ++i) {
       const auto& arg = args[i];
-      if (!arg || (variant && variant->payloadTypes[i]->isReference()))
+      if (!arg || (variant && variant->payloadTypes[i]->isReference())) {
         continue;
+      }
       TypePtr argType = arg->getResolvedType();
-      if (!sun::types::typeMovesOnRead(argType)) continue;
+      if (!sun::types::typeMovesOnRead(argType)) {
+        continue;
+      }
       if (arg->getType() != ASTNodeType::VARIABLE_REFERENCE) {
         noteFieldMove(*arg);
         continue;
@@ -1029,7 +1090,9 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
     const sun::types::ClassMethod* init =
         static_cast<const ClassType&>(*calleeType)
             .getMethodForArgs("init", argTypes);
-    if (!init) return;
+    if (!init) {
+      return;
+    }
     paramTypes = init->paramTypes;
   } else if (auto* funcType = dynamic_cast<const sun::types::FunctionType*>(
                  calleeType.get())) {
@@ -1058,7 +1121,9 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
     const auto& arg = args[i];
     const auto& paramType = paramTypes[i];
 
-    if (!arg) continue;
+    if (!arg) {
+      continue;
+    }
 
     // A field handed to a by-value parameter moves out of its object
     if (paramType && !paramType->isReference()) {
@@ -1066,7 +1131,9 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
     }
 
     // Only check variable references (not complex expressions)
-    if (arg->getType() != ASTNodeType::VARIABLE_REFERENCE) continue;
+    if (arg->getType() != ASTNodeType::VARIABLE_REFERENCE) {
+      continue;
+    }
 
     const auto& varRef = static_cast<const VariableReferenceAST&>(*arg);
     TypePtr argType = arg->getResolvedType();
@@ -1134,7 +1201,9 @@ void BorrowChecker::checkTernaryExpr(const TernaryExprAST& ternary) {
 }
 
 void BorrowChecker::consumeOwnedValue(const ExprAST& value) {
-  if (!sun::types::typeMovesOnRead(value.getResolvedType())) return;
+  if (!sun::types::typeMovesOnRead(value.getResolvedType())) {
+    return;
+  }
   value.setMoved(true);
   if (value.getType() == ASTNodeType::PAREN_EXPR) {
     consumeOwnedValue(*static_cast<const ParenExprAST&>(value).getInner());
@@ -1161,7 +1230,9 @@ void BorrowChecker::checkMatchExpr(const sun::ast::MatchExprAST& matchExpr) {
   const bool temporaryBorrowScope = discriminant.isTemporary() && resultType &&
                                     !resultType->isReference() &&
                                     !classStoresRefs(resultType);
-  if (temporaryBorrowScope) enterScope();
+  if (temporaryBorrowScope) {
+    enterScope();
+  }
   checkExpr(discriminant);
 
   const auto discType = discriminant.getResolvedType();
@@ -1183,14 +1254,18 @@ void BorrowChecker::checkMatchExpr(const sun::ast::MatchExprAST& matchExpr) {
   if (consuming && !discoveringMatchMoves_) {
     consumeOwnedValue(discriminant);
   }
-  if (discoveringMatchMoves_) matchConsumes_.try_emplace(&matchExpr, false);
+  if (discoveringMatchMoves_) {
+    matchConsumes_.try_emplace(&matchExpr, false);
+  }
 
   // A named discriminant is frozen for the whole match: its payloads may be
   // borrowed by arm bindings, so it must not be reassigned or moved.
   const std::string* discName = getBaseVariableName(discriminant);
   bool discNewlyFrozen =
       !consuming && discName && !frozenDiscriminants_.count(*discName);
-  if (discNewlyFrozen) frozenDiscriminants_.insert(*discName);
+  if (discNewlyFrozen) {
+    frozenDiscriminants_.insert(*discName);
+  }
 
   // Each arm is checked in its own scope against the SAME pre-match move
   // state (arms are alternatives, not a sequence); moves performed inside
@@ -1201,13 +1276,18 @@ void BorrowChecker::checkMatchExpr(const sun::ast::MatchExprAST& matchExpr) {
   std::set<int64_t> coveredTags;
   bool sawWildcard = false;
   for (const auto& arm : matchExpr.getArms()) {
-    if (sawWildcard) break;
+    if (sawWildcard) {
+      break;
+    }
     sawWildcard = arm.isWildcard;
     if (arm.bindingType) {
       bool reachable = false;
-      for (auto tag : arm.matchedVariantTags)
+      for (auto tag : arm.matchedVariantTags) {
         reachable |= coveredTags.insert(tag).second;
-      if (!reachable) continue;
+      }
+      if (!reachable) {
+        continue;
+      }
     } else if (!arm.isWildcard && arm.pattern &&
                arm.pattern->getResolvedType() &&
                arm.pattern->getResolvedType()->isEnum() &&
@@ -1231,7 +1311,9 @@ void BorrowChecker::checkMatchExpr(const sun::ast::MatchExprAST& matchExpr) {
     std::vector<std::pair<std::string, std::optional<size_t>>> savedBounds;
     std::vector<std::pair<std::string, std::optional<Lifetime>>> savedLifetimes;
     for (const auto& binding : arm.bindings) {
-      if (binding.isWildcard) continue;
+      if (binding.isWildcard) {
+        continue;
+      }
       auto bound = refHolderBounds_.find(binding.name);
       savedBounds.emplace_back(binding.name,
                                bound == refHolderBounds_.end()
@@ -1268,9 +1350,10 @@ void BorrowChecker::checkMatchExpr(const sun::ast::MatchExprAST& matchExpr) {
                                      ? BorrowKind::Mutable
                                      : BorrowKind::Shared,
                                  currentScope_, binding.location);
-            if (!borrow.allowed)
+            if (!borrow.allowed) {
               reportConflict(borrow.errorMessage, binding.location,
                              borrow.conflictingLoan);
+            }
           }
         }
         continue;
@@ -1290,8 +1373,9 @@ void BorrowChecker::checkMatchExpr(const sun::ast::MatchExprAST& matchExpr) {
         auto lifetime = inferExprLifetime(*arm.body);
         if (lifetime.isLocal()) {
           if (!resultLifetime.isLocal() ||
-              lifetime.getScopeDepth() > resultLifetime.getScopeDepth())
+              lifetime.getScopeDepth() > resultLifetime.getScopeDepth()) {
             resultLifetime = lifetime;
+          }
         } else if (!resultLifetime.isLocal()) {
           resultLifetime = lifetime;
         }
@@ -1307,7 +1391,9 @@ void BorrowChecker::checkMatchExpr(const sun::ast::MatchExprAST& matchExpr) {
       }
     }
     for (const auto& binding : arm.bindings) {
-      if (binding.isWildcard) continue;
+      if (binding.isWildcard) {
+        continue;
+      }
       movedVariables_.erase(binding.name);
       clearFieldPaths(binding.name);
       for (const auto& moved : movedBefore) {
@@ -1317,10 +1403,11 @@ void BorrowChecker::checkMatchExpr(const sun::ast::MatchExprAST& matchExpr) {
       }
     }
     for (const auto& [name, previous] : savedBounds) {
-      if (previous)
+      if (previous) {
         refHolderBounds_[name] = *previous;
-      else
+      } else {
         refHolderBounds_.erase(name);
+      }
     }
     matchPayloadSources_ = std::move(payloadSourcesBefore);
     matchBorrowedBindings_ = std::move(borrowsBefore);
@@ -1342,13 +1429,18 @@ void BorrowChecker::checkMatchExpr(const sun::ast::MatchExprAST& matchExpr) {
   }
   movedVariables_ = std::move(movedAfter);
 
-  if (classStoresRefs(resultType))
+  if (classStoresRefs(resultType)) {
     matchResultLifetimes_.insert_or_assign(&matchExpr, resultLifetime);
-  if (discNewlyFrozen) frozenDiscriminants_.erase(*discName);
+  }
+  if (discNewlyFrozen) {
+    frozenDiscriminants_.erase(*discName);
+  }
   if (discoveringMatchMoves_ && canConsume && matchConsumes_[&matchExpr]) {
     consumeOwnedValue(discriminant);
   }
-  if (temporaryBorrowScope) exitScope();
+  if (temporaryBorrowScope) {
+    exitScope();
+  }
 }
 
 // Borrowed match bindings cannot transfer ownership. Moving or reassigning
@@ -1378,8 +1470,9 @@ void BorrowChecker::checkCallMoveConflicts(
   const auto count = std::min(args.size(), paramTypes.size());
   auto placePath = [&](const ExprAST& expression) {
     const ExprAST* place = &expression;
-    while (place->getType() == ASTNodeType::PAREN_EXPR)
+    while (place->getType() == ASTNodeType::PAREN_EXPR) {
       place = static_cast<const ParenExprAST&>(*place).getInner();
+    }
     return fieldPath(*place);
   };
   auto overlaps = [](const std::string& left, const std::string& right) {
@@ -1390,17 +1483,24 @@ void BorrowChecker::checkCallMoveConflicts(
   std::string receiver;
   if (call.getCallee()->getType() == ASTNodeType::MEMBER_ACCESS) {
     const auto& member = static_cast<const MemberAccessAST&>(*call.getCallee());
-    if (member.getObject()) receiver = placePath(*member.getObject());
+    if (member.getObject()) {
+      receiver = placePath(*member.getObject());
+    }
   }
   for (size_t i = 0; i < count; ++i) {
     if (!args[i] || !paramTypes[i] || paramTypes[i]->isReference() ||
-        !sun::types::typeMovesOnRead(args[i]->getResolvedType()))
+        !sun::types::typeMovesOnRead(args[i]->getResolvedType())) {
       continue;
+    }
     auto moved = placePath(*args[i]);
-    if (moved.empty()) continue;
+    if (moved.empty()) {
+      continue;
+    }
     for (size_t j = 0; j < count; ++j) {
-      if (i == j || !args[j] || !paramTypes[j] || !paramTypes[j]->isReference())
+      if (i == j || !args[j] || !paramTypes[j] ||
+          !paramTypes[j]->isReference()) {
         continue;
+      }
       if (overlaps(moved, placePath(*args[j]))) {
         reportError(
             "cannot move '" + moved + "' while the same call borrows it",
@@ -1419,14 +1519,22 @@ std::string BorrowChecker::fieldPath(const ExprAST& expr) const {
     return static_cast<const VariableReferenceAST&>(expr).getName();
   }
   // A method's receiver: its fields are tracked like any other object's
-  if (expr.getType() == ASTNodeType::THIS) return "this";
-  if (expr.getType() != ASTNodeType::MEMBER_ACCESS) return "";
+  if (expr.getType() == ASTNodeType::THIS) {
+    return "this";
+  }
+  if (expr.getType() != ASTNodeType::MEMBER_ACCESS) {
+    return "";
+  }
 
   const auto& access = static_cast<const MemberAccessAST&>(expr);
-  if (access.isBoundMethodRef() || access.hasQualifiedName()) return "";
+  if (access.isBoundMethodRef() || access.hasQualifiedName()) {
+    return "";
+  }
 
   const ExprAST* object = access.getObject();
-  if (!object) return "";
+  if (!object) {
+    return "";
+  }
 
   // Only a field of a class value: an enum constant (Option.None) or a module
   // member is not a place that can be moved out of.
@@ -1447,17 +1555,23 @@ std::string BorrowChecker::fieldPath(const ExprAST& expr) const {
   }
 
   std::string base = fieldPath(*object);
-  if (base.empty()) return "";
+  if (base.empty()) {
+    return "";
+  }
   return base + "." + access.getMemberName();
 }
 
 void BorrowChecker::noteFieldMove(const ExprAST& value) {
   TypePtr type = value.getResolvedType();
-  if (!sun::types::typeMovesOnRead(type)) return;
+  if (!sun::types::typeMovesOnRead(type)) {
+    return;
+  }
 
   std::string path = fieldPath(value);
   // A plain variable move is recorded by the caller; only field paths here
-  if (path.empty() || path.find('.') == std::string::npos) return;
+  if (path.empty() || path.find('.') == std::string::npos) {
+    return;
+  }
 
   const auto base = path.substr(0, path.find('.'));
   if (base == "this" || refVariables_.count(base) ||
@@ -1468,7 +1582,9 @@ void BorrowChecker::noteFieldMove(const ExprAST& value) {
         value.getLocation());
     return;
   }
-  if (!checkMoveAllowed(base, value.getLocation())) return;
+  if (!checkMoveAllowed(base, value.getLocation())) {
+    return;
+  }
   recordMove(path, value.getLocation());
   value.setMoved(true);
   clearFieldPaths(path);
@@ -1488,7 +1604,9 @@ void BorrowChecker::clearFieldPaths(const std::string& base) {
 const std::string* BorrowChecker::movedFieldOf(const std::string& name) const {
   const std::string prefix = name + ".";
   for (const auto& moved : movedVariables_) {
-    if (moved.rfind(prefix, 0) == 0) return &moved;
+    if (moved.rfind(prefix, 0) == 0) {
+      return &moved;
+    }
   }
   return nullptr;
 }
@@ -1499,7 +1617,9 @@ const std::string* BorrowChecker::movedFieldOf(const std::string& name) const {
 // over a <'_> lambda type, a payload enum holding one). Such a value is
 // itself borrow-like and must not leave the frame.
 bool BorrowChecker::classStoresRefs(const TypePtr& type) const {
-  if (sun::types::typeIsFrameCarrying(type)) return true;
+  if (sun::types::typeIsFrameCarrying(type)) {
+    return true;
+  }
   std::unordered_set<const sun::types::Type*> visited;
   return classStoresRefsWalk(type, visited);
 }
@@ -1507,21 +1627,37 @@ bool BorrowChecker::classStoresRefs(const TypePtr& type) const {
 bool BorrowChecker::classStoresRefsWalk(
     const TypePtr& type,
     std::unordered_set<const sun::types::Type*>& visited) const {
-  if (!type || !visited.insert(type.get()).second) return false;
-  if (type->isReference()) return true;
+  if (!type || !visited.insert(type.get()).second) {
+    return false;
+  }
+  if (type->isReference()) {
+    return true;
+  }
   if (auto* enumeration =
           sun::codegen::support::tryGetType<sun::types::EnumType>(type)) {
-    for (const auto& variant : enumeration->getVariants())
-      for (const auto& payload : variant.payloadTypes)
-        if (classStoresRefsWalk(payload, visited)) return true;
+    for (const auto& variant : enumeration->getVariants()) {
+      for (const auto& payload : variant.payloadTypes) {
+        if (classStoresRefsWalk(payload, visited)) {
+          return true;
+        }
+      }
+    }
     return false;
   }
   const auto* classType = sun::codegen::support::tryGetType<ClassType>(type);
-  if (!classType) return false;
+  if (!classType) {
+    return false;
+  }
   for (const auto& field : classType->getFields()) {
-    if (!field.type) continue;
-    if (field.type->isReference()) return true;
-    if (classStoresRefsWalk(field.type, visited)) return true;
+    if (!field.type) {
+      continue;
+    }
+    if (field.type->isReference()) {
+      return true;
+    }
+    if (classStoresRefsWalk(field.type, visited)) {
+      return true;
+    }
   }
   return false;
 }
@@ -1532,19 +1668,25 @@ bool BorrowChecker::classStoresMutableRefs(const TypePtr& type) const {
   while (!pending.empty()) {
     auto current = pending.back();
     pending.pop_back();
-    if (!current || !visited.insert(current.get()).second) continue;
+    if (!current || !visited.insert(current.get()).second) {
+      continue;
+    }
     if (current->isReference()) {
-      if (sun::types::isMutableRef(current)) return true;
+      if (sun::types::isMutableRef(current)) {
+        return true;
+      }
     } else if (auto* enumeration =
                    sun::codegen::support::tryGetType<sun::types::EnumType>(
                        current)) {
-      for (const auto& variant : enumeration->getVariants())
+      for (const auto& variant : enumeration->getVariants()) {
         pending.insert(pending.end(), variant.payloadTypes.begin(),
                        variant.payloadTypes.end());
+      }
     } else if (auto* object =
                    sun::codegen::support::tryGetType<ClassType>(current)) {
-      for (const auto& field : object->getFields())
+      for (const auto& field : object->getFields()) {
         pending.push_back(field.type);
+      }
     }
   }
   return false;
@@ -1556,7 +1698,9 @@ bool BorrowChecker::forEachHolderInput(
     const {
   const ExprAST* callee = call.getCallee();
   TypePtr calleeType = callee ? callee->getResolvedType() : nullptr;
-  if (!calleeType) return false;
+  if (!calleeType) {
+    return false;
+  }
   const auto& args = call.getArgs();
   std::vector<TypePtr> paramTypes;
 
@@ -1566,10 +1710,14 @@ bool BorrowChecker::forEachHolderInput(
         access ? static_cast<const sun::types::EnumType&>(*calleeType)
                      .getVariant(access->getMemberName())
                : nullptr;
-    if (!variant) return false;
+    if (!variant) {
+      return false;
+    }
     paramTypes = variant->payloadTypes;
   } else if (calleeType->isClass()) {
-    if (!classStoresRefs(calleeType)) return false;
+    if (!classStoresRefs(calleeType)) {
+      return false;
+    }
     std::vector<TypePtr> argTypes;
     for (const auto& arg : args) {
       argTypes.push_back(arg ? arg->getResolvedType() : nullptr);
@@ -1577,7 +1725,9 @@ bool BorrowChecker::forEachHolderInput(
     const sun::types::ClassMethod* init =
         static_cast<const ClassType&>(*calleeType)
             .getMethodForArgs("init", argTypes);
-    if (!init) return false;
+    if (!init) {
+      return false;
+    }
     paramTypes = init->paramTypes;
   } else {
     TypePtr resultType = call.getResolvedType();
@@ -1607,7 +1757,9 @@ bool BorrowChecker::forEachHolderInput(
   }
 
   for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
-    if (!args[i] || !paramTypes[i] || !paramTypes[i]->isReference()) continue;
+    if (!args[i] || !paramTypes[i] || !paramTypes[i]->isReference()) {
+      continue;
+    }
     visit(*args[i], sun::types::isMutableRef(paramTypes[i]));
   }
   return true;
@@ -1616,11 +1768,17 @@ bool BorrowChecker::forEachHolderInput(
 void BorrowChecker::borrowHolderInputs(const CallExprAST& call) {
   forEachHolderInput(call, [&](const ExprAST& input, bool mutableRef) {
     const std::string* base = getBaseVariableName(input);
-    if (!base || rawPointerLocals_.count(*base)) return;
+    if (!base || rawPointerLocals_.count(*base)) {
+      return;
+    }
     TypePtr inputType = input.getResolvedType();
-    if (inputType && inputType->isRawPointer()) return;
+    if (inputType && inputType->isRawPointer()) {
+      return;
+    }
     auto targetInfo = resolveRefTarget(*base);
-    if (targetInfo.isRebind) return;  // reborrow: the original loan governs
+    if (targetInfo.isRebind) {
+      return;  // reborrow: the original loan governs
+    }
     const auto& inputPos = input.getLocation();
     std::string holder = "$refholder@" + std::to_string(inputPos.line) + ":" +
                          std::to_string(inputPos.column);
@@ -1652,13 +1810,16 @@ bool BorrowChecker::holderPointsIntoFrame(const ExprAST& value) const {
         static_cast<const VariableReferenceAST&>(*e).getName());
     return it != refHolderBounds_.end() && it->second > functionScopeDepth_;
   }
-  if (e->getType() != ASTNodeType::CALL) return false;
+  if (e->getType() != ASTNodeType::CALL) {
+    return false;
+  }
   const auto& call = static_cast<const CallExprAST&>(*e);
   for (const auto& argument : call.getArgs()) {
     auto type = argument->getResolvedType();
     if (type && !type->isReference() && classStoresRefs(type) &&
-        holderPointsIntoFrame(*argument))
+        holderPointsIntoFrame(*argument)) {
       return true;
+    }
   }
   bool pointsIn = false;
   forEachHolderInput(
@@ -1670,11 +1831,14 @@ bool BorrowChecker::holderPointsIntoFrame(const ExprAST& value) const {
                       lifetime.getScopeDepth() >= functionScopeDepth_;
           return;
         }
-        if (rawPointerLocals_.count(*base)) return;
+        if (rawPointerLocals_.count(*base)) {
+          return;
+        }
         auto lifetime = inferExprLifetime(input);
         if (lifetime.isLocal() &&
-            lifetime.getScopeDepth() >= functionScopeDepth_)
+            lifetime.getScopeDepth() >= functionScopeDepth_) {
           pointsIn = true;
+        }
       });
   return pointsIn;
 }
@@ -1686,8 +1850,9 @@ void BorrowChecker::recordMove(const std::string& place, const Position& pos) {
   std::string base = place.substr(0, place.find('.'));
   if (discoveringMatchMoves_) {
     auto payload = matchPayloadSources_.find(base);
-    if (payload != matchPayloadSources_.end())
+    if (payload != matchPayloadSources_.end()) {
       matchConsumes_[payload->second] = true;
+    }
   }
   auto loans = state_.getActiveLoans(base);
   if (!loans.empty()) {
@@ -1702,12 +1867,16 @@ void BorrowChecker::recordMove(const std::string& place, const Position& pos) {
 }
 
 void BorrowChecker::noteLoopLocal(const std::string& name) {
-  for (auto& frame : loopLocals_) frame.insert(name);
+  for (auto& frame : loopLocals_) {
+    frame.insert(name);
+  }
 }
 
 void BorrowChecker::checkLoopBody(const ExprAST* body,
                                   const std::vector<std::string>& loopVars) {
-  if (!body) return;
+  if (!body) {
+    return;
+  }
 
   auto movedBefore = movedVariables_;
   loopLocals_.emplace_back();
@@ -1723,15 +1892,21 @@ void BorrowChecker::checkLoopBody(const ExprAST* body,
   loopLocals_.pop_back();
 
   // A body that always returns or throws runs at most once
-  if (exprDiverges(*body)) return;
+  if (exprDiverges(*body)) {
+    return;
+  }
 
   // Whatever is still moved when the body ends was moved out of something
   // that outlives the iteration: the next pass would move it again.
   std::vector<std::string> carried;
   for (const auto& place : movedVariables_) {
-    if (movedBefore.count(place)) continue;
+    if (movedBefore.count(place)) {
+      continue;
+    }
     std::string base = place.substr(0, place.find('.'));
-    if (declared.count(base)) continue;
+    if (declared.count(base)) {
+      continue;
+    }
     carried.push_back(place);
   }
 
@@ -1753,7 +1928,9 @@ void BorrowChecker::checkLoopBody(const ExprAST* body,
 bool BorrowChecker::checkFieldsIntact(const std::string& name,
                                       const Position& pos) {
   const std::string* moved = movedFieldOf(name);
-  if (!moved) return true;
+  if (!moved) {
+    return true;
+  }
   reportError("cannot use '" + name + "' as a whole: its field '" + *moved +
                   "' was moved out. Assign a value back into " + *moved +
                   " first, or borrow the field with 'ref' instead of moving "
@@ -1821,7 +1998,9 @@ void BorrowChecker::checkBlockExpr(const BlockExprAST& block, size_t start) {
 
 void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
   const ExprAST* value = ret.getValue();
-  if (!value) return;
+  if (!value) {
+    return;
+  }
 
   // Check the return value expression
   checkExpr(*value);
@@ -1921,7 +2100,9 @@ void BorrowChecker::checkFunctionDef(const sun::ast::FunctionAST& func) {
   if (proto.isTemplate() &&
       (!func.getSpecializations().empty() || proto.hasVariadicParam())) {
     for (const auto& [name, specialized] : func.getSpecializations()) {
-      if (specialized) checkFunctionDef(*specialized);
+      if (specialized) {
+        checkFunctionDef(*specialized);
+      }
     }
     return;
   }
@@ -2027,14 +2208,18 @@ bool BorrowChecker::isFrameBoundExpr(const ExprAST& expr) const {
   if (e->getType() == ASTNodeType::ARRAY_LITERAL) {
     for (const auto& elem :
          static_cast<const ArrayLiteralAST&>(*e).getElements()) {
-      if (elem && isFrameBoundExpr(*elem)) return true;
+      if (elem && isFrameBoundExpr(*elem)) {
+        return true;
+      }
     }
     return false;
   }
   if (e->getType() == ASTNodeType::STRUCT_LITERAL) {
     for (const auto& field :
          static_cast<const sun::ast::StructLiteralAST&>(*e).getFields()) {
-      if (field.value && isFrameBoundExpr(*field.value)) return true;
+      if (field.value && isFrameBoundExpr(*field.value)) {
+        return true;
+      }
     }
     return false;
   }
@@ -2043,18 +2228,28 @@ bool BorrowChecker::isFrameBoundExpr(const ExprAST& expr) const {
   if (e->getType() == ASTNodeType::GENERIC_CALL) {
     const auto& gcall = static_cast<const GenericCallAST&>(*e);
     TypePtr resultType = gcall.getResolvedType();
-    if (!resultType || !resultType->isCompound()) return false;
+    if (!resultType || !resultType->isCompound()) {
+      return false;
+    }
     for (const auto& arg : gcall.getArgs()) {
-      if (arg && isRefCapturingLambdaExpr(*arg)) return true;
+      if (arg && isRefCapturingLambdaExpr(*arg)) {
+        return true;
+      }
     }
     return false;
   }
-  if (e->getType() != ASTNodeType::CALL) return false;
+  if (e->getType() != ASTNodeType::CALL) {
+    return false;
+  }
   const auto& call = static_cast<const CallExprAST&>(*e);
   TypePtr resultType = call.getResolvedType();
-  if (!resultType || !resultType->isCompound()) return false;
+  if (!resultType || !resultType->isCompound()) {
+    return false;
+  }
   for (const auto& arg : call.getArgs()) {
-    if (arg && isRefCapturingLambdaExpr(*arg)) return true;
+    if (arg && isRefCapturingLambdaExpr(*arg)) {
+      return true;
+    }
   }
   return false;
 }
@@ -2104,19 +2299,29 @@ bool BorrowChecker::isFrameSourcedLambdaExpr(const ExprAST& expr) const {
 // at storage owned elsewhere, and a name this frame never declared is a
 // global. Everything else is a local or by-value parameter that dies here.
 bool BorrowChecker::nameOutlivesFrame(const std::string& base) const {
-  if (base == "this") return true;
+  if (base == "this") {
+    return true;
+  }
   const std::string& target = resolveRefTarget(base).actualTarget;
-  if (target == "this") return true;
-  if (refTypedParams_.count(target)) return true;
+  if (target == "this") {
+    return true;
+  }
+  if (refTypedParams_.count(target)) {
+    return true;
+  }
   return frameLocalNames_.count(target) == 0;
 }
 
 // The declaration depth of the named storage. Ref aliases resolve to their
 // ultimate target; anything that outlives the frame ranks as 0.
 size_t BorrowChecker::lookupDeclDepth(const std::string& name) const {
-  if (name == "this") return 0;
+  if (name == "this") {
+    return 0;
+  }
   auto info = resolveRefTarget(name);
-  if (info.isRefParam || info.actualTarget == "this") return 0;
+  if (info.isRefParam || info.actualTarget == "this") {
+    return 0;
+  }
   auto it = declDepths_.find(info.actualTarget);
   return it != declDepths_.end() ? it->second : 0;
 }
@@ -2136,7 +2341,9 @@ size_t BorrowChecker::inferEnvDepth(const ExprAST& expr) const {
       size_t depth = functionScopeDepth_;
       for (const auto& cap :
            static_cast<const LambdaAST&>(*e).getProto().getCaptures()) {
-        if (cap.kind != CaptureKind::Borrow) continue;
+        if (cap.kind != CaptureKind::Borrow) {
+          continue;
+        }
         depth = std::max(depth, lookupDeclDepth(cap.name));
       }
       return depth;
@@ -2166,7 +2373,9 @@ size_t BorrowChecker::inferEnvDepth(const ExprAST& expr) const {
       size_t depth = functionScopeDepth_;
       for (const auto& elem :
            static_cast<const ArrayLiteralAST&>(*e).getElements()) {
-        if (!elem) continue;
+        if (!elem) {
+          continue;
+        }
         if (isFrameBoundExpr(*elem) || isFrameSourcedLambdaExpr(*elem)) {
           depth = std::max(depth, inferEnvDepth(*elem));
         }
@@ -2177,7 +2386,9 @@ size_t BorrowChecker::inferEnvDepth(const ExprAST& expr) const {
       size_t depth = functionScopeDepth_;
       for (const auto& field :
            static_cast<const sun::ast::StructLiteralAST&>(*e).getFields()) {
-        if (!field.value) continue;
+        if (!field.value) {
+          continue;
+        }
         if (isFrameBoundExpr(*field.value) ||
             isFrameSourcedLambdaExpr(*field.value)) {
           depth = std::max(depth, inferEnvDepth(*field.value));
@@ -2226,7 +2437,9 @@ size_t BorrowChecker::inferEnvDepth(const ExprAST& expr) const {
 bool BorrowChecker::checkFrameStoreDepth(const std::string& destBase,
                                          size_t envDepth, const Position& pos) {
   size_t destDepth = lookupDeclDepth(destBase);
-  if (destDepth == 0) return true;  // outlives the frame: callers reject it
+  if (destDepth == 0) {
+    return true;  // outlives the frame: callers reject it
+  }
   if (destDepth < envDepth) {
     reportError(
         "cannot store this lambda in '" + destBase + "' - '" + destBase +
@@ -2258,10 +2471,14 @@ void BorrowChecker::noteFrameSourcedLambdaStore(const std::string& destBase,
                 pos);
     return;
   }
-  if (!checkFrameStoreDepth(destBase, envDepth, pos)) return;
+  if (!checkFrameStoreDepth(destBase, envDepth, pos)) {
+    return;
+  }
   const std::string target = resolveRefTarget(destBase).actualTarget;
   auto [it, inserted] = frameBoundVars_.try_emplace(target, envDepth);
-  if (!inserted) it->second = std::max(it->second, envDepth);
+  if (!inserted) {
+    it->second = std::max(it->second, envDepth);
+  }
 }
 
 // A source value provably lives at least as long as the destination when
@@ -2272,7 +2489,9 @@ void BorrowChecker::noteFrameSourcedLambdaStore(const std::string& destBase,
 // but never an unrelated symbolic or elided destination.
 bool BorrowChecker::lifetimeValueOutlives(const LifetimeValue& src,
                                           const LifetimeValue& dst) {
-  if (src.kind == LifetimeValue::Kind::Outlives) return true;
+  if (src.kind == LifetimeValue::Kind::Outlives) {
+    return true;
+  }
   if (dst.kind == LifetimeValue::Kind::Concrete) {
     return src.kind == LifetimeValue::Kind::Symbolic || src.depth <= dst.depth;
   }
@@ -2324,7 +2543,9 @@ BorrowChecker::LifetimeValue BorrowChecker::inferEnvLifetimeValue(
     const auto& access = static_cast<const MemberAccessAST&>(*e);
     const std::string* base =
         access.getObject() ? getBaseVariableName(*access.getObject()) : nullptr;
-    if (!base) return {LifetimeValue::Kind::Outlives, 0, "", ""};
+    if (!base) {
+      return {LifetimeValue::Kind::Outlives, 0, "", ""};
+    }
     if (*base == "this" || resolveRefTarget(*base).actualTarget == "this") {
       return {LifetimeValue::Kind::Symbolic, 0, "this", *base};
     }
@@ -2378,13 +2599,17 @@ BorrowChecker::LifetimeValue BorrowChecker::inferEnvLifetimeValue(
         haveConcrete = true;
         maxDepth = std::max(maxDepth, v.depth);
       } else if (v.kind == LifetimeValue::Kind::Symbolic) {
-        if (haveSymbolic && symbolicName != v.name) mixedSymbolic = true;
+        if (haveSymbolic && symbolicName != v.name) {
+          mixedSymbolic = true;
+        }
         haveSymbolic = true;
         symbolicName = v.name;
       }
     };
     for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
-      if (!args[i] || !paramTypes[i]) continue;
+      if (!args[i] || !paramTypes[i]) {
+        continue;
+      }
       if (auto* plt =
               sun::codegen::support::tryGetType<LambdaType>(paramTypes[i])) {
         if (plt->getLifetimeName() == retName) {
@@ -2480,7 +2705,9 @@ void BorrowChecker::checkNamedLifetimesAtCall(
   bool usesThis = false;
 
   for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
-    if (!args[i] || !paramTypes[i]) continue;
+    if (!args[i] || !paramTypes[i]) {
+      continue;
+    }
     if (auto* lt =
             sun::codegen::support::tryGetType<LambdaType>(paramTypes[i])) {
       if (!lt->hasRefCaptures() || lt->getLifetimeName().empty() ||
@@ -2490,7 +2717,9 @@ void BorrowChecker::checkNamedLifetimesAtCall(
       const std::string& name = lt->getLifetimeName();
       sources[name].push_back(
           {inferEnvLifetimeValue(*args[i]), args[i]->getLocation(), i});
-      if (name == "this") usesThis = true;
+      if (name == "this") {
+        usesThis = true;
+      }
     } else if (auto* rt = sun::codegen::support::tryGetType<ReferenceType>(
                    paramTypes[i])) {
       // Names this argument binds: the ref position's own name
@@ -2517,7 +2746,9 @@ void BorrowChecker::checkNamedLifetimesAtCall(
       auto addCarriedSource = [&](const std::string& name) {
         // The referent may already carry a frame environment: that carried
         // bound is a source the other destinations must accommodate
-        if (!base) return;
+        if (!base) {
+          return;
+        }
         auto bit = frameBoundVars_.find(resolveRefTarget(*base).actualTarget);
         if (bit != frameBoundVars_.end()) {
           sources[name].push_back(
@@ -2531,7 +2762,9 @@ void BorrowChecker::checkNamedLifetimesAtCall(
         dests[name].push_back(
             {inferDestLifetimeValue(*args[i]), args[i]->getLocation(), i});
         addCarriedSource(name);
-        if (name == "this") usesThis = true;
+        if (name == "this") {
+          usesThis = true;
+        }
       }
       const auto& slotNames = rt->getClassLifetimeArgs();
       for (size_t k = 0; k < slotNames.size(); ++k) {
@@ -2542,11 +2775,15 @@ void BorrowChecker::checkNamedLifetimesAtCall(
         }
         dests[name].push_back({dest, args[i]->getLocation(), i});
         addCarriedSource(name);
-        if (name == "this") usesThis = true;
+        if (name == "this") {
+          usesThis = true;
+        }
       }
     }
   }
-  if (sources.empty() && dests.empty()) return;
+  if (sources.empty() && dests.empty()) {
+    return;
+  }
 
   // The receiver joins the builtin 'this, and every name its CLASS
   // declares: a 'class Bus<'a>' object is a carrier for values bound to
@@ -2559,7 +2796,9 @@ void BorrowChecker::checkNamedLifetimesAtCall(
   }
   if (receiver) {
     std::vector<std::string> receiverNames;
-    if (usesThis) receiverNames.push_back("this");
+    if (usesThis) {
+      receiverNames.push_back("this");
+    }
     TypePtr receiverType = receiver->getResolvedType();
     if (auto* rrt =
             sun::codegen::support::tryGetType<ReferenceType>(receiverType)) {
@@ -2644,11 +2883,17 @@ void BorrowChecker::checkNamedLifetimesAtCall(
 
   for (const auto& [name, srcEntries] : sources) {
     auto dit = dests.find(name);
-    if (dit == dests.end()) continue;
+    if (dit == dests.end()) {
+      continue;
+    }
     for (const auto& src : srcEntries) {
       for (const auto& dst : dit->second) {
-        if (src.argIndex == dst.argIndex) continue;
-        if (lifetimeValueOutlives(src.value, dst.value)) continue;
+        if (src.argIndex == dst.argIndex) {
+          continue;
+        }
+        if (lifetimeValueOutlives(src.value, dst.value)) {
+          continue;
+        }
         std::string srcName = src.value.described.empty()
                                   ? "this argument"
                                   : "'" + src.value.described + "'";
@@ -2676,27 +2921,41 @@ void BorrowChecker::checkNamedLifetimesAtCall(
   // value cannot pin itself.
   for (const auto& [name, dstEntries] : dests) {
     auto sit = sources.find(name);
-    if (sit == sources.end()) continue;
+    if (sit == sources.end()) {
+      continue;
+    }
     for (const auto& dst : dstEntries) {
-      if (dst.value.kind != LifetimeValue::Kind::Concrete) continue;
-      if (dst.value.described.empty()) continue;
+      if (dst.value.kind != LifetimeValue::Kind::Concrete) {
+        continue;
+      }
+      if (dst.value.described.empty()) {
+        continue;
+      }
       size_t maxSourceDepth = 0;
       bool haveConcreteSource = false;
       for (const auto& src : sit->second) {
-        if (src.argIndex == dst.argIndex) continue;
+        if (src.argIndex == dst.argIndex) {
+          continue;
+        }
         if (src.value.kind == LifetimeValue::Kind::Concrete) {
           haveConcreteSource = true;
           maxSourceDepth = std::max(maxSourceDepth, src.value.depth);
         }
       }
-      if (!haveConcreteSource) continue;
+      if (!haveConcreteSource) {
+        continue;
+      }
       const std::string target =
           resolveRefTarget(dst.value.described).actualTarget;
       // Temporaries and raw pointers resolve to nothing frame-local and
       // fall out here
-      if (!frameLocalNames_.count(target)) continue;
+      if (!frameLocalNames_.count(target)) {
+        continue;
+      }
       auto [it, inserted] = frameBoundVars_.try_emplace(target, maxSourceDepth);
-      if (!inserted) it->second = std::max(it->second, maxSourceDepth);
+      if (!inserted) {
+        it->second = std::max(it->second, maxSourceDepth);
+      }
     }
   }
 }
@@ -2717,17 +2976,22 @@ void BorrowChecker::trackRefHolderStore(const std::string& destName,
 
   if (e->getType() == ASTNodeType::MATCH) {
     const auto& match = static_cast<const sun::ast::MatchExprAST&>(*e);
-    if (!classStoresRefs(match.getResolvedType())) return;
+    if (!classStoresRefs(match.getResolvedType())) {
+      return;
+    }
     auto lifetime = inferExprLifetime(match);
     size_t bound =
         lifetime.isLocal() ? lifetime.getScopeDepth() : functionScopeDepth_;
-    if (bound > destDepth)
+    if (bound > destDepth) {
       reportError(
           "cannot store this match result beyond its borrowed storage's "
           "lifetime",
           pos);
+    }
     auto [it, inserted] = refHolderBounds_.try_emplace(destName, bound);
-    if (!inserted) it->second = std::max(it->second, bound);
+    if (!inserted) {
+      it->second = std::max(it->second, bound);
+    }
     return;
   }
 
@@ -2739,7 +3003,9 @@ void BorrowChecker::trackRefHolderStore(const std::string& destName,
     }
     auto it = refHolderBounds_.find(
         static_cast<const VariableReferenceAST&>(*e).getName());
-    if (it == refHolderBounds_.end()) return;
+    if (it == refHolderBounds_.end()) {
+      return;
+    }
     size_t bound = it->second;
     if (destDepth < bound) {
       reportError(
@@ -2752,18 +3018,23 @@ void BorrowChecker::trackRefHolderStore(const std::string& destName,
       return;
     }
     auto [dit, inserted] = refHolderBounds_.try_emplace(destName, bound);
-    if (!inserted) dit->second = std::max(dit->second, bound);
+    if (!inserted) {
+      dit->second = std::max(dit->second, bound);
+    }
     return;
   }
 
   // A fresh holder: a construction of a class that stores references, or a
   // call handing one back by value. It borrows the call's by-ref inputs.
-  if (e->getType() != ASTNodeType::CALL) return;
+  if (e->getType() != ASTNodeType::CALL) {
+    return;
+  }
   const auto& call = static_cast<const CallExprAST&>(*e);
   for (const auto& argument : call.getArgs()) {
     auto type = argument->getResolvedType();
-    if (type && !type->isReference() && classStoresRefs(type))
+    if (type && !type->isReference() && classStoresRefs(type)) {
       trackRefHolderStore(destName, destDepth, *argument, pos);
+    }
   }
   size_t bound = functionScopeDepth_;
   bool isHolder = forEachHolderInput(call, [&](const ExprAST& input, bool) {
@@ -2772,13 +3043,16 @@ void BorrowChecker::trackRefHolderStore(const std::string& destName,
       auto lifetime = inferExprLifetime(input);
       if (lifetime.isLocal()) {
         bound = std::max(bound, lifetime.getScopeDepth());
-        if (lifetime.getScopeDepth() > destDepth)
+        if (lifetime.getScopeDepth() > destDepth) {
           reportError("cannot store a borrowed temporary beyond its lifetime",
                       pos);
+        }
       }
       return;
     }
-    if (rawPointerLocals_.count(*base)) return;
+    if (rawPointerLocals_.count(*base)) {
+      return;
+    }
     size_t targetDepth = lookupDeclDepth(*base);
     if (targetDepth > destDepth) {
       reportError("cannot store this value in '" + destName +
@@ -2792,9 +3066,13 @@ void BorrowChecker::trackRefHolderStore(const std::string& destName,
     }
     bound = std::max(bound, targetDepth);
   });
-  if (!isHolder) return;
+  if (!isHolder) {
+    return;
+  }
   auto [dit, inserted] = refHolderBounds_.try_emplace(destName, bound);
-  if (!inserted) dit->second = std::max(dit->second, bound);
+  if (!inserted) {
+    dit->second = std::max(dit->second, bound);
+  }
 }
 
 void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
@@ -2830,15 +3108,18 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   // here on and the enclosing scope no longer drops it.
   for (const auto& cap : proto.getCaptures()) {
     if (cap.kind != CaptureKind::Owned ||
-        !sun::types::typeMovesOnRead(cap.type))
+        !sun::types::typeMovesOnRead(cap.type)) {
       continue;
+    }
     if (!state_.getActiveLoans(cap.name).empty()) {
       reportError(
           "cannot move '" + cap.name + "' into the lambda while it is borrowed",
           pos);
       continue;
     }
-    if (!checkMoveAllowed(cap.name, pos)) continue;
+    if (!checkMoveAllowed(cap.name, pos)) {
+      continue;
+    }
     if (movedVariables_.count(cap.name)) {
       reportError("use of moved variable '" + cap.name +
                       "'. Ownership was transferred in a previous assignment.",
@@ -2849,7 +3130,9 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   }
 
   for (const auto& cap : proto.getCaptures()) {
-    if (cap.kind != CaptureKind::Borrow) continue;
+    if (cap.kind != CaptureKind::Borrow) {
+      continue;
+    }
     // A by-ref capture of an enclosing lambda's by-ref capture aliases the
     // existing loan rather than creating a new one
     bool aliasesEnclosingCapture = false;
@@ -2861,9 +3144,13 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
           break;
         }
       }
-      if (aliasesEnclosingCapture) break;
+      if (aliasesEnclosingCapture) {
+        break;
+      }
     }
-    if (aliasesEnclosingCapture) continue;
+    if (aliasesEnclosingCapture) {
+      continue;
+    }
 
     auto targetInfo = resolveRefTarget(cap.name);
     std::string refName = "$capture:" + cap.name + "@" +
@@ -2914,7 +3201,9 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   // The name is gone from the enclosing scope, but inside the body it is the
   // closure's own value again — that is the point of moving it in.
   for (const auto& cap : proto.getCaptures()) {
-    if (cap.kind == CaptureKind::Owned) movedVariables_.erase(cap.name);
+    if (cap.kind == CaptureKind::Owned) {
+      movedVariables_.erase(cap.name);
+    }
   }
 
   // Inside the body a by-ref captured name IS the borrow: writing to it
@@ -3042,9 +3331,13 @@ void BorrowChecker::checkMemberAccess(const MemberAccessAST& access) {
   if (access.getObject()) {
     // Reaching through an object to one of its fields is a use of that field,
     // not of the object as a whole
-    if (!path.empty()) fieldBaseDepth_++;
+    if (!path.empty()) {
+      fieldBaseDepth_++;
+    }
     checkExpr(*access.getObject());
-    if (!path.empty()) fieldBaseDepth_--;
+    if (!path.empty()) {
+      fieldBaseDepth_--;
+    }
   }
 
   if (!path.empty() && movedVariables_.count(path)) {
@@ -3217,9 +3510,13 @@ void BorrowChecker::checkIndexedAssignment(
 // use-after-move like any other read.
 void BorrowChecker::checkArrayLiteral(const ArrayLiteralAST& literal) {
   for (const auto& elem : literal.getElements()) {
-    if (!elem) continue;
+    if (!elem) {
+      continue;
+    }
     checkExpr(*elem);
-    if (!sun::types::typeMovesOnRead(elem->getResolvedType())) continue;
+    if (!sun::types::typeMovesOnRead(elem->getResolvedType())) {
+      continue;
+    }
     if (elem->getType() != ASTNodeType::VARIABLE_REFERENCE) {
       if (elem->isTemporary()) {
         elem->setMoved(true);
@@ -3240,11 +3537,19 @@ void BorrowChecker::checkArrayLiteral(const ArrayLiteralAST& literal) {
 
 // Indexing reads the target and every index expression
 void BorrowChecker::checkIndexExpr(const IndexAST& index) {
-  if (index.getTarget()) checkExpr(*index.getTarget());
+  if (index.getTarget()) {
+    checkExpr(*index.getTarget());
+  }
   for (const auto& slice : index.getIndices()) {
-    if (!slice) continue;
-    if (slice->hasStart()) checkExpr(*slice->getStart());
-    if (slice->hasEnd()) checkExpr(*slice->getEnd());
+    if (!slice) {
+      continue;
+    }
+    if (slice->hasStart()) {
+      checkExpr(*slice->getStart());
+    }
+    if (slice->hasEnd()) {
+      checkExpr(*slice->getEnd());
+    }
   }
 }
 
@@ -3288,10 +3593,11 @@ void BorrowChecker::checkTryCatch(const sun::ast::TryCatchExprAST& tryCatch) {
     paramLifetimes_ = std::move(savedLifetimes);
     frameLocalNames_ = std::move(savedLocals);
     declDepths_ = std::move(savedDepths);
-    if (previousLifetime)
+    if (previousLifetime) {
       state_.setLifetime(clause.bindingName, *previousLifetime);
-    else
+    } else {
       state_.clearLifetime(clause.bindingName);
+    }
   }
 
   movedVariables_ = std::move(movedAfter);
@@ -3330,8 +3636,9 @@ void BorrowChecker::enterFunctionScope(const std::string& funcName) {
 void BorrowChecker::exitFunctionScope() {
   exitScope();
   // Parameter lifetime promises belong only to this function's signature.
-  for (const auto& [name, lifetime] : paramLifetimes_)
+  for (const auto& [name, lifetime] : paramLifetimes_) {
     state_.clearLifetime(name);
+  }
   refVariables_.clear();
   movedVariables_.clear();
   frameBoundVars_.clear();
@@ -3375,8 +3682,12 @@ bool BorrowChecker::isReferenceType(const TypePtr& type) const {
 }
 
 bool BorrowChecker::typeContainsReference(const TypePtr& type) const {
-  if (!type) return false;
-  if (type->isReference()) return true;
+  if (!type) {
+    return false;
+  }
+  if (type->isReference()) {
+    return true;
+  }
   // Could recursively check struct/class fields here
   return false;
 }
@@ -3467,9 +3778,12 @@ Lifetime BorrowChecker::inferExprLifetime(const ExprAST& expr) const {
   if (expr.getType() == ASTNodeType::MATCH) {
     const auto& match = static_cast<const sun::ast::MatchExprAST&>(expr);
     auto found = matchResultLifetimes_.find(&match);
-    if (found != matchResultLifetimes_.end()) return found->second;
-    if (match.isPropagation())
+    if (found != matchResultLifetimes_.end()) {
+      return found->second;
+    }
+    if (match.isPropagation()) {
       return inferExprLifetime(*match.getDiscriminant());
+    }
   }
   switch (expr.getType()) {
     case ASTNodeType::PAREN_EXPR:
@@ -3477,7 +3791,9 @@ Lifetime BorrowChecker::inferExprLifetime(const ExprAST& expr) const {
           *static_cast<const ParenExprAST&>(expr).getInner());
     case ASTNodeType::BLOCK: {
       const auto& body = static_cast<const BlockExprAST&>(expr).getBody();
-      if (!body.empty()) return inferExprLifetime(*body.back());
+      if (!body.empty()) {
+        return inferExprLifetime(*body.back());
+      }
       break;
     }
     case ASTNodeType::VARIABLE_REFERENCE: {
@@ -3499,9 +3815,13 @@ Lifetime BorrowChecker::inferExprLifetime(const ExprAST& expr) const {
         if (targetLt) {
           return *targetLt;
         }
-        if (target == "this") return Lifetime::param("this");
+        if (target == "this") {
+          return Lifetime::param("this");
+        }
         auto param = paramLifetimes_.find(target);
-        if (param != paramLifetimes_.end()) return param->second;
+        if (param != paramLifetimes_.end()) {
+          return param->second;
+        }
         // Fall back to inferring from the target name
         if (target.substr(0, 6) == "param:") {
           return Lifetime::param(target.substr(6));
@@ -3599,12 +3919,16 @@ Lifetime BorrowChecker::inferExprLifetime(const ExprAST& expr) const {
 
 void BorrowChecker::checkReturnLifetime(const ReturnExprAST& ret) {
   const ExprAST* value = ret.getValue();
-  if (!value) return;
+  if (!value) {
+    return;
+  }
 
   // Only check lifetime if the function is declared to return a reference type.
   // If the function returns a value type (e.g., i32), returning through a ref
   // variable is fine because the value gets copied/dereferenced.
-  if (!currentFunctionReturnsRef_) return;
+  if (!currentFunctionReturnsRef_) {
+    return;
+  }
 
   // Infer the lifetime of the returned expression
   Lifetime exprLifetime = inferExprLifetime(*value);
@@ -3657,20 +3981,24 @@ Lifetime BorrowChecker::inferCallReturnLifetime(const CallExprAST& call) const {
       auto lifetime = inferExprLifetime(input);
       if (lifetime.isLocal()) {
         if (!shortest.isLocal() ||
-            lifetime.getScopeDepth() > shortest.getScopeDepth())
+            lifetime.getScopeDepth() > shortest.getScopeDepth()) {
           shortest = lifetime;
+        }
       } else if (!shortest.isLocal()) {
         shortest = lifetime;
       }
     });
     for (const auto& argument : call.getArgs()) {
       auto type = argument->getResolvedType();
-      if (!type || type->isReference() || !classStoresRefs(type)) continue;
+      if (!type || type->isReference() || !classStoresRefs(type)) {
+        continue;
+      }
       auto lifetime = inferExprLifetime(*argument);
       if (lifetime.isLocal() &&
           (!shortest.isLocal() ||
-           lifetime.getScopeDepth() > shortest.getScopeDepth()))
+           lifetime.getScopeDepth() > shortest.getScopeDepth())) {
         shortest = lifetime;
+      }
     }
     return shortest;
   }
@@ -3686,10 +4014,14 @@ Lifetime BorrowChecker::inferCallReturnLifetime(const CallExprAST& call) const {
           ? static_cast<const MemberAccessAST*>(callee)
           : nullptr;
   auto receiverLifetime = [&]() -> std::optional<Lifetime> {
-    if (!methodAccess || !methodAccess->getObject()) return std::nullopt;
+    if (!methodAccess || !methodAccess->getObject()) {
+      return std::nullopt;
+    }
     const ExprAST& object = *methodAccess->getObject();
     TypePtr objectType = object.getResolvedType();
-    if (objectType && objectType->isRawPointer()) return Lifetime::static_();
+    if (objectType && objectType->isRawPointer()) {
+      return Lifetime::static_();
+    }
     if (object.getType() == ASTNodeType::VARIABLE_REFERENCE &&
         rawPointerLocals_.count(
             static_cast<const VariableReferenceAST&>(object).getName())) {
@@ -3700,7 +4032,9 @@ Lifetime BorrowChecker::inferCallReturnLifetime(const CallExprAST& call) const {
 
   TypePtr calleeType = callee->getResolvedType();
   if (!calleeType) {
-    if (auto lt = receiverLifetime()) return *lt;
+    if (auto lt = receiverLifetime()) {
+      return *lt;
+    }
     return Lifetime::local("$temp", currentScope_);
   }
 
@@ -3720,7 +4054,9 @@ Lifetime BorrowChecker::inferCallReturnLifetime(const CallExprAST& call) const {
         return Lifetime::local("$temp.from_call", currentScope_);
       }
     }
-    if (auto lt = receiverLifetime()) return *lt;
+    if (auto lt = receiverLifetime()) {
+      return *lt;
+    }
     return Lifetime::param("$call_return");
   }
 
@@ -3728,7 +4064,9 @@ Lifetime BorrowChecker::inferCallReturnLifetime(const CallExprAST& call) const {
   auto* funcType =
       dynamic_cast<const sun::types::FunctionType*>(calleeType.get());
   if (!funcType) {
-    if (auto lt = receiverLifetime()) return *lt;
+    if (auto lt = receiverLifetime()) {
+      return *lt;
+    }
     return Lifetime::local("$temp", currentScope_);
   }
 
@@ -3750,7 +4088,9 @@ Lifetime BorrowChecker::inferCallReturnLifetime(const CallExprAST& call) const {
     const auto& arg = args[i];
     const auto& paramType = paramTypes[i];
 
-    if (!arg || !paramType->isReference()) continue;
+    if (!arg || !paramType->isReference()) {
+      continue;
+    }
 
     // If this ref param received a temporary, return has local lifetime
     // The temporary dies at end of statement, so any ref to it would dangle
@@ -3761,17 +4101,22 @@ Lifetime BorrowChecker::inferCallReturnLifetime(const CallExprAST& call) const {
 
   // A ref-returning method borrows from its receiver: `obj.method(...)`
   // has obj's lifetime
-  if (auto lt = receiverLifetime()) return *lt;
+  if (auto lt = receiverLifetime()) {
+    return *lt;
+  }
 
   // A returned borrow cannot outlive any argument supplied by reference.
   Lifetime shortest = Lifetime::static_();
   for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
-    if (!args[i] || !paramTypes[i] || !paramTypes[i]->isReference()) continue;
+    if (!args[i] || !paramTypes[i] || !paramTypes[i]->isReference()) {
+      continue;
+    }
     auto lifetime = inferExprLifetime(*args[i]);
     if (lifetime.isLocal()) {
       if (!shortest.isLocal() ||
-          lifetime.getScopeDepth() > shortest.getScopeDepth())
+          lifetime.getScopeDepth() > shortest.getScopeDepth()) {
         shortest = lifetime;
+      }
     } else if (!shortest.isLocal()) {
       shortest = lifetime;
     }

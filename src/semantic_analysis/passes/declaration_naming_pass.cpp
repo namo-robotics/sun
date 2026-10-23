@@ -43,10 +43,13 @@ void assignNames(ExprAST& root, const std::vector<std::string>& scopePath,
       break;
     case ASTNodeType::MOON_SCOPE: {
       const auto& moon = static_cast<sun::ast::MoonScopeAST&>(root);
-      if (skipImportedMoons && !moon.isOwnBundle()) return;
+      if (skipImportedMoons && !moon.isOwnBundle()) {
+        return;
+      }
       auto childScope = scopePath;
-      if (!moon.getContentHash().empty())
+      if (!moon.getContentHash().empty()) {
         childScope.push_back(moon.getContentHash());
+      }
       visitChildren(childScope, moduleLevel);
       return;
     }
@@ -71,14 +74,16 @@ void assignNames(ExprAST& root, const std::vector<std::string>& scopePath,
     case ASTNodeType::LAMBDA:
       return;
     case ASTNodeType::VARIABLE_CREATION:
-      if (moduleLevel)
+      if (moduleLevel) {
         nameDeclaration(static_cast<sun::ast::VariableCreationAST&>(root),
                         scopePath);
+      }
       break;
     case ASTNodeType::REFERENCE_CREATION:
-      if (moduleLevel)
+      if (moduleLevel) {
         nameDeclaration(static_cast<sun::ast::ReferenceCreationAST&>(root),
                         scopePath);
+      }
       break;
     default:
       break;
@@ -108,8 +113,9 @@ void assignLocalDeclarationName(ExprAST& declaration,
     const auto& name = nameDeclaration(type, scopePath);
     auto methodScope = name.scopePath;
     methodScope.push_back(name.baseName);
-    for (const auto& method : type.getMethods())
+    for (const auto& method : type.getMethods()) {
       nameDeclaration(method.function->getProtoMut(), methodScope);
+    }
   };
   switch (declaration.getType()) {
     case ASTNodeType::CLASS_DEFINITION:
@@ -135,7 +141,9 @@ void assignLocalDeclarationName(ExprAST& declaration,
 void DeclarationNamingPass::run(
     const std::vector<sun::ast::MoonScopeAST*>& imports,
     const std::vector<std::string>& scopePath) const {
-  for (auto* moon : imports) run(*moon, scopePath, true);
+  for (auto* moon : imports) {
+    run(*moon, scopePath, true);
+  }
 }
 
 }  // namespace sun::semantic_analysis::passes

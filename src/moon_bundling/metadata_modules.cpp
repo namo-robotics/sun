@@ -22,7 +22,9 @@ using Names = std::set<std::string>;
 
 /** Reads the module name stored in a serialized syntax node. */
 std::string moduleSpelling(const pbc::ASTNode& node) {
-  if (node.has_variable_reference()) return node.variable_reference().name();
+  if (node.has_variable_reference()) {
+    return node.variable_reference().name();
+  }
   if (node.has_qualified_name()) {
     const auto& parts = node.qualified_name().parts();
     return sun::semantic_analysis::QualifiedName::joinPath(
@@ -31,8 +33,9 @@ std::string moduleSpelling(const pbc::ASTNode& node) {
   if (node.has_member_access() &&
       node.member_access().type_arguments().empty()) {
     auto parent = moduleSpelling(node.member_access().object());
-    if (!parent.empty())
+    if (!parent.empty()) {
       return parent + "." + node.member_access().member_name();
+    }
   }
   return "";
 }
@@ -40,12 +43,15 @@ std::string moduleSpelling(const pbc::ASTNode& node) {
 /** Records declaration names that shadow imported names in the current scope.
  */
 void addLocal(const pbc::ASTNode& node, Names& locals) {
-  if (node.has_variable_creation())
+  if (node.has_variable_creation()) {
     locals.insert(node.variable_creation().name());
-  if (node.has_reference_creation())
+  }
+  if (node.has_reference_creation()) {
     locals.insert(node.reference_creation().name());
-  if (node.has_declare_type() && node.declare_type().has_alias_name())
+  }
+  if (node.has_declare_type() && node.declare_type().has_alias_name()) {
     locals.insert(node.declare_type().alias_name());
+  }
 }
 
 /**
@@ -59,11 +65,15 @@ void bindModules(google::protobuf::Message& message, SemanticContext& ctx,
   sun::semantic_analysis::SemanticContext::SourceFileGuard file(
       ctx, source ? reflection->GetUInt64(message, source) : 0);
 
-  if (desc == pbc::TypeAnnotation::descriptor()) return;
+  if (desc == pbc::TypeAnnotation::descriptor()) {
+    return;
+  }
 
   if (desc == pbc::ASTNode::descriptor()) {
     auto& node = static_cast<pbc::ASTNode&>(message);
-    if (node.has_module_declaration_key()) return;
+    if (node.has_module_declaration_key()) {
+      return;
+    }
     if (node.has_using_stmt()) {
       auto& use = *node.mutable_using_stmt();
       auto path = sun::semantic_analysis::QualifiedName::joinPath(
@@ -72,9 +82,13 @@ void bindModules(google::protobuf::Message& message, SemanticContext& ctx,
       if (!use.is_module_import()) {
         auto full = path.empty() ? use.target() : path + "." + use.target();
         module = ctx.lookupModuleScope(full);
-        if (module) use.set_is_module_import(true);
+        if (module) {
+          use.set_is_module_import(true);
+        }
       }
-      if (!module) module = ctx.lookupModuleScope(path);
+      if (!module) {
+        module = ctx.lookupModuleScope(path);
+      }
       if (module) {
         node.set_module_declaration_key(
             sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
@@ -127,10 +141,12 @@ void bindModules(google::protobuf::Message& message, SemanticContext& ctx,
       bindModules(*loop.mutable_init(), ctx, locals);
       addLocal(loop.init(), locals);
     }
-    if (loop.has_condition())
+    if (loop.has_condition()) {
       bindModules(*loop.mutable_condition(), ctx, locals);
-    if (loop.has_increment())
+    }
+    if (loop.has_increment()) {
       bindModules(*loop.mutable_increment(), ctx, locals);
+    }
     bindModules(*loop.mutable_body(), ctx, locals);
     return;
   }
@@ -143,9 +159,14 @@ void bindModules(google::protobuf::Message& message, SemanticContext& ctx,
   }
   if (desc == pbc::MatchArm::descriptor()) {
     auto& arm = static_cast<pbc::MatchArm&>(message);
-    if (arm.has_pattern()) bindModules(*arm.mutable_pattern(), ctx, locals);
-    for (const auto& binding : arm.bindings())
-      if (!binding.is_wildcard()) locals.insert(binding.name());
+    if (arm.has_pattern()) {
+      bindModules(*arm.mutable_pattern(), ctx, locals);
+    }
+    for (const auto& binding : arm.bindings()) {
+      if (!binding.is_wildcard()) {
+        locals.insert(binding.name());
+      }
+    }
     bindModules(*arm.mutable_body(), ctx, locals);
     return;
   }
@@ -168,29 +189,44 @@ void bindModules(google::protobuf::Message& message, SemanticContext& ctx,
   if (const auto* field = desc->FindFieldByName("proto")) {
     const auto& proto = static_cast<const pbc::Prototype&>(
         reflection->GetMessage(message, field));
-    for (const auto& param : proto.type_params()) locals.insert(param.name());
-    for (const auto& arg : proto.args()) locals.insert(arg.name());
-    for (const auto& name : proto.ref_captures()) locals.insert(name);
-    for (const auto& name : proto.owned_captures()) locals.insert(name);
-    if (proto.has_variadic_param_name())
+    for (const auto& param : proto.type_params()) {
+      locals.insert(param.name());
+    }
+    for (const auto& arg : proto.args()) {
+      locals.insert(arg.name());
+    }
+    for (const auto& name : proto.ref_captures()) {
+      locals.insert(name);
+    }
+    for (const auto& name : proto.owned_captures()) {
+      locals.insert(name);
+    }
+    if (proto.has_variadic_param_name()) {
       locals.insert(proto.variadic_param_name());
+    }
   }
   if (desc == pbc::ClassDef::descriptor()) {
     const auto& cls = static_cast<const pbc::ClassDef&>(message);
-    for (const auto& field : cls.fields()) locals.insert(field.name());
-    for (const auto& method : cls.methods())
+    for (const auto& field : cls.fields()) {
+      locals.insert(field.name());
+    }
+    for (const auto& method : cls.methods()) {
       locals.insert(method.function().proto().name());
+    }
   }
 
   std::vector<const google::protobuf::FieldDescriptor*> fields;
   reflection->ListFields(message, &fields);
   for (const auto* field : fields) {
-    if (field->cpp_type() != google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE)
+    if (field->cpp_type() !=
+        google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
       continue;
+    }
     if (field->is_repeated()) {
-      for (int i = 0; i < reflection->FieldSize(message, field); ++i)
+      for (int i = 0; i < reflection->FieldSize(message, field); ++i) {
         bindModules(*reflection->MutableRepeatedMessage(&message, field, i),
                     ctx, locals);
+      }
     } else {
       bindModules(*reflection->MutableMessage(&message, field), ctx, locals);
     }

@@ -24,7 +24,9 @@ GlobalVariable* ClassGenerator::getOrCreateInterfaceVtable(
   }
   auto& table = vtableGlobals[{classType->getDeclarationId(),
                                ifaceType->getDeclarationId()}];
-  if (table) return table;
+  if (table) {
+    return table;
+  }
 
   auto* ptrTy = PointerType::getUnqual(ctx.getContext());
 
@@ -33,7 +35,9 @@ GlobalVariable* ClassGenerator::getOrCreateInterfaceVtable(
   // module at link/JIT time. An optional parent table link follows the methods.
   std::vector<Constant*> vtableEntries;
   for (const auto& m : ifaceType->getMethods()) {
-    if (m.isGeneric()) continue;
+    if (m.isGeneric()) {
+      continue;
+    }
 
     vtableEntries.push_back(functions().lookupFunctionById(
         classType->getInterfaceMethod(m.declarationId)));
@@ -65,8 +69,9 @@ GlobalVariable* ClassGenerator::getOrCreateInterfaceVtable(
 
 Value* ClassGenerator::upcastInterface(Value* value, InterfaceType* source,
                                        InterfaceType* target) {
-  if (!source->extendsInterface(*target))
+  if (!source->extendsInterface(*target)) {
     sun::support::logAndThrowError("Invalid interface upcast");
+  }
   auto* fatType = InterfaceType::getFatPointerType(ctx.getContext());
   if (value->getType()->isPointerTy()) {
     value = ctx.builder->CreateLoad(fatType, value, "iface.borrow");
@@ -88,8 +93,12 @@ Value* ClassGenerator::upcastInterface(Value* value, InterfaceType* source,
 Value* ClassGenerator::createBorrowedInterfaceUpcast(Value* value,
                                                      TypePtr sourceType,
                                                      TypePtr targetType) {
-  if (!value || !targetType || !targetType->isReference()) return value;
-  if (!sun::types::areDifferentInterfaces(sourceType, targetType)) return value;
+  if (!value || !targetType || !targetType->isReference()) {
+    return value;
+  }
+  if (!sun::types::areDifferentInterfaces(sourceType, targetType)) {
+    return value;
+  }
   auto source = sun::types::unwrapRef(sourceType);
   auto target = sun::types::unwrapRef(targetType);
 
@@ -145,14 +154,20 @@ Value* ClassGenerator::prepareClassForRefInterface(
   // Check if conversion is needed: param is ref Interface and arg is class
   auto* refType =
       sun::codegen::support::tryGetType<sun::types::ReferenceType>(paramType);
-  if (!refType) return nullptr;  // Not a ref param
+  if (!refType) {
+    return nullptr;  // Not a ref param
+  }
 
   auto* ifaceType = sun::codegen::support::tryGetType<InterfaceType>(
       refType->getReferencedType());
-  if (!ifaceType) return nullptr;  // Not ref Interface
+  if (!ifaceType) {
+    return nullptr;  // Not ref Interface
+  }
 
   auto* classType = sun::codegen::support::tryGetType<ClassType>(argType);
-  if (!classType) return nullptr;  // Arg is not a class
+  if (!classType) {
+    return nullptr;  // Arg is not a class
+  }
 
   // Create interface fat pointer value
   Value* fatPtr = createInterfaceFatPointer(classPtr, classType, ifaceType);

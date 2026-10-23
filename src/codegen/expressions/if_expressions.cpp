@@ -13,7 +13,9 @@ namespace sun::codegen {
 
 /** Converts a generated condition to the LLVM boolean used for branching. */
 Value* coerceCondToBool(CodegenContext& ctx, Value* CondV) {
-  if (CondV->getType()->isIntegerTy(1)) return CondV;
+  if (CondV->getType()->isIntegerTy(1)) {
+    return CondV;
+  }
   if (CondV->getType()->isFloatingPointTy()) {
     return ctx.builder->CreateFCmpONE(
         CondV, ConstantFP::get(CondV->getType(), 0.0), "ifcond");
@@ -27,7 +29,9 @@ Value* coerceCondToBool(CodegenContext& ctx, Value* CondV) {
 
 Value* CodegenVisitor::codegen(const sun::ast::IfExprAST& expr) {
   Value* CondV = codegen(*expr.getCond());
-  if (!CondV) return nullptr;
+  if (!CondV) {
+    return nullptr;
+  }
 
   CondV = coerceCondToBool(ctx, CondV);
 
@@ -165,7 +169,9 @@ Value* CodegenVisitor::codegen(const sun::ast::IfExprAST& expr) {
 
 Value* CodegenVisitor::codegen(const sun::ast::TernaryExprAST& expr) {
   Value* CondV = codegen(*expr.getCond());
-  if (!CondV) return nullptr;
+  if (!CondV) {
+    return nullptr;
+  }
 
   CondV = coerceCondToBool(ctx, CondV);
 

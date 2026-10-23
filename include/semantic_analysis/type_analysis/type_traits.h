@@ -45,15 +45,33 @@ enum class TypeTrait {
  * a concrete type name.
  */
 inline TypeTrait getTypeTrait(const std::string& name) {
-  if (name == "_Integer") return TypeTrait::Integer;
-  if (name == "_Signed") return TypeTrait::Signed;
-  if (name == "_Unsigned") return TypeTrait::Unsigned;
-  if (name == "_Float") return TypeTrait::Float;
-  if (name == "_Numeric") return TypeTrait::Numeric;
-  if (name == "_Primitive") return TypeTrait::Primitive;
-  if (name == "_Lambda") return TypeTrait::Lambda;
-  if (name == "_Function") return TypeTrait::Function;
-  if (name == "_Callable") return TypeTrait::Callable;
+  if (name == "_Integer") {
+    return TypeTrait::Integer;
+  }
+  if (name == "_Signed") {
+    return TypeTrait::Signed;
+  }
+  if (name == "_Unsigned") {
+    return TypeTrait::Unsigned;
+  }
+  if (name == "_Float") {
+    return TypeTrait::Float;
+  }
+  if (name == "_Numeric") {
+    return TypeTrait::Numeric;
+  }
+  if (name == "_Primitive") {
+    return TypeTrait::Primitive;
+  }
+  if (name == "_Lambda") {
+    return TypeTrait::Lambda;
+  }
+  if (name == "_Function") {
+    return TypeTrait::Function;
+  }
+  if (name == "_Callable") {
+    return TypeTrait::Callable;
+  }
   return TypeTrait::None;
 }
 

@@ -51,8 +51,9 @@ llvm::LoadInst* VariableGenerator::createLoadForLocalVar(DeclarationId id) {
 llvm::GlobalVariable* VariableGenerator::bindGlobal(
     DeclarationId id, llvm::GlobalVariable* global) {
   state_.analysis->declarations.get(id);
-  if (auto* existing = findGlobal(id); existing && existing != global)
+  if (auto* existing = findGlobal(id); existing && existing != global) {
     logAndThrowError("Global declaration already has different storage");
+  }
   globals_[id] = global;
   return global;
 }
@@ -65,9 +66,10 @@ llvm::GlobalVariable* VariableGenerator::findGlobal(DeclarationId id) const {
 }
 
 llvm::LoadInst* VariableGenerator::createLoadForGlobalVar(DeclarationId id) {
-  if (auto* global = findGlobal(id))
+  if (auto* global = findGlobal(id)) {
     return ctx.builder->CreateLoad(global->getValueType(), global,
                                    global->getName() + ".value");
+  }
   return nullptr;
 }
 
@@ -284,16 +286,22 @@ Value* VariableGenerator::codegen(const sun::ast::VariableReferenceAST& expr) {
   // Non-reference variable - regular load
   llvm::LoadInst* loadVarInst =
       createLoadForLocalVar(expr.getTargetDeclarationId());
-  if (loadVarInst) return loadVarInst;
+  if (loadVarInst) {
+    return loadVarInst;
+  }
 
   Value* cv =
       functionGen().createLoadVarFromClosure(expr.getTargetDeclarationId());
-  if (cv) return cv;
+  if (cv) {
+    return cv;
+  }
 
   // Module globals use the same declaration lookup as root globals.
   llvm::LoadInst* loadInst =
       createLoadForGlobalVar(expr.getTargetDeclarationId());
-  if (loadInst) return loadInst;
+  if (loadInst) {
+    return loadInst;
+  }
 
   if (expr.getResolvedType() && expr.getResolvedType()->isFunction()) {
     return functions().lookupFunctionById(expr.getTargetDeclarationId());
@@ -416,7 +424,9 @@ void VariableGenerator::assignToVariableSlot(Value* slot, Value* value,
   if (compound) {
     // Self-assignment would drop the object and then copy from the corpse;
     // it has no effect, so emit nothing.
-    if (value == slot) return;
+    if (value == slot) {
+      return;
+    }
     scopes().emitDropInPlace(varType, slot, name);
     value = gen_.applyMoveSemantics(value, varType);
   }
@@ -424,7 +434,9 @@ void VariableGenerator::assignToVariableSlot(Value* slot, Value* value,
   if (auto* arrayType =
           sun::codegen::support::tryGetType<sun::types::ArrayType>(varType)) {
     if (!arrayType->isUnsized()) {
-      if (value == slot) return;
+      if (value == slot) {
+        return;
+      }
       scopes().emitDropInPlace(varType, slot, name);
       gen_.emitArrayTransfer(slot, value, *arrayType, /*move=*/true);
       scopes().markInitialized(slot, varType);

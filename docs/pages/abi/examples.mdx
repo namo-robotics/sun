@@ -1,0 +1,42 @@
+import Target from '../../generated/abi-target.mdx'
+import Identity from '../../generated/abi-identity.mdx'
+
+# ABI Examples
+
+Each example changes one compatibility condition. Its shell scripts check that the
+compatible program builds and runs, and that the incompatible case fails for the
+expected reason without producing an executable. Each example has a
+`build-incompatible.sh` script; run it to see the compiler error yourself.
+
+Build Sun first, then run the commands below from the repository root. Bash
+and the normal native-link toolchain are required. Sources and per-example `sun-config.json` files live under `examples/abi/`;
+bundles, executables, and diagnostic logs go in `tmp/abi-examples/`.
+
+These examples exercise the current experimental compiler. They do not establish
+compatibility across compiler releases.
+
+| Example | Compatible case | Incompatible case |
+| --- | --- | --- |
+| Target | Host library and consumer | Library for another architecture |
+| Exact dependency | Original v1 declaration | v1.1 with the same layout; v2 with a new layout |
+
+## Target compatibility
+
+<Target />
+
+## Exact dependency identity
+
+<Identity />
+
+The source blocks above are generated directly from the runnable examples.
+Each example has its own `sun-config.json` declaring its libraries, successful
+consumer, and output paths. Expected failures are tested separately.
+
+Run the complete set from the repository root:
+
+```bash
+bash examples/abi/build.sh
+bash examples/abi/test.sh
+```
+
+These suite scripts are also discovered by the existing examples CI job.

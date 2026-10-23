@@ -92,7 +92,9 @@ class StaticPointerType : public Type {
   /** Reports whether the other type has the same semantic identity. */
   bool equals(const Type& other) const override {
     // Static pointer is compatible with null
-    if (other.isNullPointer()) return true;
+    if (other.isNullPointer()) {
+      return true;
+    }
     // A raw_ptr does NOT satisfy a static_ptr: the fat pointer needs a length
     // and a promise the bytes are immortal, and a bare pointer carries
     // neither. The other direction (a static_ptr where raw_ptr is expected)
@@ -158,9 +160,13 @@ class NullPointerType : public Type {
   /** Reports whether the other type has the same semantic identity. */
   bool equals(const Type& other) const override {
     // Null is equal to itself
-    if (other.isNullPointer()) return true;
+    if (other.isNullPointer()) {
+      return true;
+    }
     // Null is also "equal" (compatible) with any pointer type
-    if (other.isRawPointer() || other.isStaticPointer()) return true;
+    if (other.isRawPointer() || other.isStaticPointer()) {
+      return true;
+    }
     return false;
   }
 

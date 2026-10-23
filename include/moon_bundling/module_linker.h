@@ -82,7 +82,8 @@ class ModuleLinker {
 
  private:
   /** Links a self-contained module, optionally importing only needed bodies. */
-  bool linkModuleBitcode(const std::string& moduleKey, bool demandDriven = false);
+  bool linkModuleBitcode(const std::string& moduleKey,
+                         bool demandDriven = false);
 
   llvm::Module& target_;
   // Context for modules parsed by declareAvailableFunctions(). Scans use

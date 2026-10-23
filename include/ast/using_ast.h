@@ -56,7 +56,9 @@ class UsingAST : public ExprAST {
   std::string getNamespacePathString() const {
     std::string result;
     for (size_t i = 0; i < namespacePath.size(); ++i) {
-      if (i > 0) result += ".";
+      if (i > 0) {
+        result += ".";
+      }
       result += namespacePath[i];
     }
     return result;

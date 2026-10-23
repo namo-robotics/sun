@@ -65,7 +65,9 @@ sun::types::TypePtr intrinsicType(const sun::ast::TypeAnnotation& annotation) {
   if (annotation.baseName == "static_ptr" && annotation.elementType) {
     return Types::StaticPointer(intrinsicType(*annotation.elementType));
   }
-  if (auto type = Types::fromString(annotation.baseName)) return type;
+  if (auto type = Types::fromString(annotation.baseName)) {
+    return type;
+  }
   sun::support::logAndThrowError("Unsupported fixed intrinsic type: " +
                                  annotation.baseName);
 }

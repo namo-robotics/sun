@@ -1,27 +1,30 @@
 # Runtime & Errors
 
-Part of the [Sun ABI draft](/abi). Requirements are proposed, not guarantees of
-current releases. **MUST**, **MUST NOT**, and **SHOULD** express draft requirements.
-Unresolved decisions must be completed before stabilization.
+Part of the [Sun ABI draft](/abi). These are proposed requirements, not guarantees
+of current releases. Open decisions must be resolved before stabilization.
 
 ## Runtime, errors, and global state
 
-Runtime entry points referenced by compiled code MUST have versioned contracts,
-including argument and result representations, ownership, and failure behavior.
-Linking multiple bundles MUST NOT silently select incompatible implementations
-of the same runtime symbol.
+Runtime requirements are part of the single bundle contract. Adding a runtime
+service does not affect bundles that do not call it. A runtime implementation
+can be refactored or optimized while preserving its existing interface and
+behavior. An incompatible change needs a distinct service identity or an adapter
+that implements the old behavior during its supported lifetime.
 
-Error propagation MUST define the exception object, type identification,
-matching, cleanup, and unwinding conventions. Unwinding through a boundary is
-permitted only when both sides support its contract. The initial ABI MUST either
-specify cross-bundle throwing and catching or explicitly reject unsupported
-throwing boundaries; it cannot leave their behavior implicit.
+| Subject | Level | Requirement |
+| --- | --- | --- |
+| Runtime entry points | MUST | Include the runtime interfaces actually required by compiled code in the bundle contract, covering argument and result representations, ownership, and failure behavior. |
+| Runtime evolution | MUST NOT | Change the calling rules or specified behavior of an existing runtime service identity. Use a distinct identity for incompatible behavior. |
+| Shared implementations | SHOULD | Reuse the current runtime implementation or a small adapter when it can satisfy an older supported interface. |
+| Symbol resolution | MUST NOT | Silently select an incompatible implementation when bundles use the same runtime symbol. |
+| Error propagation | MUST | Define exception objects, type identification, matching, cleanup, and unwinding. |
+| Unwinding | MUST | Allow unwinding across a boundary only when both sides support its contract. |
+| Cross-bundle errors | MUST | Specify throwing and catching across bundles, or explicitly reject unsupported throwing boundaries. |
+| Global initialization | MUST | Initialize dependencies before consumers and each deduplicated global instance exactly once. |
+| State lifecycle | MUST | Define shutdown order, initialization failure, thread-local state, and state shared among bundles. |
+| Process-wide state | MUST NOT | Duplicate state defined as process-wide when bundling several runtime implementations. |
 
-Global initialization MUST run dependencies before their consumers, and MUST
-initialize each deduplicated global instance once. Shutdown ordering, initialization
-failure, thread-local state, and runtime state shared among bundles require
-explicit rules. Bundling several runtime implementations MUST NOT duplicate
-state that the ABI defines as process-wide.
+## Open decisions
 
-**Unresolved:** inventory emitted runtime symbols, exception machinery, type-ID
-collision handling, startup functions, teardown, and thread-local storage.
+List emitted runtime symbols and specify exception machinery, type-ID collision
+handling, startup, teardown, and thread-local storage.

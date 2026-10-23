@@ -47,7 +47,8 @@ int runTestEntrypoint(const std::string& inputFile, const TestOptions& options,
     }
   } catch (const sun::support::SunError& e) {
     if (skipWhenNoTests && isNoTestsError(e)) {
-      sun::support::messageStream("info") << "no tests\n";
+      llvm::outs() << sun::support::messagePrefix("info", llvm::outs())
+                   << "no tests\n";
       return 0;
     }
     return reportSunError(e);

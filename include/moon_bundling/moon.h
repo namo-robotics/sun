@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "abi/compatibility.h"
 #include "moon.pb.h"
 
 /** Builds and loads compiled Moon libraries and their declaration metadata. */
@@ -23,14 +24,13 @@ namespace sun::moon_bundling {
  */
 struct MoonHeader {
   static constexpr uint32_t MAGIC = 0x53554E4C;  // "SUNL"
-  // Class alignment and C binding assertions are required layout metadata.
-  static constexpr uint32_t VERSION = 12;
+  // A complete bundle compatibility contract is mandatory in this revision.
+  static constexpr uint32_t VERSION = 15;
 
   uint32_t magic = MAGIC;
   uint32_t version = VERSION;
-  // The index carries its own entry count, so the number of modules is not
-  // repeated here. 64-bit because it addresses anywhere in the payload.
-  uint64_t indexOffset = 0;
+  uint64_t bundleMetadataOffset = 0;
+  uint64_t bundleMetadataSize = 0;
 };
 
 /**
@@ -40,8 +40,6 @@ struct ModuleIndexEntry {
   std::string moduleKey;  // Source hash used as module identifier
   uint64_t bitcodeOffset;
   uint64_t bitcodeSize;
-  uint64_t metadataOffset;
-  uint64_t metadataSize;
 };
 
 /**
@@ -90,6 +88,17 @@ class MoonWriter {
    */
   void addModule(llvm::Module& module, const moon::ModuleMetadata& metadata);
 
+  /** Sets the producing library identity after adding emitted code. */
+  void setLibraryId(const std::string& libraryId);
+
+  /** Retains all requirements of code embedded from a validated dependency. */
+  void inheritContract(const abi::BundleContract& contract);
+  /** Records additional producer-declared requirements for packaged archives.
+   */
+  void declareNativeRequirements(
+      const std::vector<std::string>& cpuFeatures,
+      const std::vector<std::string>& runtimeServices);
+
   /**
    * Carry a native static library inside the bundle
    * @param archiveSetHash Hash the archive's symbols are prefixed with
@@ -132,13 +141,13 @@ class MoonWriter {
     std::string data;
   };
   std::vector<PendingArchive> nativeArchives_;
+  abi::BundleContract contract_;
   std::string bundleHash_;
   std::string error_;
 };
 
-/**
- * Reads .moon bundle files and extracts individual modules
- */
+/** Decodes immutable Moon container bytes; semantic use requires an ABI
+ * checker. */
 class MoonReader {
  public:
   /**
@@ -148,10 +157,14 @@ class MoonReader {
    */
   static std::unique_ptr<MoonReader> open(const std::filesystem::path& path);
 
-  /**
-   * Check if a module exists in this bundle
-   * @param moduleKey The module key (source hash)
-   */
+  /** Shares immutable container bytes without granting permission to execute
+   * them. */
+  const std::shared_ptr<const std::string>& getBytes() const { return bytes_; }
+
+  /** Returns bundle metadata for inspection, without semantic authorization. */
+  const moon::MoonLibrary& getLibrary() const { return bundleMetadata_; }
+
+  /** Checks whether a module key occurs in the bundle index. */
   bool hasModule(const std::string& moduleKey) const;
 
   /**
@@ -174,7 +187,8 @@ class MoonReader {
   const moon::ModuleMetadata* getMetadata(const std::string& moduleKey);
 
   /**
-   * Load a module's LLVM bitcode
+   * Decode a module's LLVM bitcode for inspection. Semantic consumers must
+   * first obtain authorization from AbiCompatibilityChecker.
    * @param moduleKey The module key (source hash)
    * @param context LLVM context to create module in
    * @return LLVM module, or nullptr on failure
@@ -213,7 +227,8 @@ class MoonReader {
   }
 
   /**
-   * Read one carried archive's bytes. Entries come from getNativeArchives();
+   * Read one carried archive's bytes for inspection, without ABI authorization.
+   * Entries come from getNativeArchives();
    * two versions of a library share a file name, so the entry rather than
    * the name identifies one.
    * @return false if the read failed
@@ -225,11 +240,11 @@ class MoonReader {
   /** Creates an instance with its default state. */
   MoonReader() = default;
 
+  moon::MoonLibrary bundleMetadata_;
+  std::shared_ptr<const std::string> bytes_;
   std::filesystem::path path_;
   std::vector<ModuleIndexEntry> index_;
   std::unordered_map<std::string, size_t> indexMap_;
-  std::unordered_map<std::string, std::shared_ptr<const moon::ModuleMetadata>>
-      metadataCache_;
   std::vector<NativeArchiveEntry> nativeArchives_;
   std::string error_;
 

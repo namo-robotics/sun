@@ -42,8 +42,9 @@ void ExpressionAnalyzer::analyzeLambdaExpr(sun::ast::LambdaAST& lambda) {
       Types::Lambda(lambdaInfo.returnType, lambdaInfo.paramTypes,
                     proto.hasReturnType() && proto.getReturnType()->canError);
   if (proto.hasRefCaptures() || !proto.getRefCaptureNames().empty() ||
-      !proto.getOwnedCaptureNames().empty())
+      !proto.getOwnedCaptureNames().empty()) {
     static_cast<LambdaType&>(*lambdaType).setHasRefCaptures(true);
+  }
   lambda.setResolvedType(lambdaType);
 }
 

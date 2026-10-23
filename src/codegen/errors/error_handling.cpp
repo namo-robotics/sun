@@ -1,3 +1,4 @@
+#include "abi/lowering_descriptors.h"
 // error_handling.cpp — Codegen for error handling expressions (try/catch/throw)
 
 #include <llvm/IR/Constants.h>
@@ -47,11 +48,14 @@ void ErrorGenerator::emitArithmeticErrorMethods(bool defineBodies) {
     auto* returnType = state_.typeResolver.resolve(method.returnType);
     auto* signature = llvm::FunctionType::get(returnType, {pointerType}, false);
     auto* function = module->getFunction(name);
-    if (!function)
+    if (!function) {
       function =
           Function::Create(signature, Function::ExternalLinkage, name, module);
+    }
     gen_.functionRegistry().registerFunction(method.declarationId, function);
-    if (!defineBodies || function->use_empty() || !function->empty()) continue;
+    if (!defineBodies || function->use_empty() || !function->empty()) {
+      continue;
+    }
     function->setLinkage(Function::LinkOnceODRLinkage);
     IRBuilder<> builder(
         BasicBlock::Create(ctx.getContext(), "entry", function));
@@ -83,8 +87,9 @@ void ErrorGenerator::emitArithmeticErrorMethods(bool defineBodies) {
     auto string = std::static_pointer_cast<ClassType>(method.returnType);
     const auto* constructor =
         string->getMethodForArgs("init", {sun::types::Types::String()});
-    if (!constructor)
+    if (!constructor) {
       sun::support::logAndThrowError("String lacks its literal constructor");
+    }
     auto* init =
         gen_.functionRegistry().lookupFunctionById(constructor->declarationId);
     auto* result = builder.CreateAlloca(returnType);
@@ -100,8 +105,9 @@ void ErrorGenerator::emitArithmeticErrorMethods(bool defineBodies) {
 TryContext* ErrorGenerator::activeTry() {
   if (tryStack.empty() || !ctx.builder->GetInsertBlock() ||
       tryStack.back().landingPad->getParent() !=
-          ctx.builder->GetInsertBlock()->getParent())
+          ctx.builder->GetInsertBlock()->getParent()) {
     return nullptr;
+  }
   return &tryStack.back();
 }
 
@@ -114,7 +120,9 @@ llvm::StructType* ErrorGenerator::exceptionStorageType(ClassType* type) {
 llvm::Function* ErrorGenerator::exceptionDestructor(ClassType* type) {
   auto name =
       state_.declarationSymbol(type->getDeclarationId(), "exception-drop");
-  if (auto* existing = module->getFunction(name)) return existing;
+  if (auto* existing = module->getFunction(name)) {
+    return existing;
+  }
   auto* ptrType = PointerType::getUnqual(ctx.getContext());
   auto* signature =
       llvm::FunctionType::get(ctx.builder->getVoidTy(), {ptrType}, false);
@@ -233,11 +241,14 @@ Value* ErrorGenerator::codegen(const sun::ast::ThrowExprAST& expr) {
     return nullptr;
   }
   auto* classType = sun::codegen::support::tryGetType<ClassType>(errType);
-  if (!classType)
+  if (!classType) {
     sun::support::logAndThrowError("Thrown value lacks a concrete error type");
+  }
   auto* storageType = exceptionStorageType(classType);
   Value* objPtr = codegen(expr.getErrorExpr());
-  if (!objPtr) return nullptr;
+  if (!objPtr) {
+    return nullptr;
+  }
   Value* exc = ctx.builder->CreateCall(
       getCxaAllocateException(),
       {ConstantInt::get(i64Ty, DL.getTypeAllocSize(storageType))}, "exc");
@@ -322,7 +333,9 @@ Value* ErrorGenerator::codegen(const sun::ast::TryCatchExprAST& expr) {
   if (!ctx.builder->GetInsertBlock()->getTerminator()) {
     BasicBlock* tryEndBB = ctx.builder->GetInsertBlock();
     ctx.builder->CreateBr(mergeBB);
-    if (tryResult) results.push_back({tryResult, tryEndBB});
+    if (tryResult) {
+      results.push_back({tryResult, tryEndBB});
+    }
   }
 
   // ---- Landing pad (no live owners on this edge) ----
@@ -421,7 +434,9 @@ Value* ErrorGenerator::codegen(const sun::ast::TryCatchExprAST& expr) {
     if (!ctx.builder->GetInsertBlock()->getTerminator()) {
       BasicBlock* bodyEndBB = ctx.builder->GetInsertBlock();
       ctx.builder->CreateBr(mergeBB);
-      if (catchResult) results.push_back({catchResult, bodyEndBB});
+      if (catchResult) {
+        results.push_back({catchResult, bodyEndBB});
+      }
     }
   }
 
@@ -443,11 +458,16 @@ Value* ErrorGenerator::codegen(const sun::ast::TryCatchExprAST& expr) {
   if (!results.empty()) {
     llvm::Type* t = results[0].first->getType();
     bool uniform = !t->isVoidTy();
-    for (auto& [v, b] : results)
-      if (v->getType() != t) uniform = false;
+    for (auto& [v, b] : results) {
+      if (v->getType() != t) {
+        uniform = false;
+      }
+    }
     if (uniform) {
       PHINode* phi = ctx.builder->CreatePHI(t, results.size(), "try.result");
-      for (auto& [v, b] : results) phi->addIncoming(v, b);
+      for (auto& [v, b] : results) {
+        phi->addIncoming(v, b);
+      }
       return phi;
     }
   }
@@ -555,9 +575,16 @@ Value* ErrorGenerator::emitPossiblyThrowingCall(llvm::FunctionType* fnTy,
                                                 ArrayRef<Value*> args,
                                                 bool canThrow,
                                                 const Twine& name) {
+  const auto descriptor = sun::abi::CallDescriptor::forCall(fnTy, callee);
+  /** Applies the same ABI to ordinary calls and calls with cleanup edges. */
+  auto finish = [&](llvm::CallBase* call) -> llvm::Value* {
+    descriptor.apply(*call);
+    return call;
+  };
   bool isVoid = fnTy->getReturnType()->isVoidTy();
   if (!canThrow) {
-    return ctx.builder->CreateCall(fnTy, callee, args, isVoid ? "" : name);
+    return finish(
+        ctx.builder->CreateCall(fnTy, callee, args, isVoid ? "" : name));
   }
 
   bool inTry = activeTry() != nullptr;
@@ -567,7 +594,8 @@ Value* ErrorGenerator::emitPossiblyThrowingCall(llvm::FunctionType* fnTy,
 
   if (!inTry && !needsCleanup) {
     // Nothing to clean: let the exception unwind straight into the caller.
-    return ctx.builder->CreateCall(fnTy, callee, args, isVoid ? "" : name);
+    return finish(
+        ctx.builder->CreateCall(fnTy, callee, args, isVoid ? "" : name));
   }
 
   Function* curFn = ctx.builder->GetInsertBlock()->getParent();
@@ -610,8 +638,8 @@ Value* ErrorGenerator::emitPossiblyThrowingCall(llvm::FunctionType* fnTy,
     unwindDest = padBB;
   }
 
-  Value* inv = ctx.builder->CreateInvoke(fnTy, callee, contBB, unwindDest, args,
-                                         isVoid ? "" : name);
+  Value* inv = finish(ctx.builder->CreateInvoke(
+      fnTy, callee, contBB, unwindDest, args, isVoid ? "" : name));
   ctx.builder->SetInsertPoint(contBB);
   return inv;
 }

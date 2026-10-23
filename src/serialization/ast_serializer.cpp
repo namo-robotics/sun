@@ -20,20 +20,28 @@ namespace pbc = sun::proto::ast;
 pbc::DeclarationIdentity ASTSerializer::serializeIdentity(
     const sun::semantic_analysis::DeclarationIdentity& identity) const {
   pbc::DeclarationIdentity result;
-  if (!config_.declarations || !identity.id) return result;
-  if (identity.session.lock() != config_.declarations->session())
+  if (!config_.declarations || !identity.id) {
+    return result;
+  }
+  if (identity.session.lock() != config_.declarations->session()) {
     sun::support::logAndThrowError(
         "Cannot export declarations from another analysis session");
+  }
   auto key = [&](sun::semantic_analysis::DeclarationId id) {
     return sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
                id, *config_.declarations)
         .encoding();
   };
   result.set_key(key(identity.id));
-  for (auto id : identity.parameters) result.add_parameters(key(id));
-  for (auto id : identity.typeParameters) result.add_type_parameters(key(id));
-  for (auto id : identity.lifetimeParameters)
+  for (auto id : identity.parameters) {
+    result.add_parameters(key(id));
+  }
+  for (auto id : identity.typeParameters) {
+    result.add_type_parameters(key(id));
+  }
+  for (auto id : identity.lifetimeParameters) {
     result.add_lifetime_parameters(key(id));
+  }
   return result;
 }
 
@@ -52,8 +60,9 @@ void ASTSerializer::serializeConstantValue(
   } else {
     // Present even when empty, so the reader sees an array
     auto* array = proto->mutable_array();
-    for (const auto& element : value.getElements())
+    for (const auto& element : value.getElements()) {
       serializeConstantValue(element, array->add_elements());
+    }
   }
 }
 
@@ -90,8 +99,9 @@ pbc::TypeAnnotation ASTSerializer::serializeTypeAnnotation(
     const sun::ast::TypeAnnotation& type) const {
   pbc::TypeAnnotation proto;
   proto.set_base_name(type.baseName);
-  if (type.declarationKey)
+  if (type.declarationKey) {
     proto.set_declaration_key(type.declarationKey->encoding());
+  }
 
   if (type.elementType) {
     *proto.mutable_element_type() = serializeTypeAnnotation(*type.elementType);
@@ -111,7 +121,9 @@ pbc::TypeAnnotation ASTSerializer::serializeTypeAnnotation(
 
   for (const auto& dim : type.arrayDimensions) {
     auto* dimension = proto.add_array_dimensions();
-    if (dim.size) dimension->set_size(*dim.size);
+    if (dim.size) {
+      dimension->set_size(*dim.size);
+    }
     dimension->set_constant_name(dim.constantName);
   }
 
@@ -131,12 +143,14 @@ void ASTSerializer::serializeExprBase(const ExprAST& expr,
   if (config_.include_location) {
     *node->mutable_location() = serializePosition(expr.getLocation());
   }
-  if (config_.declarations && expr.getDeclarationId())
+  if (config_.declarations && expr.getDeclarationId()) {
     *node->mutable_declaration_identity() =
         serializeIdentity(expr.declarationIdentity());
+  }
   node->set_source_file_id(expr.getSourceFileId());
-  if (expr.getModuleDeclaration())
+  if (expr.getModuleDeclaration()) {
     node->set_module_declaration_key(expr.getModuleDeclaration()->encoding());
+  }
   node->set_precompiled(expr.isPrecompiled());
   node->set_skip_codegen(expr.shouldSkipCodegen());
   node->set_symbol_prefix(expr.getSymbolPrefix());
@@ -164,22 +178,27 @@ void ASTSerializer::serializeBlockInto(const BlockExprAST& block,
 void ASTSerializer::serializeTypeParameterInto(
     const sun::ast::TypeParameter& parameter, pbc::TypeParameter* proto) const {
   proto->set_name(parameter.name);
-  if (!parameter.constraint) return;
+  if (!parameter.constraint) {
+    return;
+  }
 
   const auto& constraint = *parameter.constraint;
   proto->set_constraint(constraint.name);
-  for (const auto& argument : constraint.typeArguments)
+  for (const auto& argument : constraint.typeArguments) {
     *proto->add_constraint_arguments() = serializeTypeAnnotation(argument);
-  if (constraint.declarationKey)
+  }
+  if (constraint.declarationKey) {
     proto->set_declaration_key(constraint.declarationKey->encoding());
+  }
 }
 
 pbc::Prototype ASTSerializer::serializePrototype(
     const sun::ast::PrototypeAST& proto) const {
   pbc::Prototype result;
-  if (config_.declarations)
+  if (config_.declarations) {
     *result.mutable_declaration_identity() =
         serializeIdentity(proto.declarationIdentity());
+  }
   result.set_name(proto.getName());
 
   for (const auto& parameter : proto.getTypeParameters()) {
@@ -435,10 +454,11 @@ pbc::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
     if (selected) {
       auto* definition = reflection->MutableMessage(&node, selected);
       if (const auto* field = definition->GetDescriptor()->FindFieldByName(
-              "declaration_identity"))
+              "declaration_identity")) {
         definition->GetReflection()
             ->MutableMessage(definition, field)
             ->CopyFrom(node.declaration_identity());
+      }
     }
   }
   return node;
@@ -557,7 +577,9 @@ void ASTSerializer::serializeVariableCreation(
   var->set_is_const(expr.isConst());
   var->set_is_c_extern(expr.isCExtern());
   var->set_explicit_c_abi(expr.hasExplicitCAbi());
-  if (expr.hasLinkName()) var->set_link_name(expr.getLinkName());
+  if (expr.hasLinkName()) {
+    var->set_link_name(expr.getLinkName());
+  }
   var->set_doc(expr.getDoc());
   if (expr.getValue()) {
     *var->mutable_value() = serialize(*expr.getValue());
@@ -684,14 +706,16 @@ void ASTSerializer::serializeMatch(const sun::ast::MatchExprAST& expr,
     armProto->set_is_wildcard(arm.isWildcard);
     *armProto->mutable_body() = serialize(*arm.body);
     armProto->set_has_payload_parens(arm.hasPayloadParens);
-    if (arm.bindingType)
+    if (arm.bindingType) {
       *armProto->mutable_binding_type() =
           serializeTypeAnnotation(*arm.bindingType);
+    }
     for (const auto& binding : arm.bindings) {
       auto* bindingProto = armProto->add_bindings();
-      if (config_.declarations && binding.declaration.id)
+      if (config_.declarations && binding.declaration.id) {
         *bindingProto->mutable_declaration_identity() =
             serializeIdentity(binding.declaration);
+      }
       bindingProto->set_name(binding.name);
       bindingProto->set_is_wildcard(binding.isWildcard);
       if (config_.include_location) {
@@ -764,7 +788,9 @@ void ASTSerializer::serializeFunction(const FunctionAST& expr,
   // under a Sun-derived symbol and lose its C symbol.
   func->set_body_present(expr.hasBody());
   auto* body = func->mutable_body();
-  if (expr.hasBody()) serializeBlockInto(expr.getBody(), body);
+  if (expr.hasBody()) {
+    serializeBlockInto(expr.getBody(), body);
+  }
 }
 
 void ASTSerializer::serializeMethodFunction(const FunctionAST& function,
@@ -813,6 +839,9 @@ void ASTSerializer::serializeGenericCall(const sun::ast::GenericCallAST& expr,
 void ASTSerializer::serializeManifest(const sun::ast::ManifestAST& expr,
                                       pbc::ASTNode* node) const {
   auto* manifest = node->mutable_manifest();
+  if (expr.getLibraryId()) {
+    manifest->set_library_id(*expr.getLibraryId());
+  }
 
   // Suns
   auto* suns = manifest->mutable_suns();
@@ -852,8 +881,9 @@ void ASTSerializer::serializeModule(const sun::ast::ModuleAST& expr,
   auto* mod = node->mutable_module_def();
   mod->set_name(expr.getName());
   mod->set_doc(expr.getDoc());
-  if (config_.include_location && expr.getNameLocation())
+  if (config_.include_location && expr.getNameLocation()) {
     *mod->mutable_name_location() = serializePosition(*expr.getNameLocation());
+  }
   mod->set_visibility(toProto(expr.getVisibility()));
   serializeBlockInto(expr.getBody(), mod->mutable_body());
 }
@@ -896,8 +926,9 @@ void ASTSerializer::serializeClassDef(const sun::ast::ClassDefinitionAST& expr,
   for (const auto& iface : expr.getImplementedInterfaces()) {
     auto* ifaceProto = cls->add_implemented_interfaces();
     ifaceProto->set_name(iface.name);
-    if (iface.declarationKey)
+    if (iface.declarationKey) {
       ifaceProto->set_declaration_key(iface.declarationKey->encoding());
+    }
     for (const auto& typeArg : iface.typeArguments) {
       *ifaceProto->add_type_arguments() = serializeTypeAnnotation(typeArg);
     }
@@ -906,8 +937,9 @@ void ASTSerializer::serializeClassDef(const sun::ast::ClassDefinitionAST& expr,
   for (const auto& field : expr.getFields()) {
     auto* fieldProto = cls->add_fields();
     serializeFieldInto(field, fieldProto);
-    if (field.initializer)
+    if (field.initializer) {
       *fieldProto->mutable_initializer() = serialize(*field.initializer);
+    }
   }
 
   for (const auto& method : expr.getMethods()) {
@@ -929,8 +961,9 @@ void ASTSerializer::serializeInterfaceDef(
   node->mutable_interface_def()->set_source_file_id(expr.getSourceFileId());
   auto* iface = node->mutable_interface_def();
   iface->set_name(expr.getName());
-  if (expr.getParent())
+  if (expr.getParent()) {
     *iface->mutable_parent() = serializeTypeAnnotation(*expr.getParent());
+  }
 
   for (const auto& parameter : expr.getTypeParameters()) {
     serializeTypeParameterInto(parameter, iface->add_type_params());
@@ -968,9 +1001,10 @@ void ASTSerializer::serializeEnumDef(const sun::ast::EnumDefinitionAST& expr,
 
   for (const auto& variant : expr.getVariants()) {
     auto* variantProto = enumDef->add_variants();
-    if (config_.declarations)
+    if (config_.declarations) {
       *variantProto->mutable_declaration_identity() =
           serializeIdentity(variant.declaration);
+    }
     variantProto->set_name(variant.name);
     variantProto->set_value(variant.value);
     variantProto->set_has_explicit_value(variant.hasExplicitValue);
@@ -1004,9 +1038,10 @@ void ASTSerializer::serializeTryCatch(const sun::ast::TryCatchExprAST& expr,
   // Serialize catch clauses (source order)
   for (const auto& cc : expr.getCatchClauses()) {
     auto* catchClause = tryCatch->add_catch_clauses();
-    if (config_.declarations)
+    if (config_.declarations) {
       *catchClause->mutable_declaration_identity() =
           serializeIdentity(cc.declaration);
+    }
     catchClause->set_binding_name(cc.bindingName);
     if (cc.bindingType) {
       *catchClause->mutable_binding_type() =

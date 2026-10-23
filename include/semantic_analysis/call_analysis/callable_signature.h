@@ -31,9 +31,10 @@ struct CallableSignatureHash {
     size_t hash = std::hash<std::string>{}(signature.name);
     hash ^=
         signature.parameters.size() + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    for (const auto& type : signature.parameters)
+    for (const auto& type : signature.parameters) {
       hash ^= (type ? static_cast<size_t>(type->getKind()) + 1 : 0) +
               0x9e3779b9 + (hash << 6) + (hash >> 2);
+    }
     return hash;
   }
 };

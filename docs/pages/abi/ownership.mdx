@@ -1,34 +1,31 @@
 # Ownership & Allocation
 
-Part of the [Sun ABI draft](/abi). Requirements are proposed, not guarantees of
-current releases. **MUST**, **MUST NOT**, and **SHOULD** express draft requirements.
-Unresolved decisions must be completed before stabilization.
+Part of the [Sun ABI draft](/abi). These are proposed requirements, not guarantees
+of current releases. Open decisions must be resolved before stabilization.
 
 ## Ownership, borrowing, and allocation
 
-The ABI MUST preserve Sun's prohibition on implicit copies. Representation-level
-loads and stores do not grant permission to duplicate ownership.
+Moving bits does not grant permission to copy ownership. Destroying a value and
+freeing its storage are separate operations.
 
-A successful ownership transfer MUST leave exactly one owner responsible for
-cleanup. The call contract MUST define the transfer point and responsibility
-when argument evaluation, construction, or the call fails. Partially initialized
-values MUST be destroyed only for the portions that were initialized.
+| Subject | Level | Requirement |
+| --- | --- | --- |
+| Copies | MUST NOT | Introduce implicit Sun copies across a compiled boundary. |
+| Ownership transfer | MUST | Leave exactly one owner responsible for cleanup after a successful transfer. |
+| Failed calls | MUST | Define the transfer point and cleanup responsibility if argument evaluation, construction, or the call fails. |
+| Partial initialization | MUST | Destroy only the parts that were initialized. |
+| Borrow metadata | MUST | Preserve mutability, lifetime relationships, and aliasing constraints needed for safety checks. A machine pointer alone is insufficient. |
+| Borrow optimization | MUST NOT | Give the producer and consumer conflicting optimizer assumptions about the same borrowed storage. |
+| Deallocation | MUST | Use a compatible deallocation operation with the required alignment and allocator state. |
+| Runtime lifetime | MUST | Keep destruction and deallocation services available for the allocation's lifetime. |
 
-Borrow metadata MUST preserve mutability, lifetime relationships, and aliasing
-constraints needed by the consumer's safety checks. Machine pointers alone do
-not encode these guarantees. A producer and consumer MUST NOT attach conflicting
-optimizer assumptions to the same borrowed storage.
+For example, `Unique<T>` currently stores a pointer, destroys `T`, and then calls
+`_free`. It stores no allocator identity. Passing it across a boundary requires
+compatible allocation and free operations; matching pointer layouts do not make
+custom allocators interchangeable.
 
-An allocation crossing a boundary MUST be released by a compatible deallocation
-operation, with the required alignment and allocator state. Destruction of the
-value and release of its storage are distinct obligations. Runtime services
-needed for either operation MUST remain available for the allocation's lifetime.
+## Open decisions
 
-For example, current `Unique<T>` stores a pointer and destroys `T` before calling
-`_free`. It carries no allocator identity. Crossing a boundary with that type
-therefore requires a compatible allocation/free family; arbitrary custom allocator
-interchangeability cannot be inferred from the pointer layout.
-
-**Unresolved:** document exact transfer and failure rules for every parameter
-mode, construction, return, and cleanup path. Specify the system allocation
-contract and runtime linkage policy before promising cross-version ownership.
+Specify transfer and failure rules for each parameter mode, construction,
+return, and cleanup path. Define the system allocator contract and runtime
+linkage rules before promising ownership compatibility across compiler versions.

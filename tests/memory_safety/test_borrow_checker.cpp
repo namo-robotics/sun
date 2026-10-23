@@ -1175,7 +1175,8 @@ TEST(MemorySafety_BorrowChecker, xml_reader_cannot_escape_input) {
       var reader = dangling(alloc);
       return 0;
     }
-  )"), SunError);
+  )"),
+               SunError);
 }
 
 /** Rejects modifying input that a live XML reader still borrows. */
@@ -1191,7 +1192,8 @@ TEST(MemorySafety_BorrowChecker, xml_reader_prevents_input_mutation) {
       var event = match reader.next() { XmlResult.Ok(value) => value, XmlResult.Error(_) => { return 1; } };
       return 0;
     }
-  )"), SunError);
+  )"),
+               SunError);
 }
 
 /** Rejects destroying an XML document while a child borrow remains live. */
@@ -1211,7 +1213,8 @@ TEST(MemorySafety_BorrowChecker, xml_child_prevents_document_move) {
       var text = try child.text();
       return XmlResult.Ok(0);
     }
-  )"), SunError);
+  )"),
+               SunError);
 }
 
 /** Rejects invalidating child storage while a borrowed child is still used. */
@@ -1229,7 +1232,8 @@ TEST(MemorySafety_BorrowChecker, xml_child_prevents_removal) {
       var text = try child.text();
       return XmlResult.Ok(0);
     }
-  )"), SunError);
+  )"),
+               SunError);
 }
 
 /** Allows chained child borrows while their document remains alive. */

@@ -20,11 +20,15 @@ using sun::types::unwrapRef;
 /** Reports whether a semantic type meets the requested type-trait requirement.
  */
 bool satisfies(const TypePtr& type, const TypePtr& requirement) {
-  if (!type || !requirement) return false;
+  if (!type || !requirement) {
+    return false;
+  }
 
   // A borrow satisfies whatever it borrows: `ref i32` is numeric.
   TypePtr valueType = unwrapRef(type);
-  if (!valueType) return false;
+  if (!valueType) {
+    return false;
+  }
 
   auto trait =
       requirement->isTypeParameter()
@@ -59,9 +63,10 @@ bool satisfies(const TypePtr& type, const TypePtr& requirement) {
     return classType.implementsInterface(
         static_cast<const InterfaceType&>(*requirement));
   }
-  if (valueType->isInterface() && requirement->isInterface())
+  if (valueType->isInterface() && requirement->isInterface()) {
     return static_cast<const InterfaceType&>(*valueType)
         .extendsInterface(static_cast<const InterfaceType&>(*requirement));
+  }
   return valueType->equals(*requirement);
 }
 

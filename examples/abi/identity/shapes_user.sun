@@ -1,0 +1,12 @@
+/** Exposes a signature referring to the v1 library's type. */
+public module shapes_user {
+
+  /** Reads a point satisfying the imported nominal type and ABI contract. */
+  public function read(point: ref shapes.Point) i32 {
+    return point.x;
+  }
+}
+
+manifest {
+  libraries: ["shapes_v1.moon"]
+}

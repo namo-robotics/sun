@@ -161,7 +161,9 @@ class ScopeManager {
    */
   size_t functionBoundaryDepth() const {
     for (size_t i = scopes_.size(); i-- > 0;) {
-      if (scopes_[i].isFunctionBoundary) return i;
+      if (scopes_[i].isFunctionBoundary) {
+        return i;
+      }
     }
     return scopes_.empty() ? 0 : scopes_.size() - 1;
   }

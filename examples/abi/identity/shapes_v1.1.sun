@@ -1,0 +1,17 @@
+/** Revises the implementation while preserving the library and type contract. */
+public module shapes {
+
+  /** Stores one integer, just like the v1 type. */
+  public class Point {
+    public var x: i32;
+
+    /** Uses a different implementation without changing the field layout. */
+    init() {
+      this.x = 43;
+    }
+  }
+}
+
+manifest {
+  library_id: "sun.examples/shapes"
+}

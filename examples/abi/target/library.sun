@@ -1,0 +1,8 @@
+/** Supplies one scalar call across a compiled-library boundary. */
+public module sample {
+
+  /** Returns the value expected by the consumer. */
+  public function answer() i32 {
+    return 42;
+  }
+}

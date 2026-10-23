@@ -58,11 +58,11 @@ struct Scratch {
     return (dir / name).string();
   }
   /**
-   * Run build/sun with `arguments`; returns what it printed.
+   * Runs build/sun with progress logging so cache decisions can be asserted.
    */
   std::string runSun(const std::string& arguments) const {
-    const std::string cmd =
-        "build/sun " + arguments + " > " + path("log") + " 2>&1";
+    const std::string cmd = "SUN_LOG_LEVEL=info build/sun " + arguments +
+                            " > " + path("log") + " 2>&1";
     int rc = std::system(cmd.c_str());
     EXPECT_EQ(WEXITSTATUS(rc), 0) << readFile(path("log"));
     return readFile(path("log"));
@@ -88,6 +88,26 @@ sun::driver::BuildInputs makeInputs() {
 // ============================================================================
 // The hash
 // ============================================================================
+
+/** Hashing prepared text does not need a schema or parse the generated source.
+ */
+TEST(Tooling_Backend_InputHash, hashes_prepared_proto_text_without_generation) {
+  std::vector<sun::moon_bundling::SynthesizedProtoModule> modules = {
+      {"not valid Sun source", "<proto:missing.proto>", "prepared"}};
+  sun::driver::BuildInputs original;
+  ASSERT_NO_THROW(sun::driver::addSourceDigests(original, {}, modules));
+  ASSERT_EQ(original.sourceDigests.size(), 1u);
+
+  modules[0].pseudoPath = "<proto:renamed.proto>";
+  sun::driver::BuildInputs renamed;
+  sun::driver::addSourceDigests(renamed, {}, modules);
+  EXPECT_EQ(original.sourceDigests, renamed.sourceDigests);
+
+  modules[0].sunSource += " changed";
+  sun::driver::BuildInputs changed;
+  sun::driver::addSourceDigests(changed, {}, modules);
+  EXPECT_NE(original.sourceDigests, changed.sourceDigests);
+}
 
 TEST(Tooling_Backend_InputHash, same_inputs_same_hash) {
   EXPECT_EQ(sun::driver::computeInputHash(makeInputs()),
@@ -168,7 +188,9 @@ TEST(Tooling_Backend_InputHash, missing_artifacts_have_no_record) {
 // A bundle is rebuilt when a source named by its manifest changes, and left
 // alone otherwise. Without the flag it is rebuilt regardless.
 TEST(Tooling_Backend_InputHash, bundle_is_rebuilt_only_when_inputs_change) {
-  if (!haveSunBinary()) GTEST_SKIP() << "build/sun not found";
+  if (!haveSunBinary()) {
+    GTEST_SKIP() << "build/sun not found";
+  }
   Scratch scratch("moon");
   writeFile(scratch.path("util.sun"), R"(
 public module input_hash_lib {
@@ -209,7 +231,9 @@ public module input_hash_lib {
 
 // Flags are inputs too: the same sources with -g are a different bundle.
 TEST(Tooling_Backend_InputHash, flags_are_inputs) {
-  if (!haveSunBinary()) GTEST_SKIP() << "build/sun not found";
+  if (!haveSunBinary()) {
+    GTEST_SKIP() << "build/sun not found";
+  }
   Scratch scratch("flags");
   writeFile(scratch.path("lib.sun"), R"(
 public module input_hash_flags {
@@ -227,7 +251,9 @@ public module input_hash_flags {
 // binary and leaves the executable alone, and a change to the program
 // rebuilds both.
 TEST(Tooling_Backend_InputHash, program_and_tests_are_skipped_separately) {
-  if (!haveSunBinary()) GTEST_SKIP() << "build/sun not found";
+  if (!haveSunBinary()) {
+    GTEST_SKIP() << "build/sun not found";
+  }
   if (!std::filesystem::exists("build/stdlib.moon")) {
     GTEST_SKIP() << "build/stdlib.moon not found";
   }
@@ -294,7 +320,9 @@ manifest {
 // A program without tests records that, so a later run does not compile it
 // again just to find out there is no test binary to build.
 TEST(Tooling_Backend_InputHash, program_without_tests_is_skipped) {
-  if (!haveSunBinary()) GTEST_SKIP() << "build/sun not found";
+  if (!haveSunBinary()) {
+    GTEST_SKIP() << "build/sun not found";
+  }
   Scratch scratch("no_tests");
   writeFile(scratch.path("app.sun"), "function main() i32 { return 0; }\n");
   const std::string app = scratch.path("app");
@@ -318,7 +346,9 @@ TEST(Tooling_Backend_InputHash, program_without_tests_is_skipped) {
 // --force-rebuild builds anyway while still recording the inputs, so the run
 // after it skips again.
 TEST(Tooling_Backend_InputHash, force_rebuild_builds_and_still_records) {
-  if (!haveSunBinary()) GTEST_SKIP() << "build/sun not found";
+  if (!haveSunBinary()) {
+    GTEST_SKIP() << "build/sun not found";
+  }
   Scratch scratch("force");
   writeFile(scratch.path("app.sun"), "function main() i32 { return 0; }\n");
   const std::string app = scratch.path("app");
@@ -339,7 +369,9 @@ TEST(Tooling_Backend_InputHash, force_rebuild_builds_and_still_records) {
 // The flag is about built artifacts, so it has nothing to say about a JIT
 // run.
 TEST(Tooling_Backend_InputHash, flag_is_rejected_without_a_build_mode) {
-  if (!haveSunBinary()) GTEST_SKIP() << "build/sun not found";
+  if (!haveSunBinary()) {
+    GTEST_SKIP() << "build/sun not found";
+  }
   Scratch scratch("jit");
   writeFile(scratch.path("run.sun"), "function main() i32 { return 0; }\n");
   const std::string cmd = "build/sun --force-rebuild " +

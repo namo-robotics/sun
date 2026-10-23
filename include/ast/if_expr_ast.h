@@ -25,7 +25,9 @@ class IfExprAST : public ExprAST {
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string result = "if (" + Cond->toString() + ") " + Then->toString();
-    if (Else) result += " else " + Else->toString();
+    if (Else) {
+      result += " else " + Else->toString();
+    }
     return result;
   }
   /** Returns the condition expression. */

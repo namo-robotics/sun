@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 
+#include "abi/nominal_identity.h"
 #include "ast/block_expr_ast.h"
 #include "ast/expr_ast.h"
 
@@ -38,6 +39,8 @@ struct ManifestProtoDependency {
  */
 struct ManifestArchiveDependency {
   std::string path;
+  std::vector<std::string> cpuFeatures;
+  std::vector<std::string> runtimeServices;
 };
 
 /**
@@ -64,6 +67,7 @@ class ManifestAST : public ExprAST {
   std::vector<ManifestProtoDependency> protos;
   std::vector<ManifestArchiveDependency> archives;
   std::vector<ManifestTargetBlock> targets;
+  std::optional<std::string> libraryId;
   // `test_files:` entries — test-only sources, loaded only for test builds.
   std::vector<ManifestSunDependency> testSuns;
 
@@ -75,19 +79,27 @@ class ManifestAST : public ExprAST {
               std::vector<ManifestProtoDependency> protos = {},
               std::vector<ManifestArchiveDependency> archives = {},
               std::vector<ManifestTargetBlock> targets = {},
-              std::vector<ManifestSunDependency> testSuns = {})
+              std::vector<ManifestSunDependency> testSuns = {},
+              std::optional<std::string> libraryId = std::nullopt)
       : suns(std::move(suns)),
         moons(std::move(moons)),
         protos(std::move(protos)),
         archives(std::move(archives)),
         targets(std::move(targets)),
-        testSuns(std::move(testSuns)) {}
+        libraryId(std::move(libraryId)),
+        testSuns(std::move(testSuns)) {
+    if (this->libraryId) {
+      sun::abi::validateLibraryId(*this->libraryId);
+    }
+  }
 
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::MANIFEST; }
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override { return "manifest"; }
 
+  /** Returns the explicit library identity, absent for exact-only bundles. */
+  const std::optional<std::string>& getLibraryId() const { return libraryId; }
   /** Returns the source dependencies. */
   const std::vector<ManifestSunDependency>& getSuns() const { return suns; }
   /** Returns the compiled-library dependencies. */

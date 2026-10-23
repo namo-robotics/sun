@@ -18,11 +18,15 @@ std::optional<SymbolLocation> computeDefinition(
       findDeclarationAt(program, documentPath, source, byteOffset);
   // A declaration with no file cannot be opened (a bundle built before
   // source paths were recorded)
-  if (!declaration || !declaration->location.filePath) return std::nullopt;
+  if (!declaration || !declaration->location.filePath) {
+    return std::nullopt;
+  }
 
   std::optional<std::string> text =
       textOf(declaration->location, documentPath, source);
-  if (!text) return std::nullopt;
+  if (!text) {
+    return std::nullopt;
+  }
   return makeSymbolLocation(normalizePath(*declaration->location.filePath),
                             nameRangeOf(*declaration, *text), *text);
 }

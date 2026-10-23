@@ -39,7 +39,9 @@ class ModuleType : public Type {
 
   /** Reports whether the other type has the same semantic identity. */
   bool equals(const Type& other) const override {
-    if (!other.isModule()) return false;
+    if (!other.isModule()) {
+      return false;
+    }
     return modulePath == static_cast<const ModuleType&>(other).modulePath;
   }
 

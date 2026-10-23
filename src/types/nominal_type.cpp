@@ -7,8 +7,9 @@
 namespace sun::types {
 sun::semantic_analysis::DeclarationId NominalType::sourceDeclaration(
     const DeclarationTable& table) const {
-  if (!belongsTo(table))
+  if (!belongsTo(table)) {
     logAndThrowError("Nominal type belongs to another analysis session");
+  }
   const auto& record = table.get(getDeclarationId());
   return record.specialization ? record.specialization->source
                                : getDeclarationId();

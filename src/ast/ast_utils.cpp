@@ -11,8 +11,9 @@ namespace sun::ast {
 /** Clears this node's type, its match arm annotations, then every child. */
 void clearResolvedTypes(const ExprAST& expr) {
   expr.clearResolvedType();
-  if (auto* call = dynamic_cast<const CallExprAST*>(&expr))
+  if (auto* call = dynamic_cast<const CallExprAST*>(&expr)) {
     call->setInitializedFields({});
+  }
   if (expr.getType() == ASTNodeType::MATCH) {
     // Arm tags and binding types live on the arms, not on child nodes
     auto& match =
@@ -20,7 +21,9 @@ void clearResolvedTypes(const ExprAST& expr) {
     for (auto& arm : match.getArmsMutable()) {
       arm.resolvedVariantTag = -1;
       arm.matchedVariantTags.clear();
-      for (auto& binding : arm.bindings) binding.resolvedType = nullptr;
+      for (auto& binding : arm.bindings) {
+        binding.resolvedType = nullptr;
+      }
     }
   }
   forEachChild(expr, [](const ExprAST& child) { clearResolvedTypes(child); });

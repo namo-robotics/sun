@@ -64,12 +64,18 @@ using sun::types::typeNeedsDrop;
 
 /** Prepares default field initializers for constructor analysis. */
 void prepareFieldInitializers(sun::ast::ClassDefinitionAST& classDef) {
-  if (classDef.isPartial() || classDef.isPrecompiled()) return;
+  if (classDef.isPartial() || classDef.isPrecompiled()) {
+    return;
+  }
   size_t count = 0;
   for (const auto& field : classDef.getFields()) {
-    if (field.initializer) ++count;
+    if (field.initializer) {
+      ++count;
+    }
   }
-  if (!count) return;
+  if (!count) {
+    return;
+  }
 
   if (!classDef.getConstructor()) {
     if (count != classDef.getFields().size()) {
@@ -97,11 +103,14 @@ void prepareFieldInitializers(sun::ast::ClassDefinitionAST& classDef) {
   for (auto& method : classDef.getMutableMethods()) {
     auto& function = *method.function;
     if (!method.isConstructor || !function.hasBody() ||
-        function.getFieldInitializerCount())
+        function.getFieldInitializerCount()) {
       continue;
+    }
     std::vector<std::unique_ptr<ExprAST>> prefix;
     for (const auto& field : classDef.getFields()) {
-      if (!field.initializer) continue;
+      if (!field.initializer) {
+        continue;
+      }
       auto receiver = std::make_unique<sun::ast::ThisExprAST>();
       receiver->setLocation(field.location);
       auto assignment = std::make_unique<MemberAssignmentAST>(
@@ -162,7 +171,9 @@ class ClassInitInfo {
       : classType_(classType), methods_(methods) {
     for (const auto& field : classType.getFields()) {
       allFields_.insert(field.name);
-      if (typeNeedsDrop(field.type)) owningFields_.insert(field.name);
+      if (typeNeedsDrop(field.type)) {
+        owningFields_.insert(field.name);
+      }
     }
   }
 
@@ -321,14 +332,18 @@ class BodyWalk {
 
 std::string BodyWalk::firstFieldWithoutValue() const {
   for (const auto& field : info_.classType().getFields()) {
-    if (statusOf(field.name) != FieldStatus::Initialized) return field.name;
+    if (statusOf(field.name) != FieldStatus::Initialized) {
+      return field.name;
+    }
   }
   return "";
 }
 
 void BodyWalk::noteFieldRead(const std::string& field, const std::string& what,
                              std::optional<Position> loc) {
-  if (statusOf(field) == FieldStatus::Initialized) return;
+  if (statusOf(field) == FieldStatus::Initialized) {
+    return;
+  }
   logAndThrowError("Field '" + field + "' of '" + className() + "' is " + what +
                        " before it is assigned. A constructor assigns a field "
                        "before reading it back",
@@ -338,7 +353,9 @@ void BodyWalk::noteFieldRead(const std::string& field, const std::string& what,
 void BodyWalk::noteObjectUse(const std::string& what,
                              std::optional<Position> loc) {
   std::string missing = firstFieldWithoutValue();
-  if (missing.empty()) return;
+  if (missing.empty()) {
+    return;
+  }
   logAndThrowError("Cannot " + what + " in the constructor of '" + className() +
                        "' while field '" + missing +
                        "' has no value yet. A constructor assigns every field, "
@@ -391,12 +408,16 @@ void BodyWalk::walkFieldWrite(const MemberAssignmentAST& assign,
 void BodyWalk::walkCallOnThis(const CallExprAST& call,
                               const std::string& methodName) {
   for (const auto& arg : call.getArgs()) {
-    if (arg) walk(*arg);
+    if (arg) {
+      walk(*arg);
+    }
   }
 
   // Once the object is whole this is an ordinary call on an ordinary method:
   // nothing left to check, and its writes replace values that are there
-  if (firstFieldWithoutValue().empty()) return;
+  if (firstFieldWithoutValue().empty()) {
+    return;
+  }
 
   // Not whole yet: follow the call and walk the method's body with the state
   // as it stands here. A body that is not here (a precompiled bundle carries
@@ -416,11 +437,13 @@ void BodyWalk::walkCallOnThis(const CallExprAST& call,
     const auto& variants =
         static_cast<const sun::types::EnumType&>(*returned).getVariants();
     bool fallible = variants.size() > 1;
-    for (size_t i = 1; i < variants.size(); ++i)
+    for (size_t i = 1; i < variants.size(); ++i) {
       fallible = fallible && variants[i].payloadTypes.size() == 1;
-    if (fallible)
+    }
+    if (fallible) {
       noteObjectUse("call fallible method '" + methodName + "'",
                     call.getLocation());
+    }
   }
   bool wasInMethod = inMethodBody_;
   inMethodBody_ = true;
@@ -428,17 +451,23 @@ void BodyWalk::walkCallOnThis(const CallExprAST& call,
   inMethodBody_ = wasInMethod;
   inProgress_.erase(methodName);
   std::vector<sun::semantic_analysis::DeclarationId> initialized;
-  for (const auto& field : info_.classType().getFields())
-    if (statusOf(field.name) == FieldStatus::Initialized)
+  for (const auto& field : info_.classType().getFields()) {
+    if (statusOf(field.name) == FieldStatus::Initialized) {
       initialized.push_back(field.declarationId);
+    }
+  }
   call.setInitializedFields(std::move(initialized));
 }
 
 void BodyWalk::requireEveryFieldAtEnd(const ExprAST& body,
                                       std::optional<Position> loc) {
-  if (exprDiverges(body)) return;
+  if (exprDiverges(body)) {
+    return;
+  }
   std::string missing = firstFieldWithoutValue();
-  if (missing.empty()) return;
+  if (missing.empty()) {
+    return;
+  }
   logAndThrowError(
       "Constructor of '" + className() + "' can finish with field '" + missing +
           "' unassigned. Assign every field before the constructor ends: one "
@@ -460,7 +489,9 @@ void BodyWalk::walkBranches(const std::vector<const ExprAST*>& branches) {
       walk(*branch);
       // A branch that returns or throws never reaches the code after the
       // choice, so where it left the fields does not count
-      if (exprDiverges(*branch)) continue;
+      if (exprDiverges(*branch)) {
+        continue;
+      }
     }
     if (after) {
       mergeInto(*after, states_);
@@ -478,7 +509,9 @@ void BodyWalk::walkTryCatch(const TryCatchExprAST& tryCatch) {
   states_ = before;
   walk(tryCatch.getTryBlock());
   std::optional<FieldStates> after;
-  if (!exprDiverges(tryCatch.getTryBlock())) after = states_;
+  if (!exprDiverges(tryCatch.getTryBlock())) {
+    after = states_;
+  }
 
   // A throw can leave the try block part-way through, so a clause picks up
   // with whatever the block had assigned by then
@@ -490,7 +523,9 @@ void BodyWalk::walkTryCatch(const TryCatchExprAST& tryCatch) {
     states_ = atCatch;
     if (clause.body) {
       walk(*clause.body);
-      if (exprDiverges(*clause.body)) continue;
+      if (exprDiverges(*clause.body)) {
+        continue;
+      }
     }
     if (after) {
       mergeInto(*after, states_);
@@ -505,9 +540,13 @@ void BodyWalk::walkTryCatch(const TryCatchExprAST& tryCatch) {
 void BodyWalk::walkLoop(const std::vector<const ExprAST*>& once,
                         const ExprAST* body, const ExprAST* then) {
   for (const ExprAST* expr : once) {
-    if (expr) walk(*expr);
+    if (expr) {
+      walk(*expr);
+    }
   }
-  if (!body) return;
+  if (!body) {
+    return;
+  }
 
   // The body may run any number of times, including none, so it is walked
   // until the state at the top of the loop stops moving: the pass after the
@@ -519,11 +558,15 @@ void BodyWalk::walkLoop(const std::vector<const ExprAST*>& once,
   for (int round = 0; round < 4; ++round) {
     states_ = atLoopTop;
     walk(*body);
-    if (then) walk(*then);
+    if (then) {
+      walk(*then);
+    }
 
     FieldStates settled = atLoopTop;
     mergeInto(settled, states_);
-    if (settled == atLoopTop) break;
+    if (settled == atLoopTop) {
+      break;
+    }
     atLoopTop = std::move(settled);
   }
   states_ = std::move(atLoopTop);
@@ -536,7 +579,9 @@ void BodyWalk::forgetEveryWrittenField(const ExprAST& expr) {
       FieldStatus& status = states_[assign.getMemberName()];
       // A write can only ever give a field a value, so one that certainly has
       // one still does
-      if (status == FieldStatus::Uninitialized) status = FieldStatus::Unknown;
+      if (status == FieldStatus::Uninitialized) {
+        status = FieldStatus::Unknown;
+      }
     }
   }
   forEachChild(
@@ -549,7 +594,9 @@ void BodyWalk::walk(const ExprAST& expr) {
   // fine, and every write replaces and drops — the meaning a write carries
   // unless this walk says otherwise. Nothing can un-assign a field, so there
   // is nothing left to check or tag.
-  if (firstFieldWithoutValue().empty()) return;
+  if (firstFieldWithoutValue().empty()) {
+    return;
+  }
 
   switch (expr.getType()) {
     case ASTNodeType::MEMBER_ASSIGNMENT: {
@@ -593,9 +640,13 @@ void BodyWalk::walk(const ExprAST& expr) {
       return;
     case ASTNodeType::RETURN: {
       const auto& ret = static_cast<const sun::ast::ReturnExprAST&>(expr);
-      if (ret.getValue()) walk(*ret.getValue());
+      if (ret.getValue()) {
+        walk(*ret.getValue());
+      }
       // Only the constructor's own returns owe the whole object
-      if (inMethodBody_) return;
+      if (inMethodBody_) {
+        return;
+      }
       if (ret.getTargetType() && ret.getTargetType()->isEnum()) {
         auto* call = dynamic_cast<const sun::ast::CallExprAST*>(ret.getValue());
         auto* variant =
@@ -606,8 +657,9 @@ void BodyWalk::walk(const ExprAST& expr) {
                 static_cast<const sun::types::EnumType&>(*ret.getTargetType())
                     .getVariants()
                     .front()
-                    .name)
+                    .name) {
           return;
+        }
       }
       std::string missing = firstFieldWithoutValue();
       if (!missing.empty()) {
@@ -622,21 +674,29 @@ void BodyWalk::walk(const ExprAST& expr) {
     }
     case ASTNodeType::IF: {
       const auto& ifExpr = static_cast<const sun::ast::IfExprAST&>(expr);
-      if (ifExpr.getCond()) walk(*ifExpr.getCond());
+      if (ifExpr.getCond()) {
+        walk(*ifExpr.getCond());
+      }
       walkBranches({ifExpr.getThen(), ifExpr.getElse()});
       return;
     }
     case ASTNodeType::TERNARY: {
       const auto& ternary = static_cast<const sun::ast::TernaryExprAST&>(expr);
-      if (ternary.getCond()) walk(*ternary.getCond());
+      if (ternary.getCond()) {
+        walk(*ternary.getCond());
+      }
       walkBranches({ternary.getThen(), ternary.getElse()});
       return;
     }
     case ASTNodeType::MATCH: {
       const auto& match = static_cast<const sun::ast::MatchExprAST&>(expr);
-      if (match.getDiscriminant()) walk(*match.getDiscriminant());
+      if (match.getDiscriminant()) {
+        walk(*match.getDiscriminant());
+      }
       std::vector<const ExprAST*> arms;
-      for (const auto& arm : match.getArms()) arms.push_back(arm.body.get());
+      for (const auto& arm : match.getArms()) {
+        arms.push_back(arm.body.get());
+      }
       walkBranches(arms);
       return;
     }
@@ -684,7 +744,9 @@ void BodyWalk::walk(const ExprAST& expr) {
 void checkFieldInitialization(const FunctionAST& constructor,
                               const ClassType& classType,
                               const std::vector<ClassMethodDecl>& methods) {
-  if (!constructor.hasBody()) return;
+  if (!constructor.hasBody()) {
+    return;
+  }
   if (constructor.isSynthesizedConstructor() &&
       constructor.getFieldInitializerCount() != classType.getFields().size()) {
     logAndThrowError(

@@ -80,7 +80,10 @@ jobs:
           rustup default 1.94.1
 
       - name: Build Sun
+        shell: bash
         run: |
+          # setup-python adds its private libraries; compiler tools use their own runtime.
+          unset LD_LIBRARY_PATH
           cmake -B build -G Ninja \
             -DCMAKE_C_COMPILER=clang-20 \
             -DCMAKE_CXX_COMPILER=clang++-20 \

@@ -35,8 +35,9 @@ Analysis analyze(const std::string& source, bool withStdlib = false) {
   sun::driver::initTestEnvironment();
   Analysis analysis;
   analysis.driver = sun::driver::Driver::createForAOT("tests_test");
-  if (withStdlib)
+  if (withStdlib) {
     analysis.driver->setMoonImports(sun::driver::getStdlibMoonImports());
+  }
   analysis.program = analysis.driver->analyzeString(source, kPath);
   return analysis;
 }

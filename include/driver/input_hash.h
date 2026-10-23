@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "moon_bundling/moon_import.h"
+#include "moon_bundling/proto_importer.h"
 
 /** Coordinates compilation, dependency loading, linking, and program execution.
  */
@@ -36,6 +37,8 @@ struct BuildInputs {
   // What is being built: "bundle", "executable", "object" or "tests". The
   // same sources make a different artifact of each kind.
   std::string artifactKind;
+  // Diagnostic label only; excluded from the input hash.
+  std::string entrypoint;
   // Digest of each source text, generated sources included, in any order
   std::vector<std::string> sourceDigests;
   // Native archives, each as its file name and a digest of its bytes
@@ -71,13 +74,13 @@ const std::string& getCompilerDigest();
 std::string computeFileDigest(const std::string& path, const char* what);
 
 /**
- * Generate configured C binding files, then hash source files and generated
- * protobuf modules. C bindings contribute only when listed as source files.
- * Throws SunError when an input cannot be read or generated.
+ * Append content hashes of source files and already synthesized protobuf
+ * modules. Callers must generate source files before hashing them.
+ * Throws SunError when a source file cannot be read.
  */
-void addSourceDigests(BuildInputs& inputs,
-                      const std::vector<std::string>& sourceFiles,
-                      const std::vector<std::string>& protoFiles,
-                      const std::string& baseDir);
+void addSourceDigests(
+    BuildInputs& inputs, const std::vector<std::string>& sourceFiles,
+    const std::vector<sun::moon_bundling::SynthesizedProtoModule>&
+        protoModules);
 
 }  // namespace sun::driver

@@ -63,7 +63,9 @@ class MemberAccessAST : public ExprAST {
     if (!typeArguments.empty()) {
       result += "<";
       for (size_t i = 0; i < typeArguments.size(); ++i) {
-        if (i > 0) result += ", ";
+        if (i > 0) {
+          result += ", ";
+        }
         result += typeArguments[i]->toString();
       }
       result += ">";

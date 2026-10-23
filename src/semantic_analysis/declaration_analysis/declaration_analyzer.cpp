@@ -32,9 +32,10 @@ void DeclarationAnalyzer::analyzeFunctionDefinition(
     if (definition != ctx_.scope()->functions.end() &&
         !definition->second.isForwardDeclaration) {
       if (!definition->second.returnType->equals(*funcInfo.returnType) ||
-          definition->second.canThrow != funcInfo.canThrow)
+          definition->second.canThrow != funcInfo.canThrow) {
         logAndThrowError("Forward declaration does not match its definition",
                          func.getLocation());
+      }
       func.setTargetDeclarationId(definition->second.declarationId);
     }
   }
@@ -80,7 +81,9 @@ void DeclarationAnalyzer::analyzeModuleDefinition(sun::ast::ModuleAST& nsDecl) {
       // here; any other variable is registered now.
       const bool tracked = isTrackedGlobal(varCreate);
       sema_.analyzeExpr(*bodyExpr);
-      if (!tracked) registerModuleVariable(varCreate);
+      if (!tracked) {
+        registerModuleVariable(varCreate);
+      }
     } else {
       sema_.analyzeExpr(*bodyExpr);
     }
@@ -103,11 +106,15 @@ void DeclarationAnalyzer::analyzeMoonScope(sun::ast::ExprAST& expr) {
   // when the moon was built — so body-shape checks are off while we are in
   // there. The bundle being built is ordinary source and keeps every check.
   const bool stubs = !moonScope.isOwnBundle();
-  if (stubs) ctx_.enterMoonScope();
+  if (stubs) {
+    ctx_.enterMoonScope();
+  }
   for (const auto& bodyExpr : moonScope.getBody().getBody()) {
     sema_.analyzeExpr(*bodyExpr);
   }
-  if (stubs) ctx_.exitMoonScope();
+  if (stubs) {
+    ctx_.exitMoonScope();
+  }
   if (!contentHash.empty()) {
     ctx_.exitScope();
   }

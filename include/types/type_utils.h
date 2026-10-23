@@ -45,7 +45,9 @@ inline bool typeMovesOnRead(const TypePtr& type) {
 inline std::string formatTypeList(const std::vector<TypePtr>& types) {
   std::string out;
   for (size_t i = 0; i < types.size(); ++i) {
-    if (i > 0) out += ", ";
+    if (i > 0) {
+      out += ", ";
+    }
     out += types[i] ? types[i]->toDisplayString() : "unknown";
   }
   return out;

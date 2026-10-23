@@ -13,7 +13,9 @@ namespace {
 
 /** Invokes the child visitor when a child expression is present. */
 void visit(const ExprAST* child, const ChildFn& fn) {
-  if (child) fn(*child);
+  if (child) {
+    fn(*child);
+  }
 }
 
 }  // namespace
@@ -22,18 +24,24 @@ void visit(const ExprAST* child, const ChildFn& fn) {
 void forEachChild(const ExprAST& node, const ChildFn& fn) {
   switch (node.getType()) {
     case ASTNodeType::BLOCK: {
-      for (const auto& expr : static_cast<const BlockExprAST&>(node).getBody())
+      for (const auto& expr :
+           static_cast<const BlockExprAST&>(node).getBody()) {
         visit(expr.get(), fn);
+      }
       break;
     }
     case ASTNodeType::FUNCTION: {
       const auto& func = static_cast<const FunctionAST&>(node);
-      if (func.hasBody()) fn(func.getBody());
+      if (func.hasBody()) {
+        fn(func.getBody());
+      }
       break;
     }
     case ASTNodeType::LAMBDA: {
       const auto& lambda = static_cast<const LambdaAST&>(node);
-      if (lambda.hasBody()) fn(lambda.getBody());
+      if (lambda.hasBody()) {
+        fn(lambda.getBody());
+      }
       break;
     }
     case ASTNodeType::VARIABLE_CREATION:
@@ -50,8 +58,11 @@ void forEachChild(const ExprAST& node, const ChildFn& fn) {
       break;
     case ASTNodeType::INTERPOLATED_STRING: {
       const auto& interp = static_cast<const InterpolatedStringAST&>(node);
-      for (const auto& segment : interp.getSegments())
-        if (!segment.isLiteral) visit(segment.expression.get(), fn);
+      for (const auto& segment : interp.getSegments()) {
+        if (!segment.isLiteral) {
+          visit(segment.expression.get(), fn);
+        }
+      }
       break;
     }
     case ASTNodeType::BINARY: {
@@ -66,12 +77,16 @@ void forEachChild(const ExprAST& node, const ChildFn& fn) {
     case ASTNodeType::CALL: {
       const auto& call = static_cast<const CallExprAST&>(node);
       visit(call.getCallee(), fn);
-      for (const auto& arg : call.getArgs()) visit(arg.get(), fn);
+      for (const auto& arg : call.getArgs()) {
+        visit(arg.get(), fn);
+      }
       break;
     }
     case ASTNodeType::GENERIC_CALL: {
-      for (const auto& arg : static_cast<const GenericCallAST&>(node).getArgs())
+      for (const auto& arg :
+           static_cast<const GenericCallAST&>(node).getArgs()) {
         visit(arg.get(), fn);
+      }
       break;
     }
     case ASTNodeType::IF: {
@@ -122,26 +137,32 @@ void forEachChild(const ExprAST& node, const ChildFn& fn) {
       break;
     case ASTNodeType::ARRAY_LITERAL: {
       for (const auto& elem :
-           static_cast<const ArrayLiteralAST&>(node).getElements())
+           static_cast<const ArrayLiteralAST&>(node).getElements()) {
         visit(elem.get(), fn);
+      }
       break;
     }
     case ASTNodeType::STRUCT_LITERAL: {
       for (const auto& field :
-           static_cast<const StructLiteralAST&>(node).getFields())
+           static_cast<const StructLiteralAST&>(node).getFields()) {
         visit(field.value.get(), fn);
+      }
       break;
     }
     case ASTNodeType::ARRAY_INDEX: {
       const auto& idx = static_cast<const ArrayIndexAST&>(node);
       visit(idx.getArray(), fn);
-      for (const auto& index : idx.getIndices()) visit(index.get(), fn);
+      for (const auto& index : idx.getIndices()) {
+        visit(index.get(), fn);
+      }
       break;
     }
     case ASTNodeType::INDEX: {
       const auto& idx = static_cast<const IndexAST&>(node);
       visit(idx.getTarget(), fn);
-      for (const auto& slice : idx.getIndices()) visit(slice.get(), fn);
+      for (const auto& slice : idx.getIndices()) {
+        visit(slice.get(), fn);
+      }
       break;
     }
     case ASTNodeType::SLICE: {
@@ -164,17 +185,20 @@ void forEachChild(const ExprAST& node, const ChildFn& fn) {
       break;
     case ASTNodeType::CLASS_DEFINITION: {
       for (const auto& field :
-           static_cast<const ClassDefinitionAST&>(node).getFields())
+           static_cast<const ClassDefinitionAST&>(node).getFields()) {
         visit(field.initializer.get(), fn);
+      }
       for (const auto& method :
-           static_cast<const ClassDefinitionAST&>(node).getMethods())
+           static_cast<const ClassDefinitionAST&>(node).getMethods()) {
         visit(method.function.get(), fn);
+      }
       break;
     }
     case ASTNodeType::INTERFACE_DEFINITION: {
       for (const auto& method :
-           static_cast<const InterfaceDefinitionAST&>(node).getMethods())
+           static_cast<const InterfaceDefinitionAST&>(node).getMethods()) {
         visit(method.function.get(), fn);
+      }
       break;
     }
     case ASTNodeType::MEMBER_ACCESS:
@@ -195,13 +219,16 @@ void forEachChild(const ExprAST& node, const ChildFn& fn) {
     case ASTNodeType::TRY_CATCH: {
       const auto& tryCatch = static_cast<const TryCatchExprAST&>(node);
       fn(tryCatch.getTryBlock());
-      for (const auto& clause : tryCatch.getCatchClauses())
+      for (const auto& clause : tryCatch.getCatchClauses()) {
         visit(clause.body.get(), fn);
+      }
       break;
     }
     case ASTNodeType::THROW: {
       const auto& throwExpr = static_cast<const ThrowExprAST&>(node);
-      if (throwExpr.hasErrorExpr()) fn(throwExpr.getErrorExpr());
+      if (throwExpr.hasErrorExpr()) {
+        fn(throwExpr.getErrorExpr());
+      }
       break;
     }
     case ASTNodeType::UNSAFE_BLOCK:

@@ -79,7 +79,9 @@ class SemanticContext : public AccessContext {
         savedNames_ = std::move(ctx_.activeLifetimeNames_);
         ctx_.activeLifetimeNames_.clear();
       }
-      if (allowThis) ctx_.allowThisLifetime_ = *allowThis;
+      if (allowThis) {
+        ctx_.allowThisLifetime_ = *allowThis;
+      }
     }
     /** A lifetime scope has exactly one owner responsible for restoration. */
     LifetimeScopeGuard(const LifetimeScopeGuard &) = delete;
@@ -87,10 +89,11 @@ class SemanticContext : public AccessContext {
     LifetimeScopeGuard &operator=(const LifetimeScopeGuard &) = delete;
     /** Restore the enclosing declaration's bindings, including after errors. */
     ~LifetimeScopeGuard() {
-      if (isolated_)
+      if (isolated_) {
         ctx_.activeLifetimeNames_ = std::move(savedNames_);
-      else
+      } else {
         ctx_.activeLifetimeNames_.resize(mark_);
+      }
       ctx_.allowThisLifetime_ = allowThis_;
     }
 
@@ -230,9 +233,11 @@ class SemanticContext : public AccessContext {
 
   /** Nearest enclosing function scope, or nullptr at module/global level. */
   FunctionScope *currentFunctionScope() const {
-    for (auto *s = currentScope_; s != nullptr; s = s->parent)
-      if (s->getType() == ScopeType::Function)
+    for (auto *s = currentScope_; s != nullptr; s = s->parent) {
+      if (s->getType() == ScopeType::Function) {
         return static_cast<FunctionScope *>(s);
+      }
+    }
     return nullptr;
   }
 
@@ -336,7 +341,9 @@ class SemanticContext : public AccessContext {
 
   /** Leave a moon import's stub scope. */
   void exitMoonScope() {
-    if (moonScopeDepth_ > 0) --moonScopeDepth_;
+    if (moonScopeDepth_ > 0) {
+      --moonScopeDepth_;
+    }
   }
 
   // ---- Variables ---------------------------------------------------------
@@ -457,7 +464,9 @@ class SemanticContext : public AccessContext {
     /** Changes the active source file and saves the previous source context. */
     SourceFileGuard(SemanticContext &c, SourceFileId id)
         : ctx(c), saved(c.sourceFileId_) {
-      if (id) ctx.sourceFileId_ = id;
+      if (id) {
+        ctx.sourceFileId_ = id;
+      }
     }
     /** Restores the source file used to resolve imports and report errors. */
     ~SourceFileGuard() { ctx.sourceFileId_ = saved; }
@@ -481,7 +490,9 @@ class SemanticContext : public AccessContext {
     /** Temporarily switches semantic lookup to another scope. */
     ScopeSwitchGuard(SemanticContext &c, SemanticScope *target)
         : ctx(c), saved(c.currentScope_) {
-      if (target) ctx.currentScope_ = target;
+      if (target) {
+        ctx.currentScope_ = target;
+      }
     }
     /** Restores the semantic scope active before the guard was created. */
     ~ScopeSwitchGuard() { ctx.currentScope_ = saved; }
@@ -557,7 +568,9 @@ class SemanticContext : public AccessContext {
 
   /** The same, pointing at the innermost recorded location. */
   void requireAccessible(const sun::semantic_analysis::ItemRef &item) const {
-    if (!isAccessible(item)) denyAccess(item);
+    if (!isAccessible(item)) {
+      denyAccess(item);
+    }
   }
 
   /** True when `item` is reachable from the current module. */

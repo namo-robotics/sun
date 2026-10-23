@@ -61,20 +61,26 @@ class GenericCallAST : public ExprAST {
   /** Visits replaceable child expressions so tree passes can rewrite them in
    * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
-    for (auto& arg : args) fn(arg);
+    for (auto& arg : args) {
+      fn(arg);
+    }
   }
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string result = functionName + "<";
     if (!typeArguments.empty()) {
       for (size_t i = 0; i < typeArguments.size(); ++i) {
-        if (i > 0) result += ", ";
+        if (i > 0) {
+          result += ", ";
+        }
         result += typeArguments[i]->toString();
       }
     }
     result += ">(";
     for (size_t i = 0; i < args.size(); ++i) {
-      if (i > 0) result += ", ";
+      if (i > 0) {
+        result += ", ";
+      }
       result += args[i]->toString();
     }
     return result + ")";

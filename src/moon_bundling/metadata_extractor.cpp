@@ -60,11 +60,14 @@ void clearBody(pbc::FunctionDef* func) {
  */
 template <typename Proto, typename Definition>
 void clearNonGenericBodies(Proto* proto, const Definition& original) {
-  if (!original.getTypeParameters().empty()) return;
+  if (!original.getTypeParameters().empty()) {
+    return;
+  }
   const auto& methods = original.getMethods();
   for (int i = 0; i < proto->methods_size() && i < (int)methods.size(); ++i) {
-    if (!isGeneric(methods[i].function->getProto()))
+    if (!isGeneric(methods[i].function->getProto())) {
       clearBody(proto->mutable_methods(i)->mutable_function());
+    }
   }
 }
 
@@ -73,14 +76,18 @@ void clearNonGenericBodies(Proto* proto, const Definition& original) {
  */
 void extractFunction(const FunctionAST& func, moon::ModuleMetadata& metadata,
                      const ASTSerializer& serializer) {
-  if (func.isExtern() && func.getTargetDeclarationId()) return;
+  if (func.isExtern() && func.getTargetDeclarationId()) {
+    return;
+  }
   // Serialize the function AST to proto
   pbc::ASTNode node = serializer.serialize(func);
 
   // Add to metadata
   pbc::FunctionDef* funcDef = metadata.add_functions();
   *funcDef = std::move(*node.mutable_function_def());
-  if (node.has_location()) *funcDef->mutable_location() = node.location();
+  if (node.has_location()) {
+    *funcDef->mutable_location() = node.location();
+  }
 
   // Clear body if not generic
   if (!isGeneric(func.getProto())) {
@@ -100,11 +107,15 @@ void extractClass(const ClassDefinitionAST& cls, moon::ModuleMetadata& metadata,
   // Add to metadata
   pbc::ClassDef* classDef = metadata.add_classes();
   *classDef = std::move(*node.mutable_class_def());
-  if (node.has_location()) *classDef->mutable_location() = node.location();
+  if (node.has_location()) {
+    *classDef->mutable_location() = node.location();
+  }
 
   // The writer verifies these candidates against the emitted code.
   for (const auto& [instanceId, specialization] : cls.getSpecializations()) {
-    if (!specialization) continue;
+    if (!specialization) {
+      continue;
+    }
     const auto& declarations = analysis.declarations;
     auto* candidate = classDef->add_compiled_specializations();
     candidate->set_declaration_key(
@@ -112,7 +123,9 @@ void extractClass(const ClassDefinitionAST& cls, moon::ModuleMetadata& metadata,
             .encoding());
     for (const auto& method :
          analysis.types->getClass(instanceId)->getMethods()) {
-      if (method.isGeneric()) continue;
+      if (method.isGeneric()) {
+        continue;
+      }
       candidate->add_method_symbols(PortableDeclarationKey::fromDeclaration(
                                         method.declarationId, declarations)
                                         .symbol("function"));
@@ -124,12 +137,15 @@ void extractClass(const ClassDefinitionAST& cls, moon::ModuleMetadata& metadata,
   if (!cls.isGeneric()) {
     for (size_t i = 0; i < cls.getMethods().size(); ++i) {
       const auto& proto = cls.getMethods()[i].function->getProto();
-      if (proto.isGeneric() || proto.getTypeBindings().empty()) continue;
+      if (proto.isGeneric() || proto.getTypeBindings().empty()) {
+        continue;
+      }
       auto* exported =
           classDef->mutable_methods(i)->mutable_function()->mutable_proto();
-      for (size_t j = 0; j < proto.getResolvedParamTypes().size(); ++j)
+      for (size_t j = 0; j < proto.getResolvedParamTypes().size(); ++j) {
         *exported->mutable_args(j)->mutable_type() =
             exportType(proto.getResolvedParamTypes()[j], analysis.declarations);
+      }
       if (proto.hasResolvedReturnType()) {
         *exported->mutable_return_type() =
             exportType(proto.getResolvedReturnType(), analysis.declarations);
@@ -170,7 +186,9 @@ void extractInterface(const InterfaceDefinitionAST& iface,
   // Add to metadata
   pbc::InterfaceDef* ifaceDef = metadata.add_interfaces();
   *ifaceDef = std::move(*node.mutable_interface_def());
-  if (node.has_location()) *ifaceDef->mutable_location() = node.location();
+  if (node.has_location()) {
+    *ifaceDef->mutable_location() = node.location();
+  }
 
   // Consumers specialize default bodies for their concrete class layouts.
 }
@@ -190,17 +208,19 @@ void extractGlobal(
   pbc::ASTNode node = serializer.serialize(var);
   pbc::VariableCreation* global = metadata.add_globals();
   *global = std::move(*node.mutable_variable_creation());
-  if (!global->has_type_annotation())
+  if (!global->has_type_annotation()) {
     *global->mutable_type_annotation() =
         exportType(var.getResolvedType(), declarations);
+  }
   global->clear_value();
 
   using sun::semantic_analysis::constants::GlobalInitKind;
   const auto* decision = var.getGlobalInit();
   if (var.isConst() && decision && decision->kind == GlobalInitKind::Image &&
-      decision->value)
+      decision->value) {
     serializer.serializeConstantValue(*decision->value,
                                       global->mutable_constant_value());
+  }
 }
 
 /**
@@ -215,7 +235,9 @@ void extractEnum(const EnumDefinitionAST& enumDef,
   // Add to metadata
   pbc::EnumDef* enumProto = metadata.add_enums();
   *enumProto = std::move(*node.mutable_enum_def());
-  if (node.has_location()) *enumProto->mutable_location() = node.location();
+  if (node.has_location()) {
+    *enumProto->mutable_location() = node.location();
+  }
 }
 
 }  // namespace
@@ -248,14 +270,17 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
       std::vector<std::string> modules;
       while (module) {
         const auto& record = declarations.get(module);
-        if (record.name.starts_with("$")) break;
+        if (record.name.starts_with("$")) {
+          break;
+        }
         modules.push_back(
             PortableDeclarationKey::fromDeclaration(module, declarations)
                 .encoding());
         module = record.owner;
       }
-      for (auto it = modules.rbegin(); it != modules.rend(); ++it)
+      for (auto it = modules.rbegin(); it != modules.rend(); ++it) {
         md.add_module_declarations(*it);
+      }
     }
     return result[it->second];
   };
@@ -268,7 +293,9 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
               ctx, stmt->getLocation());
           if (auto* moon =
                   dynamic_cast<const sun::ast::MoonScopeAST*>(stmt.get())) {
-            if (!moon->isOwnBundle()) continue;
+            if (!moon->isOwnBundle()) {
+              continue;
+            }
             sun::semantic_analysis::SemanticContext::ScopeSwitchGuard scope(
                 ctx, ctx.lookupModuleScope(moon->getContentHash()));
             walk(moon->getBody(), "", Visibility::Private);
@@ -289,7 +316,9 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
           }
           moon::ModuleMetadata temporary;
           if (auto* function = dynamic_cast<const FunctionAST*>(stmt.get())) {
-            if (function->isTest()) continue;
+            if (function->isTest()) {
+              continue;
+            }
             extractFunction(*function, temporary, serializer);
           } else if (auto* cls =
                          dynamic_cast<const ClassDefinitionAST*>(stmt.get())) {
@@ -319,8 +348,9 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
             *temporary.add_c_binding_assertions() = serializer.serialize(*stmt);
           } else if (stmt->getType() == ASTNodeType::USING) {
             *temporary.add_using_declarations() = serializer.serialize(*stmt);
-          } else
+          } else {
             continue;
+          }
           bindMetadataTypes(temporary, ctx);
           bindMetadataModules(temporary, ctx);
           auto& md = entry(path, *stmt);
@@ -335,8 +365,9 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
     for (size_t i = 1; i <= declarations.size(); ++i) {
       const auto id = DeclarationId(i);
       const auto& record = declarations.get(id);
-      if (record.portableKey && record.bundleHash == bundleHash)
+      if (record.portableKey && record.bundleHash == bundleHash) {
         originals.emplace(*record.portableKey, id);
+      }
     }
     auto key = [&](DeclarationId id) {
       return id ? PortableDeclarationKey::fromDeclaration(id, declarations)

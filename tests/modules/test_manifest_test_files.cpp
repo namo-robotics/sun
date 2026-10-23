@@ -32,7 +32,9 @@ void writeFile(const fs::path& path, const std::string& content) {
 /** Reports whether a collection contains the expected fixture entry. */
 bool includes(const std::vector<std::string>& files, const std::string& name) {
   for (const auto& f : files) {
-    if (fs::path(f).filename() == name) return true;
+    if (fs::path(f).filename() == name) {
+      return true;
+    }
   }
   return false;
 }

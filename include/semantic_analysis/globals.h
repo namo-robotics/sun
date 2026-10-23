@@ -37,10 +37,13 @@ void forEachGlobalDeclaration(const sun::ast::BlockExprAST& block, Fn&& fn) {
 /** The node that declares a variable, or null when `id` is not a variable. */
 inline const sun::ast::VariableCreationAST* findVariableNode(
     const DeclarationTable& declarations, DeclarationId id) {
-  if (!id) return nullptr;
-  const sun::ast::ExprAST* node = declarations.get(id).astNode;
-  if (!node || node->getType() != sun::ast::ASTNodeType::VARIABLE_CREATION)
+  if (!id) {
     return nullptr;
+  }
+  const sun::ast::ExprAST* node = declarations.get(id).astNode;
+  if (!node || node->getType() != sun::ast::ASTNodeType::VARIABLE_CREATION) {
+    return nullptr;
+  }
   return static_cast<const sun::ast::VariableCreationAST*>(node);
 }
 

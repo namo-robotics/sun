@@ -66,12 +66,15 @@ class Tooling_Bindgen : public testing::Test {
    */
   void TearDown() override {
     for (const auto& [name, value] : environment) {
-      if (value)
+      if (value) {
         setenv(name.c_str(), value->c_str(), 1);
-      else
+      } else {
         unsetenv(name.c_str());
+      }
     }
-    if (!dir.empty()) fs::remove_all(dir);
+    if (!dir.empty()) {
+      fs::remove_all(dir);
+    }
   }
   /** Executes the built compiler directly, with captured output and a timeout.
    */
@@ -121,12 +124,16 @@ class Tooling_Bindgen : public testing::Test {
   /** Configures a module, supplying a default output for each selected branch.
    */
   void configure(llvm::json::Object binding) {
-    if (binding.get("header") && !binding.get("output"))
+    if (binding.get("header") && !binding.get("output")) {
       binding["output"] = "generated/native.sun";
-    if (auto* targets = binding.getObject("target"))
-      for (auto& [target, value] : *targets)
-        if (!value.getAsObject()->get("output"))
+    }
+    if (auto* targets = binding.getObject("target")) {
+      for (auto& [target, value] : *targets) {
+        if (!value.getAsObject()->get("output")) {
           (*value.getAsObject())["output"] = "generated/native.sun";
+        }
+      }
+    }
     config(llvm::json::Object{
         {"root", true},
         {"c_bindings", llvm::json::Object{{"native", std::move(binding)}}}});
@@ -154,7 +161,9 @@ class Tooling_Bindgen : public testing::Test {
   Result object(const fs::path& source, bool force = false) {
     std::vector<std::string> args = {
         "--emit-obj", "-o", (dir / "main.o").string(), source.string()};
-    if (force) args.push_back("--force-rebuild");
+    if (force) {
+      args.push_back("--force-rebuild");
+    }
     return run(std::move(args));
   }
 };
@@ -238,8 +247,10 @@ TEST_F(Tooling_Bindgen, TypedefsArraysAndSelfPointers) {
                          {"consume"});
   ASSERT_EQ(result.status, 0) << result.diagnostics();
   const auto text = read(dir / "bindings.sun");
-  for (const auto* fragment : {"count: u64", "raw_ptr<Item>", "array<i32, 3>"})
+  for (const auto* fragment :
+       {"count: u64", "raw_ptr<Item>", "array<i32, 3>"}) {
     EXPECT_NE(text.find(fragment), std::string::npos);
+  }
   result = compile(dir / "bindings.sun", "x86_64-unknown-linux-gnu");
   EXPECT_EQ(result.status, 0) << result.diagnostics();
 }
@@ -365,8 +376,11 @@ TEST_F(Tooling_Bindgen, ConfigCompilationAndNestedHeaderChanges) {
   EXPECT_NE(read(dir / "main.o"), before);
   result = run({source.string()});
   EXPECT_EQ(result.status, 24) << result.diagnostics();
-  for (const auto& entry : fs::directory_iterator(dir))
-    if (entry.path().extension() == ".sun") EXPECT_EQ(entry.path(), source);
+  for (const auto& entry : fs::directory_iterator(dir)) {
+    if (entry.path().extension() == ".sun") {
+      EXPECT_EQ(entry.path(), source);
+    }
+  }
   config(llvm::json::Object{{"root", true}});
   fs::remove(dir / "sensor.h");
   result = object(source, true);
@@ -490,9 +504,10 @@ TEST_F(Tooling_Bindgen, OptionalConfigBindingSdkVariable) {
                   (dir / "main.o").string(), source.string()});
     EXPECT_EQ(result.status == 0, std::string(output) == "other.sun")
         << result.diagnostics();
-    if (std::string(output) == "other.txt")
+    if (std::string(output) == "other.txt") {
       EXPECT_NE(result.diagnostics().find("output must name a .sun file"),
                 std::string::npos);
+    }
   }
   settings["output"] = "generated/native.sun";
   settings["skip_if_unavailable"] = false;
