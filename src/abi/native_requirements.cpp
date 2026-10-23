@@ -1,3 +1,6 @@
+/** Load LLVM Mach-O declarations before Protobuf imports Apple Mach macros. */
+#include <llvm/Object/MachO.h>
+
 #include "abi/native_requirements.h"
 
 #include <llvm/BinaryFormat/ELF.h>
@@ -5,7 +8,6 @@
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Object/Archive.h>
 #include <llvm/Object/ELFObjectFile.h>
-#include <llvm/Object/MachO.h>
 
 #include <set>
 
@@ -116,10 +118,10 @@ void validateNativeArchives(const std::vector<NativeArchiveInput>& archives,
           isMacOS(profile)
               ? macho &&
                     macho->getHeader64().filetype == llvm::MachO::MH_OBJECT &&
-                    macho->getHeader64().cputype ==
+                    macho->getArch() ==
                         (profile.architecture() == "x86_64"
-                             ? llvm::MachO::CPU_TYPE_X86_64
-                             : llvm::MachO::CPU_TYPE_ARM64)
+                             ? llvm::Triple::x86_64
+                             : llvm::Triple::aarch64)
               : elf && elf->getEMachine() == machine &&
                     elf->getEType() == llvm::ELF::ET_REL;
       if (!matches)

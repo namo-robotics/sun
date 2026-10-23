@@ -8,10 +8,12 @@
 #include <llvm/TargetParser/Host.h>
 #include <llvm/TargetParser/Triple.h>
 
+#include <algorithm>
 #include <optional>
 
 #include "abi/abi_validation_scope.h"
 #include "abi/boundary_requirements.h"
+#include "abi/library_abi_snapshot.h"
 #include "abi/native_requirements.h"
 #include "abi/nominal_identity.h"
 #include "abi/producer_identity.h"
@@ -68,7 +70,9 @@ void AbiCompatibilityChecker::beginCompilation(const std::string& targetTriple,
   context_ = CompilationContext{targetTriple, execution};
   byteHashes_.clear();
   warnedBundles_.clear();
+  warnedArtifactPairs_.clear();
   importedContracts_.clear();
+  declarationAliases_.clear();
   validatedBundles_.clear();
 }
 
@@ -116,15 +120,83 @@ void AbiCompatibilityChecker::validateImports(
     for (const auto& key : reader->listModules())
       metadata.push_back(reader->getMetadata(key));
   }
+  std::map<std::string, std::map<std::string, const proto::LibraryAbiSnapshot*>>
+      candidates;
+  std::set<std::string> exactArtifacts;
+  std::map<std::string, std::string> aliases;
+  std::map<std::pair<std::string, std::string>, std::string> artifactWarnings;
+  for (const auto* reader : readers) {
+    const auto& library = reader->getLibrary();
+    exactArtifacts.insert(library.content_hash());
+    const auto& contract = library.bundle_contract();
+    if (!contract.has_library_abi()) continue;
+    const auto& revision = contract.library_abi();
+    candidates[revision.library_id()].emplace(revision.artifact_hash(),
+                                              &revision);
+  }
+  for (const auto* reader : readers) {
+    for (const auto& required :
+         reader->getLibrary().bundle_contract().dependency_abis()) {
+      if (exactArtifacts.count(required.artifact_hash())) continue;
+      const auto found = candidates.find(required.library_id());
+      if (found == candidates.end())
+        continue;  // Exact-reference validation diagnoses missing imports.
+      if (found->second.size() != 1)
+        sun::support::logAndThrowError("Ambiguous library revisions for '" +
+                                       required.library_id() + "'");
+      const auto& candidate = *found->second.begin()->second;
+      if (required.abi_hash() != candidate.abi_hash())
+        sun::support::logAndThrowError(
+            "Library ABI mismatch for '" + required.library_id() +
+            "': selected artifact changes the required declarations, target, or "
+            "runtime contract");
+      artifactWarnings.emplace(
+          std::minmax(required.artifact_hash(), candidate.artifact_hash()),
+          "Library '" + required.library_id() +
+              "' is used through different artifacts: '" +
+              reader->getPath().string() + "' embeds " +
+              required.artifact_hash() + ", while the selected import is " +
+              candidate.artifact_hash() +
+              ". Their ABI contracts match; continuing with independent "
+              "implementations.");
+      std::map<std::string, std::string> keys;
+      for (const auto& item : candidate.declarations())
+        if (!keys.emplace(item.identity(), item.key()).second)
+          sun::support::logAndThrowError("Ambiguous replacement declaration");
+      for (const auto& item : required.declarations()) {
+        const auto replacement = keys.find(item.identity());
+        if (replacement == keys.end())
+          sun::support::logAndThrowError(
+              "Missing replacement nominal declaration");
+        const auto [it, added] =
+            aliases.emplace(item.key(), replacement->second);
+        if (!added && it->second != replacement->second)
+          sun::support::logAndThrowError(
+              "Conflicting replacement nominal declaration");
+      }
+    }
+  }
+  std::vector<moon::ModuleMetadata> normalized;
+  normalized.reserve(metadata.size());
+  for (const auto* module : metadata) {
+    normalized.push_back(*module);
+    remapDeclarationReferences(normalized.back(), aliases);
+  }
+  std::vector<const moon::ModuleMetadata*> correspondence;
+  for (const auto& module : normalized) correspondence.push_back(&module);
   try {
-    validateDeclarationGraph(metadata, true);
+    validateDeclarationGraph(correspondence, true);
   } catch (const sun::support::SunError& error) {
     sun::support::logAndThrowError("Invalid dependency declaration graph for" +
                                    imports + ": " + error.what());
   }
+  declarationAliases_ = std::move(aliases);
   for (auto* reader : readers)
     recordValidatedImport(reader->getLibrary().bundle_contract(),
                           bytesHash(*reader), reader->getPath().string());
+  for (const auto& [artifacts, warning] : artifactWarnings)
+    if (warnedArtifactPairs_.insert(artifacts).second)
+      sun::support::messageStream("warning") << warning << '\n';
 }
 
 ValidatedBundle AbiCompatibilityChecker::validateImpl(
@@ -170,6 +242,15 @@ ValidatedBundle AbiCompatibilityChecker::validateImpl(
       sun::support::logAndThrowError(
           "Dependency '" + reader.getPath().string() + "', contract " +
           contract.compatibility_hash() + ": " + error.what());
+    }
+    if (contract.has_library_abi()) {
+      if (!contract.has_library_id() ||
+          encodeLibraryAbiSnapshot(contract.library_abi()) !=
+              encodeLibraryAbiSnapshot(describeLibraryAbiSnapshot(
+                  contract, reader.getLibrary().content_hash(),
+                  declarationModules)))
+        sun::support::logAndThrowError(
+            "Library revision differs from its declarations");
     }
     std::set<std::string> checked;
     for (const auto& moduleKey : modules) {
@@ -360,6 +441,36 @@ void AbiCompatibilityChecker::validateContract(
     derived.add_boundary_records(record);
   for (const auto& record : contract.semantic_records())
     derived.add_semantic_records(record);
+  /** Rejects malformed dependency metadata before it can authorize aliases. */
+  const auto validateRevision = [&](const proto::LibraryAbiSnapshot& revision) {
+    validateLibraryId(revision.library_id());
+    for (const auto* digest : {&revision.artifact_hash(), &revision.abi_hash()})
+      if (digest->size() != 64 ||
+          digest->find_first_not_of("0123456789abcdef") != std::string::npos)
+        fail("invalid library revision digest");
+    std::set<std::string> keys, identities;
+    const auto prefix = "$" + revision.artifact_hash() + "$_";
+    for (const auto& item : revision.declarations()) {
+      const auto ordinal =
+          item.key().substr(std::min(prefix.size(), item.key().size()));
+      if (!item.key().starts_with(prefix) || ordinal.empty() ||
+          ordinal.find_first_not_of("0123456789") != std::string::npos ||
+          item.identity().empty() || !keys.insert(item.key()).second ||
+          !identities.insert(item.identity()).second)
+        fail("invalid or ambiguous nominal declaration requirement");
+    }
+  };
+  if (contract.has_library_abi()) {
+    validateRevision(contract.library_abi());
+    *derived.mutable_library_abi() = contract.library_abi();
+  }
+  std::set<std::string> dependencyArtifacts;
+  for (const auto& revision : contract.dependency_abis()) {
+    validateRevision(revision);
+    if (!dependencyArtifacts.insert(revision.artifact_hash()).second)
+      fail("duplicate library revision requirement");
+    *derived.add_dependency_abis() = revision;
+  }
   if (hashBundleContract(derived) != contract.compatibility_hash())
     fail("derived contract hash differs");
 }

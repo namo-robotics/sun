@@ -418,7 +418,7 @@ TEST(ABI_Compatibility, ManifestNativeRequirementsReachTheBundleContract) {
     file << "manifest { archives: [{ path: \"" << SUN_FFI_TESTLIB_DIR
          << "/libsun_abi_relocations.a\", "
          << "cpu_features: [\"" << feature
-         << "\"], provenance: \"fixture build\", runtime: [" << runtime
+         << "\"], runtime: [" << runtime
          << "] }] }\n"
          << "/** Exports a scalar function. */\npublic module native_decl {\n"
          << "/** Returns the fixture value. */\n"
@@ -433,13 +433,6 @@ TEST(ABI_Compatibility, ManifestNativeRequirementsReachTheBundleContract) {
   ASSERT_NE(reader, nullptr);
   const auto originalHash =
       reader->getLibrary().bundle_contract().compatibility_hash();
-  const auto& provenance =
-      reader->getLibrary().bundle_contract().native_build_provenance();
-  ASSERT_EQ(provenance.size(), 1);
-  EXPECT_EQ(provenance[0].description(), "fixture build");
-  EXPECT_EQ(provenance[0].archive_sha256(),
-            sun::moon_bundling::computeSha256Hex(
-                nativeFixture(false, false, "libsun_abi_relocations.a")));
   const auto& features =
       reader->getLibrary().bundle_contract().target().cpu_features();
   EXPECT_NE(std::find(features.begin(), features.end(), feature),
@@ -485,6 +478,7 @@ TEST(ABI_Compatibility, MalformedArchiveDeclarationsAreRejected) {
   for (const auto* declaration : {"{ cpu_features: [\"avx2\"] }",
                                   "{ path: \"lib.a\", path: \"other.a\" }",
                                   "{ path: \"lib.a\", cpu_features: \"avx2\" }",
+                                  "{ path: \"lib.a\", provenance: \"vendor build\" }",
                                   "{ path: \"lib.a\", unknown: [] }"}) {
     auto parser = sun::parsing::Parser::createStringParser(
         std::string("manifest { archives: [") + declaration + "] }");
@@ -510,28 +504,6 @@ TEST(ABI_Compatibility, NativeDeclarationsFollowManifestTargetSelection) {
   ASSERT_EQ(resolved.archiveFiles.size(), 1u);
   EXPECT_EQ(std::filesystem::path(resolved.archiveFiles[0]).filename(),
             "linux.a");
-}
-
-/** Native provenance is preserved across embedding but never changes support.
- */
-TEST(ABI_Compatibility, NativeProvenanceIsInheritedDiagnosticMetadata) {
-  llvm::LLVMContext context;
-  llvm::Module module("native", context);
-  module.setTargetTriple(llvm::sys::getDefaultTargetTriple());
-  auto contract = sun::abi::describeContract(module);
-  auto dependency = contract;
-  auto* provenance = dependency.add_native_build_provenance();
-  provenance->set_archive_sha256(std::string(64, 'a'));
-  provenance->set_description("vendor toolchain and build flags");
-  EXPECT_EQ(sun::abi::hashBundleContract(contract),
-            sun::abi::hashBundleContract(dependency));
-  sun::abi::mergeContractRequirements(contract, dependency);
-  sun::abi::mergeContractRequirements(contract, dependency);
-  ASSERT_EQ(contract.native_build_provenance_size(), 1);
-  EXPECT_EQ(contract.native_build_provenance(0).description(),
-            provenance->description());
-  EXPECT_EQ(sun::abi::hashBundleContract(contract),
-            sun::abi::hashBundleContract(dependency));
 }
 
 /** Both Mach-O architectures use declared trust while retaining structural,

@@ -199,6 +199,18 @@ class DeclarationTable {
     return it == portableDeclarations_.end() ? DeclarationId{} : it->second;
   }
 
+  /** Adds a checked nominal correspondence without changing the declaration's
+   * original portable key, ownership, or implementation symbols.
+   */
+  void bindValidatedAlias(const PortableDeclarationKey& required,
+                          const PortableDeclarationKey& replacement) {
+    const auto id = findPortable(replacement);
+    if (!id) logAndThrowError("Replacement declaration is not imported");
+    const auto [it, added] = portableDeclarations_.emplace(required, id);
+    if (!added && it->second != id)
+      logAndThrowError("Conflicting validated declaration correspondence");
+  }
+
   /** Bind a portable identity exactly once, rejecting conflicting declarations.
    */
   void bindPortable(DeclarationId id, const PortableDeclarationKey& key,

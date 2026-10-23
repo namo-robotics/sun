@@ -28,10 +28,18 @@ message ProducerIdentity {
   string release_series = 3;
 }
 
-/** Producer-supplied diagnostics tied to the exact original native archive. */
-message NativeBuildProvenance {
-  string archive_sha256 = 1;
-  string description = 2;
+/** Maps one exact declaration to its revision-independent nominal origin. */
+message NominalDeclaration {
+  string key = 1;
+  string identity = 2;
+}
+
+/** Records the semantic ABI and declaration identities of one named library artifact. */
+message LibraryAbiSnapshot {
+  string library_id = 1;
+  string artifact_hash = 2;
+  string abi_hash = 3;
+  repeated NominalDeclaration declarations = 4;
 }
 
 /** One complete experimental contract for all code embedded in the bundle. */
@@ -47,10 +55,15 @@ message BundleContract {
   repeated bytes semantic_records = 8;
   // Diagnostic external references, excluded from compatibility hashing and authorization.
   repeated string native_link_symbols = 9;
-  // Diagnostic provenance; never authorizes compatibility.
-  repeated NativeBuildProvenance native_build_provenance = 10;
+  // Keep the removed native archive diagnostics field unavailable for reuse.
+  reserved 10;
+  reserved "native_build_provenance";
   // Producer-declared nominal namespace; never authorizes replacement alone.
   optional string library_id = 11;
+  // Recomputed from validated metadata; code symbols remain artifact-specific.
+  optional LibraryAbiSnapshot library_abi = 12;
+  // Requirements of direct and transitive dependencies, including embedded code.
+  repeated LibraryAbiSnapshot dependency_abis = 13;
 }
 
 /** One implemented rule version available to the compiler. */

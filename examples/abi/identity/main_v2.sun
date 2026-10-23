@@ -1,4 +1,4 @@
-/** Tries v2 in place of the shapes user's exact v1 dependency. */
+/** Tries a revised layout that violates the shapes user's required ABI. */
 function main() i32 {
   var point = shapes.Point();
   return shapes_user.read(point) - 42;

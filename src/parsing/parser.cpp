@@ -3090,11 +3090,10 @@ std::vector<ManifestArchiveDependency> Parser::parseManifestArchives() {
         expectCurrentTokenKind(TokenKind::COLON,
                                "expected ':' after archive field");
         getNextToken();
-        if (field == "path" || field == "provenance") {
+        if (field == "path") {
           expectCurrentTokenKind(TokenKind::STRING,
                                  "expected archive field text");
-          (field == "path" ? dep.path : dep.provenance) =
-              curTok.getString().value();
+          dep.path = curTok.getString().value();
           getNextToken();
         } else if (field == "cpu_features" || field == "runtime") {
           auto& values =

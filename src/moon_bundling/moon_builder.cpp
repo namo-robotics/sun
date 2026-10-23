@@ -111,7 +111,6 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   MoonBuildReport report;
   std::optional<std::string> libraryId;
   std::vector<std::string> nativeCPUFeatures, nativeRuntimeServices;
-  std::vector<std::pair<std::string, std::string>> nativeProvenance;
   report.moonImports = options.extraMoons;
   // Resolve command-line imports before hashing the bundles they name.
   for (auto& moon : report.moonImports) {
@@ -129,7 +128,6 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
     report.archiveFiles = std::move(manifest->archiveFiles);
     nativeCPUFeatures = std::move(manifest->nativeCPUFeatures);
     nativeRuntimeServices = std::move(manifest->nativeRuntimeServices);
-    nativeProvenance = std::move(manifest->nativeProvenance);
   }
   report.sunFiles.insert(report.sunFiles.begin(), entrypointPath.string());
 
@@ -264,10 +262,6 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   }
   if (libraryId) writer.setLibraryId(*libraryId);
   writer.declareNativeRequirements(nativeCPUFeatures, nativeRuntimeServices);
-  for (const auto& [path, description] : nativeProvenance)
-    for (const auto& archive : ownArchives)
-      if (archive.path == path)
-        writer.recordNativeProvenance(archive.digest, description);
   for (const auto& [identity, contract] :
        abi::AbiCompatibilityChecker::current().importedContracts())
     writer.inheritContract(contract);

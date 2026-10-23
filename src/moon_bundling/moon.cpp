@@ -23,6 +23,7 @@
 
 #include "abi/native_requirements.h"
 #include "abi/nominal_identity.h"
+#include "abi/library_abi_snapshot.h"
 #include "abi/semantic_requirements.h"
 #include "abi/support_inventory.h"
 #include "support/error.h"
@@ -137,13 +138,6 @@ void MoonWriter::declareNativeRequirements(
   abi::addNativeRequirements(contract_, cpuFeatures, runtimeServices);
 }
 
-void MoonWriter::recordNativeProvenance(const std::string& archiveDigest,
-                                        const std::string& description) {
-  auto* provenance = contract_.add_native_build_provenance();
-  provenance->set_archive_sha256(archiveDigest);
-  provenance->set_description(description);
-}
-
 void MoonWriter::addNativeArchive(std::string archiveSetHash, std::string name,
                                   std::string data) {
   nativeArchives_.push_back(
@@ -203,6 +197,12 @@ bool MoonWriter::write(const std::filesystem::path& outputPath) {
     semantics.insert(abi::describeSemantics(module.metadata));
   contract_.clear_semantic_records();
   for (const auto& record : semantics) contract_.add_semantic_records(record);
+  if (contract_.has_library_id()) {
+    std::vector<const moon::ModuleMetadata*> metadata;
+    for (const auto& module : modules_) metadata.push_back(&module.metadata);
+    *contract_.mutable_library_abi() =
+        abi::describeLibraryAbiSnapshot(contract_, bundleHash_, metadata);
+  }
   contract_.set_compatibility_hash(abi::hashBundleContract(contract_));
   moon::MoonLibrary bundleMetadata;
   *bundleMetadata.mutable_bundle_contract() = contract_;

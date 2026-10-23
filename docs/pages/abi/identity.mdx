@@ -5,19 +5,37 @@ of current releases. Open decisions must be resolved before stabilization.
 
 ## Declaration and symbol identity
 
-A bundle refers to exact dependency artifacts. Rebuilding a dependency does not
-make the new artifact a valid replacement for the old one.
+A bundle retains exact implementation dependencies. An explicitly named library
+may provide a compatible nominal type from another revision after the importer
+checks its dependency ABI requirements. Rebuilding a dependency or reusing its
+library ID alone does not authorize replacement.
 
 | Subject | Level | Requirement |
 | --- | --- | --- |
-| Declaration identity | MUST | Include the defining artifact and portable declaration identity. |
+| Implementation identity | MUST | Include the defining artifact and portable declaration identity; preserve embedded code and exact symbols across nominal correspondence. |
+| Nominal identity | MUST | Use an explicit persistent library ID, declaration kind, and declaration path, independent of artifact hashes and source order. |
+| Revision correspondence | MUST | Validate the required semantic ABI, layouts, call and ownership contracts, retained generic code, target, and compiler/runtime requirements before semantic import. Reject missing or ambiguous correspondence. |
 | Local naming | MUST NOT | Let aliases, import order, or local names change a declaration's identity. |
-| Nominal types | MUST NOT | Treat types from different artifacts as interchangeable just because their names or layouts match. |
+| Nominal types | MUST NOT | Treat types from unrelated library identities as interchangeable just because their names or layouts match. |
 | Exported symbols | MUST | Read or reproduce the producer's symbol names, including when current naming defaults differ. |
 | Specialization identity | MUST | Include the generic declaration, enclosing specialization if present, and concrete arguments in order. |
 | Duplicate specializations | MUST | Check ABI and generic semantics compatibility before merging definitions. |
 | Private declarations | MUST | Keep declarations used by exported generic bodies in the import contract, even when source code cannot name them. |
 | Global storage | MUST | Preserve one identity when several dependency paths reach the same global. |
+
+## Experimental implementation
+
+The compiler records revision requirements for libraries with a manifest
+`library_id`. It accepts matching nominal declarations only when the complete
+recorded semantic ABI and target/rule requirements match. Each candidate's
+metadata and lowered payload boundaries are independently validated. Function
+implementations and precompiled specialization symbols retain exact identities;
+ordinary compiled body changes do not affect nominal correspondence. Retained
+generic body changes do affect the semantic contract.
+
+Libraries without this metadata keep exact dependency behavior. The
+[identity example](/abi/examples) exercises a compatible constructor revision
+and an incompatible layout revision.
 
 ## Open decisions
 

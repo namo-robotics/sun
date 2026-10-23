@@ -55,14 +55,12 @@ Producers can add requirements to an archive entry:
 archives: [{
   path: "libmath.a",
   cpu_features: ["avx2"],
-  runtime: ["thread_local"],
-  provenance: "vendor build with clang"
+  runtime: ["thread_local"]
 }]
 ```
 
 These requirements are added to detected and inherited requirements. Unknown
-names fail packaging. Optional provenance is stored with the original archive
-digest as diagnostics and survives dependency embedding. CPU checks
+names fail packaging. CPU checks
 still need better handling of destination CPUs and runtime dispatch: an optional
 AVX2 kernel should not imply that the whole library requires AVX2.
 

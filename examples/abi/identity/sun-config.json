@@ -1,36 +1,33 @@
 {
   "root": true,
   "sun_path": [
-    "../../../tmp/abi-examples/identity"
+    "."
   ],
-  "path_variables": {
-    "ABI_BUILD": "../../../tmp/abi-examples/identity"
-  },
   "entrypoints": [
     {
       "path": "shapes_v1.sun",
       "type": "library",
-      "output_name": "$ABI_BUILD/shapes_v1"
+      "output_name": "shapes_v1"
     },
     {
       "path": "shapes_v1.1.sun",
       "type": "library",
-      "output_name": "$ABI_BUILD/shapes_v1.1"
+      "output_name": "shapes_v1.1"
     },
     {
       "path": "shapes_v2.sun",
       "type": "library",
-      "output_name": "$ABI_BUILD/shapes_v2"
+      "output_name": "shapes_v2"
     },
     {
       "path": "shapes_user.sun",
       "type": "library",
-      "output_name": "$ABI_BUILD/shapes_user"
+      "output_name": "shapes_user"
     },
     {
-      "path": "main.sun",
+      "path": "main_v1.1.sun",
       "type": "binary",
-      "output_name": "$ABI_BUILD/compatible"
+      "output_name": "revised"
     }
   ]
 }

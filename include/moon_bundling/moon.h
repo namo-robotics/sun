@@ -99,11 +99,6 @@ class MoonWriter {
       const std::vector<std::string>& cpuFeatures,
       const std::vector<std::string>& runtimeServices);
 
-  /** Records diagnostics for original archive bytes without granting support.
-   */
-  void recordNativeProvenance(const std::string& archiveDigest,
-                              const std::string& description);
-
   /**
    * Carry a native static library inside the bundle
    * @param archiveSetHash Hash the archive's symbols are prefixed with

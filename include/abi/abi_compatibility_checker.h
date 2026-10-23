@@ -98,7 +98,15 @@ class AbiCompatibilityChecker {
     return importedContracts_;
   }
 
+  /** Returns type correspondences authorized for the complete import set.
+   * Exact declaration records and embedded implementation symbols stay intact.
+   */
+  const std::map<std::string, std::string>& declarationAliases() const {
+    return declarationAliases_;
+  }
+
  private:
+  std::map<std::string, std::string> declarationAliases_;
   /** Validates immutable bytes, optionally recording an authorized import. */
   ValidatedBundle validateImpl(moon_bundling::MoonReader& reader,
                                const std::string& targetTriple, bool record);
@@ -119,6 +127,7 @@ class AbiCompatibilityChecker {
       byteHashes_;
   CompilationContext context_;
   std::set<std::string> warnedBundles_;
+  std::set<std::pair<std::string, std::string>> warnedArtifactPairs_;
   std::map<std::string, BundleContract> importedContracts_;
   std::map<std::pair<std::string, std::string>,
            std::shared_ptr<const BundleContract>>

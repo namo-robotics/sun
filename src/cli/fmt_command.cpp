@@ -242,7 +242,8 @@ FormatOutcome formatFile(const std::string& file, bool checkMode) {
 
   if (formatted == source) return FormatOutcome::Unchanged;
   if (checkMode) {
-    sun::support::messageStream("info") << file << ": needs formatting\n";
+    llvm::outs() << sun::support::messagePrefix("info", llvm::outs())
+                 << file << ": needs formatting\n";
     return FormatOutcome::Changed;
   }
   return rewriteFile(file, formatted) ? FormatOutcome::Changed

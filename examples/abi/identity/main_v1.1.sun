@@ -1,0 +1,9 @@
+/** Passes a revised point to the unchanged compiled shapes user. */
+function main() i32 {
+  var point = shapes.Point();
+  return shapes_user.read(point) - 43;
+}
+
+manifest {
+  libraries: ["shapes_v1.1.moon", "shapes_user.moon"]
+}

@@ -58,11 +58,11 @@ struct Scratch {
     return (dir / name).string();
   }
   /**
-   * Run build/sun with `arguments`; returns what it printed.
+   * Runs build/sun with progress logging so cache decisions can be asserted.
    */
   std::string runSun(const std::string& arguments) const {
     const std::string cmd =
-        "build/sun " + arguments + " > " + path("log") + " 2>&1";
+        "SUN_LOG_LEVEL=info build/sun " + arguments + " > " + path("log") + " 2>&1";
     int rc = std::system(cmd.c_str());
     EXPECT_EQ(WEXITSTATUS(rc), 0) << readFile(path("log"));
     return readFile(path("log"));

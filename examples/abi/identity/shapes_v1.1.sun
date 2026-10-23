@@ -1,4 +1,4 @@
-/** Defines a different declaration with the same name and storage. */
+/** Revises the implementation while preserving the library and type contract. */
 public module shapes {
 
   /** Stores one integer, just like the v1 type. */
@@ -10,4 +10,8 @@ public module shapes {
       this.x = 43;
     }
   }
+}
+
+manifest {
+  library_id: "sun.examples/shapes"
 }

@@ -11,3 +11,7 @@ public module shapes {
     }
   }
 }
+
+manifest {
+  library_id: "sun.examples/shapes"
+}

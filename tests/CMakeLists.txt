@@ -115,7 +115,7 @@ if(SUN_TEST_SHARDS GREATER 1)
     # Stateful FFI tests need fresh processes. Slow integration tests stay
     # separate so CTest can schedule them without holding up an entire shard.
     set(sun_isolated_tests
-        "ABI_Compatibility.*"
+        "ABI_Compatibility.*" "ABI_LibraryAbiSnapshot.*"
         "*Modules_NestedTypeArguments*.*" "*Errors_Arithmetic*.*"
         "EndToEnd_*.*" "Modules_GenericRegressions.*" "Tooling_Bindgen.*"
         "Ffi_Link.*" "Tooling_Backend_InputHash.*" "Modules_ProtoImport.*"

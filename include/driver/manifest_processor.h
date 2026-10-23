@@ -35,7 +35,6 @@ struct ResolvedManifest {
   std::vector<std::string> archiveFiles;  // resolved native .a archives
   std::vector<std::string> nativeCPUFeatures;
   std::vector<std::string> nativeRuntimeServices;
-  std::vector<std::pair<std::string, std::string>> nativeProvenance;
   // resolved `test_files:` paths; merged into the source set only when
   // compiling the test binary, never for production builds
   std::vector<std::string> testSunFiles;

@@ -349,6 +349,7 @@ add_library(sun_lib
     src/abi/semantic_requirements.cpp
     src/abi/native_requirements.cpp
     src/abi/nominal_identity.cpp
+    src/abi/library_abi_snapshot.cpp
     src/abi/support_inventory.cpp
     src/abi/support_manifest.cpp
     src/abi/lowering_descriptors.cpp
@@ -477,6 +478,11 @@ target_precompile_headers(sun_lib PRIVATE
     include/codegen/intrinsics/intrinsics.h
     include/codegen/intrinsics/intrinsics_generator.h
 )
+# This file must include LLVM Mach-O headers before Protobuf introduces Apple
+# Mach macros. The shared precompiled header would reverse that order.
+set_source_files_properties(src/abi/native_requirements.cpp PROPERTIES
+    SKIP_PRECOMPILE_HEADERS ON)
+
 # clang embeds a timestamp in PCHs by default, which defeats ccache
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(sun_lib PRIVATE -Xclang -fno-pch-timestamp)

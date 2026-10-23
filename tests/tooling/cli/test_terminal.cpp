@@ -56,6 +56,47 @@ TEST(Tooling_Cli_Terminal, multiline_warnings_are_prefixed) {
             "[sun][warning]: first\n[sun][warning]: second\n");
 }
 
+/** Default logging hides build progress while retaining compiler warnings. */
+TEST(Tooling_Cli_Terminal, default_level_is_warn) {
+  ScopedEnvironment level("SUN_LOG_LEVEL", nullptr);
+  ScopedEnvironment noColor("NO_COLOR", "1");
+  testing::internal::CaptureStdout();
+  testing::internal::CaptureStderr();
+  sun::support::logMessage("info", "progress");
+  sun::support::logMessage("warning", "warning");
+  sun::support::logMessage("error", "failure");
+  llvm::outs().flush();
+  llvm::errs().flush();
+  EXPECT_EQ(testing::internal::GetCapturedStdout(), "");
+  EXPECT_EQ(testing::internal::GetCapturedStderr(),
+            "[sun][warning]: warning\n[sun][error]: failure\n");
+}
+
+/** Explicit info logging restores progress messages on stdout. */
+TEST(Tooling_Cli_Terminal, info_level_restores_progress) {
+  ScopedEnvironment level("SUN_LOG_LEVEL", "info");
+  ScopedEnvironment noColor("NO_COLOR", "1");
+  testing::internal::CaptureStdout();
+  sun::support::logMessage("info", "progress");
+  llvm::outs().flush();
+  EXPECT_EQ(testing::internal::GetCapturedStdout(), "[sun][info]: progress\n");
+}
+
+/** Error-only logging suppresses warnings without suppressing errors. */
+TEST(Tooling_Cli_Terminal, error_level_filters_warnings) {
+  ScopedEnvironment level("SUN_LOG_LEVEL", "error");
+  EXPECT_FALSE(sun::support::messageEnabled("info"));
+  EXPECT_FALSE(sun::support::messageEnabled("warning"));
+  EXPECT_TRUE(sun::support::messageEnabled("error"));
+}
+
+/** Unknown settings fall back to the default warning threshold. */
+TEST(Tooling_Cli_Terminal, unknown_level_uses_warn) {
+  ScopedEnvironment level("SUN_LOG_LEVEL", "invalid");
+  EXPECT_FALSE(sun::support::messageEnabled("info"));
+  EXPECT_TRUE(sun::support::messageEnabled("warning"));
+}
+
 /** Checks that missing musl cannot silently choose a host or cross compiler. */
 TEST(Tooling_Cli_Terminal, missing_musl_requires_explicit_link_choice) {
   ScopedEnvironment path("PATH", "");

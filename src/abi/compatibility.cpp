@@ -16,6 +16,7 @@
 #include <mutex>
 
 #include "abi/boundary_requirements.h"
+#include "abi/library_abi_snapshot.h"
 #include "abi/lowering_descriptors.h"
 #include "abi/support_inventory.h"
 #ifdef __linux__
@@ -178,6 +179,9 @@ const std::string& compatibilityImplementation() {
 }
 
 std::string encodeBundleContract(const BundleContract& contract) {
+  std::vector<std::string> dependencies;
+  for (const auto& revision : contract.dependency_abis())
+    dependencies.push_back(encodeLibraryAbiSnapshot(revision));
   std::vector<std::string> rules;
   for (const auto& rule : contract.requirements())
     rules.push_back(field(1, rule.name()) + field(2, rule.implementation()));
@@ -187,7 +191,10 @@ std::string encodeBundleContract(const BundleContract& contract) {
          sortedFields(5, contract.boundary_records()) +
          field(6, integer(contract.experimental())) +
          sortedFields(7, contract.semantic_records()) +
-         (contract.has_library_id() ? field(8, contract.library_id()) : "");
+         (contract.has_library_id() ? field(8, contract.library_id()) : "") +
+         (contract.has_library_abi()
+              ? field(9, encodeLibraryAbiSnapshot(contract.library_abi())) : "") +
+         sortedFields(10, dependencies);
 }
 
 std::string hashBundleContract(const BundleContract& contract) {
@@ -353,17 +360,20 @@ void mergeContractRequirements(BundleContract& destination,
                  inherited.native_link_symbols().end());
   merged.clear_native_link_symbols();
   for (const auto& symbol : symbols) merged.add_native_link_symbols(symbol);
-  std::set<std::pair<std::string, std::string>> provenance;
-  for (const BundleContract* contract :
+  std::map<std::string, proto::LibraryAbiSnapshot> revisions;
+  /** Retains one unambiguous requirement for each exact dependency artifact. */
+  const auto addRevision = [&](const proto::LibraryAbiSnapshot& revision) {
+    const auto [it, added] = revisions.emplace(revision.artifact_hash(), revision);
+    if (!added && encodeLibraryAbiSnapshot(it->second) != encodeLibraryAbiSnapshot(revision))
+      sun::support::logAndThrowError("Conflicting dependency revision requirements");
+  };
+  for (const auto* source :
        std::initializer_list<const BundleContract*>{&destination, &inherited})
-    for (const auto& item : contract->native_build_provenance())
-      provenance.emplace(item.archive_sha256(), item.description());
-  merged.clear_native_build_provenance();
-  for (const auto& [digest, description] : provenance) {
-    auto* item = merged.add_native_build_provenance();
-    item->set_archive_sha256(digest);
-    item->set_description(description);
-  }
+    for (const auto& revision : source->dependency_abis()) addRevision(revision);
+  if (inherited.has_library_abi()) addRevision(inherited.library_abi());
+  merged.clear_dependency_abis();
+  for (const auto& [artifact, revision] : revisions)
+    *merged.add_dependency_abis() = revision;
   destination = std::move(merged);
 }
 
