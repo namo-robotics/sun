@@ -17,6 +17,7 @@ add_executable(sun_abi_tests EXCLUDE_FROM_ALL
 target_link_libraries(sun_abi_tests PRIVATE sun_lib GTest::gtest_main)
 target_compile_definitions(sun_abi_tests PRIVATE
     SUN_FFI_TESTLIB_DIR="${CMAKE_BINARY_DIR}/tests"
+    SUN_FFI_TESTLIB_PATH="$<TARGET_FILE:sun_ffi_testlib>"
     SUN_FFI_TESTLIB_V2_DIR="${CMAKE_BINARY_DIR}/tests/v2")
 add_dependencies(sun_abi_tests sun_ffi_testlib sun_ffi_static_testlib sun_ffi_static_testlib_v2)
 

@@ -103,6 +103,7 @@ add_dependencies(sun_tests sun_ffi_static_testlib_v2)
 # splits a multi-entry ENVIRONMENT list into separate property arguments.
 target_compile_definitions(sun_tests
     PRIVATE SUN_FFI_TESTLIB_DIR="${CMAKE_BINARY_DIR}/tests"
+            SUN_FFI_TESTLIB_PATH="$<TARGET_FILE:sun_ffi_testlib>"
             SUN_FFI_TESTLIB_V2_DIR="${CMAKE_BINARY_DIR}/tests/v2")
 
 # One shard uses individual discovery for IDEs and isolated reruns.

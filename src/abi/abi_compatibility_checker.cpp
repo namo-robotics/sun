@@ -462,12 +462,18 @@ void AbiCompatibilityChecker::validateContract(
   // Preserve native-host capability checks; cross targets use their own
   // baseline rather than borrowing features from the build host.
   llvm::StringMap<bool> availableFeatures;
-  if (expected.architecture() ==
+  const bool nativeArchitecture =
+      expected.architecture() ==
       llvm::Triple::getArchTypeName(
           llvm::Triple(llvm::sys::getDefaultTargetTriple()).getArch())
-          .str()) {
+          .str();
+  if (nativeArchitecture) {
     availableFeatures = llvm::sys::getHostCPUFeatures();
-  } else {
+  }
+  // LLVM does not report host features on every platform (including Apple
+  // ARM). Use its CPU model when probing is unavailable. An explicit false
+  // feature from a successful probe must still be respected.
+  if (availableFeatures.empty()) {
     const auto triple = llvm::Triple::normalize(
         targetTriple.empty() ? llvm::sys::getDefaultTargetTriple()
                              : targetTriple);
@@ -477,7 +483,9 @@ void AbiCompatibilityChecker::validateContract(
       fail("cannot determine target CPU capabilities: " + error);
     }
     std::unique_ptr<llvm::MCSubtargetInfo> subtarget(
-        target->createMCSubtargetInfo(triple, "generic", ""));
+        target->createMCSubtargetInfo(
+            triple,
+            nativeArchitecture ? llvm::sys::getHostCPUName() : "generic", ""));
     if (!subtarget) {
       fail("cannot determine target CPU capabilities");
     }

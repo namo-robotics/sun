@@ -52,13 +52,12 @@ std::filesystem::path bundlePath() {
 
 /** Application libraries loaded before import are not compiler dependencies. */
 TEST(ABI_Compatibility, ApplicationLibrariesDoNotChangeImplementation) {
-  void* library =
-      dlopen(SUN_FFI_TESTLIB_DIR "/libsun_ffi_testlib.so", RTLD_NOW);
+  void* library = dlopen(SUN_FFI_TESTLIB_PATH, RTLD_NOW);
   ASSERT_NE(library, nullptr) << dlerror();
   auto reader = sun::moon_bundling::MoonReader::open("build/stdlib.moon");
   ASSERT_NE(reader, nullptr);
   EXPECT_NO_THROW(sun::abi::AbiCompatibilityChecker::current().validate(
-      *reader, "x86_64-linux-gnu"));
+      *reader, llvm::sys::getDefaultTargetTriple()));
   dlclose(library);
 }
 
