@@ -36,7 +36,9 @@ inline bool isFunctionPointer(const TypePtr& type) {
     return false;
   }
   for (const auto& param : function->getParamTypes()) {
-    if (!isCallbackParameter(param)) return false;
+    if (!isCallbackParameter(param)) {
+      return false;
+    }
   }
   return true;
 }

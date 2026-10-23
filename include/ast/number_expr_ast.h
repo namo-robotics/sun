@@ -59,7 +59,9 @@ class NumberExprAST : public ExprAST {
   ASTNodeType getType() const override { return ASTNodeType::NUMBER; }
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
-    if (isInteger()) return getIntegerText() + suffix_;
+    if (isInteger()) {
+      return getIntegerText() + suffix_;
+    }
     return std::to_string(getFloatVal()) + suffix_;
   }
   /** Returns the node label used in syntax-tree graph visualizations. */

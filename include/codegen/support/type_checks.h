@@ -105,7 +105,9 @@ struct TypeCheck {
    */
   static T& require(const TypePtr& type, std::string_view what,
                     std::optional<sun::support::Position> loc) {
-    if (T* concrete = tryGet(type)) return *concrete;
+    if (T* concrete = tryGet(type)) {
+      return *concrete;
+    }
     throwMismatch(type, what, loc);
   }
 
@@ -113,7 +115,9 @@ struct TypeCheck {
   static std::shared_ptr<T> requirePtr(
       const TypePtr& type, std::string_view what,
       std::optional<sun::support::Position> loc) {
-    if (auto concrete = tryGetPtr(type)) return concrete;
+    if (auto concrete = tryGetPtr(type)) {
+      return concrete;
+    }
     throwMismatch(type, what, loc);
   }
 
@@ -198,8 +202,9 @@ std::shared_ptr<T> requireTypePtr(const ExprAST& expr, std::string_view what) {
  * that looks through one rarely cares which it had.
  */
 inline TypePtr getPointeeType(const TypePtr& type) {
-  if (auto* raw = tryGetType<sun::types::RawPointerType>(type))
+  if (auto* raw = tryGetType<sun::types::RawPointerType>(type)) {
     return raw->getPointeeType();
+  }
   if (auto* stat = tryGetType<sun::types::StaticPointerType>(type)) {
     return stat->getPointeeType();
   }

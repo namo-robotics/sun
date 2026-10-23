@@ -368,8 +368,9 @@ TEST(Tooling_Backend_Compilation, field_targets_ignore_reference_spelling) {
       if (node.getType() == ASTNodeType::STRUCT_LITERAL) {
         auto& literal = const_cast<sun::ast::StructLiteralAST&>(
             static_cast<const sun::ast::StructLiteralAST&>(node));
-        for (auto& field : literal.getMutableFields())
+        for (auto& field : literal.getMutableFields()) {
           field.name = "changed_field";
+        }
       }
       forEachChild(node, visit);
     };
@@ -390,8 +391,9 @@ TEST(Tooling_Backend_Compilation, storage_requires_selected_targets) {
   auto driver = Driver::createForJIT();
   driver->setMetadataCallback([](const BlockExprAST& ast, SemanticAnalyzer&) {
     std::function<void(const ExprAST&)> visit = [&](const ExprAST& node) {
-      if (node.getType() == ASTNodeType::VARIABLE_REFERENCE)
+      if (node.getType() == ASTNodeType::VARIABLE_REFERENCE) {
         node.setTargetDeclarationId({});
+      }
       forEachChild(node, visit);
     };
     visit(ast);
@@ -407,8 +409,9 @@ TEST(Tooling_Backend_Compilation, field_access_requires_selected_target) {
   auto driver = Driver::createForJIT();
   driver->setMetadataCallback([](const BlockExprAST& ast, SemanticAnalyzer&) {
     std::function<void(const ExprAST&)> visit = [&](const ExprAST& node) {
-      if (node.getType() == ASTNodeType::MEMBER_ACCESS)
+      if (node.getType() == ASTNodeType::MEMBER_ACCESS) {
         node.setTargetDeclarationId({});
+      }
       forEachChild(node, visit);
     };
     visit(ast);

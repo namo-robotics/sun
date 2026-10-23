@@ -21,8 +21,11 @@ namespace {
 /** Emits a terminating error callback when the arithmetic predicate is true. */
 void throwIf(llvm::IRBuilder<>& builder, llvm::Value* invalid, int code,
              llvm::function_ref<void(int)> throwError) {
-  if (auto* constant = llvm::dyn_cast<llvm::ConstantInt>(invalid))
-    if (constant->isZero()) return;
+  if (auto* constant = llvm::dyn_cast<llvm::ConstantInt>(invalid)) {
+    if (constant->isZero()) {
+      return;
+    }
+  }
   auto* function = builder.GetInsertBlock()->getParent();
   auto* failed = llvm::BasicBlock::Create(builder.getContext(),
                                           "arithmetic.throw", function);
@@ -65,7 +68,9 @@ llvm::Value* createIntShift(llvm::IRBuilder<>& builder, llvm::Value* L,
   auto* mask = llvm::ConstantInt::get(R->getType(),
                                       L->getType()->getIntegerBitWidth() - 1);
   R = builder.CreateAnd(R, mask, "shift.count");
-  if (!isRight) return builder.CreateShl(L, R, "shltmp");
+  if (!isRight) {
+    return builder.CreateShl(L, R, "shltmp");
+  }
   return isUnsigned ? builder.CreateLShr(L, R, "shrtmp")
                     : builder.CreateAShr(L, R, "shrtmp");
 }

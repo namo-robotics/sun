@@ -51,7 +51,9 @@ class ArrayType : public Type {
    * Returns 0 for unsized arrays
    */
   size_t getTotalElements() const {
-    if (isUnsized()) return 0;
+    if (isUnsized()) {
+      return 0;
+    }
     return std::accumulate(dimensions.begin(), dimensions.end(), size_t{1},
                            std::multiplies<size_t>());
   }
@@ -110,13 +112,21 @@ class ArrayType : public Type {
    * Used for coercion from array<T, m, n> to array&lt;T&gt; (unsized)
    */
   bool isCompatibleWith(const ArrayType& other) const {
-    if (!elementType->equals(*other.elementType)) return false;
+    if (!elementType->equals(*other.elementType)) {
+      return false;
+    }
     // Unsized array accepts any sized array with same element type
-    if (isUnsized()) return true;
+    if (isUnsized()) {
+      return true;
+    }
     // If this is sized, other must match exactly
-    if (dimensions.size() != other.dimensions.size()) return false;
+    if (dimensions.size() != other.dimensions.size()) {
+      return false;
+    }
     for (size_t i = 0; i < dimensions.size(); ++i) {
-      if (dimensions[i] != other.dimensions[i]) return false;
+      if (dimensions[i] != other.dimensions[i]) {
+        return false;
+      }
     }
     return true;
   }
@@ -124,12 +134,20 @@ class ArrayType : public Type {
   /** Reports whether the other type has the same semantic identity. */
   bool equals(const Type& other) const override {
     if (auto* a = dynamic_cast<const ArrayType*>(&other)) {
-      if (!elementType->equals(*a->elementType)) return false;
+      if (!elementType->equals(*a->elementType)) {
+        return false;
+      }
       // Either both unsized, or dimensions match exactly
-      if (isUnsized() && a->isUnsized()) return true;
-      if (dimensions.size() != a->dimensions.size()) return false;
+      if (isUnsized() && a->isUnsized()) {
+        return true;
+      }
+      if (dimensions.size() != a->dimensions.size()) {
+        return false;
+      }
       for (size_t i = 0; i < dimensions.size(); ++i) {
-        if (dimensions[i] != a->dimensions[i]) return false;
+        if (dimensions[i] != a->dimensions[i]) {
+          return false;
+        }
       }
       return true;
     }
@@ -162,7 +180,9 @@ class ArrayType : public Type {
    * (reached only through ReferenceType::toLLVMType).
    */
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
-    if (isUnsized()) return getArrayStructType(ctx);
+    if (isUnsized()) {
+      return getArrayStructType(ctx);
+    }
     return getDataStorageType(ctx);
   }
 

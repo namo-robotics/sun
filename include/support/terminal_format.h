@@ -19,9 +19,10 @@ struct TerminalTreeNode {
   std::vector<TerminalTreeNode> children;
 };
 
-/** Links an existing file with a solid yellow underline and unchanged text color.
- * VS Code receives a visible absolute path; other terminals receive an OSC link.
- * Missing files, filesystem errors, and disabled formatting use a plain basename.
+/** Links an existing file with a solid yellow underline and unchanged text
+ * color. VS Code receives a visible absolute path; other terminals receive an
+ * OSC link. Missing files, filesystem errors, and disabled formatting use a
+ * plain basename.
  */
 std::string terminalFileLabel(const std::filesystem::path& path,
                               llvm::raw_ostream& stream);
@@ -30,7 +31,8 @@ std::string terminalFileLabel(const std::filesystem::path& path,
  * The root has no connector. Every line receives indent; no trailing newline
  * is added. Detail lines follow their label before child branches.
  */
-std::string terminalTree(const TerminalTreeNode& root, llvm::raw_ostream& stream,
+std::string terminalTree(const TerminalTreeNode& root,
+                         llvm::raw_ostream& stream,
                          const std::string& level = "warning",
                          const std::string& indent = "");
 

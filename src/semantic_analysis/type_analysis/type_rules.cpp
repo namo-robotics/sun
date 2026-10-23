@@ -36,19 +36,27 @@ namespace {
  */
 bool embedsEnumByValue(const TypePtr& type, const sun::types::EnumType* self,
                        std::set<const sun::types::Type*>& visited) {
-  if (!type || !visited.insert(type.get()).second) return false;
+  if (!type || !visited.insert(type.get()).second) {
+    return false;
+  }
   if (type->isEnum()) {
     auto* e = static_cast<const sun::types::EnumType*>(type.get());
-    if (e->equals(*self)) return true;
+    if (e->equals(*self)) {
+      return true;
+    }
     for (const auto& v : e->getVariants()) {
       for (const auto& pt : v.payloadTypes) {
-        if (embedsEnumByValue(pt, self, visited)) return true;
+        if (embedsEnumByValue(pt, self, visited)) {
+          return true;
+        }
       }
     }
   } else if (type->isClass()) {
     auto* c = static_cast<const sun::types::ClassType*>(type.get());
     for (const auto& field : c->getFields()) {
-      if (embedsEnumByValue(field.type, self, visited)) return true;
+      if (embedsEnumByValue(field.type, self, visited)) {
+        return true;
+      }
     }
   }
   return false;
@@ -70,11 +78,17 @@ bool isComparisonOp(TokenKind op) {
  * overflow. */
 bool tryCoerceIntegerLiteral(ExprAST* expr, TypePtr targetType,
                              bool throwOnFail) {
-  if (!expr || !targetType || !targetType->isPrimitive()) return false;
-  if (expr->getType() != ASTNodeType::NUMBER) return false;
+  if (!expr || !targetType || !targetType->isPrimitive()) {
+    return false;
+  }
+  if (expr->getType() != ASTNodeType::NUMBER) {
+    return false;
+  }
 
   const auto& numLit = static_cast<const NumberExprAST&>(*expr);
-  if (!numLit.isInteger()) return false;
+  if (!numLit.isInteger()) {
+    return false;
+  }
 
   // A suffixed literal (21u8) is typed: it never adapts to another type. Its
   // own suffix type still goes through the range check below.
@@ -106,13 +120,17 @@ bool tryCoerceIntegerLiteral(ExprAST* expr, TypePtr targetType,
 void checkCharOperands(const sun::ast::BinaryExprAST& binExpr) {
   const ExprAST* lhs = binExpr.getLHS();
   const ExprAST* rhs = binExpr.getRHS();
-  if (!lhs || !rhs) return;
+  if (!lhs || !rhs) {
+    return;
+  }
 
   auto lhsType = unwrapRef(lhs->getResolvedType());
   auto rhsType = unwrapRef(rhs->getResolvedType());
   bool lhsIsChar = lhsType && lhsType->isChar();
   bool rhsIsChar = rhsType && rhsType->isChar();
-  if (!lhsIsChar && !rhsIsChar) return;
+  if (!lhsIsChar && !rhsIsChar) {
+    return;
+  }
 
   TokenKind op = binExpr.getOp().kind;
   if (!isComparisonOp(op)) {
@@ -149,22 +167,30 @@ void coerceBinaryLiteralOperands(const sun::ast::BinaryExprAST& binExpr,
   auto coerceNumericLiteral = [](const ExprAST* literal,
                                  const TypePtr& targetType) {
     auto target = unwrapRef(targetType);
-    if (!literal || !target || !target->isPrimitive()) return false;
+    if (!literal || !target || !target->isPrimitive()) {
+      return false;
+    }
     auto* expr = const_cast<ExprAST*>(literal);
 
     const auto& num = static_cast<const NumberExprAST&>(*literal);
     if (num.isInteger()) {
-      if (!target->isIntegral()) return false;
+      if (!target->isIntegral()) {
+        return false;
+      }
       return tryCoerceIntegerLiteral(expr, target, /*throwOnFail=*/false);
     }
-    if (!target->isFloatingPoint()) return false;
+    if (!target->isFloatingPoint()) {
+      return false;
+    }
     expr->setResolvedType(target);
     return true;
   };
 
   const ExprAST* lhs = binExpr.getLHS();
   const ExprAST* rhs = binExpr.getRHS();
-  if (!lhs || !rhs) return;
+  if (!lhs || !rhs) {
+    return;
+  }
 
   // A suffixed literal (21u8) is a typed operand, not a followable literal
   auto isUntypedLiteral = [](const ExprAST* e) {
@@ -173,27 +199,39 @@ void coerceBinaryLiteralOperands(const sun::ast::BinaryExprAST& binExpr,
   };
   bool lhsIsLiteral = isUntypedLiteral(lhs);
   bool rhsIsLiteral = isUntypedLiteral(rhs);
-  if (!lhsIsLiteral && !rhsIsLiteral) return;
+  if (!lhsIsLiteral && !rhsIsLiteral) {
+    return;
+  }
 
   // A comparison's expected type describes its bool result, not its operands
   TokenKind op = binExpr.getOp().kind;
   auto expected = unwrapRef(expectedType);
   if (!isComparisonOp(op) && expected && expected->isNumeric()) {
     bool coerced = false;
-    if (lhsIsLiteral) coerced = coerceNumericLiteral(lhs, expected) || coerced;
-    if (rhsIsLiteral) coerced = coerceNumericLiteral(rhs, expected) || coerced;
+    if (lhsIsLiteral) {
+      coerced = coerceNumericLiteral(lhs, expected) || coerced;
+    }
+    if (rhsIsLiteral) {
+      coerced = coerceNumericLiteral(rhs, expected) || coerced;
+    }
     // The context type wins; adapting to the other operand would undo it
-    if (coerced) return;
+    if (coerced) {
+      return;
+    }
   }
 
-  if (lhsIsLiteral && rhsIsLiteral) return;  // no typed operand to follow
+  if (lhsIsLiteral && rhsIsLiteral) {
+    return;  // no typed operand to follow
+  }
   if (rhsIsLiteral) {
     coerceNumericLiteral(rhs, lhs->getResolvedType());
     return;
   }
   // A shift produces the left operand's type, so the shift amount must not
   // drag the result down to its own type.
-  if (op == TokenKind::LEFT_SHIFT || op == TokenKind::RIGHT_SHIFT) return;
+  if (op == TokenKind::LEFT_SHIFT || op == TokenKind::RIGHT_SHIFT) {
+    return;
+  }
   coerceNumericLiteral(lhs, rhs->getResolvedType());
 }
 
@@ -202,9 +240,12 @@ TypePtr unifyTernaryTypes(const TypePtr& thenType, const TypePtr& elseType,
   auto result = TypeInferer::branches(thenType, elseType,
                                       isAssignableTo(thenType, elseType),
                                       isAssignableTo(elseType, thenType));
-  if (auto* type = std::get_if<TypePtr>(&result)) return *type;
-  if (!thenType || !elseType)
+  if (auto* type = std::get_if<TypePtr>(&result)) {
+    return *type;
+  }
+  if (!thenType || !elseType) {
     logAndThrowError("Cannot determine ternary branch types", loc);
+  }
   logAndThrowError("Ternary branch types do not match: '" +
                        thenType->toDisplayString() + "' vs '" +
                        elseType->toDisplayString() + "'",
@@ -219,9 +260,10 @@ void resolveArrayLiteralType(sun::ast::ArrayLiteralAST& arrLit,
                       : sun::semantic_analysis::requireResolvedType(
                             *arrLit.getElements().front());
   TypePtr expectedElement;
-  if (auto hint = unwrapRef(expectedType); hint && hint->isArray())
+  if (auto hint = unwrapRef(expectedType); hint && hint->isArray()) {
     expectedElement =
         static_cast<const sun::types::ArrayType&>(*hint).getElementType();
+  }
   bool widen = first && expectedElement &&
                ((expectedElement->isInt64() && first->isInt32()) ||
                 (expectedElement->isFloat64() && first->isFloat32()) ||

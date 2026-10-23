@@ -64,12 +64,18 @@ class LambdaType : public Type {
   std::string toString() const override {
     std::string result = hasRefCaptures_ ? "<'_>(" : "(";
     for (size_t i = 0; i < paramTypes.size(); ++i) {
-      if (i > 0) result += ", ";
+      if (i > 0) {
+        result += ", ";
+      }
       result += paramTypes[i]->toString();
     }
     result += ") => " + returnType->toString();
-    if (requiresUnsafe_) result = "unsafe " + result;
-    if (canThrow_) result += " throws IError";
+    if (requiresUnsafe_) {
+      result = "unsafe " + result;
+    }
+    if (canThrow_) {
+      result += " throws IError";
+    }
     return result;
   }
 
@@ -77,25 +83,43 @@ class LambdaType : public Type {
   std::string toDisplayString() const override {
     std::string result = hasRefCaptures_ ? "<'_>(" : "(";
     for (size_t i = 0; i < paramTypes.size(); ++i) {
-      if (i > 0) result += ", ";
+      if (i > 0) {
+        result += ", ";
+      }
       result += paramTypes[i]->toDisplayString();
     }
     result += ") => " + returnType->toDisplayString();
-    if (requiresUnsafe_) result = "unsafe " + result;
-    if (canThrow_) result += " throws IError";
+    if (requiresUnsafe_) {
+      result = "unsafe " + result;
+    }
+    if (canThrow_) {
+      result += " throws IError";
+    }
     return result;
   }
 
   /** Reports whether the other type has the same semantic identity. */
   bool equals(const Type& other) const override {
     if (auto* l = dynamic_cast<const LambdaType*>(&other)) {
-      if (requiresUnsafe_ != l->requiresUnsafe_) return false;
-      if (canThrow_ != l->canThrow_) return false;
-      if (hasRefCaptures_ != l->hasRefCaptures_) return false;
-      if (!returnType->equals(*l->returnType)) return false;
-      if (paramTypes.size() != l->paramTypes.size()) return false;
+      if (requiresUnsafe_ != l->requiresUnsafe_) {
+        return false;
+      }
+      if (canThrow_ != l->canThrow_) {
+        return false;
+      }
+      if (hasRefCaptures_ != l->hasRefCaptures_) {
+        return false;
+      }
+      if (!returnType->equals(*l->returnType)) {
+        return false;
+      }
+      if (paramTypes.size() != l->paramTypes.size()) {
+        return false;
+      }
       for (size_t i = 0; i < paramTypes.size(); ++i) {
-        if (!paramTypes[i]->equals(*l->paramTypes[i])) return false;
+        if (!paramTypes[i]->equals(*l->paramTypes[i])) {
+          return false;
+        }
       }
       return true;
     }
@@ -108,10 +132,16 @@ class LambdaType : public Type {
    * chosen value is flagged as frame-bound; assignability rejects it later.
    */
   bool equalsIgnoringThrow(const LambdaType& other) const {
-    if (!returnType->equals(*other.returnType)) return false;
-    if (paramTypes.size() != other.paramTypes.size()) return false;
+    if (!returnType->equals(*other.returnType)) {
+      return false;
+    }
+    if (paramTypes.size() != other.paramTypes.size()) {
+      return false;
+    }
     for (size_t i = 0; i < paramTypes.size(); ++i) {
-      if (!paramTypes[i]->equals(*other.paramTypes[i])) return false;
+      if (!paramTypes[i]->equals(*other.paramTypes[i])) {
+        return false;
+      }
     }
     return true;
   }
@@ -123,10 +153,18 @@ class LambdaType : public Type {
    * go where a '<'_>' one is expected — never the other way around.
    */
   bool acceptsValueOf(const LambdaType& from) const {
-    if (!equalsIgnoringThrow(from)) return false;
-    if (!requiresUnsafe_ && from.requiresUnsafe_) return false;
-    if (!canThrow_ && from.canThrow_) return false;
-    if (!hasRefCaptures_ && from.hasRefCaptures_) return false;
+    if (!equalsIgnoringThrow(from)) {
+      return false;
+    }
+    if (!requiresUnsafe_ && from.requiresUnsafe_) {
+      return false;
+    }
+    if (!canThrow_ && from.canThrow_) {
+      return false;
+    }
+    if (!hasRefCaptures_ && from.hasRefCaptures_) {
+      return false;
+    }
     return true;
   }
 

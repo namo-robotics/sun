@@ -37,7 +37,9 @@ Value* IntrinsicsGenerator::codegenAtomicCmpxchgIntrinsic(
   llvm::Value* ptr = codegen(*args[0]);
   llvm::Value* expected = codegen(*args[1]);
   llvm::Value* desired = codegen(*args[2]);
-  if (!ptr || !expected || !desired) return nullptr;
+  if (!ptr || !expected || !desired) {
+    return nullptr;
+  }
 
   auto* intTy = llvm::Type::getIntNTy(ctx.getContext(), bitWidth);
   expected =
@@ -70,7 +72,9 @@ Value* IntrinsicsGenerator::codegenAtomicStoreIntrinsic(const CallExprAST& expr,
 
   llvm::Value* ptr = codegen(*args[0]);
   llvm::Value* value = codegen(*args[1]);
-  if (!ptr || !value) return nullptr;
+  if (!ptr || !value) {
+    return nullptr;
+  }
 
   auto* intTy = llvm::Type::getIntNTy(ctx.getContext(), bitWidth);
   value =
@@ -96,7 +100,9 @@ Value* IntrinsicsGenerator::codegenAtomicLoadIntrinsic(const CallExprAST& expr,
   }
 
   llvm::Value* ptr = codegen(*args[0]);
-  if (!ptr) return nullptr;
+  if (!ptr) {
+    return nullptr;
+  }
 
   auto* intTy = llvm::Type::getIntNTy(ctx.getContext(), bitWidth);
   llvm::LoadInst* load = ctx.builder->CreateLoad(intTy, ptr, "atomic.load.val");
@@ -118,7 +124,9 @@ Value* IntrinsicsGenerator::codegenAtomicFetchOpIntrinsic(
 
   llvm::Value* ptr = codegen(*args[0]);
   llvm::Value* delta = codegen(*args[1]);
-  if (!ptr || !delta) return nullptr;
+  if (!ptr || !delta) {
+    return nullptr;
+  }
 
   auto* intTy = llvm::Type::getIntNTy(ctx.getContext(), bitWidth);
   delta =
@@ -162,7 +170,9 @@ Value* IntrinsicsGenerator::codegenFutexWaitIntrinsic(const CallExprAST& expr) {
 
   llvm::Value* ptr = codegen(*args[0]);
   llvm::Value* expected = codegen(*args[1]);
-  if (!ptr || !expected) return nullptr;
+  if (!ptr || !expected) {
+    return nullptr;
+  }
 
   auto* i32Ty = llvm::Type::getInt32Ty(ctx.getContext());
 
@@ -186,7 +196,9 @@ Value* IntrinsicsGenerator::codegenFutexWakeIntrinsic(const CallExprAST& expr) {
   }
 
   llvm::Value* ptr = codegen(*args[0]);
-  if (!ptr) return nullptr;
+  if (!ptr) {
+    return nullptr;
+  }
 
   // Use ThreadUtils to emit the futex syscall
   ThreadUtils threadUtils(ctx, module);

@@ -100,10 +100,11 @@ if 'checkout' in args:
     sun::support::SunPath::extraPaths() = searchPaths;
     sun::driver::ManifestProcessor::clearPathVariables();
     for (const auto& [name, value] : environment) {
-      if (value)
+      if (value) {
         setenv(name.c_str(), value->c_str(), 1);
-      else
+      } else {
         unsetenv(name.c_str());
+      }
     }
   }
 
@@ -182,8 +183,10 @@ TEST_F(GitSourceTest, RetriesAfterFailureAndRejectsSymlinkEscape) {
   write(dir / "fail", "fail");
   EXPECT_THROW(sun::driver::resolveGitEntrypoint(entry()),
                sun::support::SunError);
-  for (const auto& cached : std::filesystem::directory_iterator(dir / "cache"))
+  for (const auto& cached :
+       std::filesystem::directory_iterator(dir / "cache")) {
     EXPECT_TRUE(std::filesystem::is_empty(cached.path()));
+  }
   std::filesystem::remove(dir / "fail");
   const auto source = sun::driver::resolveGitEntrypoint(entry());
   write(dir / "outside.sun", "outside");

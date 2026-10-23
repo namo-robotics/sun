@@ -158,7 +158,9 @@ inline std::vector<std::string> lifetimeParameterNames(
     const std::vector<LifetimeParameter>& params) {
   std::vector<std::string> names;
   names.reserve(params.size());
-  for (const auto& param : params) names.push_back(param.name);
+  for (const auto& param : params) {
+    names.push_back(param.name);
+  }
   return names;
 }
 
@@ -170,7 +172,9 @@ inline std::vector<std::string> typeParameterNames(
     const std::vector<TypeParameter>& params) {
   std::vector<std::string> names;
   names.reserve(params.size());
-  for (const auto& p : params) names.push_back(p.name);
+  for (const auto& p : params) {
+    names.push_back(p.name);
+  }
   return names;
 }
 

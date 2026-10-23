@@ -32,10 +32,16 @@ bool isIdentifierChar(char c) {
  */
 std::optional<Position> signatureSpan(const ExprAST& owner) {
   const PrototypeAST* proto = prototypeOf(owner);
-  if (!proto) return std::nullopt;
+  if (!proto) {
+    return std::nullopt;
+  }
   Position span = proto->getLocation();
-  if (span.endOffset) return span;
-  if (owner.getType() != ASTNodeType::LAMBDA) return std::nullopt;
+  if (span.endOffset) {
+    return span;
+  }
+  if (owner.getType() != ASTNodeType::LAMBDA) {
+    return std::nullopt;
+  }
   span = owner.getLocation();
   span.endOffset = static_cast<const sun::ast::LambdaAST&>(owner)
                        .getBody()
@@ -49,14 +55,20 @@ std::optional<Position> signatureSpan(const ExprAST& owner) {
 /** Finds a complete identifier within a bounded source range. */
 int findWord(const std::string& text, const std::string& name, size_t from,
              size_t to) {
-  if (name.empty() || from >= text.size()) return -1;
-  if (to > text.size()) to = text.size();
+  if (name.empty() || from >= text.size()) {
+    return -1;
+  }
+  if (to > text.size()) {
+    to = text.size();
+  }
   size_t pos = text.find(name, from);
   while (pos != std::string::npos && pos + name.size() <= to) {
     bool startsWord = pos == 0 || !isIdentifierChar(text[pos - 1]);
     bool endsWord = pos + name.size() == text.size() ||
                     !isIdentifierChar(text[pos + name.size()]);
-    if (startsWord && endsWord) return static_cast<int>(pos);
+    if (startsWord && endsWord) {
+      return static_cast<int>(pos);
+    }
     pos = text.find(name, pos + 1);
   }
   return -1;
@@ -82,14 +94,20 @@ Position nameRange(const Position& span, const std::string& name,
                    const std::string& text) {
   if (name.empty()) {
     Position range = span;
-    if (!range.endOffset) range.endOffset = range.offset;
+    if (!range.endOffset) {
+      range.endOffset = range.offset;
+    }
     return range;
   }
   int length = static_cast<int>(name.size());
   if (span.endOffset) {
-    if (sliceSpan(text, span) == name) return span;
+    if (sliceSpan(text, span) == name) {
+      return span;
+    }
     int at = findWord(text, name, span.offset, *span.endOffset);
-    if (at >= 0) return rangeAt(span, at, length);
+    if (at >= 0) {
+      return rangeAt(span, at, length);
+    }
   } else if (textHas(text, span.offset, name)) {
     return rangeAt(span, span.offset, length);
   }
@@ -113,7 +131,9 @@ const PrototypeAST* prototypeOf(const ExprAST& node) {
 /** Reports whether a function signature declares the requested parameter. */
 bool declaresParameter(const PrototypeAST& proto, const std::string& name) {
   for (const auto& arg : proto.getArgs()) {
-    if (arg.first == name) return true;
+    if (arg.first == name) {
+      return true;
+    }
   }
   return proto.getVariadicParamName() == name;
 }
@@ -123,7 +143,9 @@ std::optional<Position> parameterRange(const ExprAST& owner,
                                        const std::string& name,
                                        const std::string& text) {
   std::optional<Position> span = signatureSpan(owner);
-  if (!span || !span->endOffset) return std::nullopt;
+  if (!span || !span->endOffset) {
+    return std::nullopt;
+  }
   size_t from = text.find('(', span->offset);
   if (from == std::string::npos || static_cast<int>(from) >= *span->endOffset) {
     return std::nullopt;
@@ -149,10 +171,16 @@ std::optional<std::string> textOf(const Position& location,
                                   const std::string& documentPath,
                                   const std::string& source) {
   std::string text = sourceFor(location, documentPath, source);
-  if (!text.empty()) return text;
-  if (!location.filePath) return std::nullopt;
+  if (!text.empty()) {
+    return text;
+  }
+  if (!location.filePath) {
+    return std::nullopt;
+  }
   std::ifstream file(*location.filePath);
-  if (!file.is_open()) return std::nullopt;
+  if (!file.is_open()) {
+    return std::nullopt;
+  }
   std::stringstream buffer;
   buffer << file.rdbuf();
   return buffer.str();

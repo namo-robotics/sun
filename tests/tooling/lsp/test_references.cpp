@@ -44,8 +44,9 @@ Analysis analyze(const std::string& source, bool withStdlib = false) {
   sun::driver::initTestEnvironment();
   Analysis analysis;
   analysis.driver = Driver::createForAOT("references_test");
-  if (withStdlib)
+  if (withStdlib) {
     analysis.driver->setMoonImports(sun::driver::getStdlibMoonImports());
+  }
   analysis.program = analysis.driver->analyzeString(source, kPath);
   return analysis;
 }
@@ -59,7 +60,9 @@ size_t offsetOf(const std::string& source, const std::string& needle,
   size_t from = 0;
   for (int i = 0; i <= occurrence; ++i) {
     pos = source.find(needle, from);
-    if (pos == std::string::npos) break;
+    if (pos == std::string::npos) {
+      break;
+    }
     from = pos + 1;
   }
   EXPECT_NE(pos, std::string::npos) << "needle not found: " << needle;
@@ -73,7 +76,9 @@ std::vector<SymbolLocation> referencesAt(const std::string& source,
                                          int occurrence = 0,
                                          bool withStdlib = false) {
   size_t pos = offsetOf(source, needle, occurrence);
-  if (pos == std::string::npos) return {};
+  if (pos == std::string::npos) {
+    return {};
+  }
   Analysis analysis = analyze(source, withStdlib);
   if (!analysis.program.ast) {
     ADD_FAILURE() << "program did not parse: "
@@ -110,10 +115,14 @@ std::string describe(const std::string& source,
                      const std::vector<SymbolLocation>& results) {
   std::string text;
   for (const auto& result : results) {
-    if (!text.empty()) text += ", ";
+    if (!text.empty()) {
+      text += ", ";
+    }
     text += std::to_string(result.range.offset) + " (" +
             rangeText(source, result) + ")";
-    if (result.filePath != kPath) text += " in " + result.filePath;
+    if (result.filePath != kPath) {
+      text += " in " + result.filePath;
+    }
   }
   return text.empty() ? "nothing" : text;
 }
@@ -148,7 +157,9 @@ testing::AssertionResult refersTo(const std::string& source,
   }
   std::string wantedText;
   for (const auto& [offset, name] : wanted) {
-    if (!wantedText.empty()) wantedText += ", ";
+    if (!wantedText.empty()) {
+      wantedText += ", ";
+    }
     wantedText += std::to_string(offset) + " (" + name + ")";
   }
   std::vector<int> got;
@@ -161,7 +172,9 @@ testing::AssertionResult refersTo(const std::string& source,
     got.push_back(result.range.offset);
   }
   std::vector<int> want;
-  for (const auto& [offset, name] : wanted) want.push_back(offset);
+  for (const auto& [offset, name] : wanted) {
+    want.push_back(offset);
+  }
   if (got != want) {
     return testing::AssertionFailure()
            << "references of " << needle << " are " << describe(source, results)
@@ -503,8 +516,9 @@ TEST(Tooling_Lsp_References, MergedFiles) {
 }
 
 TEST(Tooling_Lsp_References, StdlibReferences) {
-  if (sun::driver::getStdlibMoonImports().empty())
+  if (sun::driver::getStdlibMoonImports().empty()) {
     GTEST_SKIP() << "stdlib.moon not built";
+  }
   std::string source = R"(
 using std;
 function main() i64 {

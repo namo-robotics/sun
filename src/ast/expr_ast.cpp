@@ -19,15 +19,18 @@ std::unique_ptr<ExprAST> ExprAST::clone() const {
 }
 
 void ExprAST::inheritSourceFile(sun::support::SourceFileId id) {
-  if (!sourceFileId_) sourceFileId_ = id;
+  if (!sourceFileId_) {
+    sourceFileId_ = id;
+  }
   // Typed children are forwarded by forEachChildSlot rather than visited.
   // Visit their roots here as well so generated methods retain their file.
   switch (getType()) {
     case ASTNodeType::FUNCTION: {
       auto& function = static_cast<FunctionAST&>(*this);
-      if (function.hasBody())
+      if (function.hasBody()) {
         const_cast<BlockExprAST&>(function.getBody())
             .inheritSourceFile(sourceFileId_);
+      }
       return;
     }
     case ASTNodeType::LAMBDA:
@@ -44,21 +47,31 @@ void ExprAST::inheritSourceFile(sun::support::SourceFileId id) {
       return;
     case ASTNodeType::CLASS_DEFINITION:
       for (const auto& field :
-           static_cast<ClassDefinitionAST&>(*this).getFields())
-        if (field.initializer)
+           static_cast<ClassDefinitionAST&>(*this).getFields()) {
+        if (field.initializer) {
           field.initializer->inheritSourceFile(sourceFileId_);
+        }
+      }
       for (const auto& method :
-           static_cast<ClassDefinitionAST&>(*this).getMethods())
-        if (method.function) method.function->inheritSourceFile(sourceFileId_);
+           static_cast<ClassDefinitionAST&>(*this).getMethods()) {
+        if (method.function) {
+          method.function->inheritSourceFile(sourceFileId_);
+        }
+      }
       return;
     case ASTNodeType::INTERFACE_DEFINITION:
       for (const auto& method :
-           static_cast<InterfaceDefinitionAST&>(*this).getMethods())
-        if (method.function) method.function->inheritSourceFile(sourceFileId_);
+           static_cast<InterfaceDefinitionAST&>(*this).getMethods()) {
+        if (method.function) {
+          method.function->inheritSourceFile(sourceFileId_);
+        }
+      }
       return;
     default:
       forEachChildSlot([&](std::unique_ptr<ExprAST>& child) {
-        if (child) child->inheritSourceFile(sourceFileId_);
+        if (child) {
+          child->inheritSourceFile(sourceFileId_);
+        }
       });
   }
 }

@@ -31,7 +31,9 @@ class ArrayIndexAST : public ExprAST {
   std::string toString() const override {
     std::string result = array->toString() + "[";
     for (size_t i = 0; i < indices.size(); ++i) {
-      if (i > 0) result += ", ";
+      if (i > 0) {
+        result += ", ";
+      }
       result += indices[i]->toString();
     }
     return result + "]";

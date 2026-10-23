@@ -44,7 +44,9 @@ class ReturnExprAST : public ExprAST {
   ASTNodeType getType() const override { return ASTNodeType::RETURN; }
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
-    if (Value) return "return " + Value->toString();
+    if (Value) {
+      return "return " + Value->toString();
+    }
     return "return";
   }
 

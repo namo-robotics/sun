@@ -424,7 +424,9 @@ class CodegenVisitor {
                                      llvm::Type* type = nullptr) {
     /** Provides the LLVM instruction builder used by the active generator. */
     IRBuilder<> builder(&func->getEntryBlock(), func->getEntryBlock().begin());
-    if (!type) type = llvm::Type::getDoubleTy(ctx.getContext());
+    if (!type) {
+      type = llvm::Type::getDoubleTy(ctx.getContext());
+    }
     return builder.CreateAlloca(type, nullptr, varName);
   }
 

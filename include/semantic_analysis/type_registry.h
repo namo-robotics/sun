@@ -26,13 +26,15 @@ struct SpecializationKeyHash {
     auto combine = [&](size_t value) { hash = hash * 31 + value; };
     combine(key.enclosing.index());
     combine(key.arguments.size());
-    for (const auto& arg : key.arguments)
+    for (const auto& arg : key.arguments) {
       combine(arg ? static_cast<size_t>(arg->getKind()) + 1 : 0);
+    }
     combine(key.variadic.has_value());
     if (key.variadic) {
       combine(key.variadic->size());
-      for (const auto& arg : *key.variadic)
+      for (const auto& arg : *key.variadic) {
         combine(arg ? static_cast<size_t>(arg->getKind()) + 1 : 0);
+      }
     }
     return hash;
   }
@@ -55,12 +57,14 @@ class TypeRegistry {
   template <typename T>
   std::shared_ptr<T> nominalType(DeclarationId id, DeclarationKind kind) {
     const auto& record = declarations_.get(id);
-    if (record.kind != kind)
+    if (record.kind != kind) {
       sun::support::logAndThrowError(
           "Declaration kind does not match nominal type");
+    }
     auto found = nominalTypes_.find(id);
-    if (found != nominalTypes_.end())
+    if (found != nominalTypes_.end()) {
       return std::static_pointer_cast<T>(found->second);
+    }
     auto type = std::make_shared<T>(record.name);
     type->declarationId_ = id;
     type->declarationSession_ = declarations_.session();
@@ -98,12 +102,13 @@ class TypeRegistry {
     message.declarationId =
         declarations_.add(DeclarationKind::Function, "message", id);
     uint64_t ordinal = 2;
-    for (const auto& method : ierror->getMethods())
+    for (const auto& method : ierror->getMethods()) {
       declarations_.bindPortable(
           method.declarationId,
           PortableDeclarationKey::original("4c7b23a9e50e3bb484c7f661e4700d156ba"
                                            "c371ed9dd5d23c3d22e2fefc263c1",
                                            ordinal++));
+    }
     errorInterface = ierror;
   }
 
@@ -205,9 +210,10 @@ class TypeRegistry {
                                                   const QualifiedName& name) {
     auto type = getClass(id);
     if (!type->getQualifiedName().baseName.empty() &&
-        type->getQualifiedName() != name)
+        type->getQualifiedName() != name) {
       sun::support::logAndThrowError(
           "Cannot change a nominal type's assigned source name");
+    }
     type->name_ = name.lookupName();
     type->setQualifiedName(name);
     type->setBaseName(name.baseName);
@@ -225,9 +231,10 @@ class TypeRegistry {
       DeclarationId id, const QualifiedName& name) {
     auto type = getInterface(id);
     if (!type->getQualifiedName().baseName.empty() &&
-        type->getQualifiedName() != name)
+        type->getQualifiedName() != name) {
       sun::support::logAndThrowError(
           "Cannot change a nominal type's assigned source name");
+    }
     type->name = name.lookupName();
     type->setQualifiedName(name);
     type->setBaseName(name.baseName);
@@ -244,9 +251,10 @@ class TypeRegistry {
                                                 const QualifiedName& name) {
     auto type = getEnum(id);
     if (!type->getQualifiedName().baseName.empty() &&
-        type->getQualifiedName() != name)
+        type->getQualifiedName() != name) {
       sun::support::logAndThrowError(
           "Cannot change a nominal type's assigned source name");
+    }
     type->name_ = name.lookupName();
     type->setQualifiedName(name);
     type->setBaseName(name.baseName);
@@ -256,7 +264,9 @@ class TypeRegistry {
   /** Intern an instance before resolving its members or body. */
   DeclarationId specialize(const SpecializationKey& key) {
     auto found = specializations_.find(key);
-    if (found != specializations_.end()) return found->second;
+    if (found != specializations_.end()) {
+      return found->second;
+    }
     const auto& source = declarations_.get(key.source);
     auto id = declarations_.add(
         source.kind, source.name, key.enclosing ? key.enclosing : source.owner,

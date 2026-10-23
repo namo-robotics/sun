@@ -831,9 +831,13 @@ namespace {
 std::vector<std::filesystem::path> corpusFiles() {
   std::vector<std::filesystem::path> files;
   for (const char* dir : {"tests/programs", "stdlib", "examples"}) {
-    if (!std::filesystem::exists(dir)) continue;
+    if (!std::filesystem::exists(dir)) {
+      continue;
+    }
     for (const auto& entry : std::filesystem::directory_iterator(dir)) {
-      if (entry.path().extension() == ".sun") files.push_back(entry.path());
+      if (entry.path().extension() == ".sun") {
+        files.push_back(entry.path());
+      }
     }
   }
   // Namespace directories replace the former flat stdlib source layout.
@@ -895,7 +899,9 @@ TEST(Tooling_Fmt_Corpus, IdempotentAndStructurePreserving) {
     } catch (const sun::support::SunError&) {
       continue;  // legacy files (import statements) don't parse standalone
     }
-    if (!ast) continue;
+    if (!ast) {
+      continue;
+    }
     ++checked;
 
     std::string formatted =
@@ -1225,7 +1231,9 @@ class Tooling_FmtIgnore : public ::testing::Test {
   /** Runs check mode on one project path with an optional override. */
   int check(const std::string& path, bool noIgnore = false) {
     std::vector<std::string> args = {"--check", (dir / path).string()};
-    if (noIgnore) args.push_back("--no-ignore");
+    if (noIgnore) {
+      args.push_back("--no-ignore");
+    }
     return sun::cli::runFmtCommand(args);
   }
 };
@@ -1261,16 +1269,19 @@ TEST_F(Tooling_FmtIgnore, PatternsAndNegation) {
        {"root.sun", "nested/root.sun", "cache/bad.sun", "nested/cache/bad.sun",
         "nested/x.generated.sun", "src/skip1.sun", "src/a/b/skip2.sun",
         "src/skip12.sun", "output/drop.sun", "output/keep.sun", "a.sun",
-        "!literal.sun"})
+        "!literal.sun"}) {
     write(path, "function f()void{}");
+  }
   for (const auto* path :
        {"root.sun", "cache/bad.sun", "nested/cache/bad.sun",
         "nested/x.generated.sun", "src/skip1.sun", "src/a/b/skip2.sun",
-        "output/drop.sun", "a.sun", "!literal.sun"})
+        "output/drop.sun", "a.sun", "!literal.sun"}) {
     EXPECT_EQ(check(path), 0) << path;
+  }
   for (const auto* path :
-       {"nested/root.sun", "src/skip12.sun", "output/keep.sun"})
+       {"nested/root.sun", "src/skip12.sun", "output/keep.sun"}) {
     EXPECT_EQ(check(path), 1) << path;
+  }
   EXPECT_EQ(check("output"), 1);
 }
 

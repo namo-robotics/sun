@@ -86,7 +86,9 @@ class Modules_GenericRegressions : public ::testing::Test {
   void checkProgram(const std::string& name, bool checkNative = true) {
     const auto source = (dir / name).string();
     ASSERT_TRUE(run("build/sun " + source));
-    if (!checkNative) return;
+    if (!checkNative) {
+      return;
+    }
     const auto binary = (dir / "app").string();
     ASSERT_TRUE(run("build/sun -c -o " + binary + " " + source));
     ASSERT_TRUE(run(binary));
@@ -236,10 +238,13 @@ manifest { libraries: ["lib.moon"] }
   std::function<void(sun::ast::ExprAST&)> findBox =
       [&](sun::ast::ExprAST& node) {
         if (auto* cls = dynamic_cast<sun::ast::ClassDefinitionAST*>(&node);
-            cls && cls->getName() == "Box")
+            cls && cls->getName() == "Box") {
           box = cls;
+        }
         node.forEachChildSlot([&](auto& child) {
-          if (child) findBox(*child);
+          if (child) {
+            findBox(*child);
+          }
         });
       };
   findBox(*analyzed.ast);
@@ -265,8 +270,9 @@ manifest { libraries: ["lib.moon"] }
           sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
               instanceId, analyzed.results->declarations)
               .encoding()));
-      for (const auto& method : shape->getMethods())
+      for (const auto& method : shape->getMethods()) {
         EXPECT_TRUE(method.function->hasBody());
+      }
     }
   }
   EXPECT_EQ(compiled, 1u);

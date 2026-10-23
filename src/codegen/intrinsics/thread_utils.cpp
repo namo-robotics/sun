@@ -132,7 +132,9 @@ Function* ThreadUtils::getOrCreateThreadTrampoline(
   raw_string_ostream keyStream(key);
   lambdaFuncType->print(keyStream);
   resultLLVMType->print(keyStream);
-  if (argsType) argsType->print(keyStream);
+  if (argsType) {
+    argsType->print(keyStream);
+  }
   keyStream << (fatType ? "/fat" : "/bare");
   if (auto it = trampolineCache.find(keyStream.str());
       it != trampolineCache.end()) {

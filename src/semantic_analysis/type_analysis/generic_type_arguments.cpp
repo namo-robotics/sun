@@ -73,9 +73,13 @@ const std::vector<TypePtr>* typeArgumentsOf(const TypePtr& type) {
  */
 void bindName(const std::string& name, const TypePtr& value,
               std::map<std::string, TypePtr>& bindings) {
-  if (!value) return;
+  if (!value) {
+    return;
+  }
   auto existing = bindings.find(name);
-  if (existing == bindings.end()) bindings[name] = value;
+  if (existing == bindings.end()) {
+    bindings[name] = value;
+  }
 }
 
 }  // namespace
@@ -87,7 +91,9 @@ static void bindTypeShape(const sun::ast::TypeAnnotation& param,
                           const std::vector<std::string>& typeParams,
                           std::map<std::string, TypePtr>& bindings,
                           bool preserveReference) {
-  if (!argType) return;
+  if (!argType) {
+    return;
+  }
 
   // `ref T` against an argument of type T (or ref T)
   if (param.baseName == "ref" && param.elementType) {
@@ -97,7 +103,9 @@ static void bindTypeShape(const sun::ast::TypeAnnotation& param,
   }
 
   TypePtr value = preserveReference ? argType : unwrapRef(argType);
-  if (!value) return;
+  if (!value) {
+    return;
+  }
 
   // The parameter is the type parameter itself: T, bound to the argument
   if (param.typeArguments.empty() && isNamed(typeParams, param.baseName)) {
@@ -116,9 +124,10 @@ static void bindTypeShape(const sun::ast::TypeAnnotation& param,
             ? static_cast<const FunctionType&>(*value).getReturnType()
             : static_cast<const LambdaType&>(*value).getReturnType();
     for (size_t i = 0; i < param.paramTypes.size() && i < parameters.size();
-         ++i)
+         ++i) {
       bindTypeShape(*param.paramTypes[i], parameters[i], typeParams, bindings,
                     true);
+    }
     bindTypeShape(*param.returnType, returned, typeParams, bindings, true);
     return;
   }
@@ -134,7 +143,9 @@ static void bindTypeShape(const sun::ast::TypeAnnotation& param,
   // Vec<T>, Map<K, V>, Option<T>: bind against the argument's type arguments
   if (!param.typeArguments.empty()) {
     const std::vector<TypePtr>* args = typeArgumentsOf(value);
-    if (!args) return;
+    if (!args) {
+      return;
+    }
     for (size_t i = 0; i < param.typeArguments.size() && i < args->size();
          ++i) {
       bindTypeShape(*param.typeArguments[i], (*args)[i], typeParams, bindings,
@@ -149,7 +160,9 @@ static void bindTypeShape(const TypePtr& param, const TypePtr& argType,
                           const std::vector<std::string>& typeParams,
                           std::map<std::string, TypePtr>& bindings,
                           bool preserveReference) {
-  if (!param || !argType) return;
+  if (!param || !argType) {
+    return;
+  }
 
   // `ref T` against an argument of type T (or ref T)
   if (param->isReference()) {
@@ -159,12 +172,16 @@ static void bindTypeShape(const TypePtr& param, const TypePtr& argType,
   }
 
   TypePtr value = preserveReference ? argType : unwrapRef(argType);
-  if (!value) return;
+  if (!value) {
+    return;
+  }
 
   if (param->isTypeParameter()) {
     const auto& name =
         static_cast<const TypeParameterType*>(param.get())->getName();
-    if (isNamed(typeParams, name)) bindName(name, value, bindings);
+    if (isNamed(typeParams, name)) {
+      bindName(name, value, bindings);
+    }
     return;
   }
 
@@ -180,9 +197,10 @@ static void bindTypeShape(const TypePtr& param, const TypePtr& argType,
     const auto& p = static_cast<const FunctionType&>(*param);
     const auto& a = static_cast<const FunctionType&>(*value);
     for (size_t i = 0;
-         i < p.getParamTypes().size() && i < a.getParamTypes().size(); ++i)
+         i < p.getParamTypes().size() && i < a.getParamTypes().size(); ++i) {
       bindTypeShape(p.getParamTypes()[i], a.getParamTypes()[i], typeParams,
                     bindings, true);
+    }
     bindTypeShape(p.getReturnType(), a.getReturnType(), typeParams, bindings,
                   true);
     return;
@@ -206,7 +224,9 @@ static void bindTypeShape(const TypePtr& param, const TypePtr& argType,
   const std::vector<TypePtr>* paramArgs = typeArgumentsOf(param);
   const std::vector<TypePtr>* args =
       paramArgs ? typeArgumentsOf(value) : nullptr;
-  if (!paramArgs || !args) return;
+  if (!paramArgs || !args) {
+    return;
+  }
   for (size_t i = 0; i < paramArgs->size() && i < args->size(); ++i) {
     bindTypeShape((*paramArgs)[i], (*args)[i], typeParams, bindings, true);
   }
@@ -231,10 +251,18 @@ void bindTypeParameters(const TypePtr& param, const TypePtr& argType,
 
 /** Reports whether a semantic type contains an unbound generic parameter. */
 bool mentionsTypeParameter(const TypePtr& type) {
-  if (!type) return false;
-  if (type->isTypeParameter()) return true;
-  if (type->isReference()) return mentionsTypeParameter(unwrapRef(type));
-  if (TypePtr element = elementOf(type)) return mentionsTypeParameter(element);
+  if (!type) {
+    return false;
+  }
+  if (type->isTypeParameter()) {
+    return true;
+  }
+  if (type->isReference()) {
+    return mentionsTypeParameter(unwrapRef(type));
+  }
+  if (TypePtr element = elementOf(type)) {
+    return mentionsTypeParameter(element);
+  }
   if (type->isFunction()) {
     auto* f = static_cast<const FunctionType*>(type.get());
     return std::any_of(f->getParamTypes().begin(), f->getParamTypes().end(),
@@ -303,8 +331,9 @@ InferenceResult<std::vector<TypePtr>> deduce(
     const std::vector<Shape>& shapes, const std::vector<TypePtr>& arguments,
     const std::vector<TypePtr>& explicitArguments) {
   std::map<std::string, TypePtr> bindings;
-  for (size_t i = 0; i < shapes.size() && i < arguments.size(); ++i)
+  for (size_t i = 0; i < shapes.size() && i < arguments.size(); ++i) {
     bindTypeParameters(shapes[i], arguments[i], parameters, bindings);
+  }
   return completeTypeArguments(parameters, bindings, explicitArguments);
 }
 InferenceResult<std::vector<TypePtr>> inferTypeArguments(

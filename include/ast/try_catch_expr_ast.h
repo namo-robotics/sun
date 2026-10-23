@@ -61,7 +61,9 @@ class TryCatchExprAST : public ExprAST {
     std::string result = "try " + tryBlock->toString();
     for (const auto& c : catchClauses) {
       result += " catch (" + c.bindingName;
-      if (c.bindingType) result += ": " + c.bindingType->toString();
+      if (c.bindingType) {
+        result += ": " + c.bindingType->toString();
+      }
       result += ") " + c.body->toString();
     }
     return result;
@@ -79,9 +81,13 @@ class TryCatchExprAST : public ExprAST {
   /** Visits replaceable child expressions so tree passes can rewrite them in
    * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
-    if (tryBlock) tryBlock->forEachChildSlot(fn);
+    if (tryBlock) {
+      tryBlock->forEachChildSlot(fn);
+    }
     for (auto& clause : catchClauses) {
-      if (clause.body) clause.body->forEachChildSlot(fn);
+      if (clause.body) {
+        clause.body->forEachChildSlot(fn);
+      }
     }
   }
   /** Returns the node label used in syntax-tree graph visualizations. */

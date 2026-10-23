@@ -21,7 +21,9 @@ void LoweringPass::run(sun::ast::BlockExprAST& program) {
  * The parser keeps bodies as blocks for losslessness.
  */
 static void normalizeBody(std::unique_ptr<ExprAST>& slot, bool isIfBody) {
-  if (!slot || slot->getType() != ASTNodeType::BLOCK) return;
+  if (!slot || slot->getType() != ASTNodeType::BLOCK) {
+    return;
+  }
   auto& block = static_cast<sun::ast::BlockExprAST&>(*slot);
   const auto sourceFile = block.getSourceFileId();
   if (block.isEmpty()) {
@@ -37,7 +39,9 @@ static void normalizeBody(std::unique_ptr<ExprAST>& slot, bool isIfBody) {
 }
 
 void LoweringPass::lowerSlot(std::unique_ptr<ExprAST>& slot) {
-  if (!slot || slot->isPrecompiled()) return;
+  if (!slot || slot->isPrecompiled()) {
+    return;
+  }
 
   const auto sourceFile = slot->getSourceFileId();
 
@@ -57,7 +61,9 @@ void LoweringPass::lowerSlot(std::unique_ptr<ExprAST>& slot) {
         static_cast<sun::ast::InterpolatedStringAST&>(*slot));
   }
 
-  if (!slot) return;
+  if (!slot) {
+    return;
+  }
   slot->inheritSourceFile(sourceFile);
   switch (slot->getType()) {
     case ASTNodeType::IF: {

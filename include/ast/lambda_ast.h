@@ -32,7 +32,9 @@ class LambdaAST : public ExprAST {
   /** Visits replaceable child expressions so tree passes can rewrite them in
    * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
-    if (Body) Body->forEachChildSlot(fn);
+    if (Body) {
+      Body->forEachChildSlot(fn);
+    }
   }
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
@@ -41,7 +43,9 @@ class LambdaAST : public ExprAST {
     if (!lifetimes.empty()) {
       result += "<";
       for (size_t i = 0; i < lifetimes.size(); ++i) {
-        if (i > 0) result += ", ";
+        if (i > 0) {
+          result += ", ";
+        }
         result += lifetimes[i].toString();
       }
       result += ">";
@@ -50,15 +54,23 @@ class LambdaAST : public ExprAST {
     const auto& refs = Proto->getRefCaptureNames();
     const auto& owned = Proto->getOwnedCaptureNames();
     if (!refs.empty() || !owned.empty()) {
-      if (!lifetimes.empty()) result += " ";
+      if (!lifetimes.empty()) {
+        result += " ";
+      }
       result += "[";
       for (size_t i = 0; i < refs.size(); ++i) {
-        if (i > 0) result += ", ";
-        if (Proto->isConstRefCapture(refs[i])) result += "const ";
+        if (i > 0) {
+          result += ", ";
+        }
+        if (Proto->isConstRefCapture(refs[i])) {
+          result += "const ";
+        }
         result += "ref " + refs[i];
       }
       for (size_t i = 0; i < owned.size(); ++i) {
-        if (i > 0 || !refs.empty()) result += ", ";
+        if (i > 0 || !refs.empty()) {
+          result += ", ";
+        }
         result += owned[i];
       }
       result += "]";
@@ -67,13 +79,18 @@ class LambdaAST : public ExprAST {
     result += "(";
     const auto& args = Proto->getArgs();
     for (size_t i = 0; i < args.size(); ++i) {
-      if (i > 0) result += ", ";
+      if (i > 0) {
+        result += ", ";
+      }
       result += args[i].first + ": " + args[i].second.toString();
     }
     result += ") =>";
-    if (Proto->hasReturnType())
+    if (Proto->hasReturnType()) {
       result += " " + Proto->getReturnType()->toString();
-    if (Body) result += " " + Body->toString();
+    }
+    if (Body) {
+      result += " " + Body->toString();
+    }
     return result;
   }
 

@@ -30,8 +30,9 @@ class ABI_LibraryAbiSnapshot : public testing::Test {
     const auto path = directory / (name + ".sun");
     std::ofstream(path) << source;
     sun::moon_bundling::MoonBuildOptions options;
-    for (const auto& dependency : dependencies)
+    for (const auto& dependency : dependencies) {
       options.extraMoons.emplace_back(dependency);
+    }
     const auto output = directory / (name + ".moon");
     sun::moon_bundling::MoonBuilder::build(path.string(), output, options);
     return output.string();
@@ -41,8 +42,9 @@ class ABI_LibraryAbiSnapshot : public testing::Test {
                             const std::string& source) {
     auto driver = sun::driver::Driver::createForJIT("revision");
     std::vector<sun::moon_bundling::MoonImport> imports;
-    for (const auto& dependency : dependencies)
+    for (const auto& dependency : dependencies) {
       imports.emplace_back(dependency);
+    }
     driver->setMoonImports(imports);
     return driver->executeString(source);
   }
@@ -97,7 +99,8 @@ TEST_F(ABI_LibraryAbiSnapshot, AcceptsImplementationChangeInBothImportOrders) {
   EXPECT_NE(a.declarations(0).key(), b.declarations(0).key());
 }
 
-/** Compatible artifacts warn once per compilation and exact imports stay quiet. */
+/** Compatible artifacts warn once per compilation and exact imports stay quiet.
+ */
 TEST_F(ABI_LibraryAbiSnapshot, WarnsForIndependentCompatibleArtifacts) {
   const auto original = build("original", shapes(42));
   const auto consumerPath = consumer(original);
@@ -107,26 +110,31 @@ TEST_F(ABI_LibraryAbiSnapshot, WarnsForIndependentCompatibleArtifacts) {
       /** Reads the original point layout. */
       public function read(point: ref shapes.Point) i32 { return point.x; }
     }
-  )", {original});
+  )",
+                                       {original});
   const auto revised = build("revised", shapes(43));
   auto originalReader = sun::moon_bundling::MoonReader::open(original);
   auto consumerReader = sun::moon_bundling::MoonReader::open(consumerPath);
   auto revisedReader = sun::moon_bundling::MoonReader::open(revised);
-  auto otherConsumerReader = sun::moon_bundling::MoonReader::open(otherConsumerPath);
-  ASSERT_TRUE(originalReader && consumerReader && revisedReader && otherConsumerReader);
+  auto otherConsumerReader =
+      sun::moon_bundling::MoonReader::open(otherConsumerPath);
+  ASSERT_TRUE(originalReader && consumerReader && revisedReader &&
+              otherConsumerReader);
   sun::abi::CompilationContext context;
   context.producerWarnings = false;
   sun::abi::AbiCompatibilityChecker checker(context);
   testing::internal::CaptureStderr();
-  EXPECT_NO_THROW(checker.validateImports(
-      {originalReader.get(), consumerReader.get()}));
+  EXPECT_NO_THROW(
+      checker.validateImports({originalReader.get(), consumerReader.get()}));
   EXPECT_EQ(testing::internal::GetCapturedStderr(), "");
   checker.beginCompilation("");
   testing::internal::CaptureStderr();
   EXPECT_NO_THROW(checker.validateImports(
-      {revisedReader.get(), consumerReader.get(), otherConsumerReader.get()}, "main.sun"));
+      {revisedReader.get(), consumerReader.get(), otherConsumerReader.get()},
+      "main.sun"));
   EXPECT_NO_THROW(checker.validateImports(
-      {otherConsumerReader.get(), consumerReader.get(), revisedReader.get()}, "main.sun"));
+      {otherConsumerReader.get(), consumerReader.get(), revisedReader.get()},
+      "main.sun"));
   const auto warning = testing::internal::GetCapturedStderr();
   const std::string marker =
       "Library 'example/shapes' is used through different artifacts";
@@ -134,9 +142,14 @@ TEST_F(ABI_LibraryAbiSnapshot, WarnsForIndependentCompatibleArtifacts) {
   ASSERT_NE(first, std::string::npos);
   EXPECT_EQ(warning.find(marker, first + marker.size()), std::string::npos);
   EXPECT_NE(warning.find("\n  main.sun\n"), std::string::npos);
-  EXPECT_NE(warning.find(std::filesystem::path(consumerPath).filename().string()), std::string::npos);
-  EXPECT_NE(warning.find(std::filesystem::path(otherConsumerPath).filename().string()), std::string::npos);
-  EXPECT_NE(warning.find("└── example/shapes [selected import]"), std::string::npos);
+  EXPECT_NE(
+      warning.find(std::filesystem::path(consumerPath).filename().string()),
+      std::string::npos);
+  EXPECT_NE(warning.find(
+                std::filesystem::path(otherConsumerPath).filename().string()),
+            std::string::npos);
+  EXPECT_NE(warning.find("└── example/shapes [selected import]"),
+            std::string::npos);
   EXPECT_EQ(warning.find(revised), std::string::npos);
   EXPECT_EQ(warning.find("\033["), std::string::npos);
   EXPECT_NE(warning.find("│   └── example/shapes\n"), std::string::npos);
@@ -147,8 +160,10 @@ TEST_F(ABI_LibraryAbiSnapshot, WarnsForIndependentCompatibleArtifacts) {
   checker.beginCompilation("");
   testing::internal::CaptureStderr();
   EXPECT_NO_THROW(checker.validateImports(
-      {revisedReader.get(), consumerReader.get(), otherConsumerReader.get()}, "main.sun"));
-  EXPECT_NE(testing::internal::GetCapturedStderr().find(marker), std::string::npos);
+      {revisedReader.get(), consumerReader.get(), otherConsumerReader.get()},
+      "main.sun"));
+  EXPECT_NE(testing::internal::GetCapturedStderr().find(marker),
+            std::string::npos);
 }
 
 /** Layout changes and unrelated namespaces cannot authorize a correspondence.

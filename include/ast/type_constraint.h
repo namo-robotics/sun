@@ -53,10 +53,14 @@ struct TypeConstraint {
 
   /** Render the complete requirement for diagnostics. */
   std::string toString() const {
-    if (typeArguments.empty()) return name;
+    if (typeArguments.empty()) {
+      return name;
+    }
     std::string result = name + "<";
     for (size_t i = 0; i < typeArguments.size(); ++i) {
-      if (i) result += ", ";
+      if (i) {
+        result += ", ";
+      }
       result += typeArguments[i].toString();
     }
     return result + ">";
@@ -67,9 +71,10 @@ struct TypeConstraint {
     TypeAnnotation result(name);
     result.declarationKey = declarationKey;
     result.span = span;
-    for (const auto& argument : typeArguments)
+    for (const auto& argument : typeArguments) {
       result.typeArguments.push_back(
           std::make_unique<TypeAnnotation>(argument));
+    }
     return result;
   }
 };

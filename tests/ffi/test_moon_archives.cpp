@@ -165,7 +165,9 @@ const BundleChain& chain() {
  */
 std::vector<std::string> carriedArchives(const fs::path& bundle) {
   auto reader = MoonReader::open(bundle);
-  if (!reader) return {};
+  if (!reader) {
+    return {};
+  }
   std::vector<std::string> names;
   for (const auto& entry : reader->getNativeArchives()) {
     names.push_back(entry.name);
@@ -184,9 +186,13 @@ bool endsWith(const std::string& text, const std::string& suffix) {
  */
 std::string symbolPrefix(const fs::path& bundle) {
   auto reader = MoonReader::open(bundle);
-  if (!reader) return {};
+  if (!reader) {
+    return {};
+  }
   auto modules = reader->listModules();
-  if (modules.empty()) return {};
+  if (modules.empty()) {
+    return {};
+  }
   const auto* metadata = reader->getMetadata(modules[0]);
   return metadata ? sun::moon_bundling::getSymbolPrefix(*metadata) + "_" : "";
 }
@@ -197,7 +203,9 @@ std::string symbolPrefix(const fs::path& bundle) {
  */
 std::vector<std::string> carriedArchiveSymbols(const fs::path& bundle) {
   auto reader = MoonReader::open(bundle);
-  if (!reader || reader->getNativeArchives().empty()) return {};
+  if (!reader || reader->getNativeArchives().empty()) {
+    return {};
+  }
   std::vector<char> bytes;
   if (!reader->readNativeArchive(reader->getNativeArchives()[0], bytes)) {
     return {};
@@ -240,7 +248,9 @@ constexpr const char* kTwoVersionsProgram = R"(
 }  // namespace
 
 TEST(Ffi_MoonArchives, bundle_carries_archives_of_the_bundles_it_inlines) {
-  if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
+  if (ffiTestLibDir().empty()) {
+    GTEST_SKIP() << "testlib dir unknown";
+  }
   const BundleChain& bundles = chain();
 
   EXPECT_EQ(carriedArchives(bundles.leaf),
@@ -248,7 +258,7 @@ TEST(Ffi_MoonArchives, bundle_carries_archives_of_the_bundles_it_inlines) {
   EXPECT_TRUE(bundles.leafReport.inheritedArchives.empty());
 
   // mid names no archive of its own, yet carries leaf's exactly once
-  EXPECT_TRUE(bundles.midReport.archiveFiles.empty());
+  EXPECT_TRUE(bundles.midReport.nativeArchives.empty());
   EXPECT_EQ(bundles.midReport.inheritedArchives,
             std::vector<std::string>{kArchiveName});
   EXPECT_EQ(carriedArchives(bundles.mid),
@@ -259,7 +269,9 @@ TEST(Ffi_MoonArchives, consumer_of_a_transitive_bundle_links_the_archive) {
   // The shape from issue #218: the program imports only the bundle built on
   // the C wrapper, so the archive reaches the linker through that bundle or
   // not at all.
-  if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
+  if (ffiTestLibDir().empty()) {
+    GTEST_SKIP() << "testlib dir unknown";
+  }
   const BundleChain& bundles = chain();
 
   auto driver = Driver::createForAOT("moon_archives_link");
@@ -276,14 +288,18 @@ TEST(Ffi_MoonArchives, consumer_of_a_transitive_bundle_links_the_archive) {
 
   std::string skipReason;
   int exitCode = runCompiled(*driver, bundles.dir / "consumer", skipReason);
-  if (exitCode < 0) GTEST_SKIP() << skipReason;
+  if (exitCode < 0) {
+    GTEST_SKIP() << skipReason;
+  }
   EXPECT_EQ(exitCode, 42);
 }
 
 TEST(Ffi_MoonArchives, identical_archives_from_two_bundles_are_extracted_once) {
   // A program using both the wrapper and the bundle built on it meets the
   // same archive in both; the link gets one copy.
-  if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
+  if (ffiTestLibDir().empty()) {
+    GTEST_SKIP() << "testlib dir unknown";
+  }
   const BundleChain& bundles = chain();
 
   auto driver = Driver::createForAOT("moon_archives_dedup");
@@ -302,7 +318,9 @@ TEST(Ffi_MoonArchives, identical_archives_from_two_bundles_are_extracted_once) {
 }
 
 TEST(Ffi_MoonArchives, jit_resolves_a_transitively_carried_archive) {
-  if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
+  if (ffiTestLibDir().empty()) {
+    GTEST_SKIP() << "testlib dir unknown";
+  }
   const BundleChain& bundles = chain();
 
   auto driver = Driver::createForJIT("moon_archives_jit");
@@ -324,7 +342,9 @@ TEST(Ffi_MoonArchives, carried_archive_symbols_carry_the_archive_set_hash) {
   // of the bundle's archives (not the bundle's hash), and its own extern
   // declarations refer to those names, tagged as C ABI so importers know not
   // to prefix them again.
-  if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
+  if (ffiTestLibDir().empty()) {
+    GTEST_SKIP() << "testlib dir unknown";
+  }
   const BundleChain& bundles = chain();
 
   auto reader = MoonReader::open(bundles.leaf);
@@ -355,7 +375,9 @@ TEST(Ffi_MoonArchives, independent_bundles_carrying_the_same_bytes_share_one) {
   // leaf and twin each list the same archive file in their own manifests.
   // Both rename it under the archive's hash, so the carried bytes match and
   // a program importing both links a single copy, with shared state.
-  if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
+  if (ffiTestLibDir().empty()) {
+    GTEST_SKIP() << "testlib dir unknown";
+  }
   const BundleChain& bundles = chain();
 
   EXPECT_EQ(carriedArchiveSymbols(bundles.leaf),
@@ -374,7 +396,9 @@ TEST(Ffi_MoonArchives, independent_bundles_carrying_the_same_bytes_share_one) {
 
   std::string skipReason;
   int exitCode = runCompiled(*driver, bundles.dir / "twin_bin", skipReason);
-  if (exitCode < 0) GTEST_SKIP() << skipReason;
+  if (exitCode < 0) {
+    GTEST_SKIP() << skipReason;
+  }
   EXPECT_EQ(exitCode, 42);
 }
 
@@ -399,7 +423,9 @@ TEST(Ffi_MoonArchives, two_bundles_with_different_versions_link_both) {
 
   std::string skipReason;
   int exitCode = runCompiled(*driver, bundles.dir / "two_versions", skipReason);
-  if (exitCode < 0) GTEST_SKIP() << skipReason;
+  if (exitCode < 0) {
+    GTEST_SKIP() << skipReason;
+  }
   EXPECT_EQ(exitCode, 42);
 }
 

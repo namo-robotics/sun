@@ -20,6 +20,7 @@
 #include "ast/manifest_ast.h"
 #include "driver/sun_config.h"
 #include "moon_bundling/moon_import.h"
+#include "moon_bundling/native_archive.h"
 
 /** Coordinates compilation, dependency loading, linking, and program execution.
  */
@@ -30,11 +31,9 @@ struct ResolvedManifest {
   std::optional<std::string> libraryId;
   std::vector<std::string> sunFiles;  // resolved .sun paths (manifest order)
   std::vector<sun::moon_bundling::MoonImport>
-      moonImports;                        // resolved .moon imports
-  std::vector<std::string> protoFiles;    // resolved .proto paths
-  std::vector<std::string> archiveFiles;  // resolved native .a archives
-  std::vector<std::string> nativeCPUFeatures;
-  std::vector<std::string> nativeRuntimeServices;
+      moonImports;                      // resolved .moon imports
+  std::vector<std::string> protoFiles;  // resolved .proto paths
+  std::vector<sun::moon_bundling::NativeArchive> nativeArchives;
   // resolved `test_files:` paths; merged into the source set only when
   // compiling the test binary, never for production builds
   std::vector<std::string> testSunFiles;

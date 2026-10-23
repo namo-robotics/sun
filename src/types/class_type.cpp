@@ -8,12 +8,16 @@
 /** Implements shared type descriptions and queries. */
 namespace sun::types {
 void ClassType::addImplementedInterface(const InterfaceType& interface) {
-  if (!sameSession(interface))
+  if (!sameSession(interface)) {
     logAndThrowError(
         "Interface implementation belongs to another analysis session");
-  if (!implementsInterface(interface))
+  }
+  if (!implementsInterface(interface)) {
     implementedInterfaces.push_back(interface.getDeclarationId());
-  if (interface.getParent()) addImplementedInterface(*interface.getParent());
+  }
+  if (interface.getParent()) {
+    addImplementedInterface(*interface.getParent());
+  }
 }
 
 bool ClassType::implementsInterface(const InterfaceType& interface) const {
@@ -23,12 +27,14 @@ bool ClassType::implementsInterface(const InterfaceType& interface) const {
 }
 
 void ClassType::markStaticOnlyInterface(const InterfaceType& interface) {
-  if (!sameSession(interface))
+  if (!sameSession(interface)) {
     logAndThrowError(
         "Interface implementation belongs to another analysis session");
+  }
   if (std::find(staticOnlyInterfaces.begin(), staticOnlyInterfaces.end(),
-                interface.getDeclarationId()) == staticOnlyInterfaces.end())
+                interface.getDeclarationId()) == staticOnlyInterfaces.end()) {
     staticOnlyInterfaces.push_back(interface.getDeclarationId());
+  }
 }
 
 bool ClassType::convertibleToInterface(const InterfaceType& interface) const {
@@ -38,21 +44,28 @@ bool ClassType::convertibleToInterface(const InterfaceType& interface) const {
 }
 
 bool ClassType::isInterfaceConvertible(const TypePtr& from, const TypePtr& to) {
-  if (!from || !to || !to->isReference()) return false;
+  if (!from || !to || !to->isReference()) {
+    return false;
+  }
   if (from->isReference() &&
       !refMutabilityConvertible(*static_cast<const ReferenceType*>(from.get()),
-                                *static_cast<const ReferenceType*>(to.get())))
+                                *static_cast<const ReferenceType*>(to.get()))) {
     return false;
+  }
   auto source = unwrapRef(from);
   auto target = unwrapRef(to);
-  if (!source || !target || !target->isInterface()) return false;
+  if (!source || !target || !target->isInterface()) {
+    return false;
+  }
   auto* interface = static_cast<const InterfaceType*>(target.get());
-  if (source->isInterface())
+  if (source->isInterface()) {
     return static_cast<const InterfaceType*>(source.get())
         ->extendsInterface(*interface);
-  if (source->isClass())
+  }
+  if (source->isClass()) {
     return static_cast<const ClassType*>(source.get())
         ->convertibleToInterface(*interface);
+  }
 
   return false;
 }
@@ -61,8 +74,12 @@ const ClassMethod* ClassType::getMethodForArgs(
     const std::string& methodName, const std::vector<TypePtr>& argTypes) const {
   const ClassMethod* bestMatch = nullptr;
   for (const auto& method : methods) {
-    if (method.name != methodName) continue;
-    if (method.paramTypes.size() != argTypes.size()) continue;
+    if (method.name != methodName) {
+      continue;
+    }
+    if (method.paramTypes.size() != argTypes.size()) {
+      continue;
+    }
 
     bool allMatch = true;
     bool allExact = true;
@@ -71,16 +88,24 @@ const ClassMethod* ClassType::getMethodForArgs(
         allMatch = false;
         break;
       }
-      if (method.paramTypes[i]->equals(*argTypes[i])) continue;
+      if (method.paramTypes[i]->equals(*argTypes[i])) {
+        continue;
+      }
       allExact = false;
       if (!argumentAccepts(argTypes[i], method.paramTypes[i], false)) {
         allMatch = false;
         break;
       }
     }
-    if (!allMatch) continue;
-    if (allExact) return &method;
-    if (!bestMatch) bestMatch = &method;
+    if (!allMatch) {
+      continue;
+    }
+    if (allExact) {
+      return &method;
+    }
+    if (!bestMatch) {
+      bestMatch = &method;
+    }
   }
   return bestMatch;
 }

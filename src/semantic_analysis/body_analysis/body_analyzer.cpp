@@ -35,8 +35,12 @@ static void checkAllPathsReturn(const PrototypeAST& proto,
                                 const BlockExprAST& body,
                                 const TypePtr& returnType,
                                 const sun::support::Position& loc) {
-  if (!returnType || returnType->isVoid()) return;
-  if (sun::semantic_analysis::alwaysExits(body)) return;
+  if (!returnType || returnType->isVoid()) {
+    return;
+  }
+  if (sun::semantic_analysis::alwaysExits(body)) {
+    return;
+  }
   const std::string name =
       proto.getName().empty() ? "lambda" : "'" + proto.getName() + "'";
   logAndThrowError("Function " + name +
@@ -53,15 +57,18 @@ static void checkConstructorStatus(const TypePtr& type,
   if (!result || result->getGenericArgs().empty() ||
       !result->getGenericArgs().front()->isVoid() ||
       result->getVariants().size() < 2 ||
-      !result->getVariants().front().payloadTypes.empty())
+      !result->getVariants().front().payloadTypes.empty()) {
     logAndThrowError(
         "A fallible init must return a generic result with void as its first "
         "type argument and an empty first variant",
         location);
-  for (size_t i = 1; i < result->getVariants().size(); ++i)
-    if (result->getVariants()[i].payloadTypes.size() != 1)
+  }
+  for (size_t i = 1; i < result->getVariants().size(); ++i) {
+    if (result->getVariants()[i].payloadTypes.size() != 1) {
       logAndThrowError("Constructor failure variants must have one payload",
                        location);
+    }
+  }
 }
 
 /** Turns a test's bare success returns into unit result values. */
@@ -69,8 +76,9 @@ static void completeTestReturns(sun::ast::ExprAST& expression,
                                 const std::string& successVariant) {
   using namespace sun::ast;
   if (expression.getType() == ASTNodeType::FUNCTION ||
-      expression.getType() == ASTNodeType::LAMBDA)
+      expression.getType() == ASTNodeType::LAMBDA) {
     return;
+  }
   if (auto* returned = dynamic_cast<ReturnExprAST*>(&expression);
       returned && !returned->hasValue()) {
     returned->forEachChildSlot([&](std::unique_ptr<ExprAST>& value) {
@@ -95,18 +103,25 @@ static void checkResultHandling(const BlockExprAST& body,
   auto isResult = [&](const TypePtr& type) {
     auto result = std::dynamic_pointer_cast<sun::types::EnumType>(
         sun::types::unwrapRef(type));
-    if (!result) return false;
-    if (result->sourceDeclaration(ctx.results().declarations) == resultId)
-      return true;
-    const auto& variants = result->getVariants();
-    if (variants.size() < 2 || variants.front().payloadTypes.size() > 1)
+    if (!result) {
       return false;
+    }
+    if (result->sourceDeclaration(ctx.results().declarations) == resultId) {
+      return true;
+    }
+    const auto& variants = result->getVariants();
+    if (variants.size() < 2 || variants.front().payloadTypes.size() > 1) {
+      return false;
+    }
     for (size_t i = 1; i < variants.size(); ++i) {
-      if (variants[i].payloadTypes.size() != 1) return false;
+      if (variants[i].payloadTypes.size() != 1) {
+        return false;
+      }
       auto error = std::dynamic_pointer_cast<sun::types::ClassType>(
           sun::types::unwrapRef(variants[i].payloadTypes.front()));
-      if (!error || !error->implementsInterface(*ctx.types()->errorInterface))
+      if (!error || !error->implementsInterface(*ctx.types()->errorInterface)) {
         return false;
+      }
     }
     return true;
   };
@@ -115,39 +130,49 @@ static void checkResultHandling(const BlockExprAST& body,
   std::function<void(const ExprAST&, bool)> visit =
       [&](const ExprAST& expression, bool used) {
         if (expression.getType() == ASTNodeType::FUNCTION ||
-            expression.getType() == ASTNodeType::LAMBDA)
+            expression.getType() == ASTNodeType::LAMBDA) {
           return;
+        }
         if (!used && !exprDiverges(expression) &&
             expression.getType() != ASTNodeType::VARIABLE_CREATION &&
             expression.getType() != ASTNodeType::REFERENCE_CREATION &&
             expression.getType() != ASTNodeType::VARIABLE_ASSIGNMENT &&
-            isResult(expression.getResolvedType()))
+            isResult(expression.getResolvedType())) {
           logAndThrowError(
               "Error result must be handled, returned, propagated with try, "
               "or explicitly discarded with ignore_error",
               expression.getLocation());
+        }
         if (auto* local =
                 dynamic_cast<const VariableCreationAST*>(&expression)) {
-          if (isResult(local->getResolvedType())) locals.push_back(local);
+          if (isResult(local->getResolvedType())) {
+            locals.push_back(local);
+          }
         }
         if (auto* reference =
-                dynamic_cast<const VariableReferenceAST*>(&expression))
+                dynamic_cast<const VariableReferenceAST*>(&expression)) {
           usedLocals.insert(reference->getTargetDeclarationId());
+        }
         if (auto* block = dynamic_cast<const BlockExprAST*>(&expression)) {
           const auto& statements = block->getBody();
-          for (size_t i = 0; i < statements.size(); ++i)
+          for (size_t i = 0; i < statements.size(); ++i) {
             visit(*statements[i], used && i + 1 == statements.size());
+          }
           return;
         }
         if (auto* match = dynamic_cast<const MatchExprAST*>(&expression)) {
           visit(*match->getDiscriminant(), true);
-          for (const auto& arm : match->getArms()) visit(*arm.body, used);
+          for (const auto& arm : match->getArms()) {
+            visit(*arm.body, used);
+          }
           return;
         }
         if (auto* branch = dynamic_cast<const IfExprAST*>(&expression)) {
           visit(*branch->getCond(), true);
           visit(*branch->getThen(), false);
-          if (branch->getElse()) visit(*branch->getElse(), false);
+          if (branch->getElse()) {
+            visit(*branch->getElse(), false);
+          }
           return;
         }
         forEachChild(expression, [&](const ExprAST& child) {
@@ -156,11 +181,12 @@ static void checkResultHandling(const BlockExprAST& body,
       };
   visit(body, false);
   for (const auto* local : locals) {
-    if (!usedLocals.count(local->getDeclarationId()))
+    if (!usedLocals.count(local->getDeclarationId())) {
       logAndThrowError(
           "Unused error result '" + local->getName() +
               "'; handle it or explicitly discard it with ignore_error",
           local->getLocation());
+    }
   }
 }
 
@@ -184,14 +210,18 @@ void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
                            "' must have an explicit return type",
                        func.getLocation());
     }
-    if (func.isCExtern()) validateExternSignature(func);
+    if (func.isCExtern()) {
+      validateExternSignature(func);
+    }
     return;
   }
 
   // A pack's arity and types come from the call site, so a template body
   // holding one has nothing concrete to check yet. Each specialization is
   // prepared on instantiation and checked by the specialization body pass.
-  if (proto.hasVariadicParam()) return;
+  if (proto.hasVariadicParam()) {
+    return;
+  }
 
   // Sun has no va_arg, so C varargs are only meaningful on an extern
   // declaration where the callee is C code.
@@ -231,11 +261,12 @@ void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
     testResult =
         std::dynamic_pointer_cast<sun::types::EnumType>(scopeReturnType);
     if (!testResult || testResult->getVariants().size() < 2 ||
-        !testResult->getVariants().front().payloadTypes.empty())
+        !testResult->getVariants().front().payloadTypes.empty()) {
       logAndThrowError(
           "A test function must return an enum with an empty first success "
           "variant",
           func.getLocation());
+    }
     if (proto.getReturnType()->baseName != "_Result") {
       for (size_t i = 1; i < testResult->getVariants().size(); ++i) {
         const auto& payload = testResult->getVariants()[i].payloadTypes;
@@ -244,10 +275,11 @@ void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
                                payload.front())
                          : nullptr;
         if (!error ||
-            !error->implementsInterface(*ctx_.types()->errorInterface))
+            !error->implementsInterface(*ctx_.types()->errorInterface)) {
           logAndThrowError(
               "Test failure variants must own a concrete IError payload",
               func.getLocation());
+        }
       }
     }
     testSuccess = testResult->getVariants().front().name;
@@ -259,11 +291,14 @@ void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
   // body sees the const view of its return type: borrows of `this` are
   // `const ref` there, and the declared `ref` result is what callers with a
   // mutable receiver get.
-  if (proto.isConstMethod())
+  if (proto.isConstMethod()) {
     scopeReturnType = sema_.typeResolver().createConstView(scopeReturnType);
+  }
   ctx_.enterFunctionScope(funcSig, proto.getQualifiedName(), proto.canThrow(),
                           scopeReturnType);
-  if (resultTest) ctx_.currentScope().declareEnum("$test_result", testResult);
+  if (resultTest) {
+    ctx_.currentScope().declareEnum("$test_result", testResult);
+  }
 
   // Declare 'this' for methods (when we're inside a class context); it is
   // immutable inside a const method
@@ -340,7 +375,9 @@ void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
       !sun::semantic_analysis::alwaysExits(func.getBody())) {
     auto success = std::make_unique<sun::ast::ReturnExprAST>();
     success->setLocation(func.getLocation());
-    if (resultTest) completeTestReturns(*success, testSuccess);
+    if (resultTest) {
+      completeTestReturns(*success, testSuccess);
+    }
     analyzeReturnExpr(*success);
     const_cast<BlockExprAST&>(func.getBody()).addExpression(std::move(success));
   }
@@ -450,8 +487,9 @@ void BodyAnalyzer::analyzeMethodWithBindings(
         sema_.typeResolver().typeAnnotationToType(*proto.getReturnType());
   }
   // A const method body sees the const view of its return type
-  if (proto.isConstMethod())
+  if (proto.isConstMethod()) {
     methodReturnType = sema_.typeResolver().createConstView(methodReturnType);
+  }
   ctx_.enterFunctionScope(
       methodSig, classType->getQualifiedName().memberNamed(proto.getName()),
       proto.canThrow(), methodReturnType);
@@ -475,8 +513,9 @@ void BodyAnalyzer::analyzeMethodWithBindings(
   }
 
   if (proto.getName() == "init" && methodReturnType &&
-      !methodReturnType->isVoid())
+      !methodReturnType->isVoid()) {
     checkConstructorStatus(methodReturnType, methodFunc.getLocation());
+  }
 
   // Analyze the source body after its parameters are in scope.
   for (size_t i = methodFunc.getFieldInitializerCount(); i < statements.size();

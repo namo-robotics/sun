@@ -36,16 +36,19 @@ void parameters(const Declaration& node, DeclarationIdentity& identity,
                 DeclarationTable& table, DeclarationId module,
                 const DeclarationIdentity* origin) {
   if (identity.imported && identity.imported->typeParameters.size() !=
-                               node.getTypeParameters().size())
+                               node.getTypeParameters().size()) {
     logAndThrowError(
         "Imported type parameter identities do not match the declaration");
-  if (identity.typeParameters.empty())
-    for (size_t i = 0; i < node.getTypeParameters().size(); ++i)
+  }
+  if (identity.typeParameters.empty()) {
+    for (size_t i = 0; i < node.getTypeParameters().size(); ++i) {
       identity.typeParameters.push_back(parameter(
           table, DeclarationKind::TypeParameter,
           node.getTypeParameters()[i].name, identity.id, module,
           origin ? origin->typeParameters.at(i) : DeclarationId{},
           identity.imported ? &identity.imported->typeParameters : nullptr, i));
+    }
+  }
 }
 
 /** Allocate identities for lifetime parameters without resolving lifetimes. */
@@ -54,17 +57,20 @@ void lifetimes(const Declaration& node, DeclarationIdentity& identity,
                DeclarationTable& table, DeclarationId module,
                const DeclarationIdentity* origin) {
   if (identity.imported && identity.imported->lifetimeParameters.size() !=
-                               node.getLifetimeParameters().size())
+                               node.getLifetimeParameters().size()) {
     logAndThrowError(
         "Imported lifetime identities do not match the declaration");
-  if (identity.lifetimeParameters.empty())
-    for (size_t i = 0; i < node.getLifetimeParameters().size(); ++i)
+  }
+  if (identity.lifetimeParameters.empty()) {
+    for (size_t i = 0; i < node.getLifetimeParameters().size(); ++i) {
       identity.lifetimeParameters.push_back(parameter(
           table, DeclarationKind::LifetimeParameter,
           node.getLifetimeParameters()[i].name, identity.id, module,
           origin ? origin->lifetimeParameters.at(i) : DeclarationId{},
           identity.imported ? &identity.imported->lifetimeParameters : nullptr,
           i));
+    }
+  }
 }
 
 /** Register struct-backed declarations while preserving their existing IDs. */
@@ -78,10 +84,11 @@ void binding(DeclarationIdentity& identity, DeclarationKind kind,
                       : table.add(kind, name, owner, module, {}, origin);
     identity.session = table.session();
   } else {
-    if (identity.session.lock() != table.session())
+    if (identity.session.lock() != table.session()) {
       logAndThrowError(
           "Reset declaration annotations before starting another analysis "
           "session");
+    }
     table.get(identity.id);
   }
 }
@@ -92,18 +99,27 @@ void resetBindings(const ExprAST& root, bool resetIdentity) {
   switch (root.getType()) {
     case ASTNodeType::CLASS_DEFINITION:
       for (const auto& field :
-           static_cast<const ClassDefinitionAST&>(root).getFields())
-        if (resetIdentity) field.declaration.resetSession();
+           static_cast<const ClassDefinitionAST&>(root).getFields()) {
+        if (resetIdentity) {
+          field.declaration.resetSession();
+        }
+      }
       break;
     case ASTNodeType::INTERFACE_DEFINITION:
       for (const auto& field :
-           static_cast<const InterfaceDefinitionAST&>(root).getFields())
-        if (resetIdentity) field.declaration.resetSession();
+           static_cast<const InterfaceDefinitionAST&>(root).getFields()) {
+        if (resetIdentity) {
+          field.declaration.resetSession();
+        }
+      }
       break;
     case ASTNodeType::ENUM_DEFINITION:
       for (const auto& variant :
-           static_cast<const EnumDefinitionAST&>(root).getVariants())
-        if (resetIdentity) variant.declaration.resetSession();
+           static_cast<const EnumDefinitionAST&>(root).getVariants()) {
+        if (resetIdentity) {
+          variant.declaration.resetSession();
+        }
+      }
       break;
     case ASTNodeType::MATCH:
       for (auto& arm :
@@ -113,7 +129,9 @@ void resetBindings(const ExprAST& root, bool resetIdentity) {
         arm.matchedVariantTags.clear();
         for (auto& value : arm.bindings) {
           value.resolvedType.reset();
-          if (resetIdentity) value.declaration.resetSession();
+          if (resetIdentity) {
+            value.declaration.resetSession();
+          }
         }
       }
       break;
@@ -123,7 +141,9 @@ void resetBindings(const ExprAST& root, bool resetIdentity) {
                               .getCatchClausesMutable()) {
         clause.isCatchAll = false;
         clause.resolvedType.reset();
-        if (resetIdentity) clause.declaration.resetSession();
+        if (resetIdentity) {
+          clause.declaration.resetSession();
+        }
       }
       break;
     default:
@@ -143,22 +163,28 @@ void DeclarationIdentityPass::run(
     const ExprAST& root, bool skipImportedMoons,
     const std::function<void()>& declarationsReady) const {
   visit(root, {}, {}, nullptr, skipImportedMoons);
-  if (declarationsReady) declarationsReady();
+  if (declarationsReady) {
+    declarationsReady();
+  }
 }
 
 void DeclarationIdentityPass::visit(const ExprAST& root, DeclarationId owner,
                                     DeclarationId module, const ExprAST* origin,
                                     bool skipImportedMoons) const {
-  if (skipImportedMoons && sun::ast::isImportedMoon(root)) return;
-  if (origin && origin->getType() != root.getType())
+  if (skipImportedMoons && sun::ast::isImportedMoon(root)) {
+    return;
+  }
+  if (origin && origin->getType() != root.getType()) {
     logAndThrowError("Generated declaration does not match its source syntax");
+  }
   const auto* sourceIdentity = origin && origin->getDeclarationId()
                                    ? &origin->declarationIdentity()
                                    : nullptr;
   if (sourceIdentity && sourceIdentity->id &&
-      sourceIdentity->session.lock() != table_.session())
+      sourceIdentity->session.lock() != table_.session()) {
     logAndThrowError(
         "Generated declaration origin belongs to another analysis session");
+  }
   auto declare = [&](DeclarationKind kind, const std::string& name) {
     auto id = root.getDeclarationId();
     if (!id) {
@@ -173,12 +199,15 @@ void DeclarationIdentityPass::visit(const ExprAST& root, DeclarationId owner,
       root.setDeclarationId(id);
       root.declarationIdentity().session = table_.session();
       // A module may be opened in several places, so no one node declares it.
-      if (kind != DeclarationKind::Module) table_.bindAstNode(id, &root);
+      if (kind != DeclarationKind::Module) {
+        table_.bindAstNode(id, &root);
+      }
     } else {
-      if (root.declarationIdentity().session.lock() != table_.session())
+      if (root.declarationIdentity().session.lock() != table_.session()) {
         logAndThrowError(
             "Reset declaration annotations before starting another analysis "
             "session");
+      }
       module = table_.get(id).module;
     }
     return id;
@@ -191,10 +220,13 @@ void DeclarationIdentityPass::visit(const ExprAST& root, DeclarationId owner,
         root.setDeclarationId(owner);
         root.declarationIdentity().session = table_.session();
         auto hash = moon.getContentHash();
-        if (isLibraryHashSegment(hash)) hash = libraryHashOf(hash);
-        if (hash.size() == 64 && !table_.get(owner).portableKey)
+        if (isLibraryHashSegment(hash)) {
+          hash = libraryHashOf(hash);
+        }
+        if (hash.size() == 64 && !table_.get(owner).portableKey) {
           table_.bindPortable(owner, PortableDeclarationKey::original(hash, 1),
                               hash);
+        }
         module = owner;
       }
       break;
@@ -217,7 +249,7 @@ void DeclarationIdentityPass::visit(const ExprAST& root, DeclarationId owner,
       auto& identity = proto.declarationIdentity();
       parameters(proto, identity, table_, module, sourceIdentity);
       if (proto.hasVariadicParam() && identity.variadicParameters.empty()) {
-        for (size_t i = 0; i < proto.getResolvedVariadicTypes().size(); ++i)
+        for (size_t i = 0; i < proto.getResolvedVariadicTypes().size(); ++i) {
           identity.variadicParameters.push_back(table_.add(
               DeclarationKind::Parameter,
               proto.getVariadicParam().elementName(i), owner, module, {},
@@ -225,14 +257,16 @@ void DeclarationIdentityPass::visit(const ExprAST& root, DeclarationId owner,
                   ? sourceIdentity->parameters.at(proto.getArgs().size())
                   : DeclarationId{},
               "variadic-element", i));
+        }
       }
       lifetimes(proto, identity, table_, module, sourceIdentity);
       const size_t parameterCount =
           proto.getArgs().size() + proto.hasVariadicParam();
       if (identity.imported &&
-          identity.imported->parameters.size() != parameterCount)
+          identity.imported->parameters.size() != parameterCount) {
         logAndThrowError(
             "Imported parameter identities do not match the signature");
+      }
       if (identity.parameters.empty()) {
         for (size_t i = 0; i < parameterCount; ++i) {
           const auto& name = i < proto.getArgs().size()
@@ -316,12 +350,14 @@ void DeclarationIdentityPass::visit(const ExprAST& root, DeclarationId owner,
       break;
     case ASTNodeType::DECLARE_TYPE: {
       const auto& node = static_cast<const sun::ast::DeclareTypeAST&>(root);
-      if (node.hasAlias()) declare(DeclarationKind::Alias, node.getAliasName());
+      if (node.hasAlias()) {
+        declare(DeclarationKind::Alias, node.getAliasName());
+      }
       break;
     }
     case ASTNodeType::MATCH: {
       const auto& arms = static_cast<const MatchExprAST&>(root).getArms();
-      for (size_t i = 0; i < arms.size(); ++i)
+      for (size_t i = 0; i < arms.size(); ++i) {
         for (size_t j = 0; j < arms[i].bindings.size(); ++j) {
           const auto& value = arms[i].bindings[j];
           auto source = origin ? static_cast<const MatchExprAST&>(*origin)
@@ -329,10 +365,12 @@ void DeclarationIdentityPass::visit(const ExprAST& root, DeclarationId owner,
                                      .bindings[j]
                                      .declaration.id
                                : DeclarationId{};
-          if (!value.isWildcard)
+          if (!value.isWildcard) {
             binding(value.declaration, DeclarationKind::Binding, value.name,
                     table_, owner, module, source);
+          }
         }
+      }
       break;
     }
     case ASTNodeType::TRY_CATCH: {
@@ -352,10 +390,11 @@ void DeclarationIdentityPass::visit(const ExprAST& root, DeclarationId owner,
       break;
   }
   std::vector<const ExprAST*> sourceChildren;
-  if (origin)
+  if (origin) {
     forEachChild(*origin, [&](const ExprAST& child) {
       sourceChildren.push_back(&child);
     });
+  }
   size_t index = 0;
   forEachChild(root, [&](const ExprAST& child) {
     visit(child, owner, module, origin ? sourceChildren.at(index++) : nullptr,
@@ -381,7 +420,9 @@ void resetAnalysisSession(const ExprAST& root) {
 
 void DeclarationIdentityPass::run(
     const std::vector<sun::ast::MoonScopeAST*>& imports) const {
-  for (auto* moon : imports) run(*moon);
+  for (auto* moon : imports) {
+    run(*moon);
+  }
 }
 
 }  // namespace sun::semantic_analysis::passes

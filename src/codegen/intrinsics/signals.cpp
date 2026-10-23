@@ -30,9 +30,12 @@ llvm::Value* IntrinsicsGenerator::codegenSignalIntrinsic(
         llvm::ConstantAggregateZero::get(storage), "__sun_signal_state");
     state->setAlignment(llvm::Align(4));
   }
-  if (!handler) return state;
-  if (auto* existing = module->getFunction("__sun_signal_handler"))
+  if (!handler) {
+    return state;
+  }
+  if (auto* existing = module->getFunction("__sun_signal_handler")) {
     return existing;
+  }
 
   // Use a separate builder: this callback must not inherit Sun debug locations,
   // closure handling, cleanup, allocation, or exception machinery.

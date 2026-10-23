@@ -418,9 +418,13 @@ TEST(Errors_Results, syntax_serialization) {
   std::function<void(const sun::ast::ExprAST&)> visit =
       [&](const sun::ast::ExprAST& node) {
         if (auto* match = dynamic_cast<const sun::ast::MatchExprAST*>(&node)) {
-          if (match->isPropagation()) ++propagation;
+          if (match->isPropagation()) {
+            ++propagation;
+          }
           for (const auto& arm : match->getArms()) {
-            if (!arm.bindingType) continue;
+            if (!arm.bindingType) {
+              continue;
+            }
             ++typed;
             EXPECT_TRUE(arm.bindingType->isReference());
             EXPECT_TRUE(arm.bindings.front().isWildcard);
@@ -453,7 +457,9 @@ TEST(Errors_Results, transport_ir) {
         EXPECT_FALSE(llvm::isa<llvm::InvokeInst>(instruction));
         EXPECT_FALSE(llvm::isa<llvm::LandingPadInst>(instruction));
         auto* call = llvm::dyn_cast<llvm::CallBase>(&instruction);
-        if (!call || !call->getCalledFunction()) continue;
+        if (!call || !call->getCalledFunction()) {
+          continue;
+        }
         const auto name = call->getCalledFunction()->getName();
         EXPECT_FALSE(name.starts_with("__cxa_"));
         EXPECT_NE(name, "malloc");

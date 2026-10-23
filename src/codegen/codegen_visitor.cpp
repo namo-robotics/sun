@@ -348,7 +348,9 @@ void CodegenVisitor::unifyBinaryOperands(Value*& L, Value*& R,
                                          const sun::support::Position& loc) {
   llvm::Type* LT = L->getType();
   llvm::Type* RT = R->getType();
-  if (LT == RT) return;
+  if (LT == RT) {
+    return;
+  }
 
   // Integer widening: always widen smaller to larger (safe)
   if (LT->isIntegerTy() && RT->isIntegerTy()) {
@@ -406,7 +408,9 @@ Value* CodegenVisitor::emitBinaryOp(TokenKind op, Value* L, Value* R,
       return isInteger ? ctx.builder->CreateMul(L, R, "multmp")
                        : ctx.builder->CreateFMul(L, R, "multmp");
     case TokenKind::SLASH: {
-      if (!isInteger) return ctx.builder->CreateFDiv(L, R, "divtmp");
+      if (!isInteger) {
+        return ctx.builder->CreateFDiv(L, R, "divtmp");
+      }
       return createIntDivRem(L, R, /*isModulo=*/false, unsignedOp);
     }
     case TokenKind::PERCENT: {
@@ -465,7 +469,9 @@ Value* CodegenVisitor::codegen(const BinaryExprAST& expr) {
   // Standard scalar binary operations
   Value* L = codegen(*expr.getLHS());
   Value* R = codegen(*expr.getRHS());
-  if (!L || !R) return nullptr;
+  if (!L || !R) {
+    return nullptr;
+  }
 
   // Signedness of div/rem/shift/compare follows the LHS operand's Sun type;
   // mixed signed/unsigned operands are permitted by isAssignableTo.
@@ -506,7 +512,9 @@ Value* CodegenVisitor::codegen(const BinaryExprAST& expr) {
           fPred = llvm::CmpInst::FCMP_UGE;
           break;
       }
-      if (!isInteger) return ctx.builder->CreateFCmp(fPred, L, R, "cmptmp");
+      if (!isInteger) {
+        return ctx.builder->CreateFCmp(fPred, L, R, "cmptmp");
+      }
       return ctx.builder->CreateICmp(unsignedOp ? uPred : sPred, L, R,
                                      "cmptmp");
     }
@@ -543,7 +551,9 @@ Value* CodegenVisitor::codegenLogicalOp(const BinaryExprAST& expr) {
 
   // Evaluate LHS
   Value* L = codegen(*expr.getLHS());
-  if (!L) return nullptr;
+  if (!L) {
+    return nullptr;
+  }
 
   // Convert LHS to bool (i1) if not already
   if (!L->getType()->isIntegerTy(1)) {
@@ -584,7 +594,9 @@ Value* CodegenVisitor::codegenLogicalOp(const BinaryExprAST& expr) {
   // here happens only when the left side let control through.
   ctx.builder->SetInsertPoint(EvalRhsBB);
   Value* R = codegen(*expr.getRHS());
-  if (!R) return nullptr;
+  if (!R) {
+    return nullptr;
+  }
 
   // Convert RHS to bool (i1) if not already
   if (!R->getType()->isIntegerTy(1)) {
@@ -623,7 +635,9 @@ Value* CodegenVisitor::codegenLogicalOp(const BinaryExprAST& expr) {
 
 Value* CodegenVisitor::codegen(const sun::ast::UnaryExprAST& expr) {
   Value* OperandV = codegen(*expr.getOperand());
-  if (!OperandV) return nullptr;
+  if (!OperandV) {
+    return nullptr;
+  }
 
   switch (expr.getOp().kind) {
     case TokenKind::MINUS:

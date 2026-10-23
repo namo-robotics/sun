@@ -17,7 +17,9 @@ inline void visitDeclarationKeys(
         const sun::semantic_analysis::PortableDeclarationKey&,
         std::optional<sun::types::Type::Kind>, const std::string&)>& visit) {
   const auto* descriptor = message.GetDescriptor();
-  if (descriptor == pbc::CompiledSpecialization::descriptor()) return;
+  if (descriptor == pbc::CompiledSpecialization::descriptor()) {
+    return;
+  }
   const auto* reflection = message.GetReflection();
   if (const auto* field = descriptor->FindFieldByName("declaration_key")) {
     if (reflection->HasField(message, field)) {
@@ -39,14 +41,18 @@ inline void visitDeclarationKeys(
   std::vector<const google::protobuf::FieldDescriptor*> fields;
   reflection->ListFields(message, &fields);
   for (const auto* field : fields) {
-    if (field->cpp_type() != google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE)
+    if (field->cpp_type() !=
+        google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
       continue;
+    }
     if (field->is_repeated()) {
-      for (int i = 0; i < reflection->FieldSize(message, field); ++i)
+      for (int i = 0; i < reflection->FieldSize(message, field); ++i) {
         visitDeclarationKeys(reflection->GetRepeatedMessage(message, field, i),
                              visit);
-    } else
+      }
+    } else {
       visitDeclarationKeys(reflection->GetMessage(message, field), visit);
+    }
   }
 }
 }  // namespace sun::serialization

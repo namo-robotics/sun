@@ -51,9 +51,10 @@ struct ImplementedInterfaceAST {
   TypeAnnotation toAnnotation() const {
     TypeAnnotation result(name);
     result.declarationKey = declarationKey;
-    for (const auto& argument : typeArguments)
+    for (const auto& argument : typeArguments) {
       result.typeArguments.push_back(
           std::make_unique<TypeAnnotation>(argument));
+    }
     return result;
   }
   std::string name;
@@ -125,22 +126,32 @@ class ClassDefinitionAST : public ExprAST {
    * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     for (auto& field : fields) {
-      if (field.initializer) fn(field.initializer);
+      if (field.initializer) {
+        fn(field.initializer);
+      }
     }
     for (auto& method : methods) {
-      if (method.function) method.function->forEachChildSlot(fn);
+      if (method.function) {
+        method.function->forEachChildSlot(fn);
+      }
     }
   }
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string result;
-    if (isPublic()) result += "public ";
-    if (isPartial_) result += "partial ";
+    if (isPublic()) {
+      result += "public ";
+    }
+    if (isPartial_) {
+      result += "partial ";
+    }
     result += (isPacked_ ? "packed_class " : "class ") + name;
     if (!typeParameters.empty()) {
       result += "<";
       for (size_t i = 0; i < typeParameters.size(); ++i) {
-        if (i > 0) result += ", ";
+        if (i > 0) {
+          result += ", ";
+        }
         result += typeParameters[i].toString();
       }
       result += ">";
@@ -148,7 +159,9 @@ class ClassDefinitionAST : public ExprAST {
     if (!implementedInterfaces.empty()) {
       result += " implements ";
       for (size_t i = 0; i < implementedInterfaces.size(); ++i) {
-        if (i > 0) result += ", ";
+        if (i > 0) {
+          result += ", ";
+        }
         result += implementedInterfaces[i].name;
         if (!implementedInterfaces[i].typeArguments.empty()) {
           result += "<...>";
@@ -199,7 +212,9 @@ class ClassDefinitionAST : public ExprAST {
   /** Reports whether this object has generic methods. */
   bool hasGenericMethods() const {
     for (const auto& method : methods) {
-      if (method.function->getProto().isGeneric()) return true;
+      if (method.function->getProto().isGeneric()) {
+        return true;
+      }
     }
     return false;
   }
@@ -217,7 +232,9 @@ class ClassDefinitionAST : public ExprAST {
    */
   const ClassMethodDecl* getConstructor() const {
     for (const auto& method : methods) {
-      if (method.isConstructor) return &method;
+      if (method.isConstructor) {
+        return &method;
+      }
     }
     return nullptr;
   }
@@ -262,7 +279,9 @@ class ClassDefinitionAST : public ExprAST {
    */
   std::shared_ptr<ClassDefinitionAST> getSpecialization(
       DeclarationId id) const {
-    if (!analysis_) return nullptr;
+    if (!analysis_) {
+      return nullptr;
+    }
     auto& specs = static_cast<ClassAnalysis&>(*analysis_).specializations;
     auto it = specs.find(id);
     return it != specs.end() ? it->second : nullptr;

@@ -24,7 +24,9 @@ std::unique_ptr<MoonScopeAST> bundle(
     std::optional<PortableDeclarationKey> fieldKey = std::nullopt) {
   const std::string scope = "$" + std::string(64, artifact) + "$";
   std::vector<TypeParameter> parameters;
-  if (generic) parameters.emplace_back("T");
+  if (generic) {
+    parameters.emplace_back("T");
+  }
   std::vector<ClassFieldDecl> fields;
   TypeAnnotation fieldType(generic ? "T" : "i32");
   if (fieldKey) {
@@ -39,9 +41,10 @@ std::unique_ptr<MoonScopeAST> bundle(
       LibraryDeclarationIdentity{key(artifact).encoding()};
   type->getFields()[0].declaration.imported =
       LibraryDeclarationIdentity{key(artifact, 3).encoding()};
-  if (generic)
+  if (generic) {
     type->declarationIdentity().imported->typeParameters.push_back(
         key(artifact, 4).encoding());
+  }
   std::vector<std::unique_ptr<ExprAST>> declarations;
   declarations.push_back(std::move(type));
   auto moon = std::make_unique<MoonScopeAST>(
@@ -56,11 +59,12 @@ std::unique_ptr<MoonScopeAST> bundle(
        root},
       {key(artifact, 3).encoding(),
        static_cast<uint32_t>(DeclarationKind::Field), "value", owner, root}};
-  if (generic)
+  if (generic) {
     moon->importedDeclarations.push_back(
         {key(artifact, 4).encoding(),
          static_cast<uint32_t>(DeclarationKind::TypeParameter), "T", owner,
          root});
+  }
   return moon;
 }
 
@@ -110,7 +114,9 @@ class TypeAnalysis_SemanticPipeline : public ::testing::Test {
                 std::string::npos);
       EXPECT_NE(message.find("Explicitly import the required exact bundle."),
                 std::string::npos);
-      if (!detail.empty()) EXPECT_NE(message.find(detail), std::string::npos);
+      if (!detail.empty()) {
+        EXPECT_NE(message.find(detail), std::string::npos);
+      }
     }
   }
 };
@@ -122,9 +128,13 @@ TEST_F(TypeAnalysis_SemanticPipeline, PreparesFieldsInEitherDependencyOrder) {
     auto importer = bundle('a', false, key('b'));
     importer->requiredDeclarations.push_back({key('b'), "Value", std::nullopt});
     std::vector<std::unique_ptr<ExprAST>> nodes;
-    if (dependencyFirst) nodes.push_back(bundle('b'));
+    if (dependencyFirst) {
+      nodes.push_back(bundle('b'));
+    }
     nodes.push_back(std::move(importer));
-    if (!dependencyFirst) nodes.push_back(bundle('b'));
+    if (!dependencyFirst) {
+      nodes.push_back(bundle('b'));
+    }
     BlockExprAST ordered(std::move(nodes), BlockKind::Module);
     auto session = std::make_shared<AnalysisResults>();
     SemanticAnalyzer isolatedAnalyzer(session);

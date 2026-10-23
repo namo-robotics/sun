@@ -45,10 +45,14 @@ StructType* LLVMTypeResolver::getStaticPtrType() {
 
 void LLVMTypeResolver::prepareEnumFieldStorage(const ClassType& classType) {
   for (const auto& field : classType.getFields()) {
-    if (!field.type) continue;
+    if (!field.type) {
+      continue;
+    }
     if (field.type->isEnum()) {
       const auto& enumType = static_cast<const EnumType&>(*field.type);
-      if (enumType.hasPayload()) getEnumStorageType(enumType);
+      if (enumType.hasPayload()) {
+        getEnumStorageType(enumType);
+      }
     } else if (field.type->isClass()) {
       prepareEnumFieldStorage(static_cast<const ClassType&>(*field.type));
     }
@@ -56,7 +60,9 @@ void LLVMTypeResolver::prepareEnumFieldStorage(const ClassType& classType) {
 }
 
 StructType* LLVMTypeResolver::getEnumStorageType(const EnumType& enumType) {
-  if (enumType.cachedStorageType) return enumType.cachedStorageType;
+  if (enumType.cachedStorageType) {
+    return enumType.cachedStorageType;
+  }
   if (!dataLayout) {
     sun::support::logAndThrowError(
         "payload enum '" + enumType.getDisplayName() +
@@ -66,18 +72,20 @@ StructType* LLVMTypeResolver::getEnumStorageType(const EnumType& enumType) {
   std::vector<std::vector<llvm::Type*>> payloads;
   for (const auto& variant : enumType.getVariants()) {
     std::vector<llvm::Type*> fields;
-    for (const auto& type : variant.payloadTypes)
+    for (const auto& type : variant.payloadTypes) {
       fields.push_back(type->isReference() &&
                                sun::types::unwrapRef(type)->isInterface()
                            ? sun::types::InterfaceType::getFatPointerType(ctx)
                            : resolve(type));
+    }
     payloads.push_back(std::move(fields));
   }
   const auto descriptor =
       sun::abi::EnumLayout::build(ctx, *dataLayout, payloads);
-  for (size_t i = 0; i < payloads.size(); ++i)
+  for (size_t i = 0; i < payloads.size(); ++i) {
     enumType.cachedVariantStructs[enumType.getVariants()[i].name] =
         descriptor.variants[i];
+  }
   enumType.cachedStorageType = descriptor.storage;
   return descriptor.storage;
 }
@@ -96,7 +104,9 @@ StructType* LLVMTypeResolver::getEnumVariantStruct(
 // -----------------------------------------------------------------------------
 
 llvm::Type* LLVMTypeResolver::resolve(const sun::types::TypePtr& type) {
-  if (!type) return nullptr;
+  if (!type) {
+    return nullptr;
+  }
   return resolve(*type);
 }
 
@@ -300,7 +310,9 @@ llvm::FunctionType* LLVMTypeResolver::resolveLambdaSignature(
 
 llvm::Type* LLVMTypeResolver::resolveForReturn(
     const sun::types::TypePtr& type) {
-  if (!type) return nullptr;
+  if (!type) {
+    return nullptr;
+  }
   return resolveForReturn(*type);
 }
 
@@ -308,8 +320,9 @@ llvm::Type* LLVMTypeResolver::resolveForReturn(const sun::types::Type& type) {
   // Return an interface borrow as a view value; its storage belongs to the
   // caller, so a view created during an upcast never escapes a callee frame.
   if (auto* reference = dynamic_cast<const sun::types::ReferenceType*>(&type)) {
-    if (reference->getReferencedType()->isInterface())
+    if (reference->getReferencedType()->isInterface()) {
       return sun::types::InterfaceType::getFatPointerType(ctx);
+    }
   }
   return resolve(type);
 }

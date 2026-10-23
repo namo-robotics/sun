@@ -165,7 +165,9 @@ std::string ScopeTreeGenerator::generateJson(
     out << ",\n" << pad2 << "\"variables\": {";
     bool first = true;
     for (const auto& [name, info] : scope.variables) {
-      if (!first) out << ",";
+      if (!first) {
+        out << ",";
+      }
       out << "\n"
           << pad4 << "\"" << escapeJson(name) << "\": {"
           << "\"type\": \""
@@ -183,7 +185,9 @@ std::string ScopeTreeGenerator::generateJson(
     out << ",\n" << pad2 << "\"namespacedVariables\": {";
     bool first = true;
     for (const auto& [name, info] : scope.namespacedVariables) {
-      if (!first) out << ",";
+      if (!first) {
+        out << ",";
+      }
       out << "\n"
           << pad4 << "\"" << escapeJson(name) << "\": {"
           << "\"type\": \""
@@ -203,7 +207,9 @@ std::string ScopeTreeGenerator::generateJson(
     out << ",\n" << pad2 << "\"typeParameters\": {";
     bool first = true;
     for (const auto& [name, type] : scope.typeParameters) {
-      if (!first) out << ",";
+      if (!first) {
+        out << ",";
+      }
       out << "\n"
           << pad4 << "\"" << escapeJson(name) << "\": \""
           << (type ? escapeJson(type->toString()) : "?") << "\"";
@@ -217,7 +223,9 @@ std::string ScopeTreeGenerator::generateJson(
     out << ",\n" << pad2 << "\"typeAliases\": {";
     bool first = true;
     for (const auto& [name, type] : scope.typeAliases) {
-      if (!first) out << ",";
+      if (!first) {
+        out << ",";
+      }
       out << "\n"
           << pad4 << "\"" << escapeJson(name) << "\": \""
           << (type ? escapeJson(type->toString()) : "?") << "\"";
@@ -231,8 +239,12 @@ std::string ScopeTreeGenerator::generateJson(
     out << ",\n" << pad2 << "\"childModules\": {";
     bool first = true;
     for (const auto& [name, child] : scope.childModules) {
-      if (!child) continue;
-      if (!first) out << ",";
+      if (!child) {
+        continue;
+      }
+      if (!first) {
+        out << ",";
+      }
       out << "\n" << pad4 << "\"" << escapeJson(name) << "\": ";
       /** Generate JSON representation of a scope (recursive) */
       out << generateJson(*child, indent + 4);
@@ -246,7 +258,9 @@ std::string ScopeTreeGenerator::generateJson(
     out << ",\n" << pad2 << "\"children\": [";
     bool first = true;
     for (const auto& child : scope.children) {
-      if (!first) out << ",";
+      if (!first) {
+        out << ",";
+      }
       out << "\n" << pad4;
       /** Generate JSON representation of a scope (recursive) */
       out << generateJson(*child, indent + 4);

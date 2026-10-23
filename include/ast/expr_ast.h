@@ -172,7 +172,9 @@ class ExprAST {
   }
   /** Discard computed results while preserving this session's identities. */
   virtual void clearComputedAnalysis() const {
-    if (!analysis_) return;
+    if (!analysis_) {
+      return;
+    }
     auto identity = std::move(analysis_->declaration);
     analysis_.reset();
     ensureAnalysis();
@@ -180,10 +182,14 @@ class ExprAST {
   }
   /** Discard all annotations when the owning analysis session is discarded. */
   virtual void resetAnalysisSession() const {
-    if (!analysis_) return;
+    if (!analysis_) {
+      return;
+    }
     auto imported = std::move(analysis_->declaration.imported);
     analysis_.reset();
-    if (imported) analysis().declaration.imported = std::move(imported);
+    if (imported) {
+      analysis().declaration.imported = std::move(imported);
+    }
   }
 
   /**
@@ -202,7 +208,9 @@ class ExprAST {
   }
   /** Discards the cached type so analysis can resolve it again. */
   void clearResolvedType() const {
-    if (analysis_) analysis_->resolvedType = nullptr;
+    if (analysis_) {
+      analysis_->resolvedType = nullptr;
+    }
   }
 
   /**

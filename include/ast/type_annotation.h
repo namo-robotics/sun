@@ -209,9 +209,14 @@ struct TypeAnnotation {
       return (!left && !right) || (left && right && *left == *right);
     };
     auto equalList = [&](const auto& left, const auto& right) {
-      if (left.size() != right.size()) return false;
-      for (size_t i = 0; i < left.size(); ++i)
-        if (!equalOptional(left[i], right[i])) return false;
+      if (left.size() != right.size()) {
+        return false;
+      }
+      for (size_t i = 0; i < left.size(); ++i) {
+        if (!equalOptional(left[i], right[i])) {
+          return false;
+        }
+      }
       return true;
     };
     return (declarationKey || other.declarationKey
@@ -237,7 +242,9 @@ struct TypeAnnotation {
         result += ", " + dim.toString();
       }
       result += ">";
-      if (canError) result += " throws IError";
+      if (canError) {
+        result += " throws IError";
+      }
       return result;
     }
     if (isRawPointer() && elementType) {
@@ -248,19 +255,27 @@ struct TypeAnnotation {
     }
     if (isReference() && elementType) {
       std::string result = constRef ? "const ref" : "ref";
-      if (!lifetimeName.empty()) result += " '" + lifetimeName;
+      if (!lifetimeName.empty()) {
+        result += " '" + lifetimeName;
+      }
       return result + "(" + elementType->toString() + ")";
     }
     if (isFunction()) {
       std::string result = "function (";
       for (size_t i = 0; i < paramTypes.size(); ++i) {
-        if (i > 0) result += ", ";
+        if (i > 0) {
+          result += ", ";
+        }
         result += paramTypes[i]->toString();
       }
       result += ") ";
       result += returnType ? returnType->toString() : "void";
-      if (requiresUnsafe) result = "unsafe " + result;
-      if (canError) result += " throws IError";
+      if (requiresUnsafe) {
+        result = "unsafe " + result;
+      }
+      if (canError) {
+        result += " throws IError";
+      }
       return result;
     }
     if (isLambda()) {
@@ -268,13 +283,19 @@ struct TypeAnnotation {
           refEnv ? "<'" + (lifetimeName.empty() ? "_" : lifetimeName) + ">("
                  : "(";
       for (size_t i = 0; i < paramTypes.size(); ++i) {
-        if (i > 0) result += ", ";
+        if (i > 0) {
+          result += ", ";
+        }
         result += paramTypes[i]->toString();
       }
       result += ") => ";
       result += returnType ? returnType->toString() : "void";
-      if (requiresUnsafe) result = "unsafe " + result;
-      if (canError) result += " throws IError";
+      if (requiresUnsafe) {
+        result = "unsafe " + result;
+      }
+      if (canError) {
+        result += " throws IError";
+      }
       return result;
     }
     // Generic types: ClassName<'a, T> (lifetime arguments come first)
@@ -282,21 +303,29 @@ struct TypeAnnotation {
       std::string result = baseName + "<";
       bool first = true;
       for (const auto& lifetime : lifetimeArguments) {
-        if (!first) result += ", ";
+        if (!first) {
+          result += ", ";
+        }
         result += "'" + lifetime;
         first = false;
       }
       for (const auto& typeArg : typeArguments) {
-        if (!first) result += ", ";
+        if (!first) {
+          result += ", ";
+        }
         result += typeArg->toString();
         first = false;
       }
       result += ">";
-      if (canError) result += " throws IError";
+      if (canError) {
+        result += " throws IError";
+      }
       return result;
     }
     std::string result = baseName;
-    if (canError) result += " throws IError";
+    if (canError) {
+      result += " throws IError";
+    }
     return result;
   }
 };

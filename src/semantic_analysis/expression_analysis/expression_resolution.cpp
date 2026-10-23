@@ -69,8 +69,9 @@ TypePtr ExpressionAnalyzer::resolveVariableReferenceType(
   // Check if it's a module name (for mod_x.mod_y.var access)
   if (ctx_.isModuleName(name)) {
     std::string fullPath = ctx_.getFullModulePath(name);
-    if (auto* modScope = ctx_.lookupModuleScope(fullPath))
+    if (auto* modScope = ctx_.lookupModuleScope(fullPath)) {
       ctx_.requireModuleAccessible(*modScope, varRef.getLocation());
+    }
     return Types::Module(fullPath);
   }
 
@@ -103,26 +104,34 @@ TypePtr ExpressionAnalyzer::resolveModuleMemberType(
     QualifiedName resolvedName;
     switch (match.kind) {
       case SymbolKind::Function:
-        if (match.functionInfo)
+        if (match.functionInfo) {
           resolvedName = match.functionInfo->qualifiedName;
+        }
         break;
       case SymbolKind::Variable:
-        if (match.variableInfo)
+        if (match.variableInfo) {
           resolvedName = match.variableInfo->qualifiedName;
+        }
         break;
       case SymbolKind::Class:
-        if (match.classType) resolvedName = match.classType->getQualifiedName();
+        if (match.classType) {
+          resolvedName = match.classType->getQualifiedName();
+        }
         break;
       case SymbolKind::GenericClass:
-        if (match.genericClassInfo)
+        if (match.genericClassInfo) {
           resolvedName = match.genericClassInfo->qualifiedName;
+        }
         break;
       case SymbolKind::Interface:
-        if (match.interfaceType)
+        if (match.interfaceType) {
           resolvedName = match.interfaceType->getQualifiedName();
+        }
         break;
       case SymbolKind::Enum:
-        if (match.enumType) resolvedName = match.enumType->getQualifiedName();
+        if (match.enumType) {
+          resolvedName = match.enumType->getQualifiedName();
+        }
         break;
       default:
         break;
@@ -264,8 +273,9 @@ TypePtr ExpressionAnalyzer::resolveClassMemberType(
   const ClassMethod* method =
       ctx_.accessibleMethod(*classType, memberName, memberAccess.getLocation());
   if (method) {
-    if (!method->isGeneric())
+    if (!method->isGeneric()) {
       memberAccess.setTargetDeclarationId(method->declarationId);
+    }
     TypePtr returnType = method->returnType;
 
     // Generic method calls: the type arguments written at the call,
@@ -346,9 +356,10 @@ TypePtr ExpressionAnalyzer::resolveTypeParameterMemberType(
         }
         const ClassMethod* method = ctx_.accessibleMethod(
             *classType, memberName, memberAccess.getLocation());
-        if (method)
+        if (method) {
           return Types::Function(method->returnType, method->paramTypes, false,
                                  method->isUnsafe);
+        }
         logAndThrowError("Unknown member '" + memberName + "' on class '" +
                              classType->getDisplayName() + "'",
                          memberAccess.getLocation());
@@ -364,9 +375,10 @@ TypePtr ExpressionAnalyzer::resolveTypeParameterMemberType(
         }
         const InterfaceMethod* method = ctx_.accessibleMethod(
             *ifaceType, memberName, memberAccess.getLocation());
-        if (method)
+        if (method) {
           return Types::Function(method->returnType, method->paramTypes,
                                  method->canThrow, method->isUnsafe);
+        }
         logAndThrowError("Unknown member '" + memberName + "' on interface '" +
                              ifaceType->toDisplayString() + "'",
                          memberAccess.getLocation());
@@ -394,9 +406,10 @@ TypePtr ExpressionAnalyzer::resolveTypeParameterMemberType(
       }
       const InterfaceMethod* method = ctx_.accessibleMethod(
           *ifaceType, memberName, memberAccess.getLocation());
-      if (method)
+      if (method) {
         return Types::Function(method->returnType, method->paramTypes,
                                method->canThrow, method->isUnsafe);
+      }
       logAndThrowError("Unknown member '" + memberName +
                            "' on type parameter '" + param->getName() +
                            "', which is constrained to interface '" +
@@ -422,8 +435,9 @@ TypePtr ExpressionAnalyzer::resolveTypeParameterMemberType(
 
 TypePtr ExpressionAnalyzer::resolveMemberType(
     const MemberAccessAST& memberAccess) {
-  if (memberAccess.getModuleDeclaration())
+  if (memberAccess.getModuleDeclaration()) {
     return resolveModuleReference(memberAccess);
+  }
   const std::string& memberName = memberAccess.getMemberName();
 
   // Get the fully-resolved object type:

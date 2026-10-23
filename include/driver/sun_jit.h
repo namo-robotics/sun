@@ -95,7 +95,9 @@ class SunJIT {
 
   /** Ends the JIT execution session and releases its resources. */
   ~SunJIT() {
-    if (auto Err = ES->endSession()) ES->reportError(std::move(Err));
+    if (auto Err = ES->endSession()) {
+      ES->reportError(std::move(Err));
+    }
   }
 
   /**
@@ -104,7 +106,9 @@ class SunJIT {
    */
   Error addStaticLibrary(const std::string& Path) {
     auto G = StaticLibraryDefinitionGenerator::Load(*ObjLayer, Path.c_str());
-    if (!G) return G.takeError();
+    if (!G) {
+      return G.takeError();
+    }
     MainJD.addGenerator(std::move(*G));
     return Error::success();
   }
@@ -114,7 +118,9 @@ class SunJIT {
    */
   static Expected<std::unique_ptr<SunJIT>> Create(bool optimize = true) {
     auto EPC = SelfExecutorProcessControl::Create();
-    if (!EPC) return EPC.takeError();
+    if (!EPC) {
+      return EPC.takeError();
+    }
 
     auto ES = std::make_unique<ExecutionSession>(std::move(*EPC));
 
@@ -133,7 +139,9 @@ class SunJIT {
     JTMB.setCodeModel(CodeModel::Small);
 
     auto DL = JTMB.getDefaultDataLayoutForTarget();
-    if (!DL) return DL.takeError();
+    if (!DL) {
+      return DL.takeError();
+    }
 
     return std::make_unique<SunJIT>(std::move(ES), std::move(JTMB),
                                     std::move(*DL));
@@ -150,7 +158,9 @@ class SunJIT {
 
   /** Adds an LLVM module to the JIT under the supplied resource tracker. */
   Error addModule(ThreadSafeModule TSM, ResourceTrackerSP RT = nullptr) {
-    if (!RT) RT = MainJD.getDefaultResourceTracker();
+    if (!RT) {
+      RT = MainJD.getDefaultResourceTracker();
+    }
     return CompileLayer.add(RT, std::move(TSM));
   }
 

@@ -86,10 +86,14 @@ class MatchExprAST : public ExprAST {
 
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
-    if (propagation_) return "try " + discriminant->toString();
+    if (propagation_) {
+      return "try " + discriminant->toString();
+    }
     std::string result = "match " + discriminant->toString() + " {";
     for (size_t i = 0; i < arms.size(); ++i) {
-      if (i > 0) result += ", ";
+      if (i > 0) {
+        result += ", ";
+      }
       if (arms[i].bindingType) {
         result += "(" +
                   (arms[i].bindings.front().isWildcard

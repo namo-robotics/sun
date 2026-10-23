@@ -30,8 +30,9 @@ void DeclarationAnalyzer::analyzeVariableCreation(
   if (isTrackedGlobal(varCreate)) {
     // An earlier use may already have analyzed this global, which gave it
     // its type
-    if (!varCreate.getResolvedType())
+    if (!varCreate.getResolvedType()) {
       analyzeGlobal(varCreate, ctx_.currentScope());
+    }
     return;
   }
   analyzeVariableDeclaration(varCreate);
@@ -49,11 +50,14 @@ void DeclarationAnalyzer::verifyGlobalVarIsNotRepeated(
     const sun::ast::VariableCreationAST& global) const {
   auto repeated =
       std::find(globalsInProgress_.begin(), globalsInProgress_.end(), &global);
-  if (repeated == globalsInProgress_.end()) return;
+  if (repeated == globalsInProgress_.end()) {
+    return;
+  }
   const std::string& name = global.getName();
   std::string cycle;
-  for (auto step = repeated; step != globalsInProgress_.end(); ++step)
+  for (auto step = repeated; step != globalsInProgress_.end(); ++step) {
     cycle += (*step)->getName() + " -> ";
+  }
   logAndThrowError(
       "Global variable '" + name + "' depends on itself: " + cycle + name,
       global.getLocation());
@@ -68,13 +72,14 @@ void DeclarationAnalyzer::analyzeGlobal(sun::ast::VariableCreationAST& global,
   // declarations are still being collected, when no function can be called
   // yet: functions are registered after the types their signatures mention.
   if (ctx_.isCollectingDeclarations() && global.getValue()) {
-    if (containsCall(*global.getValue()))
+    if (containsCall(*global.getValue())) {
       logAndThrowError(
           "'" + name +
               "' is needed by a class field or a function signature, so its "
               "value cannot come from calling a function; write the value "
               "out, or compute it from other constants",
           global.getLocation());
+    }
   }
 
   // The initializer belongs to the scope and file of the declaration, and to
@@ -99,8 +104,10 @@ void DeclarationAnalyzer::analyzeGlobal(sun::ast::VariableCreationAST& global,
   analyzeVariableDeclaration(global);
   // Inside a module it is also reachable as `module.name`. A bundle's hash
   // scope is not a module the program can name.
-  if (scope.getType() == ScopeType::Module && !isLibraryScope(scope.scopeName))
+  if (scope.getType() == ScopeType::Module &&
+      !isLibraryScope(scope.scopeName)) {
     registerModuleVariable(global);
+  }
 }
 
 void DeclarationAnalyzer::registerModuleVariable(
@@ -115,21 +122,25 @@ void DeclarationAnalyzer::registerModuleVariable(
 
 void DeclarationAnalyzer::ensureGlobalAnalyzed(const std::string& name) {
   if (UnanalyzedGlobal global = ctx_.currentScope().findUnanalyzedGlobal(
-          name, ctx_.declarationTable()))
+          name, ctx_.declarationTable())) {
     analyzeGlobal(*global.node, *global.scope);
+  }
 }
 
 void DeclarationAnalyzer::ensureModuleGlobalAnalyzed(
     const std::string& modulePath, const std::string& name) {
   auto* moduleScope = ctx_.lookupModuleScope(modulePath);
-  if (!moduleScope) return;
+  if (!moduleScope) {
+    return;
+  }
   const auto& declarations = ctx_.declarationTable();
   const auto* global = findVariableNode(
       declarations,
       declarations.findGlobal(QualifiedName(moduleScope->scopePath, name)));
-  if (global && !global->getResolvedType())
+  if (global && !global->getResolvedType()) {
     analyzeGlobal(const_cast<sun::ast::VariableCreationAST&>(*global),
                   *moduleScope);
+  }
 }
 
 void DeclarationAnalyzer::analyzeVariableDeclaration(
@@ -272,11 +283,12 @@ void DeclarationAnalyzer::analyzeVariableDeclaration(
         deferredContract = receiver && receiver->isTypeParameter();
       }
     }
-    if (!deferredContract)
+    if (!deferredContract) {
       logAndThrowError("Interface '" + type->toDisplayString() +
                            "' cannot own a value; use ref or const ref, or own "
                            "a concrete type",
                        varCreate.getLocation());
+    }
   }
 
   validateTypeParameter(type, varCreate);

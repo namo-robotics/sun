@@ -124,7 +124,9 @@ class ErrorCollector : public pbc::MultiFileErrorCollector {
   std::string joined() const {
     std::string out;
     for (const auto& e : errors_) {
-      if (!out.empty()) out += "\n";
+      if (!out.empty()) {
+        out += "\n";
+      }
       out += e;
     }
     return out;
@@ -206,8 +208,9 @@ std::vector<const pb::EnumDescriptor*> allEnums(
     out.push_back(file->enum_type(i));
   }
   for (const pb::Descriptor* d : allMessages(file)) {
-    for (int i = 0; i < d->enum_type_count(); ++i)
+    for (int i = 0; i < d->enum_type_count(); ++i) {
       out.push_back(d->enum_type(i));
+    }
   }
   return out;
 }
@@ -222,9 +225,12 @@ std::vector<const pb::Descriptor*> messagesInDependencyOrder(
   std::set<const pb::Descriptor*> done;
   std::function<void(const pb::Descriptor*)> visit =
       [&](const pb::Descriptor* d) {
-        if (!done.insert(d).second) return;
-        for (int i = 0; i < d->nested_type_count(); ++i)
+        if (!done.insert(d).second) {
+          return;
+        }
+        for (int i = 0; i < d->nested_type_count(); ++i) {
           visit(d->nested_type(i));
+        }
         for (int i = 0; i < d->field_count(); ++i) {
           const FD* f = d->field(i);
           if (f->type() == FD::TYPE_MESSAGE &&
@@ -261,7 +267,9 @@ class SchemaValidator {
       fail("extensions are not supported ('" + asString(file->name()) + "')");
     }
     for (const pb::Descriptor* d : allMessages(file)) {
-      for (int i = 0; i < d->field_count(); ++i) validateField(d->field(i));
+      for (int i = 0; i < d->field_count(); ++i) {
+        validateField(d->field(i));
+      }
     }
     rejectRecursiveMessages(file);
   }
@@ -313,7 +321,9 @@ class SchemaValidator {
         dfs.pop_back();
         for (int i = 0; i < d->field_count(); ++i) {
           const FD* f = d->field(i);
-          if (f->type() != FD::TYPE_MESSAGE || f->is_repeated()) continue;
+          if (f->type() != FD::TYPE_MESSAGE || f->is_repeated()) {
+            continue;
+          }
           const pb::Descriptor* sub = f->message_type();
           if (sub == root) {
             fail("message '" + asString(root->full_name()) +
@@ -321,7 +331,9 @@ class SchemaValidator {
                  asString(f->full_name()) +
                  "'); recursive messages are not supported");
           }
-          if (visited.insert(sub).second) dfs.push_back(sub);
+          if (visited.insert(sub).second) {
+            dfs.push_back(sub);
+          }
         }
       }
     }
@@ -428,8 +440,12 @@ class TypeMapper {
       return "Map<" + elementType(entry->map_key()) + ", " +
              elementType(entry->map_value()) + ">";
     }
-    if (f->is_repeated()) return "Vec<" + elementType(f) + ">";
-    if (isProto3Optional(f)) return "Option<" + elementType(f) + ">";
+    if (f->is_repeated()) {
+      return "Vec<" + elementType(f) + ">";
+    }
+    if (isProto3Optional(f)) {
+      return "Option<" + elementType(f) + ">";
+    }
     return elementType(f);
   }
 
@@ -562,7 +578,9 @@ class TypeMapper {
    */
   static std::string zeroVariant(const pb::EnumDescriptor* e) {
     for (int i = 0; i < e->value_count(); ++i) {
-      if (e->value(i)->number() == 0) return asString(e->value(i)->name());
+      if (e->value(i)->number() == 0) {
+        return asString(e->value(i)->name());
+      }
     }
     return asString(e->value(0)->name());
   }
@@ -688,14 +706,18 @@ class MessageGenerator {
   void forEachPlainField(Fn fn) const {
     for (int i = 0; i < d_->field_count(); ++i) {
       const FD* f = d_->field(i);
-      if (!f->real_containing_oneof()) fn(f);
+      if (!f->real_containing_oneof()) {
+        fn(f);
+      }
     }
   }
 
   /** Visits the explicitly declared protobuf oneof groups. */
   template <typename Fn>
   void forEachOneof(Fn fn) const {
-    for (int i = 0; i < d_->real_oneof_decl_count(); ++i) fn(d_->oneof_decl(i));
+    for (int i = 0; i < d_->real_oneof_decl_count(); ++i) {
+      fn(d_->oneof_decl(i));
+    }
   }
 
   /** Writes code that emits a protobuf field tag. */
@@ -1009,7 +1031,9 @@ void emitFile(Writer& w, const pb::FileDescriptor* file,
   w.line();
 
   std::string pkg = asString(file->package());
-  if (!pkg.empty()) w.open("public module " + pkg + " {");
+  if (!pkg.empty()) {
+    w.open("public module " + pkg + " {");
+  }
   // `using` inside the module: merged ASTs order modules before other
   // top-level statements, so a file-level `using` would bind too late for
   // the class shapes. Imported packages are brought into scope the same way.
@@ -1023,12 +1047,16 @@ void emitFile(Writer& w, const pb::FileDescriptor* file,
   }
   w.line();
 
-  for (const auto* e : allEnums(file)) emitEnum(w, e);
+  for (const auto* e : allEnums(file)) {
+    emitEnum(w, e);
+  }
   for (const auto* d : messagesInDependencyOrder(file)) {
     MessageGenerator(w, d).emit();
   }
 
-  if (!pkg.empty()) w.close();
+  if (!pkg.empty()) {
+    w.close();
+  }
   w.line();
 }
 
@@ -1049,9 +1077,12 @@ std::string readFile(const std::filesystem::path& p) {
 std::vector<std::string> ProtoImporter::importDirsFor(
     const std::string& baseDir) {
   std::vector<std::string> dirs;
-  if (!baseDir.empty()) dirs.push_back(baseDir);
-  for (const auto& dir : sun::support::SunPath::getPaths())
+  if (!baseDir.empty()) {
+    dirs.push_back(baseDir);
+  }
+  for (const auto& dir : sun::support::SunPath::getPaths()) {
     dirs.push_back(dir.string());
+  }
   return dirs;
 }
 
@@ -1069,18 +1100,24 @@ SynthesizedProtoModule ProtoImporter::import(
     const std::string& protoPath, const std::vector<std::string>& importDirs) {
   namespace fs = std::filesystem;
   fs::path path = fs::absolute(protoPath);
-  if (!fs::exists(path)) fail("file not found: " + protoPath);
+  if (!fs::exists(path)) {
+    fail("file not found: " + protoPath);
+  }
 
   // Map every import dir (and the proto's own directory) onto the virtual
   // root so proto-level `import "x.proto"` resolves like other Sun imports.
   pbc::DiskSourceTree tree;
   tree.MapPath("", path.parent_path().string());
-  for (const auto& d : importDirs) tree.MapPath("", d);
+  for (const auto& d : importDirs) {
+    tree.MapPath("", d);
+  }
 
   ErrorCollector errors;
   pbc::Importer importer(&tree, &errors);
   const pb::FileDescriptor* file = importer.Import(path.filename().string());
-  if (!file || errors.hasErrors()) fail(errors.joined());
+  if (!file || errors.hasErrors()) {
+    fail(errors.joined());
+  }
 
   // Dependencies first (deepest first, each once), then the file itself:
   // imported messages/enums become sibling modules in the same synthesized
@@ -1089,8 +1126,12 @@ SynthesizedProtoModule ProtoImporter::import(
   std::set<const pb::FileDescriptor*> seen;
   std::function<void(const pb::FileDescriptor*)> visit =
       [&](const pb::FileDescriptor* f) {
-        if (!seen.insert(f).second) return;
-        for (int i = 0; i < f->dependency_count(); ++i) visit(f->dependency(i));
+        if (!seen.insert(f).second) {
+          return;
+        }
+        for (int i = 0; i < f->dependency_count(); ++i) {
+          visit(f->dependency(i));
+        }
         order.push_back(f);
       };
   visit(file);

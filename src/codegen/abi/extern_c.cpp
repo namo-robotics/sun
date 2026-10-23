@@ -23,7 +23,9 @@ namespace {
 /** Returns the target architecture and platform recorded on an LLVM module. */
 llvm::Triple targetTriple(const llvm::Module* module) {
   std::string triple = module->getTargetTriple();
-  if (triple.empty()) triple = llvm::sys::getDefaultTargetTriple();
+  if (triple.empty()) {
+    triple = llvm::sys::getDefaultTargetTriple();
+  }
   return llvm::Triple(triple);
 }
 
@@ -135,8 +137,10 @@ llvm::Function* ExternCEmitter::declare(
     if (funcType != existing->getFunctionType()) {
       std::string previous = "previously compiled declaration";
       if (auto* origin = existing->getMetadata("sun.cabi.declaration")) {
-        if (auto* text = llvm::dyn_cast<llvm::MDString>(origin->getOperand(0)))
+        if (auto* text =
+                llvm::dyn_cast<llvm::MDString>(origin->getOperand(0))) {
           previous = text->getString().str();
+        }
       }
       std::string signatures;
       llvm::raw_string_ostream stream(signatures);
@@ -188,7 +192,9 @@ llvm::Function* ExternCEmitter::declare(
   if (lowering.isTrivial()) {
     unsigned idx = 0;
     for (auto& arg : func->args()) {
-      if (idx < proto.getArgs().size()) arg.setName(proto.getArgs()[idx].first);
+      if (idx < proto.getArgs().size()) {
+        arg.setName(proto.getArgs()[idx].first);
+      }
       ++idx;
     }
   }
@@ -227,7 +233,9 @@ llvm::GlobalVariable* ExternCEmitter::declareGlobal(
 
 const SignatureLowering* ExternCEmitter::loweringFor(
     const llvm::Function* func) const {
-  if (!func) return nullptr;
+  if (!func) {
+    return nullptr;
+  }
   auto it = lowerings_.find(func->getName().str());
   return it == lowerings_.end() ? nullptr : &it->second;
 }
@@ -252,7 +260,9 @@ llvm::AllocaInst* ExternCEmitter::entryAlloca(llvm::Type* type,
 
 llvm::Value* ExternCEmitter::addressOf(llvm::Value* value,
                                        llvm::Type* aggregateType) const {
-  if (value->getType()->isPointerTy()) return value;
+  if (value->getType()->isPointerTy()) {
+    return value;
+  }
   llvm::AllocaInst* slot = entryAlloca(aggregateType, "cabi.arg");
   ctx_.builder->CreateStore(value, slot);
   return slot;
@@ -260,7 +270,9 @@ llvm::Value* ExternCEmitter::addressOf(llvm::Value* value,
 
 llvm::Value* ExternCEmitter::promoteVararg(llvm::Value* value,
                                            const TypePtr& sunType) const {
-  if (!value) return value;
+  if (!value) {
+    return value;
+  }
   llvm::LLVMContext& llvmCtx = ctx_.getContext();
 
   // static_ptr<T> is a fat { ptr, i64 }; C expects the bare data pointer.
@@ -340,7 +352,9 @@ llvm::Value* ExternCEmitter::emitCall(llvm::Function* func,
                                       llvm::ArrayRef<PreparedArg> args,
                                       CallEmitter emitCallInsn) {
   const SignatureLowering* lowering = loweringFor(func);
-  if (!lowering) return nullptr;
+  if (!lowering) {
+    return nullptr;
+  }
 
   const llvm::DataLayout& dl = module_->getDataLayout();
 
@@ -404,7 +418,9 @@ llvm::Value* ExternCEmitter::emitCall(llvm::Function* func,
   }
 
   // sret already wrote into our buffer; its address is the Sun-level result.
-  if (lowering->usesSret()) return sretSlot;
+  if (lowering->usesSret()) {
+    return sretSlot;
+  }
 
   // A coerced return arrives as register pieces. Write them back over a
   // buffer of the real struct type and hand back its address, which is how

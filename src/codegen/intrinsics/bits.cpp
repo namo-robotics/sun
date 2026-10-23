@@ -29,7 +29,9 @@ Value* IntrinsicsGenerator::codegenMulHiU64Intrinsic(const CallExprAST& expr) {
   }
   Value* a = codegen(*args[0]);
   Value* b = codegen(*args[1]);
-  if (!a || !b) return nullptr;
+  if (!a || !b) {
+    return nullptr;
+  }
 
   auto* i64Ty = llvm::Type::getInt64Ty(ctx.getContext());
   auto* i128Ty = llvm::Type::getInt128Ty(ctx.getContext());
@@ -52,7 +54,9 @@ Value* IntrinsicsGenerator::codegenCountZerosIntrinsic(const CallExprAST& expr,
     return nullptr;
   }
   Value* x = codegen(*args[0]);
-  if (!x) return nullptr;
+  if (!x) {
+    return nullptr;
+  }
 
   auto* i64Ty = llvm::Type::getInt64Ty(ctx.getContext());
   x = ctx.builder->CreateZExtOrTrunc(x, i64Ty, "ctz.x");
@@ -75,7 +79,9 @@ Value* IntrinsicsGenerator::codegenBswapIntrinsic(const CallExprAST& expr,
     return nullptr;
   }
   Value* x = codegen(*args[0]);
-  if (!x) return nullptr;
+  if (!x) {
+    return nullptr;
+  }
 
   auto* intTy = llvm::Type::getIntNTy(ctx.getContext(), bitWidth);
   x = ctx.builder->CreateZExtOrTrunc(x, intTy, "bswap.x");

@@ -22,24 +22,30 @@ using Bindings = std::map<std::string, sun::proto::ast::TypeAnnotation>;
 sun::proto::ast::TypeAnnotation substitute(
     const sun::proto::ast::TypeAnnotation& annotation, const Bindings& bindings,
     unsigned depth = 0) {
-  if (depth > 128)
+  if (depth > 128) {
     sun::support::logAndThrowError("Unsupported ABI type nesting depth");
+  }
   if (!annotation.has_declaration_key()) {
     if (const auto found = bindings.find(annotation.base_name());
-        found != bindings.end())
+        found != bindings.end()) {
       return found->second;
+    }
   }
   auto result = annotation;
-  if (result.has_element_type())
+  if (result.has_element_type()) {
     *result.mutable_element_type() =
         substitute(annotation.element_type(), bindings, depth + 1);
-  if (result.has_return_type())
+  }
+  if (result.has_return_type()) {
     *result.mutable_return_type() =
         substitute(annotation.return_type(), bindings, depth + 1);
-  for (auto& type : *result.mutable_param_types())
+  }
+  for (auto& type : *result.mutable_param_types()) {
     type = substitute(type, bindings, depth + 1);
-  for (auto& type : *result.mutable_type_arguments())
+  }
+  for (auto& type : *result.mutable_type_arguments()) {
     type = substitute(type, bindings, depth + 1);
+  }
   return result;
 }
 
@@ -60,12 +66,15 @@ class MetadataLayouts {
                   llvm::LLVMContext& context, const llvm::DataLayout& layout)
       : context_(context), resolver_(context, &layout), layout_(layout) {
     for (const auto* module : modules) {
-      for (const auto& cls : module->classes())
+      for (const auto& cls : module->classes()) {
         classes_.emplace(cls.declaration_identity().key(), &cls);
-      for (const auto& interface : module->interfaces())
+      }
+      for (const auto& interface : module->interfaces()) {
         interfaces_.insert(interface.declaration_identity().key());
-      for (const auto& enumeration : module->enums())
+      }
+      for (const auto& enumeration : module->enums()) {
         enums_.emplace(enumeration.declaration_identity().key(), &enumeration);
+      }
     }
   }
 
@@ -74,57 +83,79 @@ class MetadataLayouts {
   llvm::Type* decode(const sun::proto::ast::TypeAnnotation& annotation,
                      bool returned = false, const Bindings& bindings = {},
                      unsigned depth = 0) {
-    if (depth > 128)
+    if (depth > 128) {
       sun::support::logAndThrowError("Unsupported ABI type nesting depth");
-    if (!bindings.empty())
+    }
+    if (!bindings.empty()) {
       return decode(substitute(annotation, bindings), returned, {}, depth + 1);
-    if (annotation.can_error()) return nullptr;
+    }
+    if (annotation.can_error()) {
+      return nullptr;
+    }
     const auto& name = annotation.base_name();
     if (!annotation.has_declaration_key()) {
-      if (auto primitive = sun::types::Types::fromString(name))
+      if (auto primitive = sun::types::Types::fromString(name)) {
         return resolver_.resolve(primitive);
+      }
     }
     auto* pointer = llvm::PointerType::getUnqual(context_);
-    if (name == "raw_ptr" || name == "fn") return pointer;
-    if (name == "lambda") return resolver_.getClosureType();
-    if (name == "static_ptr") return resolver_.getStaticPtrType();
+    if (name == "raw_ptr" || name == "fn") {
+      return pointer;
+    }
+    if (name == "lambda") {
+      return resolver_.getClosureType();
+    }
+    if (name == "static_ptr") {
+      return resolver_.getStaticPtrType();
+    }
     if (name == "ref") {
       const auto& element = annotation.element_type();
-      if (element.base_name() == "array" && element.array_dimensions().empty())
+      if (element.base_name() == "array" &&
+          element.array_dimensions().empty()) {
         return sun::types::ArrayType::getArrayStructType(context_);
-      if (returned &&
-          (interfaces_.contains(element.declaration_key()) ||
-           (!element.has_declaration_key() && element.base_name() == "IError")))
+      }
+      if (returned && (interfaces_.contains(element.declaration_key()) ||
+                       (!element.has_declaration_key() &&
+                        element.base_name() == "IError"))) {
         return sun::types::InterfaceType::getFatPointerType(context_);
+      }
       // An unavailable nominal declaration may be an interface borrow returned
       // by value. Check it once its source layout is available, not as a
       // pointer.
       if (returned && element.has_declaration_key() &&
-          !classes_.contains(element.declaration_key()))
+          !classes_.contains(element.declaration_key())) {
         return nullptr;
+      }
       return pointer;
     }
     if (name == "array") {
-      if (annotation.array_dimensions().empty())
+      if (annotation.array_dimensions().empty()) {
         return sun::types::ArrayType::getArrayStructType(context_);
+      }
       auto* element =
           decode(annotation.element_type(), false, bindings, depth + 1);
-      if (!element || !element->isSized()) return nullptr;
+      if (!element || !element->isSized()) {
+        return nullptr;
+      }
       for (auto i = annotation.array_dimensions().rbegin();
            i != annotation.array_dimensions().rend(); ++i) {
-        if (!i->has_size()) return nullptr;
+        if (!i->has_size()) {
+          return nullptr;
+        }
         element = llvm::ArrayType::get(element, i->size());
       }
       return element;
     }
     if (interfaces_.contains(annotation.declaration_key()) ||
-        (!annotation.has_declaration_key() && name == "IError"))
+        (!annotation.has_declaration_key() && name == "IError")) {
       return sun::types::InterfaceType::getFatPointerType(context_);
+    }
     if (const auto enumeration = enums_.find(annotation.declaration_key());
         enumeration != enums_.end()) {
       const auto& definition = *enumeration->second;
-      if (definition.type_params_size() != annotation.type_arguments_size())
+      if (definition.type_params_size() != annotation.type_arguments_size()) {
         return nullptr;
+      }
       Bindings arguments;
       std::string identity = annotation.declaration_key();
       for (int i = 0; i < definition.type_params_size(); ++i) {
@@ -133,9 +164,10 @@ class MetadataLayouts {
         identity += ":" + std::to_string(encoded.size()) + ":" + encoded;
         arguments.emplace(definition.type_params(i).name(), std::move(type));
       }
-      if (!active_.insert(identity).second)
+      if (!active_.insert(identity).second) {
         sun::support::logAndThrowError("Recursive by-value ABI enum layout: " +
                                        definition.name());
+      }
       std::vector<std::vector<llvm::Type*>> payloads;
       bool hasPayload = false;
       for (const auto& variant : definition.variants()) {
@@ -152,20 +184,25 @@ class MetadataLayouts {
         payloads.push_back(std::move(fields));
       }
       active_.erase(identity);
-      if (hasPayload)
+      if (hasPayload) {
         return EnumLayout::build(context_, layout_, payloads).storage;
+      }
       auto underlying = sun::types::Types::fromString(
           definition.underlying_type().empty() ? "i32"
                                                : definition.underlying_type());
-      if (!underlying || !underlying->isIntegral())
+      if (!underlying || !underlying->isIntegral()) {
         sun::support::logAndThrowError("Invalid ABI enum representation");
+      }
       return resolver_.resolve(underlying);
     }
     const auto found = classes_.find(annotation.declaration_key());
-    if (found == classes_.end()) return nullptr;
-    const auto& cls = *found->second;
-    if (cls.type_params_size() != annotation.type_arguments_size())
+    if (found == classes_.end()) {
       return nullptr;
+    }
+    const auto& cls = *found->second;
+    if (cls.type_params_size() != annotation.type_arguments_size()) {
+      return nullptr;
+    }
     Bindings arguments;
     std::string identity = annotation.declaration_key();
     for (int i = 0; i < cls.type_params_size(); ++i) {
@@ -174,9 +211,10 @@ class MetadataLayouts {
       identity += ":" + std::to_string(encoded.size()) + ":" + encoded;
       arguments.emplace(cls.type_params(i).name(), std::move(type));
     }
-    if (!active_.insert(identity).second)
+    if (!active_.insert(identity).second) {
       sun::support::logAndThrowError("Recursive by-value ABI class layout: " +
                                      cls.name());
+    }
     std::vector<llvm::Type*> fields;
     for (const auto& field : cls.fields()) {
       auto* type = decode(field.type(), false, arguments, depth + 1);
@@ -201,33 +239,40 @@ void checkFunction(const sun::proto::ast::FunctionDef& declaration,
   if (declaration.is_c_extern() || declaration.is_test() ||
       proto.type_params_size() || proto.type_parameters_size() ||
       proto.has_variadic_param_name() ||
-      proto.declaration_identity().key().empty())
+      proto.declaration_identity().key().empty()) {
     return;
+  }
   const auto symbol =
       sun::semantic_analysis::PortableDeclarationKey::fromString(
           proto.declaration_identity().key())
           .symbol("function");
   auto* result = layouts.decode(proto.return_type(), true);
-  if (!result) return;
+  if (!result) {
+    return;
+  }
   std::vector<llvm::Type*> parameters;
   for (const auto& argument : proto.args()) {
     auto* type = layouts.decode(argument.type());
-    if (!type || type->isVoidTy()) return;
+    if (!type || type->isVoidTy()) {
+      return;
+    }
     parameters.push_back(type);
   }
   const auto* function = payload.getFunction(symbol);
-  if (!function || function->isDeclaration())
+  if (!function || function->isDeclaration()) {
     sun::support::logAndThrowError("Missing compiled ABI function: " +
                                    proto.name());
+  }
   const auto expected = CallDescriptor::sun(result, parameters, method);
   const auto actual = CallDescriptor::inspect(*function);
   if (machineTypeName(expected.signature) !=
           machineTypeName(actual.signature) ||
       expected.convention != actual.convention ||
-      expected.encodedAttributes() != actual.encodedAttributes())
+      expected.encodedAttributes() != actual.encodedAttributes()) {
     sun::support::logAndThrowError(
         "Declaration '" + proto.name() + "' (" + symbol +
         ") does not match its compiled ABI signature");
+  }
 }
 }  // namespace
 
@@ -238,28 +283,34 @@ void validatePayloadDeclarations(
   MetadataLayouts layouts(modules, context, module.getDataLayout());
   const auto emittedLayouts = classLayouts(module);
   for (const auto* metadata : modules) {
-    for (const auto& function : metadata->functions())
+    for (const auto& function : metadata->functions()) {
       checkFunction(function, module, layouts);
+    }
     for (const auto& cls : metadata->classes()) {
-      if (cls.type_params_size() || cls.type_parameters_size()) continue;
+      if (cls.type_params_size() || cls.type_parameters_size()) {
+        continue;
+      }
       const auto& identity = cls.declaration_identity().key();
       if (!identity.empty()) {
         const auto emitted = emittedLayouts.find(identity);
-        if (emitted == emittedLayouts.end())
+        if (emitted == emittedLayouts.end()) {
           sun::support::logAndThrowError("Missing compiled class ABI layout: " +
                                          cls.name());
+        }
         sun::proto::ast::TypeAnnotation annotation;
         annotation.set_base_name(cls.name());
         annotation.set_declaration_key(identity);
         if (auto* expected = layouts.decode(annotation);
             expected &&
-            machineTypeName(expected) != machineTypeName(emitted->second))
+            machineTypeName(expected) != machineTypeName(emitted->second)) {
           sun::support::logAndThrowError(
               "Class '" + cls.name() +
               "' does not match its compiled ABI layout");
+        }
       }
-      for (const auto& method : cls.methods())
+      for (const auto& method : cls.methods()) {
         checkFunction(method.function(), module, layouts, true);
+      }
     }
   }
 }

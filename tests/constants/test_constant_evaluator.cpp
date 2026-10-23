@@ -41,12 +41,18 @@ const sun::ast::VariableCreationAST* findGlobal(
     if (node->getType() == ASTNodeType::MODULE) {
       const auto& body =
           static_cast<const sun::ast::ModuleAST&>(*node).getBody();
-      if (const auto* found = findGlobal(body, name)) return found;
+      if (const auto* found = findGlobal(body, name)) {
+        return found;
+      }
     }
-    if (node->getType() != ASTNodeType::VARIABLE_CREATION) continue;
+    if (node->getType() != ASTNodeType::VARIABLE_CREATION) {
+      continue;
+    }
     const auto& global =
         static_cast<const sun::ast::VariableCreationAST&>(*node);
-    if (global.getName() == name) return &global;
+    if (global.getName() == name) {
+      return &global;
+    }
   }
   return nullptr;
 }
@@ -89,9 +95,10 @@ GlobalInitRecord decideGlobal(const std::string& source,
  * holds the same bits as the compile-time value.
  */
 std::string buildBitComparison(const ConstantValue& value) {
-  if (value.type->isBool())
+  if (value.type->isBool()) {
     return std::string("RESULT == ") +
            (value.getInteger().isZero() ? "false" : "true");
+  }
   if (value.isInteger()) {
     // Widen both sides to 64 bits the same way, by the type's signedness.
     const auto& bits = value.getInteger();
@@ -159,7 +166,9 @@ void expectInitializedAtStartup(const std::string& source,
 
 /** The decision's value rendered as text, or the reason it has none. */
 std::string describeDecision(const GlobalInitRecord& decision) {
-  if (decision.value) return decision.value->toDisplayString();
+  if (decision.value) {
+    return decision.value->toDisplayString();
+  }
   return "startup: " + (decision.reason ? decision.reason->message : "");
 }
 

@@ -246,8 +246,11 @@ TEST(ABI_Compatibility, RehashedSpecializationCannotInventMethodBodies) {
       ->mutable_compiled_specializations(0)
       ->set_method_symbols(0, "missing_method");
   auto* contract = library.mutable_bundle_contract();
-  for (auto& record : *contract->mutable_semantic_records())
-    if (record == oldRecord) record = sun::abi::describeSemantics(*changed);
+  for (auto& record : *contract->mutable_semantic_records()) {
+    if (record == oldRecord) {
+      record = sun::abi::describeSemantics(*changed);
+    }
+  }
   contract->set_compatibility_hash(sun::abi::hashBundleContract(*contract));
   auto bytes = *reader->getBytes();
   sun::moon_bundling::MoonHeader header;
@@ -364,20 +367,27 @@ TEST(ABI_Compatibility, RehashedClassMetadataMustMatchCompiledLayout) {
   EXPECT_NO_THROW(checker.validate(*reader));
   for (int change = 0; change < 5; ++change) {
     auto changed = metadata;
-    if (change == 0)
+    if (change == 0) {
       changed.mutable_classes(0)
           ->mutable_fields(1)
           ->mutable_type()
           ->set_base_name("i32");
-    if (change == 1) changed.mutable_classes(0)->set_is_packed(true);
-    if (change == 2) changed.mutable_classes(0)->set_alignment(32);
-    if (change == 3)
+    }
+    if (change == 1) {
+      changed.mutable_classes(0)->set_is_packed(true);
+    }
+    if (change == 2) {
+      changed.mutable_classes(0)->set_alignment(32);
+    }
+    if (change == 3) {
       changed.mutable_functions(0)
           ->mutable_proto()
           ->mutable_return_type()
           ->set_base_name("i64");
-    if (change == 4)
+    }
+    if (change == 4) {
       module.eraseNamedMetadata(module.getNamedMetadata("sun.abi.classes"));
+    }
     auto altered = write(changed);
     ASSERT_NE(altered, nullptr);
     checker.beginCompilation("x86_64-linux-gnu");

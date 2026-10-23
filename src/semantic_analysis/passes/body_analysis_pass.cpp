@@ -8,14 +8,18 @@ using sun::ast::ExprAST;
 namespace sun::semantic_analysis::passes {
 
 void BodyAnalysisPass::run(sun::ast::BlockExprAST& block) const {
-  for (auto* root : getSourceRoots(block)) analyzer_.analyzeExpr(*root);
+  for (auto* root : getSourceRoots(block)) {
+    analyzer_.analyzeExpr(*root);
+  }
 }
 
 std::vector<ExprAST*> BodyAnalysisPass::getSourceRoots(
     const sun::ast::BlockExprAST& block) {
   std::vector<ExprAST*> sourceRoots;
   for (const auto& expr : block.getBody()) {
-    if (sun::ast::isImportedMoon(*expr)) continue;
+    if (sun::ast::isImportedMoon(*expr)) {
+      continue;
+    }
     sourceRoots.push_back(expr.get());
   }
   return sourceRoots;

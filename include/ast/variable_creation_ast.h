@@ -103,10 +103,16 @@ class VariableCreationAST : public ExprAST {
     std::string result =
         std::string(isPublic() ? "public " : "") +
         (isCExtern_ ? externPrefix : (isConst_ ? "const " : "var ")) + name;
-    if (typeAnnotation) result += ": " + typeAnnotation->toString();
+    if (typeAnnotation) {
+      result += ": " + typeAnnotation->toString();
+    }
     // A global imported from a .moon carries its type but no initializer.
-    if (value) result += " = " + value->toString();
-    if (linkName_) result += " as \"" + *linkName_ + "\"";
+    if (value) {
+      result += " = " + value->toString();
+    }
+    if (linkName_) {
+      result += " as \"" + *linkName_ + "\"";
+    }
     return result;
   }
   /** Returns the declared name used to identify this object. */
@@ -119,7 +125,9 @@ class VariableCreationAST : public ExprAST {
   /** Visits replaceable child expressions so tree passes can rewrite them in
    * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
-    if (value) fn(value);
+    if (value) {
+      fn(value);
+    }
   }
   /** Returns the type annotation stored by this object. */
   const std::optional<TypeAnnotation>& getTypeAnnotation() const {
@@ -138,7 +146,9 @@ class VariableCreationAST : public ExprAST {
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override {
     std::string label = "VarCreate\n" + name;
-    if (typeAnnotation) label += ": " + typeAnnotation->toString();
+    if (typeAnnotation) {
+      label += ": " + typeAnnotation->toString();
+    }
     return label;
   }
 

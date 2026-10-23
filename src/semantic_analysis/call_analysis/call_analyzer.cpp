@@ -47,28 +47,31 @@ static TypePtr constructorResult(
     const std::shared_ptr<sun::types::EnumType>& status, const TypePtr& object,
     std::optional<Position> location) {
   auto args = status->getGenericArgs();
-  if (args.empty() || !args.front()->isVoid())
+  if (args.empty() || !args.front()->isVoid()) {
     logAndThrowError(
         "Constructor results require void as their first type argument",
         location);
+  }
   args.front() = object;
   auto result = generics.instantiateGenericEnum(
       status->getGenericQualifiedName().display(), args);
   if (!result || result->getVariants().size() != status->getVariants().size() ||
       result->getVariants().empty() ||
       result->getVariants().front().payloadTypes.size() != 1 ||
-      !result->getVariants().front().payloadTypes.front()->equals(*object))
+      !result->getVariants().front().payloadTypes.front()->equals(*object)) {
     logAndThrowError(
         "Constructor result's first variant must hold its first type parameter",
         location);
+  }
   for (size_t i = 1; i < result->getVariants().size(); ++i) {
     const auto& source = status->getVariants()[i];
     const auto& target = result->getVariants()[i];
     if (source.payloadTypes.size() != 1 || target.payloadTypes.size() != 1 ||
-        !source.payloadTypes.front()->equals(*target.payloadTypes.front()))
+        !source.payloadTypes.front()->equals(*target.payloadTypes.front())) {
       logAndThrowError(
           "Constructor failure payloads must not depend on the success type",
           location);
+    }
   }
   return result;
 }
@@ -103,7 +106,9 @@ std::vector<TypePtr> resolvedTypesOf(
     const std::vector<std::unique_ptr<ExprAST>>& args) {
   std::vector<TypePtr> types;
   types.reserve(args.size());
-  for (const auto& arg : args) types.push_back(arg->getResolvedType());
+  for (const auto& arg : args) {
+    types.push_back(arg->getResolvedType());
+  }
   return types;
 }
 
@@ -115,9 +120,13 @@ std::vector<FunctionArgumentType> functionArgumentTypes(
   std::vector<FunctionArgumentType> types(args.size());
   for (size_t i = 0; i < args.size(); ++i) {
     types[i].preferred = args[i]->getResolvedType();
-    if (args[i]->getType() != ASTNodeType::NUMBER) continue;
+    if (args[i]->getType() != ASTNodeType::NUMBER) {
+      continue;
+    }
     const auto& number = static_cast<const sun::ast::NumberExprAST&>(*args[i]);
-    if (!number.isInteger() || number.hasSuffix()) continue;
+    if (!number.isInteger() || number.hasSuffix()) {
+      continue;
+    }
     for (const auto& type : {Types::Int8(), Types::Int16(), Types::Int32(),
                              Types::Int64(), Types::UInt8(), Types::UInt16(),
                              Types::UInt32(), Types::UInt64(), Types::Bool()}) {
@@ -162,10 +171,11 @@ void CallAnalyzer::analyzeCall(CallExprAST& callExpr, TypePtr expectedType) {
     checkRequiresUnsafeBlock(varRef.getName(), callExpr.getLocation());
     if (varRef.getName() == "_assert_c_target") {
       if (!ctx_.isAtModuleLevel() || callExpr.getArgs().size() != 1 ||
-          callExpr.getArgs()[0]->getType() != ASTNodeType::STRING_LITERAL)
+          callExpr.getArgs()[0]->getType() != ASTNodeType::STRING_LITERAL) {
         logAndThrowError(
             "_assert_c_target requires one string literal at module scope",
             callExpr.getLocation());
+      }
     }
     const bool userDefined =
         ctx_.currentScope().lookupVariable(varRef.getName()) ||
@@ -173,32 +183,37 @@ void CallAnalyzer::analyzeCall(CallExprAST& callExpr, TypePtr expectedType) {
         ctx_.currentScope().lookupGenericFunction(varRef.getName());
     if (!userDefined && (varRef.getName() == "checked_div" ||
                          varRef.getName() == "checked_rem")) {
-      if (callExpr.getArgs().size() != 2)
+      if (callExpr.getArgs().size() != 2) {
         logAndThrowError(varRef.getName() + " expects two integer operands",
                          callExpr.getLocation());
+      }
       auto& left = *callExpr.getArgs()[0];
       auto& right = *callExpr.getArgs()[1];
       sema_.analyzeExpr(left);
       sema_.analyzeExpr(right);
       auto leftType = unwrapRef(left.getResolvedType());
       auto rightType = unwrapRef(right.getResolvedType());
-      if (leftType->isIntegral())
+      if (leftType->isIntegral()) {
         tryCoerceIntegerLiteral(&right, leftType, false);
-      if (rightType->isIntegral())
+      }
+      if (rightType->isIntegral()) {
         tryCoerceIntegerLiteral(&left, rightType, false);
+      }
       leftType = unwrapRef(left.getResolvedType());
       rightType = unwrapRef(right.getResolvedType());
       if ((!leftType->isIntegral() && !leftType->isTypeParameter()) ||
-          (!rightType->isIntegral() && !rightType->isTypeParameter()))
+          (!rightType->isIntegral() && !rightType->isTypeParameter())) {
         logAndThrowError(varRef.getName() + " requires integer operands",
                          callExpr.getLocation());
+      }
       auto numeric =
           sun::semantic_analysis::type_analysis::TypeInferer::numeric(
               leftType, rightType);
       auto valueType = std::get_if<TypePtr>(&numeric);
-      if (!valueType)
+      if (!valueType) {
         logAndThrowError("Incompatible checked arithmetic operands",
                          callExpr.getLocation());
+      }
       auto result = generics_.instantiateGenericEnum(
           "_Result", {*valueType, ctx_.types()->arithmeticError});
       const_cast<ExprAST*>(callExpr.getCallee())
@@ -211,9 +226,10 @@ void CallAnalyzer::analyzeCall(CallExprAST& callExpr, TypePtr expectedType) {
       return;
     }
     if (!userDefined && varRef.getName() == "ignore_error") {
-      if (callExpr.getArgs().size() != 1)
+      if (callExpr.getArgs().size() != 1) {
         logAndThrowError("ignore_error expects one owned _Result<T, E>",
                          callExpr.getLocation());
+      }
       auto& argument = *callExpr.getArgs().front();
       sema_.analyzeExpr(argument);
       auto result = std::dynamic_pointer_cast<sun::types::EnumType>(
@@ -223,25 +239,33 @@ void CallAnalyzer::analyzeCall(CallExprAST& callExpr, TypePtr expectedType) {
         auto& ctx = ctx_;
         const auto resultId =
             ctx.lookupGenericEnum("_Result")->AST->getDeclarationId();
-        if (!result) return false;
-        if (result->sourceDeclaration(ctx.results().declarations) == resultId)
-          return true;
-        const auto& variants = result->getVariants();
-        if (variants.size() < 2 || variants.front().payloadTypes.size() > 1)
+        if (!result) {
           return false;
+        }
+        if (result->sourceDeclaration(ctx.results().declarations) == resultId) {
+          return true;
+        }
+        const auto& variants = result->getVariants();
+        if (variants.size() < 2 || variants.front().payloadTypes.size() > 1) {
+          return false;
+        }
         for (size_t i = 1; i < variants.size(); ++i) {
-          if (variants[i].payloadTypes.size() != 1) return false;
+          if (variants[i].payloadTypes.size() != 1) {
+            return false;
+          }
           auto error = std::dynamic_pointer_cast<sun::types::ClassType>(
               sun::types::unwrapRef(variants[i].payloadTypes.front()));
           if (!error ||
-              !error->implementsInterface(*ctx.types()->errorInterface))
+              !error->implementsInterface(*ctx.types()->errorInterface)) {
             return false;
+          }
         }
         return true;
       };
-      if (!isErrorResult())
+      if (!isErrorResult()) {
         logAndThrowError("ignore_error expects one owned error-result enum",
                          callExpr.getLocation());
+      }
       const_cast<ExprAST*>(callExpr.getCallee())
           ->setResolvedType(std::make_shared<sun::types::FunctionType>(
               Types::Void(), std::vector<TypePtr>{result}));
@@ -301,11 +325,12 @@ void CallAnalyzer::analyzeCall(CallExprAST& callExpr, TypePtr expectedType) {
   auto callableType = callExpr.getCallee()->getResolvedType();
   bool requiresUnsafe = false;
   if (auto* fn = sun::codegen::support::tryGetType<sun::types::FunctionType>(
-          callableType))
+          callableType)) {
     requiresUnsafe = fn->requiresUnsafe();
-  else if (auto* fn =
-               sun::codegen::support::tryGetType<LambdaType>(callableType))
+  } else if (auto* fn =
+                 sun::codegen::support::tryGetType<LambdaType>(callableType)) {
     requiresUnsafe = fn->requiresUnsafe();
+  }
   sema_.expressions().checkUnsafeCall(requiresUnsafe, funcName,
                                       callExpr.getLocation());
   checkThrowPropagation(callExpr, callee, funcName);
@@ -331,17 +356,19 @@ void CallAnalyzer::analyzeCall(CallExprAST& callExpr, TypePtr expectedType) {
       resultType = constructorResult(generics_, status, callee.classType,
                                      callExpr.getLocation());
     }
-  } else if (callableType && callableType->isCallable())
+  } else if (callableType && callableType->isCallable()) {
     resultType = requireInferredType(
         sun::semantic_analysis::type_analysis::TypeInferer::call(callableType),
         callExpr.getLocation(), "Cannot infer return type for call expression");
-  else if (callExpr.getCallee()->getType() == ASTNodeType::MEMBER_ACCESS)
+  } else if (callExpr.getCallee()->getType() == ASTNodeType::MEMBER_ACCESS) {
     resultType = requireResolvedType(*callExpr.getCallee());
-  else
+  } else {
     logAndThrowError("Cannot infer return type for call expression",
                      callExpr.getLocation());
-  if (callee.receiverImmutable)
+  }
+  if (callee.receiverImmutable) {
     resultType = resolver_.createConstView(resultType);
+  }
   callExpr.setResolvedType(resultType);
 }
 
@@ -420,8 +447,9 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveCallee(
           callee.getTargetDeclarationId() &&
           ctx_.results()
                   .declarations.get(callee.getTargetDeclarationId())
-                  .kind == sun::semantic_analysis::DeclarationKind::Function)
+                  .kind == sun::semantic_analysis::DeclarationKind::Function) {
         callExpr.setTargetDeclarationId(callee.getTargetDeclarationId());
+      }
       return {};
   }
 }
@@ -497,14 +525,18 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveNamedCallee(
   if (!allOverloads.empty()) {
     std::string argTypesStr;
     for (size_t i = 0; i < argTypes.size(); ++i) {
-      if (i > 0) argTypesStr += ", ";
+      if (i > 0) {
+        argTypesStr += ", ";
+      }
       argTypesStr += argTypes[i] ? argTypes[i]->toDisplayString() : "unknown";
     }
     std::string overloadsStr;
     for (const auto& overload : allOverloads) {
       overloadsStr += "\n  - " + resolved.baseName + "(";
       for (size_t i = 0; i < overload.paramTypes.size(); ++i) {
-        if (i > 0) overloadsStr += ", ";
+        if (i > 0) {
+          overloadsStr += ", ";
+        }
         overloadsStr += overload.paramTypes[i]
                             ? overload.paramTypes[i]->toDisplayString()
                             : "unknown";
@@ -564,23 +596,29 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMemberCallee(
     const sun::types::InterfaceMethod* selected = nullptr;
     for (const auto& method : interface.getMethods()) {
       if (method.name != memberAccess.getMemberName() || method.isGeneric() ||
-          method.paramTypes.size() != argTypes.size())
+          method.paramTypes.size() != argTypes.size()) {
         continue;
+      }
       bool compatible = true;
       bool exact = true;
       for (size_t i = 0; i < argTypes.size(); ++i) {
         compatible &= isAssignableTo(argTypes[i], method.paramTypes[i]);
         exact &= argTypes[i] && argTypes[i]->equals(*method.paramTypes[i]);
       }
-      if (compatible && (!selected || exact)) selected = &method;
-      if (compatible && exact) break;
+      if (compatible && (!selected || exact)) {
+        selected = &method;
+      }
+      if (compatible && exact) {
+        break;
+      }
     }
     if (selected) {
-      if (selected->returnType && selected->returnType->isInterface())
+      if (selected->returnType && selected->returnType->isInterface()) {
         logAndThrowError(
             "An interface return requirement can only be called on a concrete "
             "implementation",
             memberAccess.getLocation());
+      }
       ctx_.requireAccessible(methodRef(interface, *selected),
                              memberAccess.getLocation());
       memberAccess.setTargetDeclarationId(selected->declarationId);
@@ -671,8 +709,9 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMethodCallee(
     // Retain the selected specialization independently of its symbol.
     auto specialized = generics_.instantiateGenericMethod(
         mutableClassType, methodName, typeArgPtrs, packArgTypes);
-    if (specialized)
+    if (specialized) {
       memberAccess.setTargetDeclarationId(specialized->getDeclarationId());
+    }
 
     if (const ClassMethod* method =
             ctx_.accessibleMethod(*classType, methodName, loc)) {
@@ -685,8 +724,9 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMethodCallee(
         SemanticContext::ScopeSwitchGuard scope(ctx_, ctx_.scope());
         ctx_.enterTypeParamScope(method->typeParameters, typeArgPtrs);
         result = resolver_.substituteTypeParameters(method->returnType);
-        for (const auto& parameter : method->paramTypes)
+        for (const auto& parameter : method->paramTypes) {
           parameters.push_back(resolver_.substituteTypeParameters(parameter));
+        }
       }
       memberAccess.setResolvedType(Types::Function(
           result, std::move(parameters), method->canThrow, method->isUnsafe));
@@ -700,10 +740,11 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMethodCallee(
         ctx_.accessibleMethod(*classType, methodName, loc);
     std::vector<TypePtr> arguments = resolver_.resolveTypeArguments(
         memberAccess.getTypeArguments(), loc, "generic method call");
-    if (method && arguments.size() < method->typeParameters.size())
+    if (method && arguments.size() < method->typeParameters.size()) {
       arguments = resolveMethodTypeArguments(
           *method, argTypes, classType->getDisplayName() + "." + methodName,
           loc, arguments);
+    }
     memberAccess.setResolvedTypeArgs(arguments);
     if (method && !arguments.empty() &&
         arguments.size() == method->typeParameters.size()) {
@@ -720,8 +761,9 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMethodCallee(
         SemanticContext::ScopeSwitchGuard scope(ctx_, ctx_.scope());
         ctx_.enterTypeParamScope(method->typeParameters, arguments);
         result = resolver_.substituteTypeParameters(method->returnType);
-        for (const auto& parameter : method->paramTypes)
+        for (const auto& parameter : method->paramTypes) {
           parameters.push_back(resolver_.substituteTypeParameters(parameter));
+        }
       }
       memberAccess.setResolvedType(Types::Function(
           result, std::move(parameters), method->canThrow, method->isUnsafe));
@@ -729,7 +771,9 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMethodCallee(
       memberAccess.setResolvedType(
           sema_.expressions().resolveMemberType(memberAccess));
     }
-    if (method) checkReceiver(*method);
+    if (method) {
+      checkReceiver(*method);
+    }
     return out;
   }
 
@@ -776,7 +820,9 @@ CallAnalyzer::CallSignature CallAnalyzer::resolveCallSignature(
     const auto& calleeMember =
         static_cast<const MemberAccessAST&>(*callExpr.getCallee());
     TypePtr ownerType = calleeMember.getObject()->getResolvedType();
-    if (!ownerType) ownerType = requireResolvedType(*calleeMember.getObject());
+    if (!ownerType) {
+      ownerType = requireResolvedType(*calleeMember.getObject());
+    }
     if (ownerType && ownerType->isModule()) {
       callee.classType = std::static_pointer_cast<ClassType>(calleeType);
     }
@@ -828,9 +874,12 @@ void CallAnalyzer::checkArgumentTypes(CallExprAST& callExpr,
       argType = paramType;
     }
 
-    if (!argType || !paramType || paramType->equals(*argType)) continue;
-    if (sun::types::argumentAccepts(argType, paramType, calleeIsIntrinsic))
+    if (!argType || !paramType || paramType->equals(*argType)) {
       continue;
+    }
+    if (sun::types::argumentAccepts(argType, paramType, calleeIsIntrinsic)) {
+      continue;
+    }
 
     // The common way to land here now: handing a borrowed element to a
     // by-value parameter. Say what to do about it.
@@ -887,7 +936,9 @@ std::optional<std::vector<TypePtr>> CallAnalyzer::resolveConstructorParams(
     return initMethod->paramTypes;
   }
   if (!classType.getMethod("init")) {
-    if (argTypes.empty()) return std::nullopt;
+    if (argTypes.empty()) {
+      return std::nullopt;
+    }
     // No init at all, but arguments were supplied. Field-wise construction
     // is spelled with a struct literal, where each field is named: relying
     // on declaration order would silently change meaning if two same-typed
@@ -905,15 +956,21 @@ std::optional<std::vector<TypePtr>> CallAnalyzer::resolveConstructorParams(
   // "no match" alone leaves the caller guessing which one they nearly hit.
   std::string argList;
   for (size_t i = 0; i < argTypes.size(); ++i) {
-    if (i > 0) argList += ", ";
+    if (i > 0) {
+      argList += ", ";
+    }
     argList += argTypes[i] ? argTypes[i]->toDisplayString() : "?";
   }
   std::string candidates;
   for (const auto& method : classType.getMethods()) {
-    if (method.name != "init") continue;
+    if (method.name != "init") {
+      continue;
+    }
     std::string params;
     for (size_t i = 0; i < method.paramTypes.size(); ++i) {
-      if (i > 0) params += ", ";
+      if (i > 0) {
+        params += ", ";
+      }
       params +=
           method.paramTypes[i] ? method.paramTypes[i]->toDisplayString() : "?";
     }
@@ -928,7 +985,9 @@ std::optional<std::vector<TypePtr>> CallAnalyzer::resolveConstructorParams(
 void CallAnalyzer::expandPackArguments(
     std::vector<std::unique_ptr<ExprAST>>& args) {
   auto* fnScope = ctx_.currentFunctionScope();
-  if (!fnScope || !fnScope->variadicParam) return;
+  if (!fnScope || !fnScope->variadicParam) {
+    return;
+  }
   const auto& [packName, types] = *fnScope->variadicParam;
 
   // Is there a pack expansion for this function's variadic param to expand?
@@ -944,7 +1003,9 @@ void CallAnalyzer::expandPackArguments(
       break;
     }
   }
-  if (!hasPack) return;
+  if (!hasPack) {
+    return;
+  }
 
   // Rewrite `args...` into concrete, already-typed references to the elements
   // the pack was materialized as ("args.0", "args.1", ...). Other args pass
@@ -958,8 +1019,9 @@ void CallAnalyzer::expandPackArguments(
                                                            std::to_string(i));
         const auto* binding =
             ctx_.currentScope().lookupVariable(vref->getName());
-        if (!binding || !binding->declarationId)
+        if (!binding || !binding->declarationId) {
           logAndThrowError("Variadic element has no declaration identity");
+        }
         vref->setTargetDeclarationId(binding->declarationId);
         vref->setResolvedType(types[i]);
         rebuilt.push_back(std::move(vref));
@@ -974,7 +1036,9 @@ void CallAnalyzer::expandPackArguments(
 SymbolMatch CallAnalyzer::findModuleCallee(
     const MemberAccessAST& memberAccess, const TypePtr& objectType,
     SymbolKind kind, const std::vector<TypePtr>* argTypes) const {
-  if (!objectType || !objectType->isModule()) return {};
+  if (!objectType || !objectType->isModule()) {
+    return {};
+  }
   auto* moduleType = static_cast<sun::types::ModuleType*>(objectType.get());
   return ctx_.findSymbolInModule(moduleType->getModulePath(),
                                  memberAccess.getMemberName(), kind, argTypes);
@@ -985,7 +1049,9 @@ const FunctionInfo* CallAnalyzer::resolveModuleQualifiedCall(
     const std::vector<TypePtr>& argTypes) const {
   SymbolMatch match = findModuleCallee(memberAccess, objectType,
                                        SymbolKind::Function, &argTypes);
-  if (!match || !match.functionInfo) return nullptr;
+  if (!match || !match.functionInfo) {
+    return nullptr;
+  }
 
   checkExternCallAllowed(*match.functionInfo, memberAccess.getMemberName(),
                          memberAccess.getLocation());
@@ -1000,7 +1066,9 @@ CallAnalyzer::resolveModuleQualifiedGenericCall(
     const std::vector<TypePtr>& argTypes) {
   SymbolMatch match =
       findModuleCallee(memberAccess, objectType, SymbolKind::GenericFunction);
-  if (!match || !match.genericFunctionInfo) return std::nullopt;
+  if (!match || !match.genericFunctionInfo) {
+    return std::nullopt;
+  }
 
   auto loc = memberAccess.getLocation();
   GenericCallTarget target = resolveGenericCallTarget(
@@ -1061,14 +1129,22 @@ void CallAnalyzer::reportNoMethodForArgCount(
     const std::vector<TypePtr>& argTypes, const Position& loc) const {
   std::vector<std::vector<TypePtr>> candidates;
   for (const auto& method : cls.getMethods()) {
-    if (method.name != name) continue;
+    if (method.name != name) {
+      continue;
+    }
     // A generic method's recorded parameters are the uninstantiated ones, so
     // their count is not something to hold the call to.
-    if (method.isGeneric()) return;
-    if (method.paramTypes.size() == argTypes.size()) return;
+    if (method.isGeneric()) {
+      return;
+    }
+    if (method.paramTypes.size() == argTypes.size()) {
+      return;
+    }
     candidates.push_back(method.paramTypes);
   }
-  if (candidates.empty()) return;
+  if (candidates.empty()) {
+    return;
+  }
 
   logAndThrowError(
       "No matching overload of '" + name + "' for argument types (" +
@@ -1080,7 +1156,9 @@ void CallAnalyzer::reportNoMethodForArgCount(
 void CallAnalyzer::checkExternCallAllowed(const FunctionInfo& info,
                                           const std::string& displayName,
                                           const Position& loc) const {
-  if (!info.isCExtern || ctx_.isInUnsafeBlock()) return;
+  if (!info.isCExtern || ctx_.isInUnsafeBlock()) {
+    return;
+  }
   logAndThrowError(
       "Calling extern function '" + displayName +
           "' requires an unsafe block: C code is outside the borrow "
@@ -1092,8 +1170,9 @@ void CallAnalyzer::checkExternCallAllowed(const FunctionInfo& info,
 void CallAnalyzer::checkRequiresUnsafeBlock(const std::string& name,
                                             const Position& loc) const {
   if (ctx_.isInUnsafeBlock() ||
-      !sun::codegen::intrinsics::requiresUnsafeBlock(name))
+      !sun::codegen::intrinsics::requiresUnsafeBlock(name)) {
     return;
+  }
   logAndThrowError(
       "'" + name +
           "' reads or writes memory nothing has checked, so it can only be "
@@ -1172,7 +1251,9 @@ void CallAnalyzer::analyzeIntrinsicCall(GenericCallAST& genericCall) {
 // type.
 void CallAnalyzer::recordInitArgumentConversions(GenericCallAST& genericCall) {
   const auto& args = genericCall.getArgs();
-  if (args.empty()) return;  // codegen reports the missing pointer
+  if (args.empty()) {
+    return;  // codegen reports the missing pointer
+  }
 
   std::vector<TypePtr> argTypes = resolvedTypesOf(args);
   std::vector<TypePtr> ctorArgTypes(argTypes.begin() + 1, argTypes.end());
@@ -1305,9 +1386,13 @@ void CallAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
   std::vector<TypePtr> argTypes;
   if (calleeTakesPack || genericCall.getResolvedTypeArgs().size() <
                              genFuncInfo->typeParameters.size()) {
-    for (const auto& arg : args) sema_.analyzeExpr(*arg);
+    for (const auto& arg : args) {
+      sema_.analyzeExpr(*arg);
+    }
     // One template forwarding its own pack into another: `g<T>(args...)`.
-    if (calleeTakesPack) expandPackArguments(genericCall.getArgsMutable());
+    if (calleeTakesPack) {
+      expandPackArguments(genericCall.getArgsMutable());
+    }
     argTypes = resolvedTypesOf(args);
     argsAnalyzed = true;
     if (genericCall.getResolvedTypeArgs().size() <
@@ -1349,10 +1434,11 @@ void CallAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
 
   if (argsAnalyzed) {
     for (size_t i = 0; i < args.size() && i < expectedParamTypes.size(); ++i) {
-      if (args[i]->getType() == ASTNodeType::ARRAY_LITERAL)
+      if (args[i]->getType() == ASTNodeType::ARRAY_LITERAL) {
         type_analysis::resolveArrayLiteralType(
             static_cast<sun::ast::ArrayLiteralAST&>(*args[i]),
             expectedParamTypes[i]);
+      }
     }
   }
   if (!argsAnalyzed) {

@@ -20,8 +20,9 @@ namespace {
 std::string frame(const std::string& value) {
   std::string result;
   const uint64_t size = value.size();
-  for (unsigned shift = 0; shift < 64; shift += 8)
+  for (unsigned shift = 0; shift < 64; shift += 8) {
     result += static_cast<char>(size >> shift);
+  }
   return result + value;
 }
 /** Recognizes fields that contain declaration identities rather than literals.
@@ -63,24 +64,29 @@ void remapDeclarationReferences(
                      : reflection->GetString(message, field);
         if (const auto found = replacements.find(value);
             found != replacements.end()) {
-          if (repeated)
+          if (repeated) {
             reflection->SetRepeatedString(&message, field, i, found->second);
-          else
+          } else {
             reflection->SetString(&message, field, found->second);
+          }
         }
       }
     }
   }
 }
 
-std::string encodeLibraryAbiSnapshot(const proto::LibraryAbiSnapshot& revision) {
+std::string encodeLibraryAbiSnapshot(
+    const proto::LibraryAbiSnapshot& revision) {
   std::set<std::string> declarations;
-  for (const auto& item : revision.declarations())
+  for (const auto& item : revision.declarations()) {
     declarations.insert(frame(item.key()) + frame(item.identity()));
+  }
   std::string result = frame(revision.library_id()) +
                        frame(revision.artifact_hash()) +
                        frame(revision.abi_hash());
-  for (const auto& item : declarations) result += frame(item);
+  for (const auto& item : declarations) {
+    result += frame(item);
+  }
   return result;
 }
 
@@ -89,37 +95,46 @@ proto::LibraryAbiSnapshot describeLibraryAbiSnapshot(
     const std::vector<const moon::ModuleMetadata*>& modules) {
   validateLibraryId(contract.library_id());
   std::map<std::string, const moon::DeclarationRecord*> records;
-  for (const auto* module : modules)
-    for (const auto& record : module->declarations())
+  for (const auto* module : modules) {
+    for (const auto& record : module->declarations()) {
       records.emplace(record.key(), &record);
+    }
+  }
   std::map<std::string, std::vector<std::string>> paths;
   std::set<std::string> active;
   /** Follows validated ownership, excluding the artifact's synthetic root. */
   const std::function<std::vector<std::string>(const std::string&)> path =
       [&](const std::string& key) -> std::vector<std::string> {
-    if (key.empty()) return {};
-    if (auto found = paths.find(key); found != paths.end())
+    if (key.empty()) {
+      return {};
+    }
+    if (auto found = paths.find(key); found != paths.end()) {
       return found->second;
+    }
     const auto found = records.find(key);
-    if (found == records.end() || !active.insert(key).second)
+    if (found == records.end() || !active.insert(key).second) {
       sun::support::logAndThrowError("Invalid library revision ownership");
+    }
     const auto& record = *found->second;
     auto result = path(record.owner());
     if (!(record.kind() == moon::MODULE && record.owner().empty() &&
-          record.name() == "$" + artifact + "$"))
+          record.name() == "$" + artifact + "$")) {
       result.push_back(record.name());
+    }
     active.erase(key);
     paths.emplace(key, result);
     return result;
   };
   std::map<std::string, std::string> identities;
-  for (const auto& dependency : contract.dependency_abis())
+  for (const auto& dependency : contract.dependency_abis()) {
     for (const auto& item : dependency.declarations()) {
       const auto [it, added] = identities.emplace(item.key(), item.identity());
-      if (!added && it->second != item.identity())
+      if (!added && it->second != item.identity()) {
         sun::support::logAndThrowError(
             "Conflicting dependency nominal identity");
+      }
     }
+  }
   proto::LibraryAbiSnapshot revision;
   revision.set_library_id(contract.library_id());
   revision.set_artifact_hash(artifact);
@@ -138,7 +153,9 @@ proto::LibraryAbiSnapshot describeLibraryAbiSnapshot(
     } else {
       identity =
           frame(contract.library_id()) + frame(std::to_string(record->kind()));
-      for (const auto& component : components) identity += frame(component);
+      for (const auto& component : components) {
+        identity += frame(component);
+      }
       identity = "sun.abi.path.v1:" + moon_bundling::computeSha256Hex(identity);
     }
     identities[key] = identity;
@@ -146,8 +163,9 @@ proto::LibraryAbiSnapshot describeLibraryAbiSnapshot(
     // Function implementations and generated specializations retain exact keys.
     if (record->kind() == moon::CLASS || record->kind() == moon::INTERFACE ||
         record->kind() == moon::ENUM || record->kind() == moon::MODULE) {
-      if (!unique.insert(identity).second)
+      if (!unique.insert(identity).second) {
         sun::support::logAndThrowError("Ambiguous nominal library declaration");
+      }
       auto* item = revision.add_declarations();
       item->set_key(key);
       item->set_identity(identity);
@@ -160,7 +178,8 @@ proto::LibraryAbiSnapshot describeLibraryAbiSnapshot(
   requirements.set_experimental(contract.experimental());
   *requirements.mutable_target() = contract.target();
   *requirements.mutable_requirements() = contract.requirements();
-  // Preserve the original hash domain so renaming the snapshot keeps ABI hashes stable.
+  // Preserve the original hash domain so renaming the snapshot keeps ABI hashes
+  // stable.
   std::string encoded = frame("sun.abi.library-revision.v1") +
                         frame(encodeBundleContract(requirements));
   std::set<std::string> semantics;
@@ -168,12 +187,15 @@ proto::LibraryAbiSnapshot describeLibraryAbiSnapshot(
     auto normalized = *module;
     // Implementation-local declarations have no place in the exported ABI.
     normalized.clear_declarations();
-    for (auto& cls : *normalized.mutable_classes())
+    for (auto& cls : *normalized.mutable_classes()) {
       cls.clear_compiled_specializations();
+    }
     remapDeclarationReferences(normalized, identities);
     semantics.insert(describeSemantics(normalized));
   }
-  for (const auto& item : semantics) encoded += frame(item);
+  for (const auto& item : semantics) {
+    encoded += frame(item);
+  }
   revision.set_abi_hash(moon_bundling::computeSha256Hex(encoded));
   return revision;
 }

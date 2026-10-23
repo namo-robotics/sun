@@ -21,10 +21,13 @@ namespace sun::driver {
 std::string configTargetKey(const std::string& targetTriple) {
   auto triple = sun::support::resolvedTargetTriple(targetTriple);
   triple.setVendor(llvm::Triple::UnknownVendor);
-  if (triple.getArch() == llvm::Triple::aarch64) triple.setArchName("aarch64");
+  if (triple.getArch() == llvm::Triple::aarch64) {
+    triple.setArchName("aarch64");
+  }
   if (triple.getOS() == llvm::Triple::Darwin ||
-      triple.getOS() == llvm::Triple::MacOSX)
+      triple.getOS() == llvm::Triple::MacOSX) {
     triple.setOSName("darwin");
+  }
   return triple.str();
 }
 
@@ -43,53 +46,70 @@ using Check = void (*)(const llvm::json::Value&);
 /** Requires an object and returns its fields. */
 const Object& object(const llvm::json::Value& value) {
   auto* result = value.getAsObject();
-  if (!result) invalid("expected an object");
+  if (!result) {
+    invalid("expected an object");
+  }
   return *result;
 }
 
 /** Rejects unknown fields rather than silently ignoring misspellings. */
 void keys(const Object& obj, std::initializer_list<std::string> allowed) {
   for (const auto& [key, value] : obj) {
-    if (std::find(allowed.begin(), allowed.end(), key.str()) == allowed.end())
+    if (std::find(allowed.begin(), allowed.end(), key.str()) == allowed.end()) {
       invalid("unknown key '" + key.str() + "'");
+    }
   }
 }
 
 /** Requires a nonempty string. */
 void stringValue(const llvm::json::Value& value) {
-  if (!value.getAsString() || value.getAsString()->empty())
+  if (!value.getAsString() || value.getAsString()->empty()) {
     invalid("expected a nonempty string");
+  }
 }
 
 /** Requires a Boolean. */
 void boolValue(const llvm::json::Value& value) {
-  if (!value.getAsBoolean()) invalid("expected a boolean");
+  if (!value.getAsBoolean()) {
+    invalid("expected a boolean");
+  }
 }
 
 /** Requires an array of strings. */
 void stringsValue(const llvm::json::Value& value) {
   auto* array = value.getAsArray();
-  if (!array) invalid("expected an array");
-  for (const auto& item : *array) stringValue(item);
+  if (!array) {
+    invalid("expected an array");
+  }
+  for (const auto& item : *array) {
+    stringValue(item);
+  }
 }
 
 /** Checks the declarations and compiler options for a generated C module. */
 void cBindingValue(const llvm::json::Value& value) {
   const auto& obj = object(value);
   keys(obj, {"header", "output", "allow", "clang_args", "skip_if_unavailable"});
-  if (!obj.get("header") || !obj.get("output") || !obj.get("allow"))
+  if (!obj.get("header") || !obj.get("output") || !obj.get("allow")) {
     invalid("c_bindings entries require header, output and allow");
+  }
   stringValue(*obj.get("header"));
   stringValue(*obj.get("output"));
   if (obj.getString("output")->find('$') == llvm::StringRef::npos &&
       std::filesystem::path(obj.getString("output")->str()).extension() !=
-          ".sun")
+          ".sun") {
     invalid("c_bindings output must name a .sun file");
+  }
   stringsValue(*obj.get("allow"));
-  if (obj.getArray("allow")->empty())
+  if (obj.getArray("allow")->empty()) {
     invalid("c_bindings allow must not be empty");
-  if (auto* args = obj.get("clang_args")) stringsValue(*args);
-  if (auto* skip = obj.get("skip_if_unavailable")) boolValue(*skip);
+  }
+  if (auto* args = obj.get("clang_args")) {
+    stringsValue(*args);
+  }
+  if (auto* skip = obj.get("skip_if_unavailable")) {
+    boolValue(*skip);
+  }
 }
 
 /** Returns whether a setting uses the default/target wrapper. */
@@ -104,10 +124,12 @@ void targetKeys(const Object& targets) {
   for (const auto& [key, value] : targets) {
     const auto triple = sun::support::resolvedTargetTriple(key.str());
     if (key.str().empty() || triple.getArch() == llvm::Triple::UnknownArch ||
-        triple.getOS() == llvm::Triple::UnknownOS)
+        triple.getOS() == llvm::Triple::UnknownOS) {
       invalid("invalid target triple '" + key.str() + "'");
-    if (!seen.insert(configTargetKey(key.str())).second)
+    }
+    if (!seen.insert(configTargetKey(key.str())).second) {
       invalid("duplicate target triple");
+    }
   }
 }
 
@@ -123,46 +145,59 @@ const llvm::json::Value* select(const llvm::json::Value& value,
   const auto& obj = object(value);
   keys(obj, {"default", "target"});
   const auto* selected = obj.get("default");
-  if (selected) check(*selected);
+  if (selected) {
+    check(*selected);
+  }
   if (const auto* branches = obj.get("target")) {
     const auto& targets = object(*branches);
     targetKeys(targets);
     for (const auto& [key, branch] : targets) {
       check(branch);
-      if (configTargetKey(key.str()) == target) selected = &branch;
+      if (configTargetKey(key.str()) == target) {
+        selected = &branch;
+      }
     }
   }
-  if (!selected && required)
+  if (!selected && required) {
     invalid("no default or matching value for target " + target);
+  }
   return selected;
 }
 
 /** Anchors local paths while leaving dependency variables for lazy expansion.
  */
 std::string anchor(const std::string& value, const std::filesystem::path& dir) {
-  if (value.find('$') != std::string::npos) return value;
+  if (value.find('$') != std::string::npos) {
+    return value;
+  }
   return std::filesystem::absolute(dir / value).lexically_normal().string();
 }
 
 /** Requires a portable name safe for cache and output directory components. */
 void validName(const std::string& name) {
-  if (name.empty() || name == "." || name == "..")
+  if (name.empty() || name == "." || name == "..") {
     invalid("invalid name '" + name + "'");
-  for (unsigned char c : name)
-    if (!std::isalnum(c) && c != '_' && c != '-')
+  }
+  for (unsigned char c : name) {
+    if (!std::isalnum(c) && c != '_' && c != '-') {
       invalid("invalid name '" + name + "'");
+    }
+  }
 }
 
 /** Checks resource mappings without examining their source files. */
 void resourcesValue(const llvm::json::Value& value) {
   const auto* array = value.getAsArray();
-  if (!array) invalid("resources must be an array");
+  if (!array) {
+    invalid("resources must be an array");
+  }
   for (const auto& item : *array) {
     const auto& obj = object(item);
     keys(obj, {"path", "destination"});
     for (const auto* key : {"path", "destination"}) {
-      if (!obj.get(key))
+      if (!obj.get(key)) {
         invalid(std::string("resource requires '") + key + "'");
+      }
       stringValue(*obj.get(key));
     }
   }
@@ -183,8 +218,9 @@ std::vector<ConfigResource> resources(const llvm::json::Value& value,
 /** Requires one of the supported production artifact kinds. */
 void entrypointTypeValue(const llvm::json::Value& value) {
   stringValue(value);
-  if (*value.getAsString() != "binary" && *value.getAsString() != "library")
+  if (*value.getAsString() != "binary" && *value.getAsString() != "library") {
     invalid("entrypoint type must be 'binary' or 'library'");
+  }
 }
 
 /** Checks and selects fields, resolving enabled before other values. */
@@ -197,13 +233,16 @@ Object fields(const Object& obj, const std::string& target, bool package) {
                       "name", "enabled", "path", "git", "version", "type",
                       "output_name", "test_binary_name"});
   bool enabled = true;
-  if (auto* value = obj.get("enabled"))
+  if (auto* value = obj.get("enabled")) {
     enabled = *select(*value, target, boolValue)->getAsBoolean();
+  }
   Object result;
   result["enabled"] = enabled;
   for (const auto& [key, value] : obj) {
     const auto name = key.str();
-    if (name == "enabled") continue;
+    if (name == "enabled") {
+      continue;
+    }
     if (name == "name") {
       stringValue(value);
       validName(value.getAsString()->str());
@@ -211,18 +250,30 @@ Object fields(const Object& obj, const std::string& target, bool package) {
       continue;
     }
     Check check = stringValue;
-    if (name == "resources") check = resourcesValue;
-    if (name == "entrypoints") check = stringsValue;
-    if (name == "type") check = entrypointTypeValue;
+    if (name == "resources") {
+      check = resourcesValue;
+    }
+    if (name == "entrypoints") {
+      check = stringsValue;
+    }
+    if (name == "type") {
+      check = entrypointTypeValue;
+    }
     const auto* selected = select(value, target, check, enabled);
-    if (enabled && selected) result[name] = *selected;
+    if (enabled && selected) {
+      result[name] = *selected;
+    }
   }
-  if (package && !result.getString("name")) invalid("package requires name");
+  if (package && !result.getString("name")) {
+    invalid("package requires name");
+  }
   if (enabled) {
-    if (package && !result.getArray("entrypoints"))
+    if (package && !result.getArray("entrypoints")) {
       invalid("package requires entrypoints");
-    if (!package && !result.getString("path"))
+    }
+    if (!package && !result.getString("path")) {
       invalid("entrypoint requires path");
+    }
   }
   return result;
 }
@@ -232,60 +283,84 @@ void dependencyValue(const llvm::json::Value& value) {
   const auto& obj = object(value);
   if (obj.get("git")) {
     keys(obj, {"git", "version", "config", "entrypoint", "path"});
-    if (obj.get("path") && (obj.get("config") || obj.get("entrypoint")))
+    if (obj.get("path") && (obj.get("config") || obj.get("entrypoint"))) {
       invalid(
           "Git dependency path cannot be combined with config or entrypoint");
-    for (const auto& [key, v] : obj) stringValue(v);
+    }
+    for (const auto& [key, v] : obj) {
+      stringValue(v);
+    }
     ConfigEntrypoint source;
     source.git = obj.getString("git")->str();
-    if (auto v = obj.getString("version")) source.version = v->str();
+    if (auto v = obj.getString("version")) {
+      source.version = v->str();
+    }
     source.path =
         obj.getString("path")
             .value_or(obj.getString("config").value_or("sun-config.json"))
             .str();
     source.type = ConfigEntrypoint::Type::Library;
     validateGitSource(source);
-    if (auto v = obj.getString("entrypoint")) validName(v->str());
+    if (auto v = obj.getString("entrypoint")) {
+      validName(v->str());
+    }
     return;
   }
   keys(obj, {"moon", "package"});
-  if (bool(obj.get("moon")) == bool(obj.get("package")))
+  if (bool(obj.get("moon")) == bool(obj.get("package"))) {
     invalid("dependency requires exactly one of moon, package, or git");
+  }
   const bool package = bool(obj.get("package"));
   const auto& source = object(*obj.get(package ? "package" : "moon"));
   keys(source, package
                    ? std::initializer_list<std::string>{"url", "path", "hash"}
                    : std::initializer_list<std::string>{"url", "path", "hash",
                                                         "filename"});
-  if (bool(source.get("url")) == bool(source.get("path")))
+  if (bool(source.get("url")) == bool(source.get("path"))) {
     invalid("dependency requires exactly one of url or path");
-  for (const auto& [key, v] : source) stringValue(v);
-  if (source.get("url") && !source.get("hash"))
+  }
+  for (const auto& [key, v] : source) {
+    stringValue(v);
+  }
+  if (source.get("url") && !source.get("hash")) {
     invalid("remote dependency requires hash");
+  }
   if (auto hash = source.getString("hash")) {
     if (hash->size() != 64 ||
-        hash->find_first_not_of("0123456789abcdef") != llvm::StringRef::npos)
+        hash->find_first_not_of("0123456789abcdef") != llvm::StringRef::npos) {
       invalid("hash must be a lowercase SHA-256 digest");
+    }
   }
   if (!package) {
     auto filename = source.getString("filename");
     if (!filename ||
         std::filesystem::path(filename->str()).filename() != filename->str() ||
         std::filesystem::path(filename->str()).extension() != ".moon" ||
-        filename->contains('\\'))
+        filename->contains('\\')) {
       invalid("moon filename must be a simple .moon filename");
+    }
   }
 }
 
 /** Detects wrapper settings inside a legacy-replaced collection. */
 bool containsWrapper(const llvm::json::Value& value) {
-  if (wrapped(value)) return true;
-  if (auto* obj = value.getAsObject())
-    for (const auto& [key, v] : *obj)
-      if (containsWrapper(v)) return true;
-  if (auto* arr = value.getAsArray())
-    for (const auto& v : *arr)
-      if (containsWrapper(v)) return true;
+  if (wrapped(value)) {
+    return true;
+  }
+  if (auto* obj = value.getAsObject()) {
+    for (const auto& [key, v] : *obj) {
+      if (containsWrapper(v)) {
+        return true;
+      }
+    }
+  }
+  if (auto* arr = value.getAsArray()) {
+    for (const auto& v : *arr) {
+      if (containsWrapper(v)) {
+        return true;
+      }
+    }
+  }
   return false;
 }
 
@@ -306,15 +381,19 @@ SunConfig parse(const Object& root, const std::filesystem::path& file,
     keys(fmt, {"ignore"});
     if (auto* ignore = fmt.get("ignore")) {
       stringsValue(*ignore);
-      for (const auto& pattern : *ignore->getAsArray())
+      for (const auto& pattern : *ignore->getAsArray()) {
         config.fmtIgnore.push_back(
             {config.configDir, pattern.getAsString()->str()});
+      }
     }
   }
-  if (auto* value = root.get("sun_path"))
-    for (const auto& path : *select(*value, target, stringsValue)->getAsArray())
+  if (auto* value = root.get("sun_path")) {
+    for (const auto& path :
+         *select(*value, target, stringsValue)->getAsArray()) {
       config.sunPath.push_back(
           anchor(path.getAsString()->str(), config.configDir));
+    }
+  }
   if (auto* bindings = root.get("c_bindings")) {
     for (const auto& [name, value] : object(*bindings)) {
       const std::string module = name.str();
@@ -323,8 +402,9 @@ SunConfig parse(const Object& root, const std::filesystem::path& file,
            module[0] != '_') ||
           !std::all_of(module.begin(), module.end(), [](unsigned char c) {
             return std::isalnum(c) || c == '_';
-          }))
+          })) {
         invalid("c_bindings keys must be Sun module identifiers");
+      }
       ConfigCBinding binding;
       binding.baseDir = config.configDir.string();
       const auto* selected = select(value, target, cBindingValue, false);
@@ -337,28 +417,36 @@ SunConfig parse(const Object& root, const std::filesystem::path& file,
             anchor(obj.getString("header")->str(), config.configDir);
         binding.output =
             anchor(obj.getString("output")->str(), config.configDir);
-        for (const auto& name : *obj.getArray("allow"))
+        for (const auto& name : *obj.getArray("allow")) {
           binding.allow.push_back(name.getAsString()->str());
-        if (const auto* args = obj.getArray("clang_args"))
-          for (const auto& arg : *args)
+        }
+        if (const auto* args = obj.getArray("clang_args")) {
+          for (const auto& arg : *args) {
             binding.clangArgs.push_back(arg.getAsString()->str());
+          }
+        }
       }
       config.cBindings.emplace(module, std::move(binding));
     }
   }
-  if (auto* vars = root.get("path_variables"))
-    for (const auto& [key, value] : object(*vars))
+  if (auto* vars = root.get("path_variables")) {
+    for (const auto& [key, value] : object(*vars)) {
       config.pathVariables[key.str()] =
           anchor(select(value, target, stringValue)->getAsString()->str(),
                  config.configDir);
+    }
+  }
   if (auto* deps = root.get("dependencies")) {
     for (const auto& [key, value] : object(*deps)) {
       validName(key.str());
-      for (unsigned char c : key.str())
-        if (!std::isalnum(c) && c != '_')
+      for (unsigned char c : key.str()) {
+        if (!std::isalnum(c) && c != '_') {
           invalid("dependency name must be a path variable name");
-      if (config.pathVariables.count(key.str()))
+        }
+      }
+      if (config.pathVariables.count(key.str())) {
         invalid("dependency and path variable collide: " + key.str());
+      }
       ConfigDependency dep;
       auto* selected = select(value, target, dependencyValue, false);
       dep.available = selected != nullptr;
@@ -368,18 +456,31 @@ SunConfig parse(const Object& root, const std::filesystem::path& file,
         if (auto git = obj.getString("git")) {
           dep.git = git->str();
           dep.version = obj.getString("version")->str();
-          if (auto v = obj.getString("path")) dep.path = v->str();
-          if (auto v = obj.getString("config")) dep.config = v->str();
-          if (auto v = obj.getString("entrypoint")) dep.entrypoint = v->str();
+          if (auto v = obj.getString("path")) {
+            dep.path = v->str();
+          }
+          if (auto v = obj.getString("config")) {
+            dep.config = v->str();
+          }
+          if (auto v = obj.getString("entrypoint")) {
+            dep.entrypoint = v->str();
+          }
           config.dependencies[key.str()] = std::move(dep);
           continue;
         }
         const auto& source = object(*obj.get(dep.package ? "package" : "moon"));
-        if (auto v = source.getString("url")) dep.url = v->str();
-        if (auto v = source.getString("path"))
+        if (auto v = source.getString("url")) {
+          dep.url = v->str();
+        }
+        if (auto v = source.getString("path")) {
           dep.path = anchor(v->str(), config.configDir);
-        if (auto v = source.getString("hash")) dep.hash = v->str();
-        if (auto v = source.getString("filename")) dep.filename = v->str();
+        }
+        if (auto v = source.getString("hash")) {
+          dep.hash = v->str();
+        }
+        if (auto v = source.getString("filename")) {
+          dep.filename = v->str();
+        }
       }
       config.dependencies[key.str()] = std::move(dep);
     }
@@ -387,34 +488,49 @@ SunConfig parse(const Object& root, const std::filesystem::path& file,
   std::set<std::string> names;
   if (auto* value = root.get("entrypoints")) {
     auto* array = value->getAsArray();
-    if (!array) invalid("entrypoints must be an array");
+    if (!array) {
+      invalid("entrypoints must be an array");
+    }
     for (const auto& item : *array) {
       auto obj = fields(object(item), target, false);
       ConfigEntrypoint entry;
       if (auto name = obj.getString("name")) {
         entry.name = name->str();
-        if (!names.insert(entry.name).second)
+        if (!names.insert(entry.name).second) {
           invalid("duplicate entrypoint name " + entry.name);
+        }
       }
-      if (!*obj.getBoolean("enabled")) continue;
+      if (!*obj.getBoolean("enabled")) {
+        continue;
+      }
       entry.path = obj.getString("path")->str();
-      if (auto v = obj.getString("git")) entry.git = v->str();
-      if (auto v = obj.getString("version")) entry.version = v->str();
-      if (auto v = obj.getString("type"))
+      if (auto v = obj.getString("git")) {
+        entry.git = v->str();
+      }
+      if (auto v = obj.getString("version")) {
+        entry.version = v->str();
+      }
+      if (auto v = obj.getString("type")) {
         entry.type = *v == "library" ? ConfigEntrypoint::Type::Library
                                      : ConfigEntrypoint::Type::Binary;
-      if (auto v = obj.getString("output_name"))
+      }
+      if (auto v = obj.getString("output_name")) {
         entry.outputName = anchor(v->str(), config.configDir);
-      if (auto v = obj.getString("test_binary_name"))
+      }
+      if (auto v = obj.getString("test_binary_name")) {
         entry.testBinaryName = anchor(v->str(), config.configDir);
+      }
       if (!entry.git.empty()) {
         validateGitSource(entry);
-        if (entry.outputName.empty())
+        if (entry.outputName.empty()) {
           entry.outputName =
               (config.configDir / std::filesystem::path(entry.path).stem())
                   .string();
+        }
       } else {
-        if (!entry.version.empty()) invalid("entrypoint version requires git");
+        if (!entry.version.empty()) {
+          invalid("entrypoint version requires git");
+        }
         entry.path = anchor(entry.path, config.configDir);
       }
       config.entrypoints.push_back(std::move(entry));
@@ -423,23 +539,32 @@ SunConfig parse(const Object& root, const std::filesystem::path& file,
   std::set<std::string> packageNames;
   if (auto* value = root.get("packages")) {
     auto* array = value->getAsArray();
-    if (!array) invalid("packages must be an array");
+    if (!array) {
+      invalid("packages must be an array");
+    }
     for (const auto& item : *array) {
       auto obj = fields(object(item), target, true);
       ConfigPackage pkg;
       pkg.name = obj.getString("name")->str();
-      if (!packageNames.insert(pkg.name).second)
+      if (!packageNames.insert(pkg.name).second) {
         invalid("duplicate package name " + pkg.name);
-      if (!*obj.getBoolean("enabled")) continue;
+      }
+      if (!*obj.getBoolean("enabled")) {
+        continue;
+      }
       for (const auto& v : *obj.getArray("entrypoints")) {
         const auto name = v.getAsString()->str();
-        if (!names.count(name)) invalid("unknown package entrypoint " + name);
+        if (!names.count(name)) {
+          invalid("unknown package entrypoint " + name);
+        }
         pkg.entrypoints.push_back(name);
       }
-      if (auto* v = obj.get("resources"))
+      if (auto* v = obj.get("resources")) {
         pkg.resources = resources(*v, config.configDir);
-      if (auto v = obj.getString("output_name"))
+      }
+      if (auto v = obj.getString("output_name")) {
         pkg.outputName = anchor(v->str(), config.configDir);
+      }
       config.packages.push_back(std::move(pkg));
     }
   }
@@ -451,39 +576,52 @@ std::optional<SunConfig> SunConfig::findFrom(
     const std::filesystem::path& startDir, const std::string& targetTriple) {
   std::error_code ec;
   auto dir = std::filesystem::weakly_canonical(startDir, ec);
-  if (ec) dir = startDir;
+  if (ec) {
+    dir = startDir;
+  }
   std::optional<SunConfig> merged;
   while (true) {
     auto candidate = dir / kFileName;
     if (std::filesystem::exists(candidate)) {
       auto config = loadFile(candidate, targetTriple);
       const bool stop = config.root;
-      if (!merged)
+      if (!merged) {
         merged = std::move(config);
-      else {
+      } else {
         merged->fmtIgnore.insert(merged->fmtIgnore.begin(),
                                  config.fmtIgnore.begin(),
                                  config.fmtIgnore.end());
-        for (const auto& [name, value] : config.pathVariables)
+        for (const auto& [name, value] : config.pathVariables) {
           merged->pathVariables.emplace(name, value);
-        for (const auto& [name, value] : config.dependencies)
+        }
+        for (const auto& [name, value] : config.dependencies) {
           merged->dependencies.emplace(name, value);
-        for (const auto& [name, value] : config.cBindings)
+        }
+        for (const auto& [name, value] : config.cBindings) {
           merged->cBindings.emplace(name, value);
+        }
         merged->sunPath.insert(merged->sunPath.end(), config.sunPath.begin(),
                                config.sunPath.end());
         merged->entrypoints.insert(merged->entrypoints.end(),
                                    config.entrypoints.begin(),
                                    config.entrypoints.end());
       }
-      for (const auto& [name, value] : merged->dependencies)
-        if (merged->pathVariables.count(name))
+      for (const auto& [name, value] : merged->dependencies) {
+        if (merged->pathVariables.count(name)) {
           invalid("dependency and path variable collide: " + name);
-      if (stop) break;
+        }
+      }
+      if (stop) {
+        break;
+      }
     }
-    if (std::filesystem::is_directory(dir / ".sun-git-source")) break;
+    if (std::filesystem::is_directory(dir / ".sun-git-source")) {
+      break;
+    }
     auto parent = dir.parent_path();
-    if (parent == dir) break;
+    if (parent == dir) {
+      break;
+    }
     dir = parent;
   }
   return merged;
@@ -492,13 +630,16 @@ std::optional<SunConfig> SunConfig::findFrom(
 SunConfig SunConfig::loadFile(const std::filesystem::path& file,
                               const std::string& targetTriple) {
   std::ifstream in(file);
-  if (!in) invalid("could not read " + file.string());
+  if (!in) {
+    invalid("could not read " + file.string());
+  }
   std::stringstream buffer;
   buffer << in.rdbuf();
   auto parsed = llvm::json::parse(buffer.str());
-  if (!parsed)
+  if (!parsed) {
     invalid("malformed JSON in " + file.string() + ": " +
             llvm::toString(parsed.takeError()));
+  }
   auto root = object(*parsed);
   const auto target = configTargetKey(targetTriple);
   if (auto* value = root.get("target")) {
@@ -509,17 +650,20 @@ SunConfig SunConfig::loadFile(const std::filesystem::path& file,
       const auto& settings = object(branch);
       keys(settings, {"sun_path", "path_variables", "entrypoints", "packages"});
       for (const auto& [field, setting] : settings) {
-        if (containsWrapper(setting))
+        if (containsWrapper(setting)) {
           invalid("legacy target blocks cannot contain target wrappers");
+        }
         if (const auto* base = root.get(field)) {
           if (field == "path_variables") {
             for (const auto& [var, v] : object(setting)) {
               if (auto* original = object(*base).get(var);
-                  original && wrapped(*original))
+                  original && wrapped(*original)) {
                 invalid("overlapping legacy and per-setting target overrides");
+              }
             }
-          } else if (containsWrapper(*base))
+          } else if (containsWrapper(*base)) {
             invalid("overlapping legacy and per-setting target overrides");
+          }
         }
       }
       // Legacy collections are complete values even when their target is
@@ -527,27 +671,39 @@ SunConfig SunConfig::loadFile(const std::filesystem::path& file,
       for (const auto* field : {"entrypoints", "packages"}) {
         if (const auto* value = settings.get(field)) {
           const auto* entries = value->getAsArray();
-          if (!entries) invalid(std::string(field) + " must be an array");
+          if (!entries) {
+            invalid(std::string(field) + " must be an array");
+          }
           for (const auto& entry : *entries) {
             const bool package = std::string(field) == "packages";
             fields(object(entry), target, package);
           }
         }
       }
-      if (auto* paths = settings.get("sun_path")) stringsValue(*paths);
-      if (auto* vars = settings.get("path_variables"))
-        for (const auto& [name, v] : object(*vars)) stringValue(v);
-      if (configTargetKey(key.str()) == target) selected = &settings;
+      if (auto* paths = settings.get("sun_path")) {
+        stringsValue(*paths);
+      }
+      if (auto* vars = settings.get("path_variables")) {
+        for (const auto& [name, v] : object(*vars)) {
+          stringValue(v);
+        }
+      }
+      if (configTargetKey(key.str()) == target) {
+        selected = &settings;
+      }
     }
     if (selected) {
       Object copy = *selected;
       for (const auto& [field, value] : copy) {
         if (field == "path_variables" && root.get("path_variables")) {
           Object vars = object(*root.get("path_variables"));
-          for (const auto& [name, v] : object(value)) vars[name] = v;
+          for (const auto& [name, v] : object(value)) {
+            vars[name] = v;
+          }
           root[field] = std::move(vars);
-        } else
+        } else {
           root[field] = value;
+        }
       }
     }
     root.erase("target");

@@ -18,7 +18,9 @@ using sun::types::Types;
 namespace sun::semantic_analysis::passes {
 
 void TypeRegistrationPass::run(BlockExprAST& block) {
-  if (!ctx_.isAtModuleLevel()) return;
+  if (!ctx_.isAtModuleLevel()) {
+    return;
+  }
 
   for (const auto& expr : block.getBody()) {
     SemanticContext::SourceFileGuard sourceFile(ctx_, expr->getSourceFileId());
@@ -33,7 +35,9 @@ void TypeRegistrationPass::run(BlockExprAST& block) {
           }
           break;
         }
-        if (ctx_.lookupEnum(enumDef.getName())) break;
+        if (ctx_.lookupEnum(enumDef.getName())) {
+          break;
+        }
         auto enumType = ctx_.types()->getEnum(enumDef.getDeclarationId(),
                                               enumDef.getQualifiedName());
         for (const auto& variant : enumDef.getVariants()) {
@@ -54,7 +58,9 @@ void TypeRegistrationPass::run(BlockExprAST& block) {
         ctx_.interfaceDefinitions.emplace(
             interfaceDef.getDeclarationId(),
             SemanticContext::InterfaceDefinition{&interfaceDef, ctx_.scope()});
-        if (ctx_.lookupInterface(interfaceDef.getName())) break;
+        if (ctx_.lookupInterface(interfaceDef.getName())) {
+          break;
+        }
         if (interfaceDef.isGeneric()) {
           if (!ctx_.lookupGenericInterface(interfaceDef.getName())) {
             GenericInterfaceInfo info;
@@ -81,7 +87,9 @@ void TypeRegistrationPass::run(BlockExprAST& block) {
       }
       case ASTNodeType::CLASS_DEFINITION: {
         auto& classDef = static_cast<ClassDefinitionAST&>(*expr);
-        if (classDef.isPartial() || ctx_.lookupClass(classDef.getName())) break;
+        if (classDef.isPartial() || ctx_.lookupClass(classDef.getName())) {
+          break;
+        }
         QualifiedName qualifiedClass = classDef.getQualifiedName();
         if (classDef.isGeneric() || classDef.hasGenericMethods()) {
           GenericClassInfo genericInfo;
@@ -108,8 +116,9 @@ void TypeRegistrationPass::run(BlockExprAST& block) {
       case ASTNodeType::FUNCTION: {
         auto& function = static_cast<FunctionAST&>(*expr);
         const auto& prototype = function.getProto();
-        if (!prototype.getName().empty() && prototype.isTemplate())
+        if (!prototype.getName().empty() && prototype.isTemplate()) {
           ctx_.currentScope().declareGenericFunction(function);
+        }
         break;
       }
       case ASTNodeType::MODULE: {
@@ -121,11 +130,17 @@ void TypeRegistrationPass::run(BlockExprAST& block) {
       }
       case ASTNodeType::MOON_SCOPE: {
         auto& moonScope = static_cast<MoonScopeAST&>(*expr);
-        if (!moonScope.isOwnBundle()) break;
+        if (!moonScope.isOwnBundle()) {
+          break;
+        }
         const std::string& contentHash = moonScope.getContentHash();
-        if (!contentHash.empty()) ctx_.enterModuleScope(contentHash);
+        if (!contentHash.empty()) {
+          ctx_.enterModuleScope(contentHash);
+        }
         run(const_cast<BlockExprAST&>(moonScope.getBody()));
-        if (!contentHash.empty()) ctx_.exitScope();
+        if (!contentHash.empty()) {
+          ctx_.exitScope();
+        }
         break;
       }
       default:

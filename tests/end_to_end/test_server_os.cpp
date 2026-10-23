@@ -30,7 +30,9 @@ class MetadataFixture {
 
   /** Release the file even if an assertion returns early. */
   ~MetadataFixture() {
-    if (fd >= 0) close(fd);
+    if (fd >= 0) {
+      close(fd);
+    }
     unlink(path);
   }
 };
@@ -139,13 +141,18 @@ TEST(EndToEnd_ServerOs, NativeBrokenPipePolicy) {
           };
         }
       )");
-      if (std::get<int32_t>(result) != 0) _exit(1);
+      if (std::get<int32_t>(result) != 0) {
+        _exit(1);
+      }
       struct sigaction action{};
       if (sigaction(SIGPIPE, nullptr, &action) != 0 ||
-          action.sa_handler != SIG_IGN)
+          action.sa_handler != SIG_IGN) {
         _exit(2);
+      }
       int fds[2];
-      if (pipe(fds) != 0) _exit(3);
+      if (pipe(fds) != 0) {
+        _exit(3);
+      }
       close(fds[0]);
       const char byte = 0;
       const auto count = write(fds[1], &byte, 1);
@@ -192,8 +199,9 @@ TEST(EndToEnd_ServerOs, ConfigurationFailureClosesDescriptors) {
                                                   sizeof(instructions[0])),
                       instructions};
     if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0 ||
-        prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &filter) != 0)
+        prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &filter) != 0) {
       _exit(77);
+    }
     try {
       const auto result = sun::driver::executeStringWithStdlib(R"(
         using std;
@@ -237,7 +245,9 @@ TEST(EndToEnd_ServerOs, ConfigurationFailureClosesDescriptors) {
   } while (waited < 0 && errno == EINTR);
   ASSERT_EQ(waited, child);
   ASSERT_TRUE(WIFEXITED(status));
-  if (WEXITSTATUS(status) == 77) GTEST_SKIP() << "Host does not permit seccomp";
+  if (WEXITSTATUS(status) == 77) {
+    GTEST_SKIP() << "Host does not permit seccomp";
+  }
   EXPECT_EQ(WEXITSTATUS(status), 0);
 }
 #endif

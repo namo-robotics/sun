@@ -1153,7 +1153,9 @@ TEST(Tooling_Frontend_Comments, CollectsLineAndBlockComments) {
   ASSERT_EQ(comments.size(), 4u);
 
   std::vector<sun::parsing::Comment> ordered;
-  for (const auto& [offset, c] : comments) ordered.push_back(c);
+  for (const auto& [offset, c] : comments) {
+    ordered.push_back(c);
+  }
 
   EXPECT_EQ(ordered[0].text, "// leading line");
   EXPECT_FALSE(ordered[0].isBlock);

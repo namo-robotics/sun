@@ -184,8 +184,11 @@ class InterfaceType : public NominalType {
    */
   unsigned getMethodCount() const {
     unsigned result = 0;
-    for (const auto& method : methods)
-      if (!method.isGeneric()) ++result;
+    for (const auto& method : methods) {
+      if (!method.isGeneric()) {
+        ++result;
+      }
+    }
     return result;
   }
   /** Returns the direct parent's dispatch-table slot. */
@@ -197,7 +200,9 @@ class InterfaceType : public NominalType {
   InterfaceField& addField(const std::string& fieldName, TypePtr fieldType,
                            DeclarationId id = {}) {
     for (auto& existingField : fields) {
-      if (existingField.name == fieldName) return existingField;
+      if (existingField.name == fieldName) {
+        return existingField;
+      }
     }
     fields.push_back({fieldName, std::move(fieldType),
                       sun::semantic_analysis::Visibility::Private, id});
@@ -217,7 +222,9 @@ class InterfaceType : public NominalType {
   /** Returns the field stored by this object. */
   const InterfaceField* getField(const std::string& fieldName) const {
     for (const auto& field : fields) {
-      if (field.name == fieldName) return &field;
+      if (field.name == fieldName) {
+        return &field;
+      }
     }
     return nullptr;
   }
@@ -225,7 +232,9 @@ class InterfaceType : public NominalType {
   /** Returns the method stored by this object. */
   const InterfaceMethod* getMethod(const std::string& methodName) const {
     for (const auto& method : methods) {
-      if (method.name == methodName) return &method;
+      if (method.name == methodName) {
+        return &method;
+      }
     }
     return nullptr;
   }
@@ -265,7 +274,9 @@ class InterfaceType : public NominalType {
       // Show as BaseInterface<Arg1, Arg2>
       std::string result = baseGenericName + "<";
       for (size_t i = 0; i < typeArguments.size(); ++i) {
-        if (i > 0) result += ", ";
+        if (i > 0) {
+          result += ", ";
+        }
         result += typeArguments[i]->toString();
       }
       result += ">";
@@ -275,7 +286,9 @@ class InterfaceType : public NominalType {
       // Show as Interface<T, U>
       std::string result = name + "<";
       for (size_t i = 0; i < typeParameters.size(); ++i) {
-        if (i > 0) result += ", ";
+        if (i > 0) {
+          result += ", ";
+        }
         result += typeParameters[i];
       }
       result += ">";
@@ -292,18 +305,24 @@ class InterfaceType : public NominalType {
     } else if (!baseGenericName.empty()) {
       base = baseGenericName;
       for (size_t i = 0; i < base.size(); ++i) {
-        if (base[i] == '_') base[i] = '.';
+        if (base[i] == '_') {
+          base[i] = '.';
+        }
       }
     } else {
       base = name;
       for (size_t i = 0; i < base.size(); ++i) {
-        if (base[i] == '_') base[i] = '.';
+        if (base[i] == '_') {
+          base[i] = '.';
+        }
       }
     }
     if (isSpecialized() && !typeArguments.empty()) {
       std::string result = base + "<";
       for (size_t i = 0; i < typeArguments.size(); ++i) {
-        if (i > 0) result += ", ";
+        if (i > 0) {
+          result += ", ";
+        }
         result += typeArguments[i]->toDisplayString();
       }
       result += ">";

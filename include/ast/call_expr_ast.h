@@ -54,7 +54,9 @@ class CallExprAST : public ExprAST {
   std::string toString() const override {
     std::string result = Callee->toString() + "(";
     for (size_t i = 0; i < Args.size(); ++i) {
-      if (i > 0) result += ", ";
+      if (i > 0) {
+        result += ", ";
+      }
       result += Args[i]->toString();
     }
     return result + ")";
@@ -98,7 +100,9 @@ class CallExprAST : public ExprAST {
    * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     fn(Callee);
-    for (auto& arg : Args) fn(arg);
+    for (auto& arg : Args) {
+      fn(arg);
+    }
   }
 
   /**

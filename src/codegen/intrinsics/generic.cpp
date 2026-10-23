@@ -68,10 +68,11 @@ Value* IntrinsicsGenerator::allocateAlignedBytes(Value* bytes,
     return ctx.builder->CreateCall(function, {bytes});
   }
   llvm::Triple target(module->getTargetTriple());
-  if (!target.isOSLinux() && !target.isOSDarwin())
+  if (!target.isOSLinux() && !target.isOSDarwin()) {
     logAndThrowError(
         "Over-aligned heap allocation is not supported for target '" +
         module->getTargetTriple() + "'");
+  }
   alignment =
       std::max<uint64_t>(alignment, module->getDataLayout().getPointerSize());
   auto* slot = gen_.createEntryBlockAlloca(
@@ -95,8 +96,9 @@ Value* IntrinsicsGenerator::codegenAssertCLayoutIntrinsic(
   std::vector<uint64_t> actual{dl.getTypeAllocSize(storage).getFixedValue(),
                                dl.getABITypeAlign(storage).value()};
   auto* layout = dl.getStructLayout(storage);
-  for (const auto& field : cls.getFields())
+  for (const auto& field : cls.getFields()) {
     actual.push_back(layout->getElementOffset(field.index));
+  }
   for (size_t i = 0; i < actual.size(); ++i) {
     auto expected =
         static_cast<const sun::ast::NumberExprAST&>(*expr.getArgs()[i])
@@ -126,7 +128,9 @@ Value* IntrinsicsGenerator::codegenInitIntrinsic(
   }
 
   llvm::Value* rawPtr = codegen(*args[0]);
-  if (!rawPtr) return nullptr;
+  if (!rawPtr) {
+    return nullptr;
+  }
 
   if (!targetType) {
     logAndThrowError("Type argument not resolved for _init<T>");
@@ -196,9 +200,10 @@ Value* IntrinsicsGenerator::codegenInitIntrinsic(
     return nullptr;
   }
   auto* status = ctx.builder->CreateCall(ctorFunc, ctorArgs);
-  if (ctor->returnType->isEnum())
+  if (ctor->returnType->isEnum()) {
     return scopes().trackCallTemporary(gen_.materializeStructReturn(status),
                                        ctor->returnType);
+  }
 
   return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
 }
@@ -218,7 +223,9 @@ Value* IntrinsicsGenerator::codegenLoadIntrinsic(
 
   llvm::Value* rawPtr = codegen(*args[0]);
   llvm::Value* index = codegen(*args[1]);
-  if (!rawPtr || !index) return nullptr;
+  if (!rawPtr || !index) {
+    return nullptr;
+  }
 
   llvm::Type* elemType = targetType->toLLVMType(ctx.getContext());
 
@@ -251,7 +258,9 @@ Value* IntrinsicsGenerator::codegenStoreIntrinsic(
   llvm::Value* rawPtr = codegen(*args[0]);
   llvm::Value* index = codegen(*args[1]);
   llvm::Value* value = codegen(*args[2]);
-  if (!rawPtr || !index || !value) return nullptr;
+  if (!rawPtr || !index || !value) {
+    return nullptr;
+  }
 
   llvm::Type* elemType = targetType->toLLVMType(ctx.getContext());
 
@@ -286,7 +295,9 @@ Value* IntrinsicsGenerator::codegenPtrAsRawIntrinsic(
   }
 
   llvm::Value* ownedPtr = codegen(*args[0]);
-  if (!ownedPtr) return nullptr;
+  if (!ownedPtr) {
+    return nullptr;
+  }
 
   // ptr<T> is represented as a simple pointer in LLVM
   // Just return it - no transformation needed
@@ -372,7 +383,9 @@ Value* IntrinsicsGenerator::codegenDeinitIntrinsic(
   }
 
   llvm::Value* ptr = codegen(*args[0]);
-  if (!ptr) return nullptr;
+  if (!ptr) {
+    return nullptr;
+  }
 
   if (auto* classType =
           sun::codegen::support::tryGetType<sun::types::ClassType>(typeArg)) {
@@ -425,10 +438,14 @@ Value* IntrinsicsGenerator::codegenConvertIntrinsic(
     }
   }
   llvm::Value* v = codegen(*args[0]);
-  if (!v) return nullptr;
+  if (!v) {
+    return nullptr;
+  }
   llvm::Type* dstTy = typeResolver.resolve(targetType);
   llvm::Type* srcTy = v->getType();
-  if (srcTy == dstTy) return v;
+  if (srcTy == dstTy) {
+    return v;
+  }
 
   // Enum conversions use the signedness of their integer representation.
   if (srcType && srcType->isEnum()) {
@@ -494,7 +511,9 @@ Value* IntrinsicsGenerator::codegenBitcastIntrinsic(
     return nullptr;
   }
   llvm::Value* v = codegen(*args[0]);
-  if (!v) return nullptr;
+  if (!v) {
+    return nullptr;
+  }
   llvm::Type* dstTy = typeResolver.resolve(targetType);
   const DataLayout& DL = module->getDataLayout();
   if (DL.getTypeSizeInBits(v->getType()) != DL.getTypeSizeInBits(dstTy)) {
@@ -502,7 +521,9 @@ Value* IntrinsicsGenerator::codegenBitcastIntrinsic(
     return nullptr;
   }
   // Pointers are opaque in LLVM, so a pointer cast is already a no-op here.
-  if (v->getType() == dstTy) return v;
+  if (v->getType() == dstTy) {
+    return v;
+  }
   return ctx.builder->CreateBitCast(v, dstTy, "bitcast");
 }
 

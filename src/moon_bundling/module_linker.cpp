@@ -23,7 +23,9 @@ namespace {
  */
 std::string canonicalStructName(llvm::StringRef name) {
   for (const auto& info : sun::semantic_analysis::All) {
-    if (name.starts_with(info.name)) return info.name;
+    if (name.starts_with(info.name)) {
+      return info.name;
+    }
   }
   size_t dot = name.rfind('.');
   if (dot != llvm::StringRef::npos && dot + 1 < name.size() &&
@@ -43,9 +45,13 @@ std::string canonicalStructName(llvm::StringRef name) {
 llvm::Type* mapTypeToTarget(
     llvm::Type* srcType, llvm::LLVMContext& ctx,
     std::unordered_map<llvm::Type*, llvm::Type*>& visited) {
-  if (!srcType) return nullptr;
+  if (!srcType) {
+    return nullptr;
+  }
   auto it = visited.find(srcType);
-  if (it != visited.end()) return it->second;
+  if (it != visited.end()) {
+    return it->second;
+  }
 
   llvm::Type* mapped = nullptr;
   if (auto* structTy = llvm::dyn_cast<llvm::StructType>(srcType)) {
@@ -64,7 +70,9 @@ llvm::Type* mapTypeToTarget(
     if (structTy->hasName()) {
       std::string name = canonicalStructName(structTy->getName());
       dst = llvm::StructType::getTypeByName(ctx, name);
-      if (!dst) dst = llvm::StructType::create(ctx, name);
+      if (!dst) {
+        dst = llvm::StructType::create(ctx, name);
+      }
     } else {
       dst = llvm::StructType::create(ctx);
     }
@@ -160,7 +168,9 @@ void ModuleLinker::declareAvailableFunctions() {
   // Scanned modules get their own context: sharing struct types between the
   // target and a future link source corrupts llvm::Linker's type mapping (it
   // strips names off types the target's own definitions still use).
-  if (!scanContext_) scanContext_ = std::make_unique<llvm::LLVMContext>();
+  if (!scanContext_) {
+    scanContext_ = std::make_unique<llvm::LLVMContext>();
+  }
 
   // Every module of a bundle normally points at one shared code image, so
   // scanning per module key would parse the same bitcode once per module.
@@ -172,7 +182,9 @@ void ModuleLinker::declareAvailableFunctions() {
     std::string bitcodeId = LibraryCache::instance().getBitcodeId(moduleKey);
     if (!bitcodeId.empty()) {
       std::string scanKey = bitcodeId;
-      if (!scanned.insert(scanKey).second) continue;
+      if (!scanned.insert(scanKey).second) {
+        continue;
+      }
     }
 
     // Load the bitcode module to scan its functions directly
@@ -180,7 +192,9 @@ void ModuleLinker::declareAvailableFunctions() {
     // NOTE: The bitcode's symbols already carry the bundle's content hash
     // (the compiler spelled them that way), so we don't add prefixes here.
     auto owned = LibraryCache::instance().loadModule(moduleKey, *scanContext_);
-    if (!owned) continue;
+    if (!owned) {
+      continue;
+    }
 
     llvm::Module* libModule = owned.get();
     // Cache for cross-context type mapping, shared by every declaration made
@@ -190,22 +204,32 @@ void ModuleLinker::declareAvailableFunctions() {
     // Scan all defined functions in the bitcode and create declarations
     for (const auto& func : libModule->functions()) {
       // Skip declarations (external functions the lib depends on)
-      if (func.isDeclaration()) continue;
+      if (func.isDeclaration()) {
+        continue;
+      }
       // Skip LLVM intrinsics
-      if (func.isIntrinsic()) continue;
+      if (func.isIntrinsic()) {
+        continue;
+      }
       // Skip module-private functions (lambdas, runtime helpers): nothing
       // outside the bundle can name them, and their names are only unique
       // within it
-      if (func.hasLocalLinkage()) continue;
+      if (func.hasLocalLinkage()) {
+        continue;
+      }
       // Skip unnamed functions
-      if (!func.hasName() || func.getName().empty()) continue;
+      if (!func.hasName() || func.getName().empty()) {
+        continue;
+      }
 
       std::string funcName = func.getName().str();
 
       std::string declaredName = funcName;
 
       // Skip if already declared in target
-      if (target_.getFunction(declaredName)) continue;
+      if (target_.getFunction(declaredName)) {
+        continue;
+      }
 
       // Rebuild the function type in the target context, unifying struct
       // types by canonical name (static_ptr_struct.19 -> static_ptr_struct)
@@ -232,11 +256,15 @@ void ModuleLinker::declareAvailableFunctions() {
     // Declare globals before imported generic bodies are emitted. Their
     // references also tell the linker which defining bundle to pull in.
     for (const auto& global : libModule->globals()) {
-      if (global.hasLocalLinkage() || global.getName().starts_with("llvm."))
+      if (global.hasLocalLinkage() || global.getName().starts_with("llvm.")) {
         continue;
-      if (!global.hasInitializer())
+      }
+      if (!global.hasInitializer()) {
         continue;  // a declaration, not a definition
-      if (!global.hasName() || global.getName().empty()) continue;
+      }
+      if (!global.hasName() || global.getName().empty()) {
+        continue;
+      }
 
       std::string globalName = global.getName().str();
 
@@ -287,8 +315,9 @@ bool ModuleLinker::linkOnlyUsedSymbols(bool demandDriven) {
     // declarations would otherwise make LLVM import every advertised body.
     for (auto it = target_.begin(); it != target_.end();) {
       auto& function = *it++;
-      if (function.isDeclaration() && function.use_empty())
+      if (function.isDeclaration() && function.use_empty()) {
         function.eraseFromParent();
+      }
     }
   }
 
@@ -385,7 +414,9 @@ bool ModuleLinker::linkModuleBitcode(const std::string& moduleKey,
   // Link into target
   // Using Linker::linkModules with OverrideFromSrc to handle duplicate symbols
   unsigned flags = llvm::Linker::Flags::OverrideFromSrc;
-  if (demandDriven) flags |= llvm::Linker::Flags::LinkOnlyNeeded;
+  if (demandDriven) {
+    flags |= llvm::Linker::Flags::LinkOnlyNeeded;
+  }
   if (llvm::Linker::linkModules(target_, std::move(libModule), flags)) {
     error_ = "LLVM linker failed for: " + moduleKey;
     return false;

@@ -205,17 +205,21 @@ void ClassAnalyzer::analyzeClassDefinition(
           arguments.push_back(argument);
         }
         if (proto.isGeneric()) {
-          if (!names.empty()) ctx_.enterTypeParamScope(names, arguments);
+          if (!names.empty()) {
+            ctx_.enterTypeParamScope(names, arguments);
+          }
           auto info =
               sema_.declarations().getFunctionInfo(*methodDecl.function);
           sema_.declarations().applyFunctionInfoToProto(
               const_cast<PrototypeAST&>(proto), info);
           sema_.bodies().analyzeFunction(*methodDecl.function);
-        } else
+        } else {
           sema_.bodies().analyzeMethodWithBindings(*methodDecl.function,
                                                    classType, names, arguments);
-      } else
+        }
+      } else {
         sema_.bodies().analyzeFunction(*methodDecl.function);
+      }
     }
 
     // PASS 3: check constructors, now that every method body is analyzed — the
@@ -225,7 +229,9 @@ void ClassAnalyzer::analyzeClassDefinition(
     // constructors were checked when the bundle was built.
     if (!classDef.isPrecompiled()) {
       for (const auto& methodDecl : classDef.getMethods()) {
-        if (!methodDecl.isConstructor) continue;
+        if (!methodDecl.isConstructor) {
+          continue;
+        }
         sun::semantic_analysis::checkFieldInitialization(
             *methodDecl.function, *classType, classDef.getMethods());
       }
@@ -287,8 +293,9 @@ void ClassAnalyzer::analyzePartialClass(sun::ast::ClassDefinitionAST& classDef,
           methodDecl.isConstructor, proto.getTypeParameterNames(),
           proto.canThrow());
       method.declarationId = proto.getDeclarationId();
-      if (proto.getName() == "deinit")
+      if (proto.getName() == "deinit") {
         existingClass->deinitializer = method.declarationId;
+      }
       method.visibility = methodVisibility(*methodDecl.function);
       method.isConst = methodDecl.isConst;
       method.isUnsafe = methodDecl.function->getProto().isUnsafeMethod();
@@ -312,7 +319,9 @@ void ClassAnalyzer::analyzePartialClass(sun::ast::ClassDefinitionAST& classDef,
     // analyzed, since the walk follows calls into them
     if (!classDef.isPrecompiled()) {
       for (const auto& methodDecl : classDef.getMethods()) {
-        if (!methodDecl.isConstructor) continue;
+        if (!methodDecl.isConstructor) {
+          continue;
+        }
         sun::semantic_analysis::checkFieldInitialization(
             *methodDecl.function, *existingClass, classDef.getMethods());
       }

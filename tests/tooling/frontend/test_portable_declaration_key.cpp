@@ -116,15 +116,18 @@ TEST(Tooling_Frontend_PortableIdentity,
     AnalysisResults registryResults;
     TypeRegistry& registry = *registryResults.types;
     auto& table = registryResults.declarations;
-    if (reverse) table.add(DeclarationKind::Variable, "unrelated");
+    if (reverse) {
+      table.add(DeclarationKind::Variable, "unrelated");
+    }
     auto source = table.add(DeclarationKind::Class, "Box");
     auto argument = table.add(DeclarationKind::Class, "Private");
     table.bindPortable(source, PortableDeclarationKey::original(bundle, 1));
     table.bindPortable(argument, PortableDeclarationKey::original(bundle, 2));
     auto nominal = registry.getClass(argument);
     nominal->addField("recursive", Types::RawPointer(nominal));
-    if (reverse)
+    if (reverse) {
       registry.specialize({source, {}, {Types::Bool()}, std::nullopt});
+    }
     auto instance = registry.specialize({source, {}, {nominal}, std::nullopt});
     return PortableDeclarationKey::fromDeclaration(instance, table);
   };
@@ -191,7 +194,7 @@ TEST(Tooling_Frontend_PortableIdentity,
                                  i32, std::vector<TypePtr>{i32}, false, true),
                              lambda,
                              borrowed};
-  for (size_t i = 0; i < types.size(); ++i)
+  for (size_t i = 0; i < types.size(); ++i) {
     for (size_t j = 0; j < types.size(); ++j) {
       SCOPED_TRACE(std::to_string(i) + "," + std::to_string(j));
       sun::semantic_analysis::SpecializationKey left{
@@ -201,6 +204,7 @@ TEST(Tooling_Frontend_PortableIdentity,
       EXPECT_EQ(left == right, PortableTypeKey::fromType(*types[i], table) ==
                                    PortableTypeKey::fromType(*types[j], table));
     }
+  }
   auto lifetime = PortableTypeKey::fromType(*borrowed, table);
   borrowed->setLifetimeName("renamed");
   EXPECT_EQ(lifetime, PortableTypeKey::fromType(*borrowed, table));
@@ -271,8 +275,9 @@ TEST(Tooling_Frontend_PortableIdentity,
 /** Identifier spelling does not encode declaration semantics. */
 TEST(Tooling_Frontend_PortableIdentity, keys_are_opaque) {
   for (const auto* value :
-       {"arbitrary identifier", "$hash$_0", "01", "specialization"})
+       {"arbitrary identifier", "$hash$_0", "01", "specialization"}) {
     EXPECT_EQ(PortableDeclarationKey::fromString(value).encoding(), value);
+  }
   EXPECT_ANY_THROW(PortableDeclarationKey::fromString(""));
 }
 

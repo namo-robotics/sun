@@ -20,18 +20,22 @@ class ScopedEnvironment {
  public:
   /** Saves the existing value and installs or removes the test value. */
   ScopedEnvironment(const char* name, const char* value) : name_(name) {
-    if (const char* old = std::getenv(name)) old_ = old;
-    if (value)
+    if (const char* old = std::getenv(name)) {
+      old_ = old;
+    }
+    if (value) {
       setenv(name, value, 1);
-    else
+    } else {
       unsetenv(name);
+    }
   }
   /** Restores the value present before the test. */
   ~ScopedEnvironment() {
-    if (old_)
+    if (old_) {
       setenv(name_.c_str(), old_->c_str(), 1);
-    else
+    } else {
       unsetenv(name_.c_str());
+    }
   }
 
  private:
@@ -39,7 +43,8 @@ class ScopedEnvironment {
   std::optional<std::string> old_;
 };
 
-/** Simulates a color-capable terminal without requiring a real terminal device. */
+/** Simulates a color-capable terminal without requiring a real terminal device.
+ */
 class ColoredStringStream : public llvm::raw_string_ostream {
  public:
   /** Captures output in the supplied string. */
@@ -62,12 +67,14 @@ class TerminalFileFixture : public testing::Test {
   void TearDown() override { std::filesystem::remove_all(directory); }
 };
 
-/** Trees preserve ancestor guides, details, and sibling order without escapes. */
+/** Trees preserve ancestor guides, details, and sibling order without escapes.
+ */
 TEST(Tooling_Cli_Terminal, tree_layout_supports_nested_details) {
   std::string output;
   llvm::raw_string_ostream stream(output);
   const sun::support::TerminalTreeNode root{
-      "main.sun", {},
+      "main.sun",
+      {},
       {{"reader.moon", {}, {{"shapes", {"artifact: old", "ABI: same"}, {}}}},
        {"shapes", {"artifact: new"}, {}}}};
   EXPECT_EQ(sun::support::terminalTree(root, stream, "warning", "  "),
@@ -100,7 +107,8 @@ TEST(Tooling_Cli_Terminal, tree_colors_only_connectors) {
   EXPECT_EQ(sun::support::terminalTree(root, stream), "root\n└── leaf");
 }
 
-/** File links encode special bytes and retain plain fallbacks and VS Code paths. */
+/** File links encode special bytes and retain plain fallbacks and VS Code
+ * paths. */
 TEST_F(TerminalFileFixture, links_preserve_paths_and_terminal_preferences) {
   ScopedEnvironment term("TERM", "xterm");
   ScopedEnvironment noColor("NO_COLOR", nullptr);
@@ -119,7 +127,8 @@ TEST_F(TerminalFileFixture, links_preserve_paths_and_terminal_preferences) {
   EXPECT_EQ(sun::support::terminalFileLabel(file, plain), "source #%.sun");
   EXPECT_EQ(sun::support::terminalFileLabel(directory / "missing.sun", stream),
             "missing.sun");
-  EXPECT_EQ(sun::support::terminalFileLabel(directory, stream), "terminal_format");
+  EXPECT_EQ(sun::support::terminalFileLabel(directory, stream),
+            "terminal_format");
   {
     ScopedEnvironment vscode("TERM_PROGRAM", "vscode");
     EXPECT_EQ(sun::support::terminalFileLabel(file, stream),

@@ -56,19 +56,29 @@ inline bool isScalarValue(uint32_t v) {
  * Value of one hex digit, or -1.
  */
 inline int hexDigit(char c) {
-  if (c >= '0' && c <= '9') return c - '0';
-  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  if (c >= '0' && c <= '9') {
+    return c - '0';
+  }
+  if (c >= 'a' && c <= 'f') {
+    return c - 'a' + 10;
+  }
+  if (c >= 'A' && c <= 'F') {
+    return c - 'A' + 10;
+  }
   return -1;
 }
 
 /** Decode the first two hex digits as a byte, or reject missing or invalid
  * digits. */
 inline std::optional<char> hexByte(std::string_view digits) {
-  if (digits.size() < 2) return std::nullopt;
+  if (digits.size() < 2) {
+    return std::nullopt;
+  }
   int high = hexDigit(digits[0]);
   int low = hexDigit(digits[1]);
-  if (high < 0 || low < 0) return std::nullopt;
+  if (high < 0 || low < 0) {
+    return std::nullopt;
+  }
   return static_cast<char>(high * 16 + low);
 }
 
@@ -77,10 +87,18 @@ inline std::optional<char> hexByte(std::string_view digits) {
  * `lead` is not a valid leading byte.
  */
 inline int utf8SequenceLength(unsigned char lead) {
-  if (lead < 0x80) return 1;
-  if ((lead & 0xE0) == 0xC0) return 2;
-  if ((lead & 0xF0) == 0xE0) return 3;
-  if ((lead & 0xF8) == 0xF0) return 4;
+  if (lead < 0x80) {
+    return 1;
+  }
+  if ((lead & 0xE0) == 0xC0) {
+    return 2;
+  }
+  if ((lead & 0xF0) == 0xE0) {
+    return 3;
+  }
+  if ((lead & 0xF8) == 0xF0) {
+    return 4;
+  }
   return 0;
 }
 
@@ -91,22 +109,32 @@ inline int utf8SequenceLength(unsigned char lead) {
  * out of range).
  */
 inline std::optional<uint32_t> decodeUtf8(std::string_view s, int& length) {
-  if (s.empty()) return std::nullopt;
+  if (s.empty()) {
+    return std::nullopt;
+  }
   const int len = utf8SequenceLength(static_cast<unsigned char>(s[0]));
-  if (len == 0 || static_cast<size_t>(len) > s.size()) return std::nullopt;
+  if (len == 0 || static_cast<size_t>(len) > s.size()) {
+    return std::nullopt;
+  }
 
   static constexpr uint32_t kLeadMask[5] = {0, 0x7F, 0x1F, 0x0F, 0x07};
   uint32_t value = static_cast<unsigned char>(s[0]) & kLeadMask[len];
   for (int i = 1; i < len; ++i) {
     auto byte = static_cast<unsigned char>(s[i]);
-    if ((byte & 0xC0) != 0x80) return std::nullopt;
+    if ((byte & 0xC0) != 0x80) {
+      return std::nullopt;
+    }
     value = (value << 6) | (byte & 0x3F);
   }
 
   // Reject overlong encodings: each length has a minimum value it may carry.
   static constexpr uint32_t kMinValue[5] = {0, 0, 0x80, 0x800, 0x10000};
-  if (value < kMinValue[len]) return std::nullopt;
-  if (!isScalarValue(value)) return std::nullopt;
+  if (value < kMinValue[len]) {
+    return std::nullopt;
+  }
+  if (!isScalarValue(value)) {
+    return std::nullopt;
+  }
 
   length = len;
   return value;

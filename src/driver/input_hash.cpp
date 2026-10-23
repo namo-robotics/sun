@@ -13,7 +13,6 @@
 #include <map>
 
 #include "abi/abi_compatibility_checker.h"
-#include "driver/c_bindings.h"
 #include "generated/sun_version.h"
 #include "moon_bundling/moon.h"
 #include "moon_bundling/proto_importer.h"
@@ -37,8 +36,9 @@ std::string hashField(const std::string& tag, const std::string& value) {
   std::string result;
   for (const auto* field : {&tag, &value}) {
     const uint64_t size = field->size();
-    for (int shift = 56; shift >= 0; shift -= 8)
+    for (int shift = 56; shift >= 0; shift -= 8) {
       result.push_back(static_cast<char>((size >> shift) & 255));
+    }
     result += *field;
   }
   return result;
@@ -65,7 +65,9 @@ std::string hashMoonImport(const sun::moon_bundling::MoonImport& import,
   const auto modules = reader.listModules();
   const auto* first =
       modules.empty() ? nullptr : reader.getMetadata(modules[0]);
-  if (!first) fail("Imported moon has no modules: " + import.path);
+  if (!first) {
+    fail("Imported moon has no modules: " + import.path);
+  }
   std::string dependency = hashField("digest", first->content_hash()) +
                            hashField("bytes", checker.bytesHash(reader));
   // An alias changes which symbols the importing code refers to
@@ -102,22 +104,24 @@ const std::string& getCompilerDigest() {
 std::string computeFileDigest(const std::string& path, const char* what) {
   auto buffer = llvm::MemoryBuffer::getFile(path, /*IsText=*/false,
                                             /*RequiresNullTerminator=*/false);
-  if (!buffer) fail(std::string("Cannot read ") + what + ": " + path);
+  if (!buffer) {
+    fail(std::string("Cannot read ") + what + ": " + path);
+  }
   return digestBytes((*buffer)->getBuffer());
 }
 
 /** Adds source and protobuf content digests to the build inputs. */
-void addSourceDigests(BuildInputs& inputs,
-                      const std::vector<std::string>& sourceFiles,
-                      const std::vector<std::string>& protoFiles,
-                      const std::string& baseDir) {
-  if (!sourceFiles.empty()) inputs.entrypoint = sourceFiles.front();
-  generateCBindings(baseDir, inputs.targetTriple);
+void addSourceDigests(
+    BuildInputs& inputs, const std::vector<std::string>& sourceFiles,
+    const std::vector<sun::moon_bundling::SynthesizedProtoModule>&
+        protoModules) {
+  if (!sourceFiles.empty()) {
+    inputs.entrypoint = sourceFiles.front();
+  }
   for (const auto& path : sourceFiles) {
     inputs.sourceDigests.push_back(computeFileDigest(path, "source"));
   }
-  for (const auto& source :
-       sun::moon_bundling::ProtoImporter::importAll(protoFiles, baseDir)) {
+  for (const auto& source : protoModules) {
     inputs.sourceDigests.push_back(digestBytes(source.sunSource));
   }
 }
@@ -137,8 +141,9 @@ std::string computeInputHash(const BuildInputs& inputs) {
                      active.optimize == context.optimize;
   // A differently configured artifact may only be probed for build skipping.
   // Its real compilation gets its own scope and emits import diagnostics there.
-  if (sun::abi::AbiCompatibilityChecker::hasValidationScope() && !share)
+  if (sun::abi::AbiCompatibilityChecker::hasValidationScope() && !share) {
     context.producerWarnings = false;
+  }
   auto& checker = share ? current : isolated;
   checker.configure(std::move(context));
   std::string input = "sun.inputs.v1";
@@ -147,7 +152,9 @@ std::string computeInputHash(const BuildInputs& inputs) {
   // Sorted, so the hash does not depend on manifest order
   std::vector<std::string> sources = inputs.sourceDigests;
   std::sort(sources.begin(), sources.end());
-  for (const auto& digest : sources) input += hashField("source", digest);
+  for (const auto& digest : sources) {
+    input += hashField("source", digest);
+  }
 
   std::vector<std::string> archiveLines;
   for (const auto& [name, digest] : inputs.archives) {
@@ -155,24 +162,30 @@ std::string computeInputHash(const BuildInputs& inputs) {
                            hashField("digest", digest));
   }
   std::sort(archiveLines.begin(), archiveLines.end());
-  for (const auto& line : archiveLines) input += hashField("archive", line);
+  for (const auto& line : archiveLines) {
+    input += hashField("archive", line);
+  }
 
   std::vector<std::unique_ptr<sun::moon_bundling::MoonReader>> readers;
   std::vector<sun::moon_bundling::MoonReader*> snapshots;
   for (const auto& import : inputs.moonImports) {
     auto reader = sun::moon_bundling::MoonReader::open(import.path);
-    if (!reader) fail("Cannot open imported moon: " + import.path);
+    if (!reader) {
+      fail("Cannot open imported moon: " + import.path);
+    }
     snapshots.push_back(reader.get());
     readers.push_back(std::move(reader));
   }
   checker.validateImports(snapshots, inputs.entrypoint);
   std::vector<std::string> dependencies;
-  for (size_t i = 0; i < inputs.moonImports.size(); ++i)
+  for (size_t i = 0; i < inputs.moonImports.size(); ++i) {
     dependencies.push_back(
         hashMoonImport(inputs.moonImports[i], *readers[i], checker));
+  }
   std::sort(dependencies.begin(), dependencies.end());
-  for (const auto& dependency : dependencies)
+  for (const auto& dependency : dependencies) {
     input += hashField("moon", dependency);
+  }
 
   input += hashField("target", inputs.targetTriple.empty()
                                    ? llvm::sys::getDefaultTargetTriple()

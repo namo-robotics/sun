@@ -93,7 +93,9 @@ SemanticContext::SemanticContext(
 }
 
 std::optional<Position> SemanticContext::currentLocation() const {
-  if (locationStack_.empty()) return std::nullopt;
+  if (locationStack_.empty()) {
+    return std::nullopt;
+  }
   return *locationStack_.back();
 }
 
@@ -146,9 +148,10 @@ void SemanticContext::enterScope(ScopeType type) {
 
 void SemanticContext::enterModuleScope(const std::string& moduleName) {
   enterScope(currentScope().declareModule(moduleName));
-  if (isLibraryScope(moduleName))
+  if (isLibraryScope(moduleName)) {
     static_cast<ModuleScope*>(currentScope_)->declarationId =
         results_->declarations.module(moduleName);
+  }
 }
 
 void SemanticContext::enterClassScope(const QualifiedName& className) {
@@ -185,8 +188,9 @@ void SemanticContext::enterFunctionScope(const std::string& funcSig,
 
   // Nested declarations inherit the source spelling; IDs distinguish overloads.
   funcScope->scopePath = funcName.scopePath;
-  if (!funcName.baseName.empty())
+  if (!funcName.baseName.empty()) {
     funcScope->scopePath.push_back(funcName.baseName);
+  }
 
   currentScope_->children.push_back(funcScope);
   currentScope_ = funcScope.get();
@@ -287,7 +291,9 @@ bool SemanticContext::isModuleName(const std::string& name) const {
 
 SemanticScope* SemanticContext::lookupModuleScope(
     const std::string& dotPath) const {
-  if (!currentScope_) return nullptr;
+  if (!currentScope_) {
+    return nullptr;
+  }
   return currentScope_->lookupModuleScope(dotPath);
 }
 
@@ -310,11 +316,14 @@ std::vector<UsingImport> SemanticContext::getActiveUsingImports() const {
 static std::vector<SemanticScope*> collectAllModuleScopes(
     const SemanticScope* startScope, const std::string& dotPath) {
   std::vector<SemanticScope*> results;
-  if (dotPath.empty() || !startScope) return results;
+  if (dotPath.empty() || !startScope) {
+    return results;
+  }
   bool pinned = dotPath.starts_with("$");
   if (pinned) {
-    if (auto* scope = startScope->lookupModuleScope(dotPath))
+    if (auto* scope = startScope->lookupModuleScope(dotPath)) {
       results.push_back(scope);
+    }
     return results;
   }
 
@@ -335,9 +344,13 @@ static std::vector<SemanticScope*> collectAllModuleScopes(
                            const std::string& segment,
                            std::vector<SemanticScope*>& out) {
         // Skip function signatures (segments with parentheses)
-        if (segment.find('(') != std::string::npos) return;
+        if (segment.find('(') != std::string::npos) {
+          return;
+        }
         // Prevent infinite recursion by tracking visited scopes
-        if (visitedScopes.count(&scope)) return;
+        if (visitedScopes.count(&scope)) {
+          return;
+        }
         visitedScopes.insert(&scope);
 
         // Direct child lookup
@@ -348,7 +361,9 @@ static std::vector<SemanticScope*> collectAllModuleScopes(
 
         // Search inside library/import scopes
         for (const auto& [modName, child] : scope.childModules) {
-          if (!child || !isLibraryScope(modName)) continue;
+          if (!child || !isLibraryScope(modName)) {
+            continue;
+          }
           auto childIt = child->childModules.find(segment);
           if (childIt != child->childModules.end()) {
             out.push_back(childIt->second.get());
@@ -398,8 +413,12 @@ static std::vector<SemanticScope*> collectAllModuleScopes(
       // statements) Compare the binding's source scope's scopeName against
       // path
       for (const auto& binding : s->importBindings) {
-        if (!s->admitsImport(binding.sourceFileId)) continue;
-        if (!binding.sourceScope || !binding.isWildcard) continue;
+        if (!s->admitsImport(binding.sourceFileId)) {
+          continue;
+        }
+        if (!binding.sourceScope || !binding.isWildcard) {
+          continue;
+        }
         // scopeName is the simple name like "std", not the full path with
         // import prefixes
         if (binding.sourceScope->scopeName == path) {
@@ -459,7 +478,9 @@ SymbolMatch SemanticContext::findSymbolInModule(
         match.modulePath = fullPath;
         match.libraryHash = libHash;
         match.classType = classIt->second;
-        if (!accessFilter.admit(classIt->second)) return std::nullopt;
+        if (!accessFilter.admit(classIt->second)) {
+          return std::nullopt;
+        }
         return match;
       }
     }
@@ -474,7 +495,9 @@ SymbolMatch SemanticContext::findSymbolInModule(
         match.modulePath = fullPath;
         match.libraryHash = libHash;
         match.genericClassInfo = &genClassIt->second;
-        if (!accessFilter.admit(&genClassIt->second)) return std::nullopt;
+        if (!accessFilter.admit(&genClassIt->second)) {
+          return std::nullopt;
+        }
         return match;
       }
     }
@@ -489,7 +512,9 @@ SymbolMatch SemanticContext::findSymbolInModule(
         match.modulePath = fullPath;
         match.libraryHash = libHash;
         match.interfaceType = ifaceIt->second;
-        if (!accessFilter.admit(ifaceIt->second)) return std::nullopt;
+        if (!accessFilter.admit(ifaceIt->second)) {
+          return std::nullopt;
+        }
         return match;
       }
     }
@@ -504,7 +529,9 @@ SymbolMatch SemanticContext::findSymbolInModule(
         match.modulePath = fullPath;
         match.libraryHash = libHash;
         match.genericInterfaceInfo = &genIfaceIt->second;
-        if (!accessFilter.admit(&genIfaceIt->second)) return std::nullopt;
+        if (!accessFilter.admit(&genIfaceIt->second)) {
+          return std::nullopt;
+        }
         return match;
       }
     }
@@ -519,7 +546,9 @@ SymbolMatch SemanticContext::findSymbolInModule(
         match.modulePath = fullPath;
         match.libraryHash = libHash;
         match.enumType = enumIt->second;
-        if (!accessFilter.admit(enumIt->second)) return std::nullopt;
+        if (!accessFilter.admit(enumIt->second)) {
+          return std::nullopt;
+        }
         return match;
       }
     }
@@ -534,11 +563,14 @@ SymbolMatch SemanticContext::findSymbolInModule(
           if (argTypes) {
             std::vector<FunctionArgumentType> lookupTypes;
             lookupTypes.reserve(argTypes->size());
-            for (const auto& type : *argTypes)
+            for (const auto& type : *argTypes) {
               lookupTypes.push_back({type, {}});
+            }
             auto resolved =
                 scope->lookupFunctionLocal(name, lookupTypes, &accessFilter);
-            if (!resolved) return std::nullopt;
+            if (!resolved) {
+              return std::nullopt;
+            }
             info = nullptr;
             for (const auto* candidate : *overloads) {
               if (candidate->declarationId == resolved->declarationId) {
@@ -546,7 +578,9 @@ SymbolMatch SemanticContext::findSymbolInModule(
                 break;
               }
             }
-            if (!info) return std::nullopt;
+            if (!info) {
+              return std::nullopt;
+            }
           }
           if (!argTypes) {
             // First accessible overload
@@ -557,7 +591,9 @@ SymbolMatch SemanticContext::findSymbolInModule(
                 break;
               }
             }
-            if (!info) return std::nullopt;
+            if (!info) {
+              return std::nullopt;
+            }
           }
           SymbolMatch match;
           match.kind = SymbolKind::Function;
@@ -580,7 +616,9 @@ SymbolMatch SemanticContext::findSymbolInModule(
         match.modulePath = fullPath;
         match.libraryHash = libHash;
         match.genericFunctionInfo = &genFuncIt->second;
-        if (!accessFilter.admit(&genFuncIt->second)) return std::nullopt;
+        if (!accessFilter.admit(&genFuncIt->second)) {
+          return std::nullopt;
+        }
         return match;
       }
     }
@@ -595,7 +633,9 @@ SymbolMatch SemanticContext::findSymbolInModule(
         match.modulePath = fullPath;
         match.libraryHash = libHash;
         match.variableInfo = &varIt->second;
-        if (!accessFilter.admit(&varIt->second)) return std::nullopt;
+        if (!accessFilter.admit(&varIt->second)) {
+          return std::nullopt;
+        }
         return match;
       }
     }
@@ -606,7 +646,9 @@ SymbolMatch SemanticContext::findSymbolInModule(
   // An exact module identity must never search other versions by visible name.
   if (modulePath.starts_with("$")) {
     if (auto* scope = lookupModuleScope(modulePath)) {
-      if (auto match = searchInScope(scope)) return *match;
+      if (auto match = searchInScope(scope)) {
+        return *match;
+      }
     }
     accessFilter.finish();
     return {};
@@ -648,7 +690,9 @@ SymbolMatch SemanticContext::findSymbolInModule(
   if (allMatches.size() > 1) {
     std::string paths;
     for (const auto& m : allMatches) {
-      if (!paths.empty()) paths += " or ";
+      if (!paths.empty()) {
+        paths += " or ";
+      }
       paths += sun::semantic_analysis::displayModulePath(m.modulePath);
     }
     logAndThrowError("Ambiguous reference to '" + visiblePath + "." + name +
@@ -682,8 +726,9 @@ TypePtr SemanticContext::getNarrowedType(const std::string& varName,
   // Search from innermost to outermost scope
   for (auto* s = currentScope_; s != nullptr; s = s->parent) {
     auto found = s->narrowedTypes.find(varName);
-    if (found != s->narrowedTypes.end())
+    if (found != s->narrowedTypes.end()) {
       return type_analysis::moreSpecificNarrowing(originalType, found->second);
+    }
   }
   return nullptr;
 }
@@ -715,7 +760,9 @@ std::optional<FunctionInfo> SemanticContext::lookupFunction(
 void SemanticContext::registerBuiltinFunctions() {
   for (const auto* proto : sun::codegen::intrinsics::intrinsicDeclarations()) {
     // Generic intrinsics retain their dedicated argument and result rules.
-    if (!proto->getTypeParameters().empty()) continue;
+    if (!proto->getTypeParameters().empty()) {
+      continue;
+    }
     std::vector<TypePtr> parameters;
     for (const auto& [name, annotation] : proto->getArgs()) {
       parameters.push_back(sun::codegen::intrinsics::intrinsicType(annotation));
@@ -741,8 +788,9 @@ VariableInfo* SemanticContext::lookupQualifiedVariable(
 // e.g., "b" -> "$hash$.b" if b is inside a library scope
 std::string SemanticContext::getFullModulePath(
     const std::string& visiblePath) const {
-  if (auto* scope = lookupModuleScope(visiblePath))
+  if (auto* scope = lookupModuleScope(visiblePath)) {
     return QualifiedName(scope->scopePath, "").scopePathString();
+  }
   return visiblePath;
 }
 
@@ -814,12 +862,21 @@ template <typename Info>
 const Info* findTemplate(
     const SemanticScopeBase& scope, DeclarationId id,
     std::map<std::string, Info> SemanticScopeBase::* members) {
-  for (const auto& [name, info] : scope.*members)
-    if (info.AST && info.AST->getDeclarationId() == id) return &info;
-  for (const auto& [name, child] : scope.childModules)
-    if (auto* info = findTemplate(*child, id, members)) return info;
-  for (const auto& child : scope.children)
-    if (auto* info = findTemplate(*child, id, members)) return info;
+  for (const auto& [name, info] : scope.*members) {
+    if (info.AST && info.AST->getDeclarationId() == id) {
+      return &info;
+    }
+  }
+  for (const auto& [name, child] : scope.childModules) {
+    if (auto* info = findTemplate(*child, id, members)) {
+      return info;
+    }
+  }
+  for (const auto& child : scope.children) {
+    if (auto* info = findTemplate(*child, id, members)) {
+      return info;
+    }
+  }
   return nullptr;
 }
 
@@ -882,14 +939,17 @@ std::shared_ptr<sun::types::EnumType> SemanticContext::lookupEnum(
 
 const GenericEnumInfo* SemanticContext::lookupGenericEnum(
     const std::string& name) const {
-  if (name == "_Result") return rootScope_->findGenericEnum("_Result");
+  if (name == "_Result") {
+    return rootScope_->findGenericEnum("_Result");
+  }
   return currentScope_->lookupGenericEnum(name);
 }
 
 DeclarationId SemanticContext::currentModuleId() const {
   for (auto* s = currentScope_; s != nullptr; s = s->parent) {
-    if (s->getType() == ScopeType::Module)
+    if (s->getType() == ScopeType::Module) {
       return static_cast<const ModuleScope*>(s)->declarationId;
+    }
   }
   return {};
 }
@@ -904,14 +964,18 @@ void SemanticContext::denyAccess(
 const sun::types::ClassField* SemanticContext::accessibleField(
     const ClassType& cls, const std::string& name, const Position& loc) const {
   const auto* f = cls.getField(name);
-  if (f) requireAccessible(fieldRef(cls, *f), loc);
+  if (f) {
+    requireAccessible(fieldRef(cls, *f), loc);
+  }
   return f;
 }
 
 const sun::types::ClassMethod* SemanticContext::accessibleMethod(
     const ClassType& cls, const std::string& name, const Position& loc) const {
   const auto* m = cls.getMethod(name);
-  if (m) requireAccessible(methodRef(cls, *m), loc);
+  if (m) {
+    requireAccessible(methodRef(cls, *m), loc);
+  }
   return m;
 }
 
@@ -919,7 +983,9 @@ const sun::types::ClassMethod* SemanticContext::accessibleMethodForArgs(
     const ClassType& cls, const std::string& name,
     const std::vector<TypePtr>& argTypes, const Position& loc) const {
   const auto* m = cls.getMethodForArgs(name, argTypes);
-  if (m) requireAccessible(methodRef(cls, *m), loc);
+  if (m) {
+    requireAccessible(methodRef(cls, *m), loc);
+  }
   return m;
 }
 
@@ -927,7 +993,9 @@ const sun::types::InterfaceField* SemanticContext::accessibleField(
     const InterfaceType& iface, const std::string& name,
     const Position& loc) const {
   const auto* f = iface.getField(name);
-  if (f) requireAccessible(fieldRef(iface, *f), loc);
+  if (f) {
+    requireAccessible(fieldRef(iface, *f), loc);
+  }
   return f;
 }
 
@@ -935,7 +1003,9 @@ const sun::types::InterfaceMethod* SemanticContext::accessibleMethod(
     const InterfaceType& iface, const std::string& name,
     const Position& loc) const {
   const auto* m = iface.getMethod(name);
-  if (m) requireAccessible(methodRef(iface, *m), loc);
+  if (m) {
+    requireAccessible(methodRef(iface, *m), loc);
+  }
   return m;
 }
 
@@ -943,33 +1013,44 @@ void SemanticContext::requireModuleAccessible(
     const SemanticScopeBase& moduleScope, const Position& loc) const {
   for (auto* s = &moduleScope; s && s->getType() == ScopeType::Module;
        s = s->parent) {
-    if (isLibraryScope(s->scopeName))
+    if (isLibraryScope(s->scopeName)) {
       continue;  // bundle boundary, not a module
+    }
     requireAccessible(moduleRef(static_cast<const ModuleScope&>(*s)), loc);
   }
 }
 
 SemanticScopeBase* SemanticContext::lookupModuleScope(DeclarationId id) const {
-  if (!id)
+  if (!id) {
     logAndThrowError(
         "Imported module identity is missing; import the required exact "
         "bundle");
-  if (results_->declarations.get(id).kind != DeclarationKind::Module)
+  }
+  if (results_->declarations.get(id).kind != DeclarationKind::Module) {
     logAndThrowError(
         "Imported module reference has the wrong declaration kind");
+  }
   auto find = [&](auto&& self, SemanticScopeBase* scope) -> SemanticScopeBase* {
     if (auto* module = dynamic_cast<ModuleScope*>(scope);
-        module && module->declarationId == id)
+        module && module->declarationId == id) {
       return module;
-    for (auto& [name, child] : scope->childModules)
-      if (auto* found = self(self, child.get())) return found;
-    for (auto& child : scope->children)
-      if (auto* found = self(self, child.get())) return found;
+    }
+    for (auto& [name, child] : scope->childModules) {
+      if (auto* found = self(self, child.get())) {
+        return found;
+      }
+    }
+    for (auto& child : scope->children) {
+      if (auto* found = self(self, child.get())) {
+        return found;
+      }
+    }
     return nullptr;
   };
   auto* result = find(find, rootScope_.get());
-  if (!result)
+  if (!result) {
     logAndThrowError("Imported module declaration has no registered scope");
+  }
   return result;
 }
 
@@ -989,13 +1070,19 @@ DeclarationId SemanticContext::requireDeclaration(
                                              : sun::types::Type::Kind::Void;
     wrongKind = actual == sun::types::Type::Kind::Void ||
                 (expectedKind && actual != *expectedKind);
-    if (!wrongKind) return id;
+    if (!wrongKind) {
+      return id;
+    }
   }
   std::string message = "moon exact dependency: ";
-  if (!exporter.empty()) message += "library '" + exporter + "' ";
+  if (!exporter.empty()) {
+    message += "library '" + exporter + "' ";
+  }
   message += "requires declaration '" + displayName + "' with identity " +
              key.encoding();
-  if (wrongKind) message += " (declaration has the wrong type kind)";
+  if (wrongKind) {
+    message += " (declaration has the wrong type kind)";
+  }
   if (!id) {
     const auto& table = results_->declarations;
     for (uint64_t i = 1; i <= table.size(); ++i) {

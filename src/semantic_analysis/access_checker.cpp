@@ -22,9 +22,10 @@ ModulePath ownerPath(const ItemRef& item, const DeclarationTable& table) {
   for (auto module = ownerModule(item, table); module;
        module = table.get(module).owner) {
     const auto& record = table.get(module);
-    if (record.kind != DeclarationKind::Module)
+    if (record.kind != DeclarationKind::Module) {
       sun::support::logAndThrowError(
           "Visibility ownership must refer to a module");
+    }
     path.insert(path.begin(), record.name);
   }
   return path;
@@ -44,7 +45,9 @@ std::string describeOwner(const ItemRef& item, const DeclarationTable& table) {
   } else {
     modulePart = "the top-level scope";
   }
-  if (item.ownerTypeName.empty()) return modulePart;
+  if (item.ownerTypeName.empty()) {
+    return modulePart;
+  }
   return item.ownerTypeName + " in " + modulePart;
 }
 
@@ -62,11 +65,17 @@ std::string denialMessage(const ItemRef& item, const DeclarationTable& table) {
  * declaration. */
 bool isAccessible(DeclarationId from, const ItemRef& item,
                   const DeclarationTable& table) {
-  if (item.visibility == Visibility::Public) return true;
+  if (item.visibility == Visibility::Public) {
+    return true;
+  }
   auto owner = ownerModule(item, table);
-  if (!owner) return true;
+  if (!owner) {
+    return true;
+  }
   for (auto module = from; module; module = table.get(module).owner) {
-    if (module == owner) return true;
+    if (module == owner) {
+      return true;
+    }
   }
   return false;
 }
@@ -82,7 +91,9 @@ void denyAccess(const ItemRef& item, const sun::support::Position& loc,
 void requireAccessible(DeclarationId from, const ItemRef& item,
                        const sun::support::Position& loc,
                        const DeclarationTable& table) {
-  if (!isAccessible(from, item, table)) denyAccess(item, loc, table);
+  if (!isAccessible(from, item, table)) {
+    denyAccess(item, loc, table);
+  }
 }
 
 }  // namespace sun::semantic_analysis
@@ -107,9 +118,13 @@ namespace {
 std::string cleanTypeName(std::string name) {
   while (!name.empty() && name.front() == '$') {
     size_t close = name.find('$', 1);
-    if (close == std::string::npos) break;
+    if (close == std::string::npos) {
+      break;
+    }
     size_t cut = close + 1;
-    if (cut < name.size() && (name[cut] == '.' || name[cut] == '_')) ++cut;
+    if (cut < name.size() && (name[cut] == '.' || name[cut] == '_')) {
+      ++cut;
+    }
     name.erase(0, cut);
   }
   return name;
@@ -123,7 +138,9 @@ std::string cleanTypeName(std::string name) {
  */
 Visibility methodVisibility(const sun::ast::FunctionAST& method) {
   const std::string& name = method.getProto().getName();
-  if (name == "init" || name == "deinit") return Visibility::Public;
+  if (name == "init" || name == "deinit") {
+    return Visibility::Public;
+  }
   return method.getVisibility();
 }
 

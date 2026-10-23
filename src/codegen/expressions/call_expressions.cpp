@@ -31,7 +31,9 @@ namespace sun::codegen {
 // -------------------------------------------------------------------
 
 Value* CodegenVisitor::applyMoveSemantics(Value* argVal, TypePtr argSunType) {
-  if (!argSunType || !argVal->getType()->isPointerTy()) return argVal;
+  if (!argSunType || !argVal->getType()->isPointerTy()) {
+    return argVal;
+  }
 
   // Transfer ownership away from the source. Callers using raw storage must
   // also exclude the extracted slot from future cleanup.
@@ -56,7 +58,9 @@ Value* CodegenVisitor::applyMoveSemantics(Value* argVal, TypePtr argSunType) {
   if (auto* arrayType =
           sun::codegen::support::tryGetType<sun::types::ArrayType>(
               argSunType)) {
-    if (arrayType->isUnsized()) return argVal;
+    if (arrayType->isUnsized()) {
+      return argVal;
+    }
     llvm::Type* storageType = arrayType->getDataStorageType(ctx.getContext());
     Value* storageVal =
         ctx.builder->CreateLoad(storageType, argVal, "move.array");
@@ -71,7 +75,9 @@ Value* CodegenVisitor::applyMoveSemantics(Value* argVal, TypePtr argSunType) {
 
   // Only apply move semantics to class types that are pointers (addressable)
   auto* classType = sun::codegen::support::tryGetType<ClassType>(argSunType);
-  if (!classType) return argVal;
+  if (!classType) {
+    return argVal;
+  }
 
   llvm::StructType* structType = classType->getStructType(ctx.getContext());
 
@@ -103,9 +109,15 @@ Value* CodegenVisitor::applyMoveSemantics(Value* argVal, TypePtr argSunType) {
 Value* CodegenVisitor::loadClosureForLambdaParam(Value* argVal,
                                                  TypePtr paramType,
                                                  llvm::Type* expectedTy) {
-  if (!paramType || !paramType->isLambda() || !argVal) return argVal;
-  if (!expectedTy || !expectedTy->isStructTy()) return argVal;
-  if (argVal->getType() == expectedTy) return argVal;
+  if (!paramType || !paramType->isLambda() || !argVal) {
+    return argVal;
+  }
+  if (!expectedTy || !expectedTy->isStructTy()) {
+    return argVal;
+  }
+  if (argVal->getType() == expectedTy) {
+    return argVal;
+  }
 
   // Lambda literal: alloca holding the closure - load with the callee's type
   if (argVal->getType()->isPointerTy()) {
@@ -166,8 +178,12 @@ Value* CodegenVisitor::materializeMethodClosureValue(Value* fnPtr,
 // an expression's value is actually consumed. Compound referents (classes,
 // payload enums) flow as pointers everywhere, so nothing to do for them.
 Value* CodegenVisitor::loadIfRef(Value* value, const TypePtr& type) {
-  if (!value || !type || !type->isReference()) return value;
-  if (!value->getType()->isPointerTy()) return value;  // already a value
+  if (!value || !type || !type->isReference()) {
+    return value;
+  }
+  if (!value->getType()->isPointerTy()) {
+    return value;  // already a value
+  }
   const TypePtr& referenced =
       static_cast<const ReferenceType&>(*type).getReferencedType();
   // Compound referents (classes, payload enums) and interface fat pointers are
@@ -179,7 +195,9 @@ Value* CodegenVisitor::loadIfRef(Value* value, const TypePtr& type) {
     return value;
   }
   llvm::Type* valueTy = typeResolver.resolve(referenced);
-  if (!valueTy) return value;
+  if (!valueTy) {
+    return value;
+  }
   return ctx.builder->CreateLoad(valueTy, value, "ref.deref");
 }
 
@@ -202,7 +220,9 @@ Value* CodegenVisitor::widenNumericIfNeeded(Value* argVal,
 Value* CodegenVisitor::coerceStaticPtrToRawPtr(Value* argVal,
                                                const TypePtr& argSunType,
                                                const TypePtr& paramType) {
-  if (!argVal || !argSunType || !paramType) return argVal;
+  if (!argVal || !argSunType || !paramType) {
+    return argVal;
+  }
   if (!argSunType->isStaticPointer() || !paramType->isRawPointer()) {
     return argVal;
   }
@@ -235,7 +255,9 @@ Value* CodegenVisitor::emitMarshalledExternCall(
     const CallExprAST& expr, const std::vector<TypePtr>& paramTypes,
     Function* func) {
   std::vector<sun::codegen::abi::PreparedArg> preparedArgs;
-  if (!emitExternArguments(expr, paramTypes, preparedArgs)) return nullptr;
+  if (!emitExternArguments(expr, paramTypes, preparedArgs)) {
+    return nullptr;
+  }
   return externC.emitCall(
       func, preparedArgs,
       [&](llvm::FunctionType* fnTy, Value* callee,
@@ -247,7 +269,9 @@ Value* CodegenVisitor::emitMarshalledExternCall(
 }
 
 Value* CodegenVisitor::materializeStructReturn(Value* callResult) {
-  if (!callResult) return callResult;
+  if (!callResult) {
+    return callResult;
+  }
 
   // A sized array comes back as its inline storage by value; give it a
   // home on this frame so it can be indexed, moved and dropped by address
@@ -271,7 +295,9 @@ Value* CodegenVisitor::materializeStructReturn(Value* callResult) {
     StringRef name = structType->getName();
     for (const auto& info : sun::semantic_analysis::All) {
       if (name == info.name) {
-        if (name == sun::semantic_analysis::InterfaceFat) break;
+        if (name == sun::semantic_analysis::InterfaceFat) {
+          break;
+        }
         return callResult;
       }
     }
@@ -306,7 +332,9 @@ Value* CodegenVisitor::prepareRefArgument(const ExprAST* argExpr,
   if (argSunType && argSunType->isReference() &&
       argExpr->getType() != sun::ast::ASTNodeType::VARIABLE_REFERENCE) {
     Value* argVal = codegen(*argExpr);
-    if (argVal && argVal->getType()->isPointerTy()) return argVal;
+    if (argVal && argVal->getType()->isPointerTy()) {
+      return argVal;
+    }
   }
 
   // Addressable lvalues (variables, fields, array elements, this): pass the
@@ -327,8 +355,12 @@ Value* CodegenVisitor::prepareRefArgument(const ExprAST* argExpr,
   // storage of its own: its address is the argument
   if (argSunType && argSunType->isArray()) {
     Value* argVal = codegen(*argExpr);
-    if (!argVal) return nullptr;
-    if (argVal->getType()->isPointerTy()) return argVal;
+    if (!argVal) {
+      return nullptr;
+    }
+    if (argVal->getType()->isPointerTy()) {
+      return argVal;
+    }
     AllocaInst* tempAlloca =
         ctx.builder->CreateAlloca(argVal->getType(), nullptr, "arr.temp");
     ctx.builder->CreateStore(argVal, tempAlloca);
@@ -339,7 +371,9 @@ Value* CodegenVisitor::prepareRefArgument(const ExprAST* argExpr,
   // method receiver shape): fall back to the value, spilling if needed
   if (dynamic_cast<const MemberAccessAST*>(argExpr)) {
     Value* val = codegen(*argExpr);
-    if (!val) return nullptr;
+    if (!val) {
+      return nullptr;
+    }
     if (val->getType()->isPointerTy()) {
       return val;
     }
@@ -357,7 +391,9 @@ Value* CodegenVisitor::prepareRefArgument(const ExprAST* argExpr,
     if (classType) {
       // Generate the temporary value
       Value* tempVal = codegen(*argExpr);
-      if (!tempVal) return nullptr;
+      if (!tempVal) {
+        return nullptr;
+      }
 
       // If codegen returned a pointer, it's already an alloca - use it
       // directly. The original temporary is already tracked for deinit, no need
@@ -387,7 +423,9 @@ Value* CodegenVisitor::prepareRefArgument(const ExprAST* argExpr,
   // Other temporary expressions - create alloca for the value
   if (argExpr->isTemporary()) {
     Value* tempVal = codegen(*argExpr);
-    if (!tempVal) return nullptr;
+    if (!tempVal) {
+      return nullptr;
+    }
 
     AllocaInst* tempAlloca =
         ctx.builder->CreateAlloca(tempVal->getType(), nullptr, "ref.temp");
@@ -426,14 +464,18 @@ Value* CodegenVisitor::codegenBuiltinTypeMethod(const CallExprAST& expr,
                                                 Value* objectPtr,
                                                 TypePtr objectType,
                                                 const std::string& methodName) {
-  if (!objectType) return nullptr;
+  if (!objectType) {
+    return nullptr;
+  }
 
   // A ref static_ptr<T> receiver was loaded by codegen(); treat it as the
   // fat pointer value.
   if (auto* refType =
           sun::codegen::support::tryGetType<ReferenceType>(objectType)) {
     TypePtr inner = refType->getReferencedType();
-    if (inner && inner->isStaticPointer()) objectType = inner;
+    if (inner && inner->isStaticPointer()) {
+      objectType = inner;
+    }
   }
 
   // static_ptr<T>.length() -> i64, static_ptr<T>.raw() -> raw_ptr<T>.
@@ -442,7 +484,9 @@ Value* CodegenVisitor::codegenBuiltinTypeMethod(const CallExprAST& expr,
           sun::codegen::support::tryGetType<sun::types::StaticPointerType>(
               objectType)) {
     TypePtr pointeeType = staticPtr->getPointeeType();
-    if (pointeeType && pointeeType->isClass()) return nullptr;
+    if (pointeeType && pointeeType->isClass()) {
+      return nullptr;
+    }
 
     if (methodName == "length" || methodName == "raw") {
       if (!expr.getArgs().empty()) {
@@ -574,8 +618,9 @@ Value* CodegenVisitor::codegenInterfaceMethodCall(
 Value* CodegenVisitor::codegenClassMethodCall(
     const CallExprAST& expr, Value* objectPtr, const std::string& methodName,
     const MemberAccessAST* memberAccess) {
-  if (!memberAccess)
+  if (!memberAccess) {
     logAndThrowError("Internal error: method call without member access AST");
+  }
   const auto& signature =
       sun::codegen::support::requireType<sun::types::FunctionType>(
           *memberAccess, "method '" + methodName + "'");
@@ -775,9 +820,10 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
       ctx.builder->CreateStore(value, payload);
       ctx.builder->CreateBr(done);
       ctx.builder->SetInsertPoint(done);
-      if (!expr.isMoved())
+      if (!expr.isMoved()) {
         scopes.trackClassAllocation(storage, "arithmetic.result",
                                     expr.getResolvedType());
+      }
       return storage;
     }
 
@@ -888,7 +934,9 @@ bool CodegenVisitor::emitCallArguments(
       case ArgConversion::ArrayToView: {
         // The argument's storage, seen with its rank erased
         Value* storage = codegen(*argExpr);
-        if (!storage) return false;
+        if (!storage) {
+          return false;
+        }
         auto* sized = sun::codegen::support::tryGetType<sun::types::ArrayType>(
             sun::types::unwrapRef(argSunType));
         if (!storage->getType()->isPointerTy()) {
@@ -909,7 +957,9 @@ bool CodegenVisitor::emitCallArguments(
 
       case ArgConversion::ClassToRefInterface: {
         Value* classPtr = prepareRefArgument(argExpr, argSunType);
-        if (!classPtr) return false;
+        if (!classPtr) {
+          return false;
+        }
         argVal = classes.prepareClassForRefInterface(
             classPtr, sun::types::unwrapRef(argSunType), paramType);
         break;
@@ -917,14 +967,18 @@ bool CodegenVisitor::emitCallArguments(
 
       case ArgConversion::InterfaceRefUpcast:
         argVal = prepareRefArgument(argExpr, argSunType);
-        if (!argVal) return false;
+        if (!argVal) {
+          return false;
+        }
         argVal = classes.createBorrowedInterfaceUpcast(argVal, argSunType,
                                                        paramType);
         break;
 
       case ArgConversion::Move:
         argVal = codegen(*argExpr);
-        if (!argVal) return false;
+        if (!argVal) {
+          return false;
+        }
         argVal = applyMoveSemantics(argVal, argSunType);
         if (i + 1 < args.size() && sun::types::typeNeedsDrop(argSunType)) {
           auto* storage =
@@ -938,32 +992,42 @@ bool CodegenVisitor::emitCallArguments(
 
       case ArgConversion::WidenNumeric:
         argVal = codegen(*argExpr);
-        if (!argVal) return false;
+        if (!argVal) {
+          return false;
+        }
         argVal = widenNumericIfNeeded(argVal, paramType, argSunType);
         break;
 
       case ArgConversion::StaticToRawPtr:
         argVal = codegen(*argExpr);
-        if (!argVal) return false;
+        if (!argVal) {
+          return false;
+        }
         argVal = coerceStaticPtrToRawPtr(argVal, argSunType, paramType);
         break;
 
       case ArgConversion::DerefRawPtr:
         argVal = codegen(*argExpr);
-        if (!argVal) return false;
+        if (!argVal) {
+          return false;
+        }
         argVal = ctx.builder->CreateLoad(typeResolver.resolve(paramType),
                                          argVal, "auto_deref_arg");
         break;
 
       case ArgConversion::CVararg:
         argVal = codegen(*argExpr);
-        if (!argVal) return false;
+        if (!argVal) {
+          return false;
+        }
         argVal = externC.promoteVararg(argVal, argSunType);
         break;
 
       case ArgConversion::PassValue: {
         argVal = codegen(*argExpr);
-        if (!argVal) return false;
+        if (!argVal) {
+          return false;
+        }
         TypePtr valueType = sun::types::unwrapRef(argSunType);
         // Representation only: an interface value is carried as the address
         // of its fat pointer, a lambda literal as the address of its closure;
@@ -990,12 +1054,15 @@ bool CodegenVisitor::emitCallArguments(
       }
     }
 
-    if (!argVal) return false;
+    if (!argVal) {
+      return false;
+    }
     argValues.push_back(argVal);
   }
   // All arguments exist now; the callee takes ownership when the call starts.
-  for (const auto& [storage, type] : pendingOwners)
+  for (const auto& [storage, type] : pendingOwners) {
     scopes.markClassAllocationAsDeinited(storage, type);
+  }
   return true;
 }
 
@@ -1033,8 +1100,9 @@ bool CodegenVisitor::emitExternArguments(
         break;
       case ArgConversion::WidenNumeric:
         argVal = codegen(*argExpr);
-        if (argVal)
+        if (argVal) {
           argVal = widenNumericIfNeeded(argVal, paramType, argSunType);
+        }
         break;
       case ArgConversion::StaticToRawPtr:
         argVal = codegen(*argExpr);
@@ -1046,7 +1114,9 @@ bool CodegenVisitor::emitExternArguments(
         argVal = codegen(*argExpr);
         break;
     }
-    if (!argVal) return false;
+    if (!argVal) {
+      return false;
+    }
 
     out.push_back({argVal, argSunType, paramType});
   }
@@ -1156,7 +1226,9 @@ Value* CodegenVisitor::codegenLambdaCall(
   // If we couldn't get a direct pointer, fall back to loading and storing
   if (!closurePtr) {
     Value* fatPtrVal = codegen(*expr.getCallee());
-    if (!fatPtrVal) return nullptr;
+    if (!fatPtrVal) {
+      return nullptr;
+    }
 
     // Create a temporary alloca to hold the closure struct
     Function* currentFunc = ctx.builder->GetInsertBlock()->getParent();

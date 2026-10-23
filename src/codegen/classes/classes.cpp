@@ -56,7 +56,9 @@ Value* ClassGenerator::codegenPrecompiledClass(const ClassDefinitionAST& expr) {
         // Generate any pre-computed specializations from semantic analysis
         for (const auto& [instanceId, specializedAST] :
              methodFunc.getSpecializations()) {
-          if (!specializedAST) continue;
+          if (!specializedAST) {
+            continue;
+          }
           declareMethodFromAST(*specializedAST);
           generateMethodBody(*specializedAST);
         }
@@ -71,7 +73,9 @@ Value* ClassGenerator::codegenPrecompiledClass(const ClassDefinitionAST& expr) {
     // Others may be user specializations (e.g., Vec<MyUserClass>) - codegen
     // those.
     for (const auto& [instanceId, specializedAST] : expr.getSpecializations()) {
-      if (!specializedAST) continue;
+      if (!specializedAST) {
+        continue;
+      }
       if (codegenedClasses.count(instanceId)) {
         continue;
       }
@@ -99,7 +103,9 @@ Value* ClassGenerator::codegenPrecompiledClass(const ClassDefinitionAST& expr) {
 void ClassGenerator::declareClassMethods(
     const ClassDefinitionAST& expr,
     const std::shared_ptr<ClassType>& classType) {
-  if (!classType) return;
+  if (!classType) {
+    return;
+  }
 
   for (const auto& methodDecl : expr.getMethods()) {
     const FunctionAST& methodFunc = *methodDecl.function;
@@ -110,7 +116,9 @@ void ClassGenerator::declareClassMethods(
     if (proto.isGeneric()) {
       for (const auto& [instanceId, specializedAST] :
            methodFunc.getSpecializations()) {
-        if (!specializedAST) continue;
+        if (!specializedAST) {
+          continue;
+        }
         declareMethodFromAST(*specializedAST);
       }
       continue;
@@ -119,14 +127,17 @@ void ClassGenerator::declareClassMethods(
     declareMethodFromAST(methodFunc);
   }
   for (const auto& method : classType->getMethods()) {
-    if (!method.defaultImplementation || method.isGeneric()) continue;
+    if (!method.defaultImplementation || method.isGeneric()) {
+      continue;
+    }
     const auto symbol = state_.declarationSymbol(method.declarationId);
     auto* function = module->getFunction(symbol);
     if (!function) {
       std::vector<llvm::Type*> parameters{
           PointerType::getUnqual(ctx.getContext())};
-      for (const auto& parameter : method.paramTypes)
+      for (const auto& parameter : method.paramTypes) {
         parameters.push_back(typeResolver.resolve(parameter));
+      }
       auto* signature = llvm::FunctionType::get(
           typeResolver.resolveForReturn(method.returnType), parameters, false);
       function = Function::Create(signature, Function::ExternalLinkage, symbol,
@@ -140,16 +151,21 @@ void ClassGenerator::declareClassMethods(
 // emitted, so a method may call one of a class declared further down the file
 // (the same courtesy the function pre-pass extends to free functions).
 void ClassGenerator::declareBlockClassMethods(const ClassDefinitionAST& expr) {
-  if (expr.isPartial()) return;
+  if (expr.isPartial()) {
+    return;
+  }
 
   // Imported templates can acquire new specializations in this consumer.
   // Their callers need declarations before any library body is emitted.
   if (expr.isGeneric()) {
     for (const auto& [instanceId, specializedAST] : expr.getSpecializations()) {
-      if (!specializedAST) continue;
-      if (sun::semantic_analysis::type_analysis::mentionsTypeParameter(
-              typeRegistry->getClass(instanceId)))
+      if (!specializedAST) {
         continue;
+      }
+      if (sun::semantic_analysis::type_analysis::mentionsTypeParameter(
+              typeRegistry->getClass(instanceId))) {
+        continue;
+      }
       declareBlockClassMethods(*specializedAST);
     }
     return;
@@ -180,16 +196,21 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
     // This mirrors how generic functions work - specializations are
     // pre-computed and stored on the AST
     for (const auto& [instanceId, specializedAST] : expr.getSpecializations()) {
-      if (!specializedAST) continue;
+      if (!specializedAST) {
+        continue;
+      }
       // Check if already codegenned (not just type-registered)
-      if (!specializedAST || codegenedClasses.count(instanceId)) continue;
+      if (!specializedAST || codegenedClasses.count(instanceId)) {
+        continue;
+      }
       // Resolving a template's own signature instantiates the shape it names
       // — `ref Pair<T>` in `unwrap<T>` yields Pair<T>, whose T is still a
       // type parameter. That shape has no layout to emit; the class the code
       // actually uses is instantiated when unwrap<i32> is.
       if (sun::semantic_analysis::type_analysis::mentionsTypeParameter(
-              typeRegistry->getClass(instanceId)))
+              typeRegistry->getClass(instanceId))) {
         continue;
+      }
       codegen(*specializedAST);
     }
 
@@ -239,7 +260,9 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
     if (proto.isGeneric()) {
       for (const auto& [instanceId, specializedAST] :
            methodFunc.getSpecializations()) {
-        if (!specializedAST) continue;
+        if (!specializedAST) {
+          continue;
+        }
         const auto specSymbol =
             state_.declarationSymbol(specializedAST->getDeclarationId());
         if (specializedAST) {
@@ -263,9 +286,13 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
 
   // Each inherited default has a class-owned wrapper with its own identity.
   for (const auto& method : classType->getMethods()) {
-    if (!method.defaultImplementation || method.isGeneric()) continue;
+    if (!method.defaultImplementation || method.isGeneric()) {
+      continue;
+    }
     Function* func = functions().lookupFunctionById(method.declarationId);
-    if (!func->empty()) continue;
+    if (!func->empty()) {
+      continue;
+    }
     Function* defaultFunc =
         functions().lookupFunctionById(method.defaultImplementation);
     llvm::Type* returnType = func->getReturnType();
@@ -311,7 +338,9 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
     // Iterate all specializations stored on this generic method's AST
     for (const auto& [instanceId, specializedAST] :
          methodFunc.getSpecializations()) {
-      if (!specializedAST) continue;
+      if (!specializedAST) {
+        continue;
+      }
 
       // Declare if not already declared, then generate body
       declareMethodFromAST(*specializedAST);
@@ -440,13 +469,16 @@ void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc) {
   Function* func = functions().lookupFunctionById(proto.getDeclarationId());
 
   // Skip if the function already has a body
-  if (!func->empty()) return;
+  if (!func->empty()) {
+    return;
+  }
 
   // Get return type
   llvm::Type* returnType = func->getReturnType();
   if (proto.getName() == "init" && proto.getResolvedReturnType() &&
-      proto.getResolvedReturnType()->isEnum())
+      proto.getResolvedReturnType()->isEnum()) {
     func->addFnAttr("sun.fallible_init");
+  }
 
   // Check if this method can return errors (declared with 'throws IError')
   bool canError = proto.hasReturnType() && proto.getReturnType()->canError;
@@ -512,7 +544,9 @@ void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc) {
 
   if (func->hasFnAttribute("sun.fallible_init")) {
     for (const auto& field : currentClass->getFields()) {
-      if (!sun::types::typeNeedsDrop(field.type)) continue;
+      if (!sun::types::typeNeedsDrop(field.type)) {
+        continue;
+      }
       auto* address = sun::codegen::support::fieldPtr(
           *ctx.builder, currentClass.get(), thisPtr, field,
           field.name + ".partial");
@@ -589,7 +623,9 @@ Value* ClassGenerator::codegen(const sun::ast::ThisExprAST& expr) {
 GlobalVariable* ClassGenerator::moduleMemberGlobal(
     const ExprAST& object, sun::semantic_analysis::DeclarationId id) {
   TypePtr objectType = object.getResolvedType();
-  if (!objectType || !objectType->isModule()) return nullptr;
+  if (!objectType || !objectType->isModule()) {
+    return nullptr;
+  }
   return gen_.variableGenerator().findGlobal(id);
 }
 
@@ -639,8 +675,9 @@ Value* ClassGenerator::codegen(const sun::ast::MemberAccessAST& expr) {
   if (auto enumType =
           sun::codegen::support::tryGetTypePtr<sun::types::EnumType>(
               *expr.getObject())) {
-    if (const auto* variant = enumType->getVariant(memberName))
+    if (const auto* variant = enumType->getVariant(memberName)) {
       return gen_.enumGenerator().codegenVariantAccess(*enumType, *variant);
+    }
   }
 
   // Refresh objectType in case it was not set from module handling above
@@ -650,7 +687,9 @@ Value* ClassGenerator::codegen(const sun::ast::MemberAccessAST& expr) {
 
   // Resolve the object down to (pointer, class type)
   auto [objectPtr, classType] = codegenObjectPtr(*expr.getObject());
-  if (!objectPtr) return nullptr;
+  if (!objectPtr) {
+    return nullptr;
+  }
   if (!classType) {
     logAndThrowError("Member access on non-class type");
     return nullptr;
@@ -688,9 +727,10 @@ Value* ClassGenerator::codegen(const sun::ast::MemberAccessAST& expr) {
     return codegenBoundMethodReference(expr, objectPtr);
   }
 
-  if (!expr.getResolvedType() || !expr.getResolvedType()->isCallable())
+  if (!expr.getResolvedType() || !expr.getResolvedType()->isCallable()) {
     logAndThrowError("Field access has no registered target",
                      expr.getLocation());
+  }
 
   // Calls consume the selected method separately from its receiver.
   return objectPtr;
@@ -756,10 +796,11 @@ Value* ClassGenerator::codegenStackClassInstance(
         (ctor && ctor->canThrow) || ctorFunc->hasFnAttribute("sun.canthrow");
     auto* status = gen_.errorGenerator().emitPossiblyThrowingCall(
         ctorFunc, ctorArgs, ctorCanThrow, "");
-    if (ctor->returnType->isEnum())
+    if (ctor->returnType->isEnum()) {
       return finishFallibleConstruction(
           expr, classType, alloca, status,
           *static_cast<sun::types::EnumType*>(ctor->returnType.get()));
+    }
   }
 
   // Track the temporary for deinit ONLY if not moved (ownership
@@ -845,9 +886,10 @@ Value* ClassGenerator::finishFallibleConstruction(
   ctx.builder->SetInsertPoint(invalid);
   ctx.builder->CreateUnreachable();
   ctx.builder->SetInsertPoint(done);
-  if (!expr.isMoved())
+  if (!expr.isMoved()) {
     scopes().trackClassAllocation(result, "construction.result",
                                   expr.getResolvedType());
+  }
   return result;
 }
 
@@ -880,7 +922,9 @@ Value* ClassGenerator::codegen(const sun::ast::MemberAssignmentAST& expr) {
   if (GlobalVariable* gv = moduleMemberGlobal(*expr.getObject(),
                                               expr.getTargetDeclarationId())) {
     Value* value = codegen(*expr.getValue());
-    if (!value) return nullptr;
+    if (!value) {
+      return nullptr;
+    }
     assignToVariableSlot(
         gv, value, sun::types::unwrapRef(expr.getValue()->getResolvedType()),
         expr.getMemberName());
@@ -890,7 +934,9 @@ Value* ClassGenerator::codegen(const sun::ast::MemberAssignmentAST& expr) {
   // Resolve the object down to (pointer, class type); the shared helper also
   // unwraps ref-to-class objects, which this path previously rejected
   auto [objectPtr, classType] = codegenObjectPtr(*expr.getObject());
-  if (!objectPtr) return nullptr;
+  if (!objectPtr) {
+    return nullptr;
+  }
   if (!classType) {
     logAndThrowError("Member assignment on non-class type");
     return nullptr;
@@ -907,7 +953,9 @@ Value* ClassGenerator::codegen(const sun::ast::MemberAssignmentAST& expr) {
 
   // Generate the value to assign
   Value* value = codegen(*expr.getValue());
-  if (!value) return nullptr;
+  if (!value) {
+    return nullptr;
+  }
 
   // Get expected field type
   llvm::Type* fieldLLVMType = field->type->toLLVMType(ctx.getContext());
@@ -1127,8 +1175,9 @@ Value* ClassGenerator::codegen(const sun::ast::GenericCallAST& expr) {
       return nullptr;
     }
     auto calleeType = expr.getResolvedCalleeType();
-    if (!calleeType || !calleeType->isFunction())
+    if (!calleeType || !calleeType->isFunction()) {
       logAndThrowError("Generic call has no resolved callable signature");
+    }
     const auto& signature =
         static_cast<const sun::types::FunctionType&>(*calleeType);
     Function* specializedFunc =
@@ -1169,7 +1218,9 @@ Value* ClassGenerator::codegen(const sun::ast::GenericCallAST& expr) {
   if (constructedType && constructedType->isEnum()) {
     const auto& arguments =
         static_cast<sun::types::EnumType&>(*constructedType).getGenericArgs();
-    if (!arguments.empty()) constructedType = arguments.front();
+    if (!arguments.empty()) {
+      constructedType = arguments.front();
+    }
   }
   if (auto* resolvedClass =
           sun::codegen::support::tryGetType<ClassType>(constructedType)) {
@@ -1214,10 +1265,11 @@ Value* ClassGenerator::codegen(const sun::ast::GenericCallAST& expr) {
           (ctor && ctor->canThrow) || ctorFunc->hasFnAttribute("sun.canthrow");
       auto* status = gen_.errorGenerator().emitPossiblyThrowingCall(
           ctorFunc, ctorArgs, ctorCanThrow, "");
-      if (ctor->returnType->isEnum())
+      if (ctor->returnType->isEnum()) {
         return finishFallibleConstruction(
             expr, *classType, alloca, status,
             *static_cast<sun::types::EnumType*>(ctor->returnType.get()));
+      }
     } else if (argCount > 0) {
       // Zeroed storage fully describes a class with no constructor, so an
       // argument-free miss is fine. Arguments that reach no constructor
@@ -1265,11 +1317,14 @@ Value* ClassGenerator::codegen(const sun::ast::StructLiteralAST& expr) {
     const auto& field = expr.getFields()[i];
     const ClassField* classField =
         classType->getField(expr.resolvedFields().at(i));
-    if (!classField)
+    if (!classField) {
       logAndThrowError("Struct literal field target is not registered");
+    }
 
     Value* value = codegen(*field.value);
-    if (!value) return nullptr;
+    if (!value) {
+      return nullptr;
+    }
 
     TypePtr valueType = field.value->getResolvedType();
     value = sun::codegen::support::widenNumericIfNeeded(

@@ -104,12 +104,13 @@ void ExpressionAnalyzer::analyzeIndexExpr(sun::ast::IndexAST& arrIdx) {
     const char* methodName = arrIdx.hasSlices() ? "__slice__" : "__index__";
     const auto* method =
         ctx_.accessibleMethod(cls, methodName, arrIdx.getLocation());
-    if (!method)
+    if (!method) {
       logAndThrowError(
           "Class " + cls.getDisplayName() + " does not implement " +
               methodName +
               (arrIdx.hasSlices() ? " for slicing" : " for indexing"),
           arrIdx.getLocation());
+    }
     arrIdx.setTargetDeclarationId(method->declarationId);
     resultType = method->returnType;
   } else {
@@ -126,8 +127,9 @@ void ExpressionAnalyzer::analyzeIndexExpr(sun::ast::IndexAST& arrIdx) {
         wrongDimensions ? "Array index count does not match dimensions"
                         : "Cannot index non-array type");
   }
-  if (receiverImmutable)
+  if (receiverImmutable) {
     resultType = sema_.typeResolver().createConstView(resultType);
+  }
   arrIdx.setResolvedType(resultType);
 }
 
@@ -147,16 +149,20 @@ void ExpressionAnalyzer::checkIntegerDivision(
     const ExprAST& lhs, const ExprAST& rhs, TokenKind op,
     const sun::support::Position& location) {
   if (op != TokenKind::SLASH && op != TokenKind::PERCENT &&
-      op != TokenKind::SLASH_ASSIGN && op != TokenKind::PERCENT_ASSIGN)
+      op != TokenKind::SLASH_ASSIGN && op != TokenKind::PERCENT_ASSIGN) {
     return;
+  }
   auto leftType = unwrapRef(lhs.getResolvedType());
   auto rightType = unwrapRef(rhs.getResolvedType());
   if (!leftType || !rightType || !leftType->isIntegral() ||
-      !rightType->isIntegral())
+      !rightType->isIntegral()) {
     return;
+  }
   constants::ConstantEvaluator evaluator(ctx_.results().declarations);
   auto divisor = evaluator.evaluateExpression(rhs);
-  if (!divisor || !divisor->isInteger()) return;
+  if (!divisor || !divisor->isInteger()) {
+    return;
+  }
   unsigned width = std::max(*constants::getIntegerBitWidth(*leftType),
                             *constants::getIntegerBitWidth(*rightType));
   auto bits = rightType->isUnsigned()
@@ -168,11 +174,12 @@ void ExpressionAnalyzer::checkIntegerDivision(
     invalid = dividend && dividend->isInteger() &&
               dividend->getInteger().sextOrTrunc(width).isMinSignedValue();
   }
-  if (invalid)
+  if (invalid) {
     logAndThrowError(
         "Invalid integer division or remainder; use checked_div or checked_rem "
         "to handle failure",
         location);
+  }
 }
 
 void ExpressionAnalyzer::analyzeBinaryExpr(sun::ast::BinaryExprAST& binExpr,
@@ -275,8 +282,9 @@ void ExpressionAnalyzer::analyzeMemberAccess(
   // Check for enum variant access: EnumName.VariantName
   // Don't try to analyze the "object" if it's an enum type name
   if (sema_.enums().tryAnalyzeGenericEnumUnitVariant(memberAccess,
-                                                     expectedType))
+                                                     expectedType)) {
     return;
+  }
   bool isEnumAccess = false;
   if (memberAccess.getObject()->getType() ==
       sun::ast::ASTNodeType::VARIABLE_REFERENCE) {
@@ -354,9 +362,10 @@ void ExpressionAnalyzer::analyzeQualifiedName(
     sun::ast::QualifiedNameAST& qualName) {
   std::string fullName = qualName.getFullName();
 
-  if (auto dot = fullName.rfind('.'); dot != std::string::npos)
+  if (auto dot = fullName.rfind('.'); dot != std::string::npos) {
     sema_.declarations().ensureModuleGlobalAnalyzed(fullName.substr(0, dot),
                                                     fullName.substr(dot + 1));
+  }
 
   // Look up in namespaced variables first
   VariableInfo* varInfo = ctx_.lookupQualifiedVariable(fullName);

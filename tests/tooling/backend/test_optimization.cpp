@@ -16,12 +16,13 @@ TEST(Tooling_Backend_Optimization, buffer_accessor_inlines_after_moon_linking) {
                                         analyzer) {
       for (const auto& node : program.getBody()) {
         auto* function = dynamic_cast<const sun::ast::FunctionAST*>(node.get());
-        if (function && function->getProto().getName() == "read_byte")
+        if (function && function->getProto().getName() == "read_byte") {
           readerSymbol =
               sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
                   function->getDeclarationId(),
                   analyzer.context().results().declarations)
                   .symbol("function");
+        }
       }
     });
     driver->compileString(R"(
@@ -38,9 +39,13 @@ TEST(Tooling_Backend_Optimization, buffer_accessor_inlines_after_moon_linking) {
     unsigned byteLoads = 0;
     for (auto& block : *reader) {
       for (auto& instruction : block) {
-        if (llvm::isa<llvm::CallBase>(instruction)) ++calls;
+        if (llvm::isa<llvm::CallBase>(instruction)) {
+          ++calls;
+        }
         if (auto* load = llvm::dyn_cast<llvm::LoadInst>(&instruction)) {
-          if (load->getType()->isIntegerTy(8)) ++byteLoads;
+          if (load->getType()->isIntegerTy(8)) {
+            ++byteLoads;
+          }
         }
       }
     }
@@ -66,22 +71,31 @@ TEST(Tooling_Backend_Optimization, jit_prunes_without_losing_library_exports) {
   for (bool optimize : {false, true}) {
     auto jit = sun::driver::Driver::createForJIT("prune", false, optimize);
     EXPECT_EQ(jit->executeString(source), 17);
-    for (const auto& function : jit->getModule())
-      if (!function.isDeclaration()) EXPECT_EQ(function.getName(), "main");
+    for (const auto& function : jit->getModule()) {
+      if (!function.isDeclaration()) {
+        EXPECT_EQ(function.getName(), "main");
+      }
+    }
 
     auto library =
         sun::driver::Driver::createForAOT("exports", "", false, optimize);
     library->compileString(source);
     unsigned definitions = 0;
-    for (const auto& function : library->getModule())
-      if (!function.isDeclaration()) ++definitions;
+    for (const auto& function : library->getModule()) {
+      if (!function.isDeclaration()) {
+        ++definitions;
+      }
+    }
     EXPECT_GE(definitions, 2u);
 
     auto executable =
         sun::driver::Driver::createForAOT("executable", "", false, optimize);
     executable->setExecutable(true);
     executable->compileString(source);
-    for (const auto& function : executable->getModule())
-      if (!function.isDeclaration()) EXPECT_EQ(function.getName(), "main");
+    for (const auto& function : executable->getModule()) {
+      if (!function.isDeclaration()) {
+        EXPECT_EQ(function.getName(), "main");
+      }
+    }
   }
 }

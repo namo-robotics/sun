@@ -127,10 +127,14 @@ std::unique_ptr<ExprAST> Parser::parseArrayLiteral() {
   // Parse comma-separated elements
   while (true) {
     auto elem = parseExpression();
-    if (!elem) return nullptr;
+    if (!elem) {
+      return nullptr;
+    }
     elements.push_back(std::move(elem));
 
-    if (curTok.kind == TokenKind::BRACKET_CLOSE) break;
+    if (curTok.kind == TokenKind::BRACKET_CLOSE) {
+      break;
+    }
 
     if (curTok.kind != TokenKind::COMMA) {
       parsingError("expected ',' or ']' in array literal");
@@ -149,7 +153,9 @@ std::unique_ptr<ExprAST> Parser::parseParenExpr() {
   Position start = captureStart();
   getNextToken();  // eat (
   auto v = parseExpression();
-  if (!v) return nullptr;
+  if (!v) {
+    return nullptr;
+  }
 
   expectCurrentTokenKind(TokenKind::PAREN_CLOSE, "expected ')'");
   getNextToken();  // eat )
@@ -162,14 +168,18 @@ unique_ptr<sun::ast::IfExprAST> Parser::parseIfStatement() {
   getNextToken();  // eat the 'if'
 
   auto Cond = parseExpression();
-  if (!Cond) return nullptr;
+  if (!Cond) {
+    return nullptr;
+  }
 
   // Require curly braces for then block
   expectCurrentTokenKind(TokenKind::BRACE_OPEN,
                          "expected '{' after if condition");
 
   auto ThenBlock = parseBlock(BlockKind::If);
-  if (!ThenBlock) return nullptr;
+  if (!ThenBlock) {
+    return nullptr;
+  }
 
   // Body kept as a block for losslessness; LoweringPass normalizes it
   unique_ptr<ExprAST> Then = std::move(ThenBlock);
@@ -182,13 +192,17 @@ unique_ptr<sun::ast::IfExprAST> Parser::parseIfStatement() {
     // Check for else-if
     if (curTok.kind == TokenKind::IF) {
       Else = parseIfStatement();
-      if (!Else) return nullptr;
+      if (!Else) {
+        return nullptr;
+      }
     } else {
       // Require curly braces for else block
       expectCurrentTokenKind(TokenKind::BRACE_OPEN, "expected '{' after else");
 
       auto ElseBlock = parseBlock(BlockKind::If);
-      if (!ElseBlock) return nullptr;
+      if (!ElseBlock) {
+        return nullptr;
+      }
       Else = std::move(ElseBlock);
     }
   }
@@ -220,7 +234,9 @@ Parser::ParsedPattern Parser::parsePattern() {
       binding.location.setEnd(curTok.end.line, curTok.end.column,
                               curTok.end.offset);
       binding.isWildcard = curTok.kind == TokenKind::UNDERSCORE;
-      if (!binding.isWildcard) binding.name = curTok.getIdentifier().value();
+      if (!binding.isWildcard) {
+        binding.name = curTok.getIdentifier().value();
+      }
       getNextToken();
       if (curTok.kind == TokenKind::COLON) {
         getNextToken();
@@ -309,7 +325,9 @@ Parser::ParsedPattern Parser::parsePattern() {
             return result;
           }
           result.bindings.push_back(std::move(binding));
-          if (curTok.kind != TokenKind::COMMA) break;
+          if (curTok.kind != TokenKind::COMMA) {
+            break;
+          }
           getNextToken();  // eat ','
         }
         expectCurrentTokenKind(TokenKind::PAREN_CLOSE,
@@ -416,10 +434,11 @@ unique_ptr<FunctionAST> Parser::parseFunction(bool isClassMethod, bool isTest) {
 
   // Allow both regular identifiers and intrinsic identifiers (e.g., __index__)
   if (curTok.kind != TokenKind::IDENTIFIER &&
-      curTok.kind != TokenKind::INTRINSIC_IDENTIFIER)
+      curTok.kind != TokenKind::INTRINSIC_IDENTIFIER) {
     throwIdentifierError(isClassMethod ? "Expected method name after 'method'"
                          : isTest ? "Expected test name after 'test_function'"
                                   : "Expected function name after 'function'");
+  }
 
   std::string funcName = curTok.getIdentifier().value();
 
@@ -458,7 +477,9 @@ unique_ptr<FunctionAST> Parser::parseFunction(bool isClassMethod, bool isTest) {
   auto func = finishNode(
       unique_ptr<FunctionAST>(static_cast<FunctionAST*>(result.release())),
       start);
-  if (isTest) func->setIsTest(true);
+  if (isTest) {
+    func->setIsTest(true);
+  }
   return func;
 }
 
@@ -540,7 +561,9 @@ bool Parser::isLambdaLiteralStart() {
           break;
         }
       }
-      if (curTok.kind == TokenKind::REF) getNextToken();
+      if (curTok.kind == TokenKind::REF) {
+        getNextToken();
+      }
       if (curTok.kind != TokenKind::IDENTIFIER) {
         validCaptureList = false;
         break;
@@ -558,8 +581,12 @@ bool Parser::isLambdaLiteralStart() {
     if (!validCaptureList) {
       int depth = 1;
       while (depth > 0 && curTok.kind != TokenKind::TOK_EOF) {
-        if (curTok.kind == TokenKind::BRACKET_OPEN) ++depth;
-        if (curTok.kind == TokenKind::BRACKET_CLOSE) --depth;
+        if (curTok.kind == TokenKind::BRACKET_OPEN) {
+          ++depth;
+        }
+        if (curTok.kind == TokenKind::BRACKET_CLOSE) {
+          --depth;
+        }
         getNextToken();
       }
     } else if (curTok.kind == TokenKind::BRACKET_CLOSE) {
@@ -593,8 +620,12 @@ bool Parser::isLambdaLiteralStart() {
   // annotations, such as cb: (i32) -> i32.
   int depth = 1;
   while (depth > 0 && curTok.kind != TokenKind::TOK_EOF) {
-    if (curTok.kind == TokenKind::PAREN_OPEN) ++depth;
-    if (curTok.kind == TokenKind::PAREN_CLOSE) --depth;
+    if (curTok.kind == TokenKind::PAREN_OPEN) {
+      ++depth;
+    }
+    if (curTok.kind == TokenKind::PAREN_CLOSE) {
+      --depth;
+    }
     getNextToken();
   }
   bool hasFatArrow = depth == 0 && curTok.kind == TokenKind::FAT_ARROW;
@@ -718,10 +749,11 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
 
       args.emplace_back(std::move(argName), std::move(argType));
 
-      if (curTok.kind == TokenKind::COMMA)
+      if (curTok.kind == TokenKind::COMMA) {
         getNextToken();
-      else
+      } else {
         break;
+      }
     }
   }
 
@@ -764,33 +796,40 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
     retType = sun::ast::TypeAnnotation("std.test.AssertionResult");
     retType->typeArguments.push_back(
         std::make_unique<sun::ast::TypeAnnotation>("void"));
-    if (curTok.kind == TokenKind::THROWS)
+    if (curTok.kind == TokenKind::THROWS) {
       parsingError(
           "test functions return result enums; 'throws' is not supported");
+    }
     if (curTok.kind != TokenKind::BRACE_OPEN) {
       retType = parseTypeAnnotation();
-      if (!retType) parsingError("expected a test result type");
+      if (!retType) {
+        parsingError("expected a test result type");
+      }
     }
   } else if (isLifecycleMethod) {
     retType = sun::ast::TypeAnnotation("void");
     // Reject the removed exception clause before parsing a result type.
-    if (curTok.kind == TokenKind::THROWS)
+    if (curTok.kind == TokenKind::THROWS) {
       parsingError("'throws' is no longer supported; return a result enum");
+    }
     if (curTok.kind != TokenKind::BRACE_OPEN) {
-      if (name == "deinit")
+      if (name == "deinit") {
         parsingError("'deinit' cannot declare a return type");
+      }
       retType = parseTypeAnnotation();
-      if (retType && retType->baseName == "void")
+      if (retType && retType->baseName == "void") {
         parsingError(
             "'init' does not declare a return type for infallible "
             "construction");
+      }
     }
   } else if (curTok.kind != TokenKind::BRACE_OPEN) {
     retType = parseTypeAnnotation();
 
     // Reject the removed exception clause.
-    if (curTok.kind == TokenKind::THROWS)
+    if (curTok.kind == TokenKind::THROWS) {
       parsingError("'throws' is no longer supported; return a result enum");
+    }
   } else {
     // No return type specified
     if (isLambda) {
@@ -809,7 +848,9 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
                          "Expected '{' to start function body");
 
   auto body = parseBlock(BlockKind::Function);
-  if (!body) return nullptr;
+  if (!body) {
+    return nullptr;
+  }
 
   auto proto = std::make_unique<PrototypeAST>(
       name, std::move(args), std::move(retType), std::move(typeParameters),
@@ -1073,10 +1114,14 @@ unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
           if (curTok.kind != TokenKind::PAREN_CLOSE) {
             while (true) {
               auto arg = parseExpression();
-              if (!arg) return nullptr;
+              if (!arg) {
+                return nullptr;
+              }
               args.push_back(std::move(arg));
 
-              if (curTok.kind == TokenKind::PAREN_CLOSE) break;
+              if (curTok.kind == TokenKind::PAREN_CLOSE) {
+                break;
+              }
               if (curTok.kind != TokenKind::COMMA) {
                 parsingError(
                     "expected ')' or ',' in generic function call arguments");
@@ -1139,7 +1184,9 @@ unique_ptr<ExprAST> Parser::parseUnary() {
     }
 
     auto operand = parseUnary();
-    if (!operand) return nullptr;
+    if (!operand) {
+      return nullptr;
+    }
 
     return finishNode(
         std::make_unique<sun::ast::UnaryExprAST>(opTok, std::move(operand)),
@@ -1223,7 +1270,9 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
       getNextToken();  // eat 'try'
       if (curTok.kind != TokenKind::BRACE_OPEN) {
         auto operand = parseUnary();
-        if (!operand) return nullptr;
+        if (!operand) {
+          return nullptr;
+        }
         std::vector<sun::ast::MatchArm> arms;
         return finishNode(std::make_unique<sun::ast::MatchExprAST>(
                               std::move(operand), std::move(arms), true),
@@ -1266,7 +1315,9 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
       break;
   }
 
-  if (!base) return nullptr;
+  if (!base) {
+    return nullptr;
+  }
 
   // Parse postfix expressions (array indexing)
   return parsePostfixExpr(std::move(base));
@@ -1300,12 +1351,16 @@ unique_ptr<ExprAST> Parser::parsePostfixExpr(unique_ptr<ExprAST> base) {
             if (curTok.kind != TokenKind::COMMA &&
                 curTok.kind != TokenKind::BRACKET_CLOSE) {
               end = parseExpression();
-              if (!end) return nullptr;
+              if (!end) {
+                return nullptr;
+              }
             }
           } else {
             // Starts with expression: [expr] or [expr:] or [expr:expr]
             start = parseExpression();
-            if (!start) return nullptr;
+            if (!start) {
+              return nullptr;
+            }
 
             if (curTok.kind == TokenKind::COLON) {
               // It's a range slice
@@ -1316,7 +1371,9 @@ unique_ptr<ExprAST> Parser::parsePostfixExpr(unique_ptr<ExprAST> base) {
               if (curTok.kind != TokenKind::COMMA &&
                   curTok.kind != TokenKind::BRACKET_CLOSE) {
                 end = parseExpression();
-                if (!end) return nullptr;
+                if (!end) {
+                  return nullptr;
+                }
               }
             }
           }
@@ -1332,7 +1389,9 @@ unique_ptr<ExprAST> Parser::parsePostfixExpr(unique_ptr<ExprAST> base) {
                 std::make_unique<SliceExprAST>(std::move(start)), compStart));
           }
 
-          if (curTok.kind == TokenKind::BRACKET_CLOSE) break;
+          if (curTok.kind == TokenKind::BRACKET_CLOSE) {
+            break;
+          }
 
           if (curTok.kind != TokenKind::COMMA) {
             parsingError("expected ']' or ',' in array index");
@@ -1427,16 +1486,20 @@ unique_ptr<ExprAST> Parser::parsePostfixExpr(unique_ptr<ExprAST> base) {
       std::vector<std::unique_ptr<ExprAST>> args;
       if (curTok.kind != TokenKind::PAREN_CLOSE) {
         while (true) {
-          if (auto arg = parseExpression())
+          if (auto arg = parseExpression()) {
             args.push_back(std::move(arg));
-          else
+          } else {
             return nullptr;
+          }
 
-          if (curTok.kind == TokenKind::PAREN_CLOSE) break;
+          if (curTok.kind == TokenKind::PAREN_CLOSE) {
+            break;
+          }
 
-          if (curTok.kind != TokenKind::COMMA)
+          if (curTok.kind != TokenKind::COMMA) {
             expectCurrentTokenKind(TokenKind::PAREN_CLOSE,
                                    "Expected ')' or ',' in argument list");
+          }
 
           getNextToken();  // eat ','
         }
@@ -1554,7 +1617,9 @@ VariadicParam Parser::parseVariadicParam(std::string name) {
 std::vector<sun::ast::TypeParameter> Parser::parseTypeParameterList(
     std::vector<sun::ast::LifetimeParameter>* lifetimesOut) {
   std::vector<sun::ast::TypeParameter> typeParameters;
-  if (curTok.kind != TokenKind::LESS) return typeParameters;
+  if (curTok.kind != TokenKind::LESS) {
+    return typeParameters;
+  }
   getNextToken();  // eat '<'
 
   bool sawLifetime = false;
@@ -1632,8 +1697,9 @@ sun::ast::TypeAnnotation Parser::parseTypeAnnotationImpl() {
   if (curTok.kind == TokenKind::UNSAFE) {
     getNextToken();
     auto type = parseTypeAnnotation();
-    if ((!type.isFunction() && !type.isLambda()) || type.requiresUnsafe)
+    if ((!type.isFunction() && !type.isLambda()) || type.requiresUnsafe) {
       parsingError("'unsafe' must qualify a callable type exactly once");
+    }
     type.requiresUnsafe = true;
     return type;
   }
@@ -1663,7 +1729,9 @@ sun::ast::TypeAnnotation Parser::parseTypeAnnotationImpl() {
         type.paramTypes.push_back(
             std::make_unique<sun::ast::TypeAnnotation>(std::move(paramType)));
 
-        if (curTok.kind != TokenKind::COMMA) break;
+        if (curTok.kind != TokenKind::COMMA) {
+          break;
+        }
         getNextToken();  // eat ','
       }
     }
@@ -1680,8 +1748,9 @@ sun::ast::TypeAnnotation Parser::parseTypeAnnotationImpl() {
     type.returnType =
         std::make_unique<sun::ast::TypeAnnotation>(parseTypeAnnotation());
 
-    if (curTok.kind == TokenKind::THROWS)
+    if (curTok.kind == TokenKind::THROWS) {
       parsingError("'throws' is no longer supported; return a result enum");
+    }
 
     return type;
   }
@@ -1748,8 +1817,9 @@ sun::ast::TypeAnnotation Parser::parseTypeAnnotationImpl() {
         std::make_unique<sun::ast::TypeAnnotation>(parseTypeAnnotation());
 
     // A lambda expresses failure through its return type.
-    if (curTok.kind == TokenKind::THROWS)
+    if (curTok.kind == TokenKind::THROWS) {
       parsingError("'throws' is no longer supported; return a result enum");
+    }
 
     return type;
   }
@@ -2008,7 +2078,9 @@ unique_ptr<ExprAST> Parser::finishVariableAssignment(const std::string& name,
   Token opTok = curTok;
   getNextToken();  // eat '=' or 'op='
   auto value = parseExpression();
-  if (!value) return nullptr;
+  if (!value) {
+    return nullptr;
+  }
 
   if (compoundToBinaryOp(opTok.kind)) {
     auto target = std::make_unique<VariableReferenceAST>(name);
@@ -2029,12 +2101,15 @@ unique_ptr<ExprAST> Parser::finishMemberAssignment(unique_ptr<ExprAST> lhs) {
   Token opTok = curTok;
   getNextToken();  // eat '=' or 'op='
   auto value = parseExpression();
-  if (!value) return nullptr;
+  if (!value) {
+    return nullptr;
+  }
 
-  if (curTok.kind == TokenKind::SEMI_COLON)
+  if (curTok.kind == TokenKind::SEMI_COLON) {
     getNextToken();
-  else
+  } else {
     parsingError("expected ';' after member assignment");
+  }
 
   Position start = lhs->getLocation();
   if (compoundToBinaryOp(opTok.kind)) {
@@ -2062,12 +2137,15 @@ unique_ptr<ExprAST> Parser::finishIndexedAssignment(unique_ptr<ExprAST> expr) {
   Token opTok = curTok;
   getNextToken();  // eat '=' or 'op='
   auto value = parseExpression();
-  if (!value) return nullptr;
+  if (!value) {
+    return nullptr;
+  }
 
-  if (curTok.kind == TokenKind::SEMI_COLON)
+  if (curTok.kind == TokenKind::SEMI_COLON) {
     getNextToken();
-  else
+  } else {
     parsingError("expected ';' after indexed assignment");
+  }
 
   Position start = expr->getLocation();
   if (compoundToBinaryOp(opTok.kind)) {
@@ -2089,12 +2167,15 @@ unique_ptr<ExprAST> Parser::parseAssignmentOrExpression() {
   // Check for simple variable assignment: x = ... or x op= ...
   if (isAssignmentOp(curTok.kind)) {
     auto assign = finishVariableAssignment(idName, idToken.start);
-    if (!assign) return nullptr;
+    if (!assign) {
+      return nullptr;
+    }
 
-    if (curTok.kind == TokenKind::SEMI_COLON)
+    if (curTok.kind == TokenKind::SEMI_COLON) {
       getNextToken();
-    else
+    } else {
       parsingError("expected ';' after variable assignment");
+    }
     return assign;
   }
 
@@ -2114,10 +2195,11 @@ unique_ptr<ExprAST> Parser::parseAssignmentOrExpression() {
     return finishMemberAssignment(std::move(expr));
   }
 
-  if (curTok.kind == TokenKind::SEMI_COLON)
+  if (curTok.kind == TokenKind::SEMI_COLON) {
     getNextToken();
-  else
+  } else {
     parsingError("expected ';' after expression statement");
+  }
   return expr;
 }
 
@@ -2134,22 +2216,31 @@ unique_ptr<ExprAST> Parser::parseExpression() {
   }
 
   auto lhs = parseUnary();
-  if (!lhs) return nullptr;
+  if (!lhs) {
+    return nullptr;
+  }
 
   auto expr = parseBinOpRhs(0, std::move(lhs));
-  if (!expr) return nullptr;
+  if (!expr) {
+    return nullptr;
+  }
 
   // Ternary conditional: cond ? then : else (right-associative)
   if (curTok.kind == TokenKind::QUESTION) {
     Position qLoc = curTok.start;
     getNextToken();  // eat '?'
     auto thenExpr = parseExpression();
-    if (!thenExpr) return nullptr;
-    if (curTok.kind != TokenKind::COLON)
+    if (!thenExpr) {
+      return nullptr;
+    }
+    if (curTok.kind != TokenKind::COLON) {
       parsingError("expected ':' in ternary expression");
+    }
     getNextToken();  // eat ':'
     auto elseExpr = parseExpression();
-    if (!elseExpr) return nullptr;
+    if (!elseExpr) {
+      return nullptr;
+    }
     Position start = expr->getLocation();
     auto ternary = std::make_unique<sun::ast::TernaryExprAST>(
         std::move(expr), std::move(thenExpr), std::move(elseExpr), qLoc);
@@ -2162,7 +2253,9 @@ unique_ptr<ExprAST> Parser::parseExpression() {
 std::unique_ptr<ExprAST> Parser::parseBinOpRhs(int exprPrec,
                                                std::unique_ptr<ExprAST> lhs) {
   while (true) {
-    if (curTok.precedence < exprPrec) return lhs;
+    if (curTok.precedence < exprPrec) {
+      return lhs;
+    }
 
     Token binOp = curTok;
     getNextToken();  // eat binop
@@ -2177,11 +2270,15 @@ std::unique_ptr<ExprAST> Parser::parseBinOpRhs(int exprPrec,
     }
 
     auto rhs = parseUnary();
-    if (!rhs) return nullptr;
+    if (!rhs) {
+      return nullptr;
+    }
 
     if (binOp.precedence < curTok.precedence) {
       rhs = parseBinOpRhs(binOp.precedence + 1, std::move(rhs));
-      if (!rhs) return nullptr;
+      if (!rhs) {
+        return nullptr;
+      }
     }
 
     Position start = lhs->getLocation();
@@ -2268,10 +2365,11 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
 
     args.emplace_back(std::move(argName), std::move(argType));
 
-    if (curTok.kind == TokenKind::COMMA)
+    if (curTok.kind == TokenKind::COMMA) {
       getNextToken();
-    else
+    } else {
       break;
+    }
   }
 
   if (curTok.kind != TokenKind::PAREN_CLOSE) {
@@ -2349,10 +2447,13 @@ unique_ptr<BlockExprAST> Parser::parseProgram() {
 }
 
 bool Parser::parsePublic() {
-  if (curTok.kind != TokenKind::PUBLIC) return false;
+  if (curTok.kind != TokenKind::PUBLIC) {
+    return false;
+  }
   getNextToken();  // eat 'public'
-  if (curTok.kind == TokenKind::PUBLIC)
+  if (curTok.kind == TokenKind::PUBLIC) {
     parsingError("duplicate 'public' modifier");
+  }
   return true;
 }
 
@@ -2364,12 +2465,16 @@ bool Parser::atMethodKeyword() const {
 }
 
 bool Parser::parseConstModifier() {
-  if (curTok.kind != TokenKind::CONST) return false;
+  if (curTok.kind != TokenKind::CONST) {
+    return false;
+  }
   getNextToken();  // eat 'const'
-  if (curTok.kind == TokenKind::CONST)
+  if (curTok.kind == TokenKind::CONST) {
     parsingError("duplicate 'const' modifier");
-  if (curTok.kind == TokenKind::PUBLIC)
+  }
+  if (curTok.kind == TokenKind::PUBLIC) {
     parsingError("'public' must come before 'const'");
+  }
   return true;
 }
 
@@ -2396,27 +2501,33 @@ static bool isPublicableStatementStart(TokenKind kind) {
 }
 
 unique_ptr<ExprAST> Parser::parseStatement() {
-  if (curTok.kind != TokenKind::PUBLIC) return parseStatementCore();
+  if (curTok.kind != TokenKind::PUBLIC) {
+    return parseStatementCore();
+  }
 
   Position start = captureStart();
   parsePublic();
-  if (!atItemLevel_)
+  if (!atItemLevel_) {
     parsingError("'public' is only allowed on module-level declarations");
+  }
   // Tests are never importable — they exist only in the test binary — so a
   // visibility modifier on one is always a mistake.
-  if (curTok.kind == TokenKind::TEST_FUNCTION)
+  if (curTok.kind == TokenKind::TEST_FUNCTION) {
     parsingError(
         "a test function cannot be 'public'; tests are never importable and "
         "are compiled only into the test binary");
-  if (!isPublicableStatementStart(curTok.kind))
+  }
+  if (!isPublicableStatementStart(curTok.kind)) {
     parsingError(
         "'public' must precede a declaration (module, class, interface, "
         "enum, function, extern, declare, var or const)");
+  }
 
   auto node = parseStatementCore();
   if (node) {
-    if (node->getType() == ASTNodeType::REFERENCE_CREATION)
+    if (node->getType() == ASTNodeType::REFERENCE_CREATION) {
       parsingError("'public' cannot be applied to a reference");
+    }
     // Apply the modifier to every module written in a dotted declaration.
     for (auto* current = node.get(); current;) {
       auto* module = dynamic_cast<ModuleAST*>(current);
@@ -2458,8 +2569,9 @@ unique_ptr<ExprAST> Parser::parseStatementCore() {
       auto classDef = parseClassDefinition();
       if (classDef) {
         classDef->setIsPartial(true);
-        if (classDef->getAlignment())
+        if (classDef->getAlignment()) {
           parsingError("partial class cannot declare alignment");
+        }
         // Validate: no fields allowed in partial class
         if (!classDef->getFields().empty()) {
           parsingError("partial class cannot define fields");
@@ -2473,8 +2585,9 @@ unique_ptr<ExprAST> Parser::parseStatementCore() {
           }
         }
       }
-      while (curTok.kind == TokenKind::SEMI_COLON)
+      while (curTok.kind == TokenKind::SEMI_COLON) {
         getNextToken();  // optional semicolons
+      }
       return classDef;
     }
 
@@ -2483,23 +2596,28 @@ unique_ptr<ExprAST> Parser::parseStatementCore() {
       // packed_class lays fields out with no padding; otherwise identical
       bool isPacked = curTok.kind == TokenKind::PACKED_CLASS;
       auto classDef = parseClassDefinition();
-      if (classDef) classDef->setIsPacked(isPacked);
-      while (curTok.kind == TokenKind::SEMI_COLON)
+      if (classDef) {
+        classDef->setIsPacked(isPacked);
+      }
+      while (curTok.kind == TokenKind::SEMI_COLON) {
         getNextToken();  // optional semicolons
+      }
       return classDef;
     }
 
     case TokenKind::INTERFACE: {
       auto interfaceDef = parseInterfaceDefinition();
-      while (curTok.kind == TokenKind::SEMI_COLON)
+      while (curTok.kind == TokenKind::SEMI_COLON) {
         getNextToken();  // optional semicolons
+      }
       return interfaceDef;
     }
 
     case TokenKind::ENUM: {
       auto enumDef = parseEnumDefinition();
-      while (curTok.kind == TokenKind::SEMI_COLON)
+      while (curTok.kind == TokenKind::SEMI_COLON) {
         getNextToken();  // optional semicolons
+      }
       return enumDef;
     }
 
@@ -2547,8 +2665,9 @@ unique_ptr<ExprAST> Parser::parseStatementCore() {
       }
       // Function definitions don't need trailing semicolons
       auto func = parseFunction();
-      while (curTok.kind == TokenKind::SEMI_COLON)
+      while (curTok.kind == TokenKind::SEMI_COLON) {
         getNextToken();  // optional semicolons
+      }
       return func;
     }
     case TokenKind::TEST_FUNCTION: {
@@ -2558,8 +2677,9 @@ unique_ptr<ExprAST> Parser::parseStatementCore() {
             "test to module scope");
       }
       auto func = parseFunction(/*isClassMethod=*/false, /*isTest=*/true);
-      while (curTok.kind == TokenKind::SEMI_COLON)
+      while (curTok.kind == TokenKind::SEMI_COLON) {
         getNextToken();  // optional semicolons
+      }
       return func;
     }
     case TokenKind::IDENTIFIER: {
@@ -2580,7 +2700,9 @@ unique_ptr<ExprAST> Parser::parseStatementCore() {
 
       // Parse postfix expressions (member accesses, method calls)
       auto lhs = parsePostfixExpr(std::move(thisExpr));
-      if (!lhs) return nullptr;
+      if (!lhs) {
+        return nullptr;
+      }
 
       // Check for assignment: this.field = value or this.field op= value
       if (isAssignmentOp(curTok.kind) &&
@@ -2593,10 +2715,11 @@ unique_ptr<ExprAST> Parser::parseStatementCore() {
       }
 
       // Not an assignment - expression statement (like method call)
-      if (curTok.kind == TokenKind::SEMI_COLON)
+      if (curTok.kind == TokenKind::SEMI_COLON) {
         getNextToken();
-      else
+      } else {
         parsingError("expected ';' after expression statement");
+      }
       return lhs;
     }
     case TokenKind::RETURN: {
@@ -2608,13 +2731,16 @@ unique_ptr<ExprAST> Parser::parseStatementCore() {
         // Check if there's an expression after return (not just semicolon)
         if (curTok.kind != TokenKind::SEMI_COLON) {
           expr = parseExpression();
-          if (!expr) return nullptr;
+          if (!expr) {
+            return nullptr;
+          }
         }
 
-        if (curTok.kind == TokenKind::SEMI_COLON)
+        if (curTok.kind == TokenKind::SEMI_COLON) {
           getNextToken();
-        else
+        } else {
           parsingError("expected ';' after return statement");
+        }
 
         return finishNode(
             std::make_unique<sun::ast::ReturnExprAST>(std::move(expr)), start);
@@ -2622,10 +2748,14 @@ unique_ptr<ExprAST> Parser::parseStatementCore() {
     }
     case TokenKind::TRY: {
       auto tryExpr = parseExpression();
-      if (!tryExpr) return nullptr;
+      if (!tryExpr) {
+        return nullptr;
+      }
       expectCurrentTokenKind(TokenKind::SEMI_COLON,
                              "expected ';' after propagation statement");
-      while (curTok.kind == TokenKind::SEMI_COLON) getNextToken();
+      while (curTok.kind == TokenKind::SEMI_COLON) {
+        getNextToken();
+      }
       return tryExpr;
     }
     case TokenKind::THROW:
@@ -2685,7 +2815,9 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
           getNextToken();  // eat 'in'
 
           auto iterable = parseExpression();
-          if (!iterable) return nullptr;
+          if (!iterable) {
+            return nullptr;
+          }
 
           expectCurrentTokenKind(TokenKind::PAREN_CLOSE,
                                  "Expected ')' after for-in iterable");
@@ -2696,7 +2828,9 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
                                  "Expected '{' for for-in body");
 
           auto bodyBlock = parseBlock(BlockKind::Loop);
-          if (!bodyBlock) return nullptr;
+          if (!bodyBlock) {
+            return nullptr;
+          }
 
           // Body kept as a block; LoweringPass normalizes it
           unique_ptr<ExprAST> body = std::move(bodyBlock);
@@ -2726,7 +2860,9 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
     } else {
       init = parseExpression();
     }
-    if (!init) return nullptr;
+    if (!init) {
+      return nullptr;
+    }
   }
 
   expectCurrentTokenKind(TokenKind::SEMI_COLON,
@@ -2737,7 +2873,9 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
   unique_ptr<ExprAST> condition;
   if (curTok.kind != TokenKind::SEMI_COLON) {
     condition = parseExpression();
-    if (!condition) return nullptr;
+    if (!condition) {
+      return nullptr;
+    }
   }
 
   expectCurrentTokenKind(TokenKind::SEMI_COLON,
@@ -2758,7 +2896,9 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
       if (isAssignmentOp(curTok.kind)) {
         // It's an assignment: i = i + 1 or i op= expr (no trailing ';')
         increment = finishVariableAssignment(idName, savedTok.start);
-        if (!increment) return nullptr;
+        if (!increment) {
+          return nullptr;
+        }
       } else {
         // Not an assignment, backtrack and parse as expression
         lexer.setPosition(savedPos);
@@ -2769,7 +2909,9 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
     } else {
       increment = parseExpression();
     }
-    if (!increment) return nullptr;
+    if (!increment) {
+      return nullptr;
+    }
   }
 
   expectCurrentTokenKind(TokenKind::PAREN_CLOSE,
@@ -2781,7 +2923,9 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
                          "Expected '{' for for-loop body");
 
   auto bodyBlock = parseBlock(BlockKind::Loop);
-  if (!bodyBlock) return nullptr;
+  if (!bodyBlock) {
+    return nullptr;
+  }
 
   // Body kept as a block; LoweringPass normalizes it
   unique_ptr<ExprAST> body = std::move(bodyBlock);
@@ -2800,7 +2944,9 @@ unique_ptr<sun::ast::WhileExprAST> Parser::parseWhileLoop() {
   getNextToken();  // eat '('
 
   auto condition = parseExpression();
-  if (!condition) return nullptr;
+  if (!condition) {
+    return nullptr;
+  }
 
   expectCurrentTokenKind(TokenKind::PAREN_CLOSE,
                          "Expected ')' after while condition");
@@ -2811,7 +2957,9 @@ unique_ptr<sun::ast::WhileExprAST> Parser::parseWhileLoop() {
                          "Expected '{' for while-loop body");
 
   auto bodyBlock = parseBlock(BlockKind::Loop);
-  if (!bodyBlock) return nullptr;
+  if (!bodyBlock) {
+    return nullptr;
+  }
 
   // Body kept as a block; LoweringPass normalizes it
   unique_ptr<ExprAST> body = std::move(bodyBlock);
@@ -2906,7 +3054,9 @@ std::unique_ptr<ExprAST> Parser::parseExtern() {
         std::optional<sun::ast::TypeAnnotation>(std::move(type)));
     var->setCExtern(true);
     var->setExplicitCAbi(explicitCAbi);
-    if (auto symbol = parseLinkName()) var->setLinkName(std::move(*symbol));
+    if (auto symbol = parseLinkName()) {
+      var->setLinkName(std::move(*symbol));
+    }
     if (curTok.kind == TokenKind::EQUAL) {
       parsingError("extern variable '" + name + "' cannot have an initializer");
     }
@@ -2947,7 +3097,9 @@ unique_ptr<sun::ast::ManifestAST> Parser::parseManifest() {
     getNextToken();  // eat ':'
 
     if (ident == "library_id") {
-      if (libraryId) parsingError("duplicate library_id in manifest");
+      if (libraryId) {
+        parsingError("duplicate library_id in manifest");
+      }
       expectCurrentTokenKind(TokenKind::STRING,
                              "expected string after library_id");
       libraryId = curTok.getString().value();
@@ -3084,8 +3236,9 @@ std::vector<ManifestArchiveDependency> Parser::parseManifestArchives() {
       while (curTok.kind != TokenKind::BRACE_CLOSE) {
         expectCurrentTokenKind(TokenKind::IDENTIFIER, "expected archive field");
         const auto field = curTok.getIdentifier().value();
-        if (!fields.insert(field).second)
+        if (!fields.insert(field).second) {
           parsingError("duplicate archive field '" + field + "'");
+        }
         getNextToken();
         expectCurrentTokenKind(TokenKind::COLON,
                                "expected ':' after archive field");
@@ -3106,25 +3259,29 @@ std::vector<ManifestArchiveDependency> Parser::parseManifestArchives() {
                                    "expected requirement name");
             values.push_back(curTok.getString().value());
             getNextToken();
-            if (curTok.kind == TokenKind::COMMA)
+            if (curTok.kind == TokenKind::COMMA) {
               getNextToken();
-            else if (curTok.kind != TokenKind::BRACKET_CLOSE)
+            } else if (curTok.kind != TokenKind::BRACKET_CLOSE) {
               parsingError("expected ',' or ']' in requirements");
+            }
           }
           getNextToken();
         } else {
           parsingError("unknown archive field '" + field + "'");
         }
-        if (curTok.kind == TokenKind::COMMA)
+        if (curTok.kind == TokenKind::COMMA) {
           getNextToken();
-        else if (curTok.kind != TokenKind::BRACE_CLOSE)
+        } else if (curTok.kind != TokenKind::BRACE_CLOSE) {
           parsingError("expected ',' or '}' in archive declaration");
+        }
       }
       getNextToken();
     } else {
       parsingError("expected archive path or declaration");
     }
-    if (dep.path.empty()) parsingError("archive declaration requires a path");
+    if (dep.path.empty()) {
+      parsingError("archive declaration requires a path");
+    }
     archives.push_back(std::move(dep));
 
     if (curTok.kind == TokenKind::COMMA) {
@@ -3425,7 +3582,9 @@ unique_ptr<ModuleAST> Parser::parseModuleDecl() {
     location.setEnd(curTok.end.line, curTok.end.column, curTok.end.offset);
     segments.push_back({curTok.getIdentifier().value(), std::move(location)});
     getNextToken();  // eat identifier
-    if (curTok.kind != TokenKind::DOT) break;
+    if (curTok.kind != TokenKind::DOT) {
+      break;
+    }
     getNextToken();  // eat '.'
     expectCurrentTokenKind(TokenKind::IDENTIFIER,
                            "expected identifier after '.' in module name");
@@ -3435,7 +3594,9 @@ unique_ptr<ModuleAST> Parser::parseModuleDecl() {
                          "expected '{' after module name");
 
   auto body = parseBlock(BlockKind::Module, /*itemLevel=*/true);
-  if (!body) return nullptr;
+  if (!body) {
+    return nullptr;
+  }
 
   // Wrap the body from the last path segment to the first.
   std::unique_ptr<ModuleAST> result;
@@ -3607,7 +3768,9 @@ std::unique_ptr<sun::moon_bundling::MoonReader> Parser::openMoonImport(
 std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
     const sun::moon_bundling::MoonImport& moonImport,
     std::unique_ptr<sun::moon_bundling::MoonReader> reader) {
-  if (!reader) reader = openMoonImport(moonImport);
+  if (!reader) {
+    reader = openMoonImport(moonImport);
+  }
   sun::abi::AbiCompatibilityChecker::current().validate(*reader);
   const auto resolved = reader->getPath();
   const auto resolvedStr = resolved.string();
@@ -3661,19 +3824,23 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
       continue;
     }
 
-    for (const auto& record : metadata->declarations())
+    for (const auto& record : metadata->declarations()) {
       declarationRecords.push_back(
           {record.key(), static_cast<uint32_t>(record.kind()), record.name(),
            record.owner(), record.module(), metadata->content_hash()});
+    }
     {
       std::istringstream path(metadata->module_name());
       std::string part, prefix;
       size_t index = 0;
       while (std::getline(path, part, '.')) {
-        if (!prefix.empty()) prefix += ".";
+        if (!prefix.empty()) {
+          prefix += ".";
+        }
         prefix += part;
-        if (index < static_cast<size_t>(metadata->module_declarations_size()))
+        if (index < static_cast<size_t>(metadata->module_declarations_size())) {
           moduleKeys[prefix] = metadata->module_declarations(index++);
+        }
       }
     }
 
@@ -3699,9 +3866,10 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
     sun::serialization::remapSourceFiles(
         scopedMetadata, [&](sun::support::SourceFileId id) {
           auto [it, inserted] = importedSourceFiles.try_emplace(id, 0);
-          if (inserted)
+          if (inserted) {
             it->second =
                 sun::serialization::loadedSourceFileId(contentHash, id);
+          }
           return it->second;
         });
     sun::serialization::ASTDeserializer importDeserializer;
@@ -3718,8 +3886,9 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
     originalModules[effectiveName] = modName;
     if (!effectiveName.empty()) {
       auto& vis = moduleVisibility[effectiveName];
-      if (metadata->visibility() == sun::proto::ast::PUBLIC)
+      if (metadata->visibility() == sun::proto::ast::PUBLIC) {
         vis = Visibility::Public;
+      }
       // Ensure the entry exists even for a module with no stubs
       (void)moduleStubs[effectiveName];
     }
@@ -3739,7 +3908,9 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
         if (!func->getProto().getArgs().empty()) {
           symbolName += "(";
           for (size_t i = 0; i < func->getProto().getArgs().size(); ++i) {
-            if (i > 0) symbolName += ",";
+            if (i > 0) {
+              symbolName += ",";
+            }
             symbolName += func->getProto().getArgs()[i].second.toString();
           }
           symbolName += ")";
@@ -3760,12 +3931,15 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
   // unrecorded shell around a public module)
   auto visibilityOf = [&](const std::string& dotted) {
     auto it = moduleVisibility.find(dotted);
-    if (it != moduleVisibility.end()) return it->second;
+    if (it != moduleVisibility.end()) {
+      return it->second;
+    }
     for (const auto& [name, vis] : moduleVisibility) {
       if (vis == Visibility::Public && name.size() > dotted.size() &&
           name.compare(0, dotted.size(), dotted) == 0 &&
-          name[dotted.size()] == '.')
+          name[dotted.size()] == '.') {
         return Visibility::Public;
+      }
     }
     return Visibility::Private;
   };
@@ -3773,14 +3947,18 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
   // Build consolidated ModuleAST nodes (one per unique module name)
   std::vector<std::unique_ptr<ExprAST>> allModuleASTs;
   for (auto& [modName, stubs] : moduleStubs) {
-    if (stubs.empty()) continue;
+    if (stubs.empty()) {
+      continue;
+    }
     if (!modName.empty()) {
       // A dotted name ("a.b") becomes nested modules, innermost first
       std::vector<std::string> segs;
       {
         std::stringstream ss(modName);
         std::string seg;
-        while (std::getline(ss, seg, '.')) segs.push_back(seg);
+        while (std::getline(ss, seg, '.')) {
+          segs.push_back(seg);
+        }
       }
       auto nsBody =
           std::make_unique<BlockExprAST>(std::move(stubs), BlockKind::Module);
@@ -3798,20 +3976,25 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
         auto nsAST = std::make_unique<ModuleAST>(segs[i], std::move(body));
         nsAST->setPrecompiled(true);
         std::string prefix;
-        for (size_t k = 0; k <= i; ++k) prefix += (k ? "." : "") + segs[k];
+        for (size_t k = 0; k <= i; ++k) {
+          prefix += (k ? "." : "") + segs[k];
+        }
         if (auto originalModule = originalModules.find(prefix);
             originalModule != originalModules.end()) {
           std::vector<std::string> path{contentHash};
           std::istringstream original(originalModule->second);
           std::string part;
-          while (std::getline(original, part, '.')) path.push_back(part);
+          while (std::getline(original, part, '.')) {
+            path.push_back(part);
+          }
           auto name = path.back();
           path.pop_back();
           nsAST->setQualifiedName(QualifiedName(path, name));
           if (auto key = moduleKeys.find(originalModule->second);
-              key != moduleKeys.end())
+              key != moduleKeys.end()) {
             nsAST->declarationIdentity().imported =
                 sun::semantic_analysis::LibraryDeclarationIdentity{key->second};
+          }
         }
         nsAST->setVisibility(visibilityOf(prefix));
         current = std::move(nsAST);
@@ -3869,7 +4052,9 @@ void Parser::createModuleStubs(
     // Nested modules are exported under their dotted path
     std::stringstream ss(metadata.module_name());
     std::string seg;
-    while (std::getline(ss, seg, '.')) scopePath.push_back(seg);
+    while (std::getline(ss, seg, '.')) {
+      scopePath.push_back(seg);
+    }
   }
 
   // Collect AST stubs for this module - may be wrapped in a namespace
@@ -3982,7 +4167,9 @@ void Parser::createModuleStubs(
 
   for (const auto& assertion : metadata.c_binding_assertions()) {
     auto ast = deserializer.deserialize(assertion);
-    if (ast) moduleAST.push_back(std::move(ast));
+    if (ast) {
+      moduleAST.push_back(std::move(ast));
+    }
   }
 
   // Add all stubs directly (consolidation and wrapping is done by the caller)
@@ -4082,8 +4269,12 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
          curTok.kind != TokenKind::TOK_EOF) {
     if (curTok.kind == TokenKind::IDENTIFIER &&
         curTok.getIdentifier() == "alignment") {
-      if (packed) parsingError("packed_class cannot declare alignment");
-      if (alignment) parsingError("class alignment may only be declared once");
+      if (packed) {
+        parsingError("packed_class cannot declare alignment");
+      }
+      if (alignment) {
+        parsingError("class alignment may only be declared once");
+      }
       getNextToken();
       expectCurrentTokenKind(TokenKind::COLON, "expected ':' after alignment");
       getNextToken();
@@ -4091,9 +4282,10 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
           TokenKind::INTEGER,
           "alignment requires a positive power-of-two integer literal");
       alignment = curTok.getInteger().value();
-      if (!alignment || (alignment & (alignment - 1)) || alignment > 65536)
+      if (!alignment || (alignment & (alignment - 1)) || alignment > 65536) {
         parsingError(
             "alignment must be a power of two between 1 and 65536 bytes");
+      }
       getNextToken();
       continue;
     }
@@ -4104,13 +4296,16 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
     bool isUnsafeMethod = curTok.kind == TokenKind::UNSAFE;
     if (isUnsafeMethod) {
       getNextToken();
-      if (!atMethodKeyword()) parsingError("'unsafe' must precede 'method'");
+      if (!atMethodKeyword()) {
+        parsingError("'unsafe' must precede 'method'");
+      }
     }
     if (curTok.kind == TokenKind::VAR) {
-      if (isConstMethod)
+      if (isConstMethod) {
         parsingError(
             "'const' is not allowed on fields; only methods can be declared "
             "'const function'");
+      }
       // Parse field declaration: var name: type;
       getNextToken();  // eat 'var'
 
@@ -4138,8 +4333,9 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
                              builds its syntax-tree representation. */
                           ? parseStructLiteral()
                           : parseExpression();
-        if (!initializer)
+        if (!initializer) {
           parsingError("field initialization expression expected");
+        }
       }
 
       if (curTok.kind != TokenKind::SEMI_COLON) {
@@ -4159,14 +4355,18 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
                 curTok.getIdentifier() == "deinit")) {
       // Constructor or destructor: init(args) { } / deinit() { }
       std::string name = curTok.getIdentifier().value();
-      if (memberVis == Visibility::Public)
+      if (memberVis == Visibility::Public) {
         parsingError("'" + name +
                      "' is always public; remove the 'public' keyword");
-      if (isConstMethod)
+      }
+      if (isConstMethod) {
         parsingError("'" + name + "' cannot be a const method");
+      }
 
       auto func = parseLifecycleMethod();
-      if (!func) return nullptr;
+      if (!func) {
+        return nullptr;
+      }
 
       ClassMethodDecl method;
       method.isConstructor = (name == "init");
@@ -4175,14 +4375,19 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
       methods.push_back(std::move(method));
 
       // Skip optional semicolons after methods
-      while (curTok.kind == TokenKind::SEMI_COLON) getNextToken();
+      while (curTok.kind == TokenKind::SEMI_COLON) {
+        getNextToken();
+      }
     } else if (atMethodKeyword()) {
       // Parse method declaration
       auto func = parseFunction(/*isClassMethod=*/true);
-      if (!func) return nullptr;
+      if (!func) {
+        return nullptr;
+      }
       func->setVisibility(memberVis);
-      if (memberVis == Visibility::Public || isConstMethod || isUnsafeMethod)
+      if (memberVis == Visibility::Public || isConstMethod || isUnsafeMethod) {
         extendSpanStart(*func, memberStart);
+      }
 
       func->getProtoMut().setConstMethod(isConstMethod);
       func->getProtoMut().setUnsafeMethod(isUnsafeMethod);
@@ -4194,7 +4399,9 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
       methods.push_back(std::move(method));
 
       // Skip optional semicolons after methods
-      while (curTok.kind == TokenKind::SEMI_COLON) getNextToken();
+      while (curTok.kind == TokenKind::SEMI_COLON) {
+        getNextToken();
+      }
     } else if (curTok.kind == TokenKind::FUNCTION) {
       parsingError("a class method is declared with 'method', not 'function'");
       return nullptr;
@@ -4243,8 +4450,9 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
   if (curTok.kind == TokenKind::EXTENDS) {
     getNextToken();
     parent = parseTypeAnnotation();
-    if (curTok.kind == TokenKind::COMMA)
+    if (curTok.kind == TokenKind::COMMA) {
       parsingError("An interface can extend only one parent");
+    }
   }
   if (curTok.kind != TokenKind::BRACE_OPEN) {
     parsingError("expected '{' after interface name or parent");
@@ -4265,13 +4473,16 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
     bool isUnsafeMethod = curTok.kind == TokenKind::UNSAFE;
     if (isUnsafeMethod) {
       getNextToken();
-      if (!atMethodKeyword()) parsingError("'unsafe' must precede 'method'");
+      if (!atMethodKeyword()) {
+        parsingError("'unsafe' must precede 'method'");
+      }
     }
     if (curTok.kind == TokenKind::VAR) {
-      if (isConstMethod)
+      if (isConstMethod) {
         parsingError(
             "'const' is not allowed on fields; only methods can be declared "
             "'const function'");
+      }
       // Parse field declaration: var name: type;
       getNextToken();  // eat 'var'
 
@@ -4364,10 +4575,11 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
 
           args.emplace_back(std::move(argName), std::move(argType));
 
-          if (curTok.kind == TokenKind::COMMA)
+          if (curTok.kind == TokenKind::COMMA) {
             getNextToken();
-          else
+          } else {
             break;
+          }
         }
       }
 
@@ -4382,8 +4594,9 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
         retType = parseTypeAnnotation();
       }
 
-      if (curTok.kind == TokenKind::THROWS)
+      if (curTok.kind == TokenKind::THROWS) {
         parsingError("'throws' is no longer supported; return a result enum");
+      }
 
       // Signature span ends at the last token before the body/semicolon
       Position protoLoc = methodStart;
@@ -4396,7 +4609,9 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
       if (curTok.kind == TokenKind::BRACE_OPEN) {
         // Has default implementation
         body = parseBlock(BlockKind::Function);
-        if (!body) return nullptr;
+        if (!body) {
+          return nullptr;
+        }
         hasDefaultImpl = true;
       } else if (curTok.kind == TokenKind::SEMI_COLON) {
         // Just a signature, no implementation
@@ -4431,7 +4646,9 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
       methods.push_back(std::move(method));
 
       // Skip optional semicolons after methods
-      while (curTok.kind == TokenKind::SEMI_COLON) getNextToken();
+      while (curTok.kind == TokenKind::SEMI_COLON) {
+        getNextToken();
+      }
     } else if (curTok.kind == TokenKind::FUNCTION) {
       parsingError(
           "an interface method is declared with 'method', not 'function'");
@@ -4521,7 +4738,9 @@ unique_ptr<EnumDefinitionAST> Parser::parseEnumDefinition() {
       }
       while (true) {
         payloadTypes.push_back(parseTypeAnnotation());
-        if (curTok.kind != TokenKind::COMMA) break;
+        if (curTok.kind != TokenKind::COMMA) {
+          break;
+        }
         getNextToken();  // eat ','
       }
       expectCurrentTokenKind(TokenKind::PAREN_CLOSE,
@@ -4534,7 +4753,9 @@ unique_ptr<EnumDefinitionAST> Parser::parseEnumDefinition() {
     if (hasExplicitValue) {
       getNextToken();
       bool negative = curTok.kind == TokenKind::MINUS;
-      if (negative) getNextToken();
+      if (negative) {
+        getNextToken();
+      }
       expectCurrentTokenKind(TokenKind::INTEGER,
                              "expected integer literal for enum value");
       uint64_t magnitude = curTok.getInteger().value();
@@ -4596,11 +4817,14 @@ unique_ptr<ExprAST> Parser::parseUnsafeBlock() {
 
   if (curTok.kind != TokenKind::BRACE_OPEN) {
     std::unique_ptr<ExprAST> operand;
-    if (isLambdaLiteralStart())
+    if (isLambdaLiteralStart()) {
       operand = parseLambda();
-    else
+    } else {
       operand = parseUnary();
-    if (!operand) return nullptr;
+    }
+    if (!operand) {
+      return nullptr;
+    }
     auto body = std::make_unique<BlockExprAST>();
     body->setKind(BlockKind::Unsafe);
     body->setLocation(operand->getLocation());

@@ -411,9 +411,10 @@ TEST(ABI_Compatibility, ProducerWarningFollowsValidationAndIsDeduplicated) {
 /** A supported feature must still be declared by the bundle that emits it. */
 TEST(ABI_Compatibility, PayloadCannotOmitRequiredCPUFeatures) {
   const auto features = llvm::sys::getHostCPUFeatures();
-  if (!features.lookup("sse2") || !features.lookup("sse3"))
+  if (!features.lookup("sse2") || !features.lookup("sse3")) {
     GTEST_SKIP()
         << "This fixture requires an x86 host supporting SSE2 and SSE3";
+  }
   llvm::LLVMContext context;
   llvm::Module module("features", context);
   module.setTargetTriple("x86_64-linux-gnu");
@@ -532,11 +533,11 @@ TEST(ABI_Compatibility, MoonLibraryRangeIsValidated) {
   for (int invalidCase : {0, 1, 2}) {
     auto changed = header;
     auto bytes = original;
-    if (invalidCase == 0)
+    if (invalidCase == 0) {
       changed.bundleMetadataSize = 0;
-    else if (invalidCase == 1)
+    } else if (invalidCase == 1) {
       changed.bundleMetadataSize = header.bundleMetadataSize + 1;
-    else {
+    } else {
       // A valid unknown optional field cannot substitute for the mandatory
       // contract.
       changed.bundleMetadataSize = 2;
@@ -574,15 +575,16 @@ TEST(ABI_Compatibility, LibraryRecordsAreValidatedBeforeImport) {
   std::memcpy(&header, reader->getBytes()->data(), sizeof(header));
   for (int invalidCase : {0, 1, 2, 3}) {
     auto library = reader->getLibrary();
-    if (invalidCase == 0)
+    if (invalidCase == 0) {
       *library.add_modules() = library.modules(0);
-    else if (invalidCase == 1)
+    } else if (invalidCase == 1) {
       library.set_content_hash(std::string(64, 'b'));
-    else if (invalidCase == 2)
+    } else if (invalidCase == 2) {
       library.mutable_modules(0)->set_bitcode_offset(
           header.bundleMetadataOffset);
-    else
+    } else {
       library.clear_bundle_contract();
+    }
     const auto record = library.SerializeAsString();
     auto changed = header;
     changed.bundleMetadataSize = record.size();
@@ -604,9 +606,10 @@ TEST(ABI_Compatibility, LibraryRecordsAreValidatedBeforeImport) {
 TEST(ABI_Compatibility, EmbeddedCompilerSupportResolvesImplementations) {
   const auto& support = sun::abi::compilerAbiSupport();
   EXPECT_NO_THROW(sun::abi::validateCompilerSupport(support));
-  for (const auto& rule : support.rules())
+  for (const auto& rule : support.rules()) {
     EXPECT_EQ(sun::abi::supportedRules().at(rule.name()),
               sun::abi::emissionImplementation(rule.name()));
+  }
   const auto emitted = contract();
   for (const auto& rule : emitted.requirements()) {
     EXPECT_EQ(rule.implementation(),

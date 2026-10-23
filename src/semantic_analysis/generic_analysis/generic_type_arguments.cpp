@@ -16,8 +16,9 @@ static std::vector<TypePtr> requireArguments(
         result,
     const std::string& what, const std::string& displayName,
     std::optional<sun::support::Position> loc) {
-  if (auto* arguments = std::get_if<std::vector<TypePtr>>(&result))
+  if (auto* arguments = std::get_if<std::vector<TypePtr>>(&result)) {
     return std::move(*arguments);
+  }
   const auto& failure =
       std::get<sun::semantic_analysis::type_analysis::InferenceFailure>(result);
   sun::support::logAndThrowError(
@@ -33,8 +34,9 @@ std::vector<TypePtr> resolveGenericTypeArguments(
     std::optional<sun::support::Position> loc,
     const std::vector<TypePtr>& explicitTypeArgs) {
   std::vector<sun::ast::TypeAnnotation> shapes;
-  for (const auto& parameter : genericInfo.params)
+  for (const auto& parameter : genericInfo.params) {
     shapes.push_back(parameter.second);
+  }
   return requireArguments(
       sun::semantic_analysis::type_analysis::inferTypeArguments(
           sun::ast::typeParameterNames(genericInfo.typeParameters), shapes,
@@ -54,7 +56,9 @@ std::vector<TypePtr> resolveMethodTypeArguments(
 std::optional<std::vector<TypePtr>> splitPackArgTypes(
     const sun::ast::PrototypeAST& proto, const std::vector<TypePtr>& argTypes,
     const std::string& displayName, std::optional<sun::support::Position> loc) {
-  if (!proto.hasVariadicParam()) return std::nullopt;
+  if (!proto.hasVariadicParam()) {
+    return std::nullopt;
+  }
 
   const size_t fixed = proto.getArgs().size();
   if (argTypes.size() < fixed) {

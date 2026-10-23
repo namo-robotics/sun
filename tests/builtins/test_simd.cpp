@@ -62,12 +62,14 @@ TEST(Builtins_SIMD, vector_ir_and_alignment) {
     for (const auto& block : function) {
       for (const auto& instruction : block) {
         if (const auto* load = llvm::dyn_cast<llvm::LoadInst>(&instruction)) {
-          if (load->getType()->isVectorTy())
+          if (load->getType()->isVectorTy()) {
             EXPECT_EQ(load->getAlign().value(), 4);
+          }
         }
         if (const auto* store = llvm::dyn_cast<llvm::StoreInst>(&instruction)) {
-          if (store->getValueOperand()->getType()->isVectorTy())
+          if (store->getValueOperand()->getType()->isVectorTy()) {
             EXPECT_EQ(store->getAlign().value(), 4);
+          }
         }
       }
     }

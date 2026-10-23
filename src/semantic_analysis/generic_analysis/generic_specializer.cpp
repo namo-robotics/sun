@@ -66,9 +66,10 @@ std::vector<ConstrainedTypeArgument> constrainedTypeArguments(
     const std::vector<TypePtr>& arguments) {
   std::vector<ConstrainedTypeArgument> result;
   for (size_t i = 0; i < parameters.size() && i < arguments.size(); ++i) {
-    if (parameters[i].constraint && arguments[i])
+    if (parameters[i].constraint && arguments[i]) {
       result.push_back(
           {parameters[i], arguments[i], *parameters[i].constraint});
+    }
   }
   return result;
 }
@@ -80,7 +81,9 @@ void GenericSpecializer::checkTypeParameterConstraints(
     const std::string& name, std::optional<Position> loc) {
   const auto constrainedArguments =
       constrainedTypeArguments(typeParams, typeArgs);
-  if (constrainedArguments.empty()) return;
+  if (constrainedArguments.empty()) {
+    return;
+  }
   SemanticContext::ScopeSwitchGuard bindings(ctx_, ctx_.scope());
   ctx_.enterTypeParamScope(typeParameterNames(typeParams), typeArgs);
   for (const auto& [parameter, arg, constraint] : constrainedArguments) {
@@ -89,10 +92,16 @@ void GenericSpecializer::checkTypeParameterConstraints(
             ? sema_.typeResolver().typeAnnotationToType(
                   constraint.toAnnotation(), true)
             : sema_.typeResolver().resolveConstraintInterface(constraint);
-    if (mentionsTypeParameter(arg)) continue;
-    if (!constraint.typeArguments.empty() && mentionsTypeParameter(requirement))
+    if (mentionsTypeParameter(arg)) {
       continue;
-    if (type_analysis::satisfies(arg, requirement)) continue;
+    }
+    if (!constraint.typeArguments.empty() &&
+        mentionsTypeParameter(requirement)) {
+      continue;
+    }
+    if (type_analysis::satisfies(arg, requirement)) {
+      continue;
+    }
 
     // Resolving a field such as Server<Concrete> can check this constraint
     // before Concrete's implemented interfaces have been recorded.
@@ -100,7 +109,9 @@ void GenericSpecializer::checkTypeParameterConstraints(
     if (valueType && valueType->isClass() && requirement->isInterface()) {
       sema_.interfaces().ensureClassInterfaces(
           static_cast<const ClassType&>(*valueType).getDeclarationId());
-      if (type_analysis::satisfies(arg, requirement)) continue;
+      if (type_analysis::satisfies(arg, requirement)) {
+        continue;
+      }
     }
 
     // Point at the constraint itself when it carries a span; a declaration
@@ -313,18 +324,20 @@ std::shared_ptr<ClassType> GenericSpecializer::instantiateGenericClass(
         sema_.declarations().getFunctionInfo(*methodClone.function);
     TypePtr returnType = signature.returnType;
     std::vector<TypePtr> paramTypes = std::move(signature.paramTypes);
-    if (!methodSignatures.insert(proto, paramTypes))
+    if (!methodSignatures.insert(proto, paramTypes)) {
       logAndThrowError(
           "Function '" + proto.getName() + "' is already defined in this scope",
           methodClone.function->getLocation());
+    }
 
     // Attach the resolved method to this concrete class.
     auto& method = specializedClass->addMethod(
         proto.getName(), returnType, paramTypes, methodClone.isConstructor,
         proto.getTypeParameterNames(), proto.canThrow());
     method.declarationId = proto.getDeclarationId();
-    if (proto.getName() == "deinit")
+    if (proto.getName() == "deinit") {
       specializedClass->deinitializer = method.declarationId;
+    }
     method.visibility = methodVisibility(*methodClone.function);
     method.isConst = methodClone.isConst;
     method.isUnsafe = methodClone.function->getProto().isUnsafeMethod();
@@ -485,10 +498,11 @@ void GenericSpecializer::analyzePendingBodies() {
                                                         ast->getSourceFileId());
             /** Select the body handler for the owned syntax node. */
             using AST = typename std::decay_t<decltype(ast)>::element_type;
-            if constexpr (std::is_same_v<AST, ClassDefinitionAST>)
+            if constexpr (std::is_same_v<AST, ClassDefinitionAST>) {
               analyzeClassBody(*ast, job.ownerClass);
-            else
+            } else {
               analyzeCallableBody(*ast, job.ownerClass, job.isMethod);
+            }
           },
           job.ast);
     }
@@ -501,7 +515,9 @@ void GenericSpecializer::analyzePendingBodies() {
 void GenericSpecializer::analyzeClassBody(
     ClassDefinitionAST& ast, std::shared_ptr<ClassType> classType) {
   for (auto& method : ast.getMutableMethods()) {
-    if (method.function->getProto().isGeneric()) continue;
+    if (method.function->getProto().isGeneric()) {
+      continue;
+    }
     const auto& proto = method.function->getProto();
     std::vector<std::string> names;
     std::vector<TypePtr> arguments;
@@ -522,8 +538,9 @@ void GenericSpecializer::analyzeClassBody(
                                              arguments);
   }
   for (const auto& method : ast.getMethods()) {
-    if (!method.isConstructor || method.function->getProto().isGeneric())
+    if (!method.isConstructor || method.function->getProto().isGeneric()) {
       continue;
+    }
     checkFieldInitialization(*method.function, *classType, ast.getMethods());
   }
 }
@@ -533,15 +550,17 @@ void GenericSpecializer::analyzeCallableBody(
   const auto& proto = ast.getProto();
   const auto& paramTypes = proto.getResolvedParamTypes();
   auto returnType = proto.getResolvedReturnType();
-  if (proto.isConstMethod())
+  if (proto.isConstMethod()) {
     returnType = sema_.typeResolver().createConstView(returnType);
+  }
   ctx_.enterFunctionScope(
       formatFunctionSignature(proto.getQualifiedName().display(), paramTypes),
       proto.getQualifiedName(), proto.canThrow(), returnType);
   declareVariadicPack(proto);
-  if (isMethod)
+  if (isMethod) {
     ctx_.currentScope().declareVariable("this", classType, true,
                                         proto.isConstMethod());
+  }
   for (size_t i = 0; i < proto.getArgs().size(); ++i) {
     ctx_.currentScope().declareVariable(
         proto.getArgs()[i].first, paramTypes[i], true, false,
@@ -561,9 +580,13 @@ void GenericSpecializer::analyzeCallableBody(
 // -------------------------------------------------------------------
 
 void GenericSpecializer::declareVariadicPack(const PrototypeAST& proto) {
-  if (!proto.hasVariadicParam()) return;
+  if (!proto.hasVariadicParam()) {
+    return;
+  }
   auto* fnScope = ctx_.currentFunctionScope();
-  if (!fnScope) return;
+  if (!fnScope) {
+    return;
+  }
 
   const sun::ast::VariadicParam& pack = proto.getVariadicParam();
   const auto& types = proto.getResolvedVariadicTypes();
@@ -592,13 +615,19 @@ void GenericSpecializer::applyVariadicParamTypes(
 
   // A bare `args...` takes whatever the call passes. Anything other than
   // `_params_of<T>` is recorded and left unchecked.
-  if (!proto.hasVariadicTypeAnnotation()) return;
+  if (!proto.hasVariadicTypeAnnotation()) {
+    return;
+  }
   const sun::ast::TypeAnnotation& annot = proto.getVariadicTypeAnnotation();
-  if (annot.baseName != "_params_of" || annot.typeArguments.empty()) return;
+  if (annot.baseName != "_params_of" || annot.typeArguments.empty()) {
+    return;
+  }
 
   TypePtr target =
       sema_.typeResolver().typeAnnotationToType(*annot.typeArguments[0]);
-  if (!target) return;
+  if (!target) {
+    return;
+  }
 
   const std::string got =
       "(" + sun::types::formatTypeList(variadicArgTypes) + ")";
@@ -678,7 +707,9 @@ GenericSpecializer::instantiateGenericFunction(
   const PrototypeAST& proto = genericFunc->getProto();
 
   // A callable needs concrete arguments before its body can be queued.
-  if (anyMentionsTypeParameter(typeArgs)) return std::nullopt;
+  if (anyMentionsTypeParameter(typeArgs)) {
+    return std::nullopt;
+  }
 
   // A pack's arity and types come from the actual call arguments. Without
   // them (nullopt, e.g. from type inference) there is nothing to specialize
@@ -768,9 +799,10 @@ GenericSpecializer::instantiateGenericFunction(
   result.qualifiedName = specializedName;
   result.returnType = returnType;
   result.paramTypes = paramTypes;
-  if (variadicArgTypes)
+  if (variadicArgTypes) {
     result.paramTypes.insert(result.paramTypes.end(), variadicArgTypes->begin(),
                              variadicArgTypes->end());
+  }
   result.captures = substitutedCaptures;
   if (genericFunc->hasBody()) {
     // Clone the entire function AST
@@ -825,16 +857,18 @@ GenericSpecializer::instantiateGenericFunction(
     std::shared_ptr<ClassType> enclosingClass;
     if (const auto* receiver = ctx_.currentScope().lookupVariable("this")) {
       auto receiverType = unwrapRef(receiver->type);
-      if (receiverType && receiverType->isClass())
+      if (receiverType && receiverType->isClass()) {
         enclosingClass = std::static_pointer_cast<ClassType>(receiverType);
+      }
     }
     pendingBodies_.push_back({ctx_.scope(), enclosingClass, clonedFunc});
   }
 
   ctx_.exitScope();  // type parameter scope
 
-  if (!genericFunc->hasBody())
+  if (!genericFunc->hasBody()) {
     specializedFunctionCache_.emplace(instanceId, result);
+  }
   return result;
 }
 
@@ -847,7 +881,9 @@ GenericSpecializer::instantiateGenericFunction(
 // returns the first generic method matching `methodName`, or nullptr.
 FunctionAST* GenericSpecializer::findGenericMethodAST(
     const ClassType* classType, const std::string& methodName) {
-  if (!classType) return nullptr;
+  if (!classType) {
+    return nullptr;
+  }
 
   const ClassDefinitionAST* classDef = nullptr;
   // For specialized classes, look up the method from the SPECIALIZED class AST
@@ -862,13 +898,18 @@ FunctionAST* GenericSpecializer::findGenericMethodAST(
   } else {
     // Plain classes can also declare generic methods.
     auto* genericInfo = lookupGenericClassOf(*classType);
-    if (genericInfo) classDef = genericInfo->AST;
+    if (genericInfo) {
+      classDef = genericInfo->AST;
+    }
   }
 
-  if (!classDef)
+  if (!classDef) {
     classDef = dynamic_cast<const ClassDefinitionAST*>(
         ctx_.results().declarations.get(classType->getDeclarationId()).astNode);
-  if (!classDef) return nullptr;
+  }
+  if (!classDef) {
+    return nullptr;
+  }
 
   for (const auto& methodDecl : classDef->getMethods()) {
     if (methodDecl.function->getProto().getName() == methodName &&
@@ -927,8 +968,9 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
                         methodTypeArgs, variadicArgTypes};
   auto instanceId = ctx_.types()->specialize(key);
   auto cacheIt = specializedFunctionCache_.find(instanceId);
-  if (cacheIt != specializedFunctionCache_.end())
+  if (cacheIt != specializedFunctionCache_.end()) {
     return cacheIt->second.specializedAST;
+  }
 
   // Set up scopes for type substitution:
   // 1. Class-level type parameters (if specialized generic class)
@@ -1033,15 +1075,17 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
   result.qualifiedName = specializedName;
   result.returnType = returnType;
   result.paramTypes = paramTypes;
-  if (variadicArgTypes)
+  if (variadicArgTypes) {
     result.paramTypes.insert(result.paramTypes.end(), variadicArgTypes->begin(),
                              variadicArgTypes->end());
+  }
   result.specializedAST = clonedFunc;
   genericMethodAST->addSpecialization(instanceId, clonedFunc);
   specializedFunctionCache_.emplace(instanceId, result);
 
-  if (clonedFunc->hasBody())
+  if (clonedFunc->hasBody()) {
     pendingBodies_.push_back({ctx_.scope(), classType, clonedFunc, true});
+  }
   ctx_.exitScope();  // type parameter scope
 
   return clonedFunc;
@@ -1060,15 +1104,18 @@ using sun::semantic_analysis::methodVisibility;
 std::shared_ptr<InterfaceType> GenericSpecializer::instantiateGenericInterface(
     const std::string& baseName, const std::vector<TypePtr>& typeArgs) {
   auto* info = ctx_.lookupGenericInterface(baseName);
-  if (!info) logAndThrowError("Unknown generic interface '" + baseName + "'");
+  if (!info) {
+    logAndThrowError("Unknown generic interface '" + baseName + "'");
+  }
   return instantiateGenericInterface(*info, typeArgs);
 }
 
 std::shared_ptr<InterfaceType> GenericSpecializer::instantiateGenericInterface(
     const GenericInterfaceInfo& info, const std::vector<TypePtr>& typeArgs) {
   const auto* genericInfo = &info;
-  if (!genericInfo->AST)
+  if (!genericInfo->AST) {
     logAndThrowError("Generic interface has no declaration");
+  }
   const auto baseName = genericInfo->qualifiedName.display();
 
   // Verify type argument count matches
@@ -1169,12 +1216,13 @@ std::shared_ptr<InterfaceType> GenericSpecializer::instantiateGenericInterface(
           proto.getTypeParameterNames());
       method.declarationId = methodId;
       method.genericArguments = methodArguments;
-      for (const auto& parameter : proto.getTypeParameters())
+      for (const auto& parameter : proto.getTypeParameters()) {
         method.genericConstraints.push_back(
             parameter.constraint
                 ? sema_.typeResolver().typeAnnotationToType(
                       parameter.constraint->toAnnotation(), true)
                 : nullptr);
+      }
       method.visibility = methodVisibility(*methodDecl.function);
       method.isConst = methodDecl.isConst;
       method.isUnsafe = methodDecl.function->getProto().isUnsafeMethod();
@@ -1189,9 +1237,10 @@ std::shared_ptr<InterfaceType> GenericSpecializer::instantiateGenericInterface(
           ctx_.results().declarations.get(instanceId).module, {}, instanceId,
           "interface-receiver");
       auto receiver = ctx_.types()->getClass(receiverId);
-      for (const auto& field : specializedInterface->getFields())
+      for (const auto& field : specializedInterface->getFields()) {
         receiver->addField(field.name, field.type, field.declarationId)
             .visibility = field.visibility;
+      }
       for (const auto& member : specializedInterface->getMethods()) {
         auto& method = receiver->addMethod(member.name, member.returnType,
                                            member.paramTypes, false,
@@ -1203,16 +1252,21 @@ std::shared_ptr<InterfaceType> GenericSpecializer::instantiateGenericInterface(
         method.canThrow = member.canThrow;
       }
       for (const auto& declaration : genericInfo->AST->getMethods()) {
-        if (!declaration.hasDefaultImpl) continue;
+        if (!declaration.hasDefaultImpl) {
+          continue;
+        }
         const auto& original = *declaration.function;
         const sun::types::InterfaceMethod* member = nullptr;
-        for (const auto& candidate : specializedInterface->getMethods())
+        for (const auto& candidate : specializedInterface->getMethods()) {
           if (ctx_.results().declarations.get(candidate.declarationId).origin ==
               original.getDeclarationId()) {
             member = &candidate;
             break;
           }
-        if (!member) continue;
+        }
+        if (!member) {
+          continue;
+        }
         auto clone = original.clone();
         auto function = std::shared_ptr<FunctionAST>(
             static_cast<FunctionAST*>(clone.release()));
@@ -1228,14 +1282,16 @@ std::shared_ptr<InterfaceType> GenericSpecializer::instantiateGenericInterface(
         proto.setResolvedParamTypes(member->paramTypes);
         proto.setResolvedReturnType(member->returnType);
         std::vector<std::pair<std::string, TypePtr>> bindings;
-        for (size_t i = 0; i < typeArgs.size(); ++i)
+        for (size_t i = 0; i < typeArgs.size(); ++i) {
           bindings.emplace_back(genericInfo->typeParameters[i].name,
                                 typeArgs[i]);
+        }
         proto.setTypeBindings(std::move(bindings));
         function->setPrecompiled(false);
         original.addSpecialization(member->declarationId, function);
-        if (!function->getProto().isGeneric())
+        if (!function->getProto().isGeneric()) {
           pendingBodies_.push_back({ctx_.scope(), receiver, function, true});
+        }
       }
     }
 
@@ -1264,7 +1320,9 @@ std::shared_ptr<sun::types::EnumType>
 GenericSpecializer::instantiateGenericEnum(
     const GenericEnumInfo& info, const std::vector<TypePtr>& typeArgs) {
   const auto* genericInfo = &info;
-  if (!genericInfo->AST) logAndThrowError("Generic enum has no declaration");
+  if (!genericInfo->AST) {
+    logAndThrowError("Generic enum has no declaration");
+  }
   const auto baseName = genericInfo->qualifiedName.display();
   const auto& templateName = genericInfo->qualifiedName.baseName;
 
@@ -1323,14 +1381,17 @@ GenericSpecializer::instantiateGenericEnum(
           ctx_.results().declarations.get(instanceId).module, {},
           variant.declaration.id);
       specialized->addVariant(variant.name, variant.value, variantId);
-      if (!variant.hasPayload()) continue;
+      if (!variant.hasPayload()) {
+        continue;
+      }
       std::vector<TypePtr> payloadTypes;
       for (const auto& annot : variant.payloadTypes) {
         auto payloadType = sema_.typeResolver().typeAnnotationToType(annot);
         // A generic enum's sole first-variant payload becomes unit for void.
         if (payloadType->isVoid() && variant.payloadTypes.size() == 1 &&
-            &variant == &genericInfo->AST->getVariants().front())
+            &variant == &genericInfo->AST->getVariants().front()) {
           continue;
+        }
         if (!abstractShape) {
           type_analysis::validateEnumPayloadType(
               payloadType, *specialized, variant.name, variant.location);
@@ -1380,11 +1441,15 @@ bool GenericSpecializer::templateStillAbstract(
   // is unbound — `function build(args...: _params_of<T>)` inside `outer<T>`.
   const PrototypeAST* proto =
       genericInfo.AST ? &genericInfo.AST->getProto() : nullptr;
-  if (!proto || !proto->hasVariadicTypeAnnotation()) return false;
+  if (!proto || !proto->hasVariadicTypeAnnotation()) {
+    return false;
+  }
   // `_params_of` is not a type of its own; what may still be abstract is what
   // it is applied to.
   const sun::ast::TypeAnnotation& annot = proto->getVariadicTypeAnnotation();
-  if (annot.typeArguments.empty()) return false;
+  if (annot.typeArguments.empty()) {
+    return false;
+  }
 
   ctx_.enterTypeParamScope(typeParameterNames(genericInfo.typeParameters),
                            typeArgs);

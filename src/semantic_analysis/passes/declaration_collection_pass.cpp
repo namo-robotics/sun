@@ -32,7 +32,9 @@ using sun::semantic_analysis::methodVisibility;
 void DeclarationCollectionPass::run(BlockExprAST& block) {
   // Only hoist at module level (not inside function bodies where captures
   // and local variable ordering matter)
-  if (!ctx_.isAtModuleLevel()) return;
+  if (!ctx_.isAtModuleLevel()) {
+    return;
+  }
 
   SemanticContext::DeclarationCollectionGuard collection(ctx_);
 
@@ -65,7 +67,9 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
         // declaration order with everything else, under the bundle's hash.
         // Imported bundles were completed by import preparation.
         auto& moonScope = static_cast<MoonScopeAST&>(*expr);
-        if (!moonScope.isOwnBundle()) break;
+        if (!moonScope.isOwnBundle()) {
+          break;
+        }
         ctx_.enterModuleScope(moonScope.getContentHash());
         run(const_cast<BlockExprAST&>(moonScope.getBody()));
         ctx_.exitScope();
@@ -83,17 +87,26 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
   // must be known before any signature is resolved.
   for (const auto& expr : block.getBody()) {
     SemanticContext::SourceFileGuard sourceFile(ctx_, expr->getSourceFileId());
-    if (expr->getType() != ASTNodeType::CLASS_DEFINITION) continue;
-    auto& classDef = static_cast<ClassDefinitionAST&>(*expr);
-    if (classDef.isPartial() || classDef.isGeneric()) continue;
-    QualifiedName qualifiedClass = classDef.getQualifiedName();
-    if (ctx_.declarations().hasClassShape(classDef.getDeclarationId()))
+    if (expr->getType() != ASTNodeType::CLASS_DEFINITION) {
       continue;
+    }
+    auto& classDef = static_cast<ClassDefinitionAST&>(*expr);
+    if (classDef.isPartial() || classDef.isGeneric()) {
+      continue;
+    }
+    QualifiedName qualifiedClass = classDef.getQualifiedName();
+    if (ctx_.declarations().hasClassShape(classDef.getDeclarationId())) {
+      continue;
+    }
     auto classType = ctx_.lookupClass(classDef.getName());
-    if (!classType) continue;
+    if (!classType) {
+      continue;
+    }
     // A duplicate name resolves to the first declaration. Body checking
     // reports the duplicate; do not register its fields on that first type.
-    if (classType->getDeclarationId() != classDef.getDeclarationId()) continue;
+    if (classType->getDeclarationId() != classDef.getDeclarationId()) {
+      continue;
+    }
     registerClassShape(classDef, qualifiedClass, classType);
   }
 
@@ -111,8 +124,9 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
       continue;
     }
 
-    if (expr->getType() == ASTNodeType::FUNCTION)
+    if (expr->getType() == ASTNodeType::FUNCTION) {
       collectFunctionSignature(static_cast<FunctionAST&>(*expr));
+    }
   }
 }
 
@@ -123,10 +137,14 @@ void DeclarationCollectionPass::collectFunctionSignature(FunctionAST& func) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
 
   // Skip lambdas and anonymous functions
-  if (proto.getName().empty()) return;
+  if (proto.getName().empty()) {
+    return;
+  }
 
   // Generic and parameter-pack templates were registered before resolution.
-  if (proto.isTemplate()) return;
+  if (proto.isTemplate()) {
+    return;
+  }
 
   std::vector<TypePtr> paramTypes;
   for (auto& [argName, argType] : proto.getMutableArgs()) {
@@ -138,7 +156,9 @@ void DeclarationCollectionPass::collectFunctionSignature(FunctionAST& func) {
         sema_.typeResolver().typeAnnotationToType(*proto.getReturnType());
   }
 
-  if (func.isCExtern()) registerNativeFunction(proto, paramTypes, returnType);
+  if (func.isCExtern()) {
+    registerNativeFunction(proto, paramTypes, returnType);
+  }
 
   const auto& qualifiedName = proto.getQualifiedName();
 
@@ -172,11 +192,14 @@ static bool compatibleNativeFunctionTypes(const TypePtr& first,
   const auto& a = static_cast<const sun::types::FunctionType&>(*first);
   const auto& b = static_cast<const sun::types::FunctionType&>(*second);
   if (!compatibleNativeValueTypes(a.getReturnType(), b.getReturnType()) ||
-      a.getParamTypes().size() != b.getParamTypes().size())
+      a.getParamTypes().size() != b.getParamTypes().size()) {
     return false;
+  }
   for (size_t i = 0; i < a.getParamTypes().size(); ++i) {
-    if (!compatibleNativeValueTypes(a.getParamTypes()[i], b.getParamTypes()[i]))
+    if (!compatibleNativeValueTypes(a.getParamTypes()[i],
+                                    b.getParamTypes()[i])) {
       return false;
+    }
   }
   return true;
 }
@@ -189,11 +212,14 @@ void DeclarationCollectionPass::registerNativeFunction(
       proto.getLinkName(),
       NativeFunctionSignature{type, proto.getName(), proto.getLocation(),
                               proto.isCVariadic()});
-  if (inserted) return;
+  if (inserted) {
+    return;
+  }
   const auto& previous = entry->second;
   if (compatibleNativeFunctionTypes(previous.type, type) &&
-      previous.variadic == proto.isCVariadic())
+      previous.variadic == proto.isCVariadic()) {
     return;
+  }
 
   logAndThrowError("Conflicting signatures for native symbol '" +
                        proto.getLinkName() + "': declaration '" +
@@ -244,10 +270,14 @@ void DeclarationCollectionPass::collectExternVariable(
 void DeclarationCollectionPass::registerPrecompiledModuleVariable(
     VariableCreationAST& varCreate) {
   // A bundle always states a global's type and never ships its initializer
-  if (!varCreate.hasTypeAnnotation()) return;
+  if (!varCreate.hasTypeAnnotation()) {
+    return;
+  }
   TypePtr type =
       sema_.typeResolver().typeAnnotationToType(*varCreate.getTypeAnnotation());
-  if (!type) return;
+  if (!type) {
+    return;
+  }
   varCreate.setResolvedType(type);
 
   // A `const` the library computed at compile time can be computed with here
@@ -292,11 +322,15 @@ void DeclarationCollectionPass::registerUsing(sun::ast::UsingAST& usingDecl) {
     // A retained using may serve only a body already compiled into the bundle.
     // Actual nominal and module references still require their exact
     // dependency.
-    if (!id) return;
+    if (!id) {
+      return;
+    }
     auto* scope = ctx_.lookupModuleScope(id);
     namespacePath =
         static_cast<const ModuleScope&>(*scope).qualifiedName.lookupName();
-    if (usingDecl.isModuleImport()) target = "*";
+    if (usingDecl.isModuleImport()) {
+      target = "*";
+    }
   }
 
   if (!usingDecl.getModuleDeclaration() && !usingDecl.isModuleImport()) {
@@ -327,7 +361,9 @@ void DeclarationCollectionPass::registerUsing(sun::ast::UsingAST& usingDecl) {
 void DeclarationCollectionPass::registerClassShape(
     ClassDefinitionAST& classDef, const QualifiedName& qualifiedClass,
     std::shared_ptr<sun::types::ClassType> classType) {
-  if (!ctx_.declarations().noteClassShape(classDef.getDeclarationId())) return;
+  if (!ctx_.declarations().noteClassShape(classDef.getDeclarationId())) {
+    return;
+  }
 
   // The class's declared lifetimes must be visible before any signature
   // that applies them ('ref Bus<'this>') resolves
@@ -376,18 +412,20 @@ void DeclarationCollectionPass::registerClassShape(
         sema_.declarations().getFunctionInfo(*methodDecl.function);
     PrototypeAST& proto =
         const_cast<PrototypeAST&>(methodDecl.function->getProto());
-    if (!methodSignatures.insert(proto, methodInfo.paramTypes))
+    if (!methodSignatures.insert(proto, methodInfo.paramTypes)) {
       logAndThrowError(
           "Function '" + proto.getName() + "' is already defined in this scope",
           methodDecl.function->getLocation());
+    }
     sema_.declarations().applyFunctionInfoToProto(proto, methodInfo);
     auto& method =
         classType->addMethod(proto.getName(), methodInfo.returnType,
                              methodInfo.paramTypes, methodDecl.isConstructor,
                              proto.getTypeParameterNames(), proto.canThrow());
     method.declarationId = proto.getDeclarationId();
-    if (proto.getName() == "deinit")
+    if (proto.getName() == "deinit") {
       classType->deinitializer = method.declarationId;
+    }
     method.visibility = methodVisibility(*methodDecl.function);
     method.isConst = methodDecl.isConst;
     method.isUnsafe = methodDecl.function->getProto().isUnsafeMethod();

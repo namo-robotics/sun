@@ -78,10 +78,14 @@ class ProtoProject {
    */
   ProtoProject& setProgram(const std::string& program,
                            std::vector<std::string> manifestProtos = {}) {
-    if (manifestProtos.empty()) manifestProtos = schemas_;
+    if (manifestProtos.empty()) {
+      manifestProtos = schemas_;
+    }
     std::string manifest = "manifest { protos: [";
     for (size_t i = 0; i < manifestProtos.size(); ++i) {
-      if (i) manifest += ", ";
+      if (i) {
+        manifest += ", ";
+      }
       manifest += "\"" + manifestProtos[i] + "\"";
     }
     manifest += "] }\n";
@@ -109,7 +113,9 @@ class ProtoProject {
     fs::path entry = dir_ / (libName + ".sun");
     std::string manifest = "manifest { protos: [";
     for (size_t i = 0; i < schemas_.size(); ++i) {
-      if (i) manifest += ", ";
+      if (i) {
+        manifest += ", ";
+      }
       manifest += "\"" + schemas_[i] + "\"";
     }
     manifest += "] }\n";
@@ -167,12 +173,18 @@ class LibprotobufSchema {
                                                    const std::string& typeName,
                                                    const std::string& bytes) {
     const auto* fd = import(file);
-    if (!fd) return nullptr;
+    if (!fd) {
+      return nullptr;
+    }
     const auto* desc = fd->FindMessageTypeByName(typeName);
-    if (!desc) return nullptr;
+    if (!desc) {
+      return nullptr;
+    }
     std::unique_ptr<google::protobuf::Message> msg(
         factory_.GetPrototype(desc)->New());
-    if (!msg->ParseFromString(bytes)) return nullptr;
+    if (!msg->ParseFromString(bytes)) {
+      return nullptr;
+    }
     return msg;
   }
 

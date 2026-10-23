@@ -21,10 +21,18 @@ struct LspPosition {
  * Number of bytes in the UTF-8 sequence that starts with this byte
  */
 inline size_t utf8Length(unsigned char lead) {
-  if (lead < 0x80) return 1;
-  if (lead >= 0xF0) return 4;
-  if (lead >= 0xE0) return 3;
-  if (lead >= 0xC0) return 2;
+  if (lead < 0x80) {
+    return 1;
+  }
+  if (lead >= 0xF0) {
+    return 4;
+  }
+  if (lead >= 0xE0) {
+    return 3;
+  }
+  if (lead >= 0xC0) {
+    return 2;
+  }
   return 1;  // stray continuation byte
 }
 
@@ -41,7 +49,9 @@ inline size_t lineStart(const std::string& text, int line) {
   size_t offset = 0;
   for (int current = 0; current < line; ++current) {
     size_t newline = text.find('\n', offset);
-    if (newline == std::string::npos) return text.size();
+    if (newline == std::string::npos) {
+      return text.size();
+    }
     offset = newline + 1;
   }
   return offset;
@@ -59,7 +69,9 @@ inline int byteOffsetFromLspPosition(const std::string& text, int line,
   while (offset < text.size() && text[offset] != '\n') {
     size_t length = utf8Length(static_cast<unsigned char>(text[offset]));
     int width = utf16Units(length);
-    if (units + width > character) break;
+    if (units + width > character) {
+      break;
+    }
     units += width;
     offset += length;
   }
@@ -72,7 +84,9 @@ inline int byteOffsetFromLspPosition(const std::string& text, int line,
 inline LspPosition lspPositionFromByteOffset(const std::string& text,
                                              int offset) {
   size_t target = offset < 0 ? 0 : static_cast<size_t>(offset);
-  if (target > text.size()) target = text.size();
+  if (target > text.size()) {
+    target = text.size();
+  }
 
   LspPosition position;
   size_t current = 0;

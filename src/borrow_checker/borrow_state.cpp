@@ -16,7 +16,9 @@ BorrowCheckResult BorrowState::addBorrow(const std::string& borrowedVar,
 
   // Check existing borrows on this variable
   for (const auto& loan : varLoans) {
-    if (!loan.isActive) continue;
+    if (!loan.isActive) {
+      continue;
+    }
 
     if (kind == BorrowKind::Mutable) {
       // Mutable borrow requires no existing borrows

@@ -15,8 +15,9 @@ const proto::CompilerAbiSupport& compilerAbiSupport() {
   static const auto support = [] {
     proto::CompilerAbiSupport result;
     if (!result.ParseFromArray(sunCompilerAbiSupport,
-                               sizeof(sunCompilerAbiSupport)))
+                               sizeof(sunCompilerAbiSupport))) {
       sun::support::logAndThrowError("Invalid embedded compiler ABI support");
+    }
     validateCompilerSupport(result);
     return result;
   }();
@@ -25,18 +26,21 @@ const proto::CompilerAbiSupport& compilerAbiSupport() {
 
 std::map<std::string, std::string> supportedRules() {
   std::map<std::string, std::string> rules;
-  for (const auto& rule : compilerAbiSupport().rules())
+  for (const auto& rule : compilerAbiSupport().rules()) {
     rules.emplace(rule.name(), rule.version() == "experimental"
                                    ? compatibilityImplementation()
                                    : rule.version());
+  }
   return rules;
 }
 
 std::string emissionImplementation(const std::string& name) {
-  for (const auto& rule : compilerAbiSupport().emission_defaults())
-    if (rule.name() == name)
+  for (const auto& rule : compilerAbiSupport().emission_defaults()) {
+    if (rule.name() == name) {
       return rule.version() == "experimental" ? compatibilityImplementation()
                                               : rule.version();
+    }
+  }
   sun::support::logAndThrowError("No compiler ABI emission default for " +
                                  name);
 }
@@ -44,16 +48,19 @@ std::string emissionImplementation(const std::string& name) {
 std::string compatibilitySupportJson() {
   const auto producer = currentProducerIdentity();
   llvm::json::Object rules;
-  for (const auto& [name, implementation] : supportedRules())
+  for (const auto& [name, implementation] : supportedRules()) {
     rules[name] = implementation;
+  }
   llvm::json::Array bindings;
-  for (const auto& rule : compilerAbiSupport().rules())
+  for (const auto& rule : compilerAbiSupport().rules()) {
     bindings.push_back(llvm::json::Object{{"name", rule.name()},
                                           {"version", rule.version()},
                                           {"binding", rule.binding()}});
+  }
   llvm::json::Object defaults;
-  for (const auto& rule : compilerAbiSupport().emission_defaults())
+  for (const auto& rule : compilerAbiSupport().emission_defaults()) {
     defaults[rule.name()] = rule.version();
+  }
   llvm::json::Array profiles;
   for (const auto* triple :
        {"x86_64-linux-gnu", "x86_64-linux-musl", "aarch64-linux-gnu",

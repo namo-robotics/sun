@@ -62,7 +62,9 @@ llvm::FunctionType* buildLoweredFunctionType(const SignatureLowering& lowering,
     if (p.isIndirect()) {
       params.push_back(llvm::PointerType::getUnqual(ctx));
     } else if (p.isCoerced()) {
-      for (llvm::Type* piece : p.pieces) params.push_back(piece);
+      for (llvm::Type* piece : p.pieces) {
+        params.push_back(piece);
+      }
     } else {
       params.push_back(p.type);
     }

@@ -55,7 +55,9 @@ inline constexpr std::pair<TokenKind, pbc::TokenKind> kTokenKindProtoMap[] = {
 /** Converts a lexer token category to its protobuf representation. */
 inline pbc::TokenKind toProtoTokenKind(TokenKind kind) {
   for (const auto& [cppKind, protoKind] : kTokenKindProtoMap) {
-    if (cppKind == kind) return protoKind;
+    if (cppKind == kind) {
+      return protoKind;
+    }
   }
   return pbc::TOKEN_KIND_UNKNOWN;
 }
@@ -63,7 +65,9 @@ inline pbc::TokenKind toProtoTokenKind(TokenKind kind) {
 /** Converts a protobuf token category to the lexer representation. */
 inline TokenKind fromProtoTokenKind(pbc::TokenKind kind) {
   for (const auto& [cppKind, protoKind] : kTokenKindProtoMap) {
-    if (protoKind == kind) return cppKind;
+    if (protoKind == kind) {
+      return cppKind;
+    }
   }
   return TokenKind::UNKNOWN;
 }

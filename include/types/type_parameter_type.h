@@ -53,7 +53,9 @@ class TypeParameterType : public Type {
         session_(std::move(session)),
         constraint_(std::move(constraint)) {
     // Give projected parameters a distinct diagnostic spelling.
-    if (projection_ == TypeProjection::ReturnType) name = base_ + "$ret";
+    if (projection_ == TypeProjection::ReturnType) {
+      name = base_ + "$ret";
+    }
   }
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
@@ -84,7 +86,9 @@ class TypeParameterType : public Type {
   /** Reports whether the other type has the same semantic identity. */
   bool equals(const Type& other) const override {
     if (auto* p = dynamic_cast<const TypeParameterType*>(&other)) {
-      if (!declaration_ || !p->declaration_) return this == p;
+      if (!declaration_ || !p->declaration_) {
+        return this == p;
+      }
       return declaration_ == p->declaration_ && session_ == p->session_ &&
              projection_ == p->projection_;
     }

@@ -32,8 +32,9 @@ std::optional<unsigned> getIntegerBitWidth(const SunType& type) {
     case SunType::Kind::Enum: {
       // A payload-free enum is stored as its underlying integer.
       const auto& enumType = static_cast<const sun::types::EnumType&>(type);
-      if (enumType.hasPayload() || !enumType.getUnderlyingType())
+      if (enumType.hasPayload() || !enumType.getUnderlyingType()) {
         return std::nullopt;
+      }
       return getIntegerBitWidth(*enumType.getUnderlyingType());
     }
     default:
@@ -43,7 +44,9 @@ std::optional<unsigned> getIntegerBitWidth(const SunType& type) {
 
 std::string ConstantValue::toDisplayString() const {
   if (isInteger()) {
-    if (type && type->isBool()) return getInteger().isZero() ? "false" : "true";
+    if (type && type->isBool()) {
+      return getInteger().isZero() ? "false" : "true";
+    }
     llvm::SmallString<32> text;
     getInteger().toString(text, /*Radix=*/10, /*Signed=*/!isUnsigned());
     return std::string(text);
@@ -53,10 +56,14 @@ std::string ConstantValue::toDisplayString() const {
     getFloat().toString(text);
     return std::string(text.begin(), text.end());
   }
-  if (isString()) return "\"" + getString() + "\"";
+  if (isString()) {
+    return "\"" + getString() + "\"";
+  }
   std::string text = "[";
   for (const auto& element : getElements()) {
-    if (text.size() > 1) text += ", ";
+    if (text.size() > 1) {
+      text += ", ";
+    }
     text += element.toDisplayString();
   }
   return text + "]";
@@ -64,30 +71,39 @@ std::string ConstantValue::toDisplayString() const {
 
 std::optional<ConstantValue> adoptType(ConstantValue value,
                                        const sun::types::TypePtr& type) {
-  if (!type) return std::nullopt;
+  if (!type) {
+    return std::nullopt;
+  }
   value.type = type;
 
   if (value.isInteger()) {
     auto width = getIntegerBitWidth(*type);
-    if (!width || *width != value.getInteger().getBitWidth())
+    if (!width || *width != value.getInteger().getBitWidth()) {
       return std::nullopt;
+    }
     return value;
   }
   if (value.isFloat()) {
     const bool single =
         &value.getFloat().getSemantics() == &llvm::APFloat::IEEEsingle();
-    if (!type->isFloatingPoint() || type->isFloat32() != single)
+    if (!type->isFloatingPoint() || type->isFloat32() != single) {
       return std::nullopt;
+    }
     return value;
   }
-  if (value.isString()) return value;
+  if (value.isString()) {
+    return value;
+  }
 
-  if (!type->isArray()) return std::nullopt;
+  if (!type->isArray()) {
+    return std::nullopt;
+  }
   const auto& arrayType = static_cast<const sun::types::ArrayType&>(*type);
   const auto& dimensions = arrayType.getDimensions();
   auto& elements = std::get<ConstantValue::Elements>(value.data);
-  if (dimensions.empty() || dimensions[0] != elements.size())
+  if (dimensions.empty() || dimensions[0] != elements.size()) {
     return std::nullopt;
+  }
   // An element of a multi-dimensional array is itself an array
   sun::types::TypePtr elementType =
       dimensions.size() == 1
@@ -97,7 +113,9 @@ std::optional<ConstantValue> adoptType(ConstantValue value,
                 std::vector<size_t>(dimensions.begin() + 1, dimensions.end()));
   for (auto& element : elements) {
     auto typed = adoptType(std::move(element), elementType);
-    if (!typed) return std::nullopt;
+    if (!typed) {
+      return std::nullopt;
+    }
     element = std::move(*typed);
   }
   return value;

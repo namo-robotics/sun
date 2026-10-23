@@ -101,12 +101,16 @@ class InterfaceDefinitionAST : public ExprAST {
     if (!typeParameters.empty()) {
       result += "<";
       for (size_t i = 0; i < typeParameters.size(); ++i) {
-        if (i > 0) result += ", ";
+        if (i > 0) {
+          result += ", ";
+        }
         result += typeParameters[i].toString();
       }
       result += ">";
     }
-    if (parent_) result += " extends " + parent_->toString();
+    if (parent_) {
+      result += " extends " + parent_->toString();
+    }
     result += " { ... }";
     return result;
   }
@@ -178,7 +182,9 @@ class InterfaceDefinitionAST : public ExprAST {
    * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     for (auto& method : methods) {
-      if (method.function) method.function->forEachChildSlot(fn);
+      if (method.function) {
+        method.function->forEachChildSlot(fn);
+      }
     }
   }
 
@@ -188,7 +194,9 @@ class InterfaceDefinitionAST : public ExprAST {
   std::vector<const InterfaceMethodDecl*> getDefaultMethods() const {
     std::vector<const InterfaceMethodDecl*> defaults;
     for (const auto& method : methods) {
-      if (method.hasDefaultImpl) defaults.push_back(&method);
+      if (method.hasDefaultImpl) {
+        defaults.push_back(&method);
+      }
     }
     return defaults;
   }
@@ -199,7 +207,9 @@ class InterfaceDefinitionAST : public ExprAST {
   std::vector<const InterfaceMethodDecl*> getRequiredMethods() const {
     std::vector<const InterfaceMethodDecl*> required;
     for (const auto& method : methods) {
-      if (!method.hasDefaultImpl) required.push_back(&method);
+      if (!method.hasDefaultImpl) {
+        required.push_back(&method);
+      }
     }
     return required;
   }

@@ -37,7 +37,9 @@ class IndexAST : public ExprAST {
   std::string toString() const override {
     std::string result = target->toString() + "[";
     for (size_t i = 0; i < indices.size(); ++i) {
-      if (i > 0) result += ", ";
+      if (i > 0) {
+        result += ", ";
+      }
       result += indices[i]->toString();
     }
     return result + "]";
@@ -54,7 +56,9 @@ class IndexAST : public ExprAST {
   void forEachChildSlot(const ChildSlotFn& fn) override {
     fn(target);
     for (auto& slice : indices) {
-      if (slice) slice->forEachChildSlot(fn);
+      if (slice) {
+        slice->forEachChildSlot(fn);
+      }
     }
   }
   /** Returns the number of index expressions in this access. */
@@ -65,7 +69,9 @@ class IndexAST : public ExprAST {
    */
   bool hasSlices() const {
     for (const auto& idx : indices) {
-      if (idx->isRange()) return true;
+      if (idx->isRange()) {
+        return true;
+      }
     }
     return false;
   }

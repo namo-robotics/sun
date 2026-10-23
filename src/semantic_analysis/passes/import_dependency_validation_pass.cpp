@@ -8,11 +8,13 @@ namespace sun::semantic_analysis::passes {
 
 void ImportDependencyValidationPass::run(
     const std::vector<sun::ast::MoonScopeAST*>& imports) const {
-  for (const auto* moon : imports)
-    for (const auto& requirement : moon->requiredDeclarations)
+  for (const auto* moon : imports) {
+    for (const auto& requirement : moon->requiredDeclarations) {
       context_.requireDeclaration(requirement.key, moon->getMoonPath(),
                                   requirement.expectedKind,
                                   requirement.displayName);
+    }
+  }
 }
 
 }  // namespace sun::semantic_analysis::passes

@@ -1707,18 +1707,25 @@ TEST(Interfaces, shared_dispatch_table_layout) {
   llvm::GlobalVariable* baseTable = nullptr;
   llvm::GlobalVariable* childTable = nullptr;
   for (auto& global : driver->getModule().globals()) {
-    if (!global.hasInitializer()) continue;
+    if (!global.hasInitializer()) {
+      continue;
+    }
     auto* entries =
         llvm::dyn_cast_or_null<llvm::ConstantStruct>(global.getInitializer());
     if (!entries || entries->getNumOperands() == 0 ||
-        !llvm::isa<llvm::Function>(entries->getOperand(0)))
+        !llvm::isa<llvm::Function>(entries->getOperand(0))) {
       continue;
+    }
     ++tableCount;
     EXPECT_TRUE(global.isConstant());
     auto* layout = llvm::dyn_cast<llvm::StructType>(global.getValueType());
     ASSERT_NE(layout, nullptr);
-    if (layout->getNumElements() == 1) baseTable = &global;
-    if (layout->getNumElements() == 3) childTable = &global;
+    if (layout->getNumElements() == 1) {
+      baseTable = &global;
+    }
+    if (layout->getNumElements() == 3) {
+      childTable = &global;
+    }
   }
   EXPECT_EQ(tableCount, 2u);
   ASSERT_NE(baseTable, nullptr);

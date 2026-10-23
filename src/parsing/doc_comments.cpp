@@ -19,7 +19,9 @@ namespace {
 /** Removes surrounding whitespace from a comment line. */
 std::string trim(const std::string& text) {
   size_t start = text.find_first_not_of(" \t\r\n");
-  if (start == std::string::npos) return "";
+  if (start == std::string::npos) {
+    return "";
+  }
   size_t end = text.find_last_not_of(" \t\r\n");
   return text.substr(start, end - start + 1);
 }
@@ -40,17 +42,20 @@ bool endsWith(const std::string& text, const std::string& suffix) {
  */
 std::string stripCommentLine(std::string line) {
   line = trim(line);
-  if (endsWith(line, "*/")) line = line.substr(0, line.size() - 2);
-  if (startsWith(line, "///"))
+  if (endsWith(line, "*/")) {
+    line = line.substr(0, line.size() - 2);
+  }
+  if (startsWith(line, "///")) {
     line = line.substr(3);
-  else if (startsWith(line, "//"))
+  } else if (startsWith(line, "//")) {
     line = line.substr(2);
-  else if (startsWith(line, "/**"))
+  } else if (startsWith(line, "/**")) {
     line = line.substr(3);
-  else if (startsWith(line, "/*"))
+  } else if (startsWith(line, "/*")) {
     line = line.substr(2);
-  else if (startsWith(line, "*"))
+  } else if (startsWith(line, "*")) {
     line = line.substr(1);
+  }
   return trim(line);
 }
 
@@ -60,7 +65,9 @@ std::vector<std::string> splitLines(const std::string& text) {
   size_t start = 0;
   while (start <= text.size()) {
     size_t end = text.find('\n', start);
-    if (end == std::string::npos) end = text.size();
+    if (end == std::string::npos) {
+      end = text.size();
+    }
     lines.push_back(text.substr(start, end - start));
     start = end + 1;
   }
@@ -71,8 +78,12 @@ std::vector<std::string> splitLines(const std::string& text) {
 std::string joinCollected(const std::vector<std::string>& collected) {
   std::string out;
   for (auto it = collected.rbegin(); it != collected.rend(); ++it) {
-    if (it->empty() && out.empty()) continue;  // leading blank comment line
-    if (!out.empty()) out += "\n";
+    if (it->empty() && out.empty()) {
+      continue;  // leading blank comment line
+    }
+    if (!out.empty()) {
+      out += "\n";
+    }
     out += *it;
   }
   return trim(out);
@@ -91,7 +102,9 @@ class DocAttacher {
   /** Attaches source documentation to declarations inside a block. */
   void visitBlock(sun::ast::BlockExprAST& block) {
     for (auto& stmt : block.mutableBody()) {
-      if (stmt) visit(*stmt);
+      if (stmt) {
+        visit(*stmt);
+      }
     }
   }
 
@@ -135,7 +148,9 @@ class DocAttacher {
           field.doc = memberDocAt(field.location, cls.getLocation());
         }
         for (auto& method : cls.getMutableMethods()) {
-          if (!method.function) continue;
+          if (!method.function) {
+            continue;
+          }
           method.function->getProtoMut().setDoc(
               memberDocAt(method.function->getLocation(), cls.getLocation()));
         }
@@ -148,7 +163,9 @@ class DocAttacher {
           field.doc = memberDocAt(field.location, iface.getLocation());
         }
         for (auto& method : iface.getMutableMethods()) {
-          if (!method.function) continue;
+          if (!method.function) {
+            continue;
+          }
           method.function->getProtoMut().setDoc(
               memberDocAt(method.function->getLocation(), iface.getLocation()));
         }
@@ -176,7 +193,9 @@ class DocAttacher {
   static std::string commentAbove(const std::vector<std::string>& lines,
                                   int line) {
     int index = line - 2;  // line above, as a 0-based index
-    if (index < 0 || index >= static_cast<int>(lines.size())) return "";
+    if (index < 0 || index >= static_cast<int>(lines.size())) {
+      return "";
+    }
 
     std::vector<std::string> collected;
     std::string above = trim(lines[index]);
@@ -190,7 +209,9 @@ class DocAttacher {
       while (start >= 0 && trim(lines[start]).find("/*") == std::string::npos) {
         --start;
       }
-      if (start < 0) return "";
+      if (start < 0) {
+        return "";
+      }
       for (int i = index; i >= start; --i) {
         collected.push_back(stripCommentLine(lines[i]));
       }

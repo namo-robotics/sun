@@ -177,8 +177,12 @@ class FunctionTable {
    */
   bool hasNameOrQualified(const std::string& name,
                           const std::string& qualifiedName) const {
-    if (byName_.count(name) > 0) return true;
-    if (!qualifiedName.empty() && byName_.count(qualifiedName) > 0) return true;
+    if (byName_.count(name) > 0) {
+      return true;
+    }
+    if (!qualifiedName.empty() && byName_.count(qualifiedName) > 0) {
+      return true;
+    }
     return false;
   }
 
@@ -188,7 +192,9 @@ class FunctionTable {
   const std::vector<FunctionInfo*>* getOverloads(
       const std::string& name) const {
     auto it = byName_.find(name);
-    if (it != byName_.end()) return &it->second;
+    if (it != byName_.end()) {
+      return &it->second;
+    }
     return nullptr;
   }
 
@@ -328,7 +334,9 @@ struct SymbolMatch {
    */
   std::string display() const {
     std::string displayPath = displayModulePath(modulePath);
-    if (displayPath.empty()) return name;
+    if (displayPath.empty()) {
+      return name;
+    }
     return displayPath + "." + name;
   }
 };
@@ -414,7 +422,9 @@ struct SpecializedFunctionInfo {
   FunctionInfo asFunctionInfo() const {
     FunctionInfo info{returnType, paramTypes, captures, qualifiedName,
                       canThrow()};
-    if (specializedAST) info.declarationId = specializedAST->getDeclarationId();
+    if (specializedAST) {
+      info.declarationId = specializedAST->getDeclarationId();
+    }
     return info;
   }
 
@@ -601,8 +611,11 @@ struct SemanticScopeBase
 
   /** Report whether this scope is outside every function body. */
   bool isAtModuleLevel() const {
-    for (auto* scope = this; scope; scope = scope->parent)
-      if (scope->getType() == ScopeType::Function) return false;
+    for (auto* scope = this; scope; scope = scope->parent) {
+      if (scope->getType() == ScopeType::Function) {
+        return false;
+      }
+    }
     return true;
   }
 
@@ -625,7 +638,9 @@ struct SemanticScopeBase
   /** Returns the scope context used to check declaration visibility. */
   const AccessContext* accessCtx() const {
     auto* s = this;
-    while (s->parent) s = s->parent;
+    while (s->parent) {
+      s = s->parent;
+    }
     return s->accessContext;
   }
 
@@ -937,41 +952,51 @@ struct TypeParamsScope : SemanticScopeBase {
 // Inline downcasting implementations
 // ===================================================================
 inline FunctionScope* SemanticScopeBase::asFunction() {
-  if (getType() == ScopeType::Function)
+  if (getType() == ScopeType::Function) {
     return static_cast<FunctionScope*>(this);
+  }
   return nullptr;
 }
 inline const FunctionScope* SemanticScopeBase::asFunction() const {
-  if (getType() == ScopeType::Function)
+  if (getType() == ScopeType::Function) {
     return static_cast<const FunctionScope*>(this);
+  }
   return nullptr;
 }
 inline ClassScope* SemanticScopeBase::asClass() {
-  if (getType() == ScopeType::Class) return static_cast<ClassScope*>(this);
+  if (getType() == ScopeType::Class) {
+    return static_cast<ClassScope*>(this);
+  }
   return nullptr;
 }
 inline const ClassScope* SemanticScopeBase::asClass() const {
-  if (getType() == ScopeType::Class)
+  if (getType() == ScopeType::Class) {
     return static_cast<const ClassScope*>(this);
+  }
   return nullptr;
 }
 inline InterfaceScope* SemanticScopeBase::asInterface() {
-  if (getType() == ScopeType::Interface)
+  if (getType() == ScopeType::Interface) {
     return static_cast<InterfaceScope*>(this);
+  }
   return nullptr;
 }
 inline const InterfaceScope* SemanticScopeBase::asInterface() const {
-  if (getType() == ScopeType::Interface)
+  if (getType() == ScopeType::Interface) {
     return static_cast<const InterfaceScope*>(this);
+  }
   return nullptr;
 }
 inline BlockScope* SemanticScopeBase::asBlock() {
-  if (getType() == ScopeType::Block) return static_cast<BlockScope*>(this);
+  if (getType() == ScopeType::Block) {
+    return static_cast<BlockScope*>(this);
+  }
   return nullptr;
 }
 inline const BlockScope* SemanticScopeBase::asBlock() const {
-  if (getType() == ScopeType::Block)
+  if (getType() == ScopeType::Block) {
     return static_cast<const BlockScope*>(this);
+  }
   return nullptr;
 }
 
@@ -1094,7 +1119,9 @@ class AccessFilter {
   /** Creates a visibility filter for lookups from the supplied scope. */
   explicit AccessFilter(const SemanticScopeBase* scope)
       : ctx_(scope ? scope->accessCtx() : nullptr) {
-    if (ctx_) from_ = ctx_->currentModuleId();
+    if (ctx_) {
+      from_ = ctx_->currentModuleId();
+    }
   }
 
   /** Reports whether lookups are subject to visibility filtering. */
@@ -1104,10 +1131,13 @@ class AccessFilter {
 
   /** Accepts a declaration only if the current scope may access it. */
   bool admitItem(sun::semantic_analysis::ItemRef item) {
-    if (!ctx_ || sun::semantic_analysis::isAccessible(from_, item,
-                                                      ctx_->declarationTable()))
+    if (!ctx_ || sun::semantic_analysis::isAccessible(
+                     from_, item, ctx_->declarationTable())) {
       return true;
-    if (!denied_) denied_ = std::move(item);
+    }
+    if (!denied_) {
+      denied_ = std::move(item);
+    }
     return false;
   }
   /** Filters a lookup result according to the current scope's access rights. */
@@ -1122,7 +1152,9 @@ class AccessFilter {
    * Throws the recorded denial, if any.
    */
   void finish() const {
-    if (denied_) ctx_->denyAccess(*denied_);
+    if (denied_) {
+      ctx_->denyAccess(*denied_);
+    }
   }
 };
 
@@ -1138,32 +1170,46 @@ ResultT SemanticScopeBase::lookupInChain(const std::string& name,
   AccessFilter filter(this);
   auto probe = [&](const SemanticScopeBase* s) -> ResultT {
     auto r = finder(s);
-    if (r && filter.admit(r)) return r;
+    if (r && filter.admit(r)) {
+      return r;
+    }
     return ResultT{};
   };
   for (auto* s = this; s != nullptr; s = s->parent) {
     auto result = probe(s);
-    if (result) return result;
+    if (result) {
+      return result;
+    }
     // Search direct import-scope children (one level of transparency)
     for (const auto& [childName, child] : s->childModules) {
       if (child && child->getType() == ScopeType::Import) {
         result = probe(child.get());
-        if (result) return result;
+        if (result) {
+          return result;
+        }
         for (const auto& [modName, modChild] : child->childModules) {
           if (modChild && modChild->getType() == ScopeType::Module) {
             result = probe(modChild.get());
-            if (result) return result;
+            if (result) {
+              return result;
+            }
           }
         }
       }
     }
     // Search import bindings from using statements
     for (const auto& binding : s->importBindings) {
-      if (!s->admitsImport(binding.sourceFileId)) continue;
-      if (!binding.sourceScope) continue;
+      if (!s->admitsImport(binding.sourceFileId)) {
+        continue;
+      }
+      if (!binding.sourceScope) {
+        continue;
+      }
       if (binding.isWildcard || binding.localName == name) {
         result = probe(binding.sourceScope);
-        if (result) return result;
+        if (result) {
+          return result;
+        }
       }
     }
   }

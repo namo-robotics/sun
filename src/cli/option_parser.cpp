@@ -44,7 +44,9 @@ class ArgumentCursor {
    * goes on to report it as an unknown option.
    */
   bool takeValueOf(const std::string& flag, std::string& value) {
-    if (current() != flag || index_ + 1 >= args_.size()) return false;
+    if (current() != flag || index_ + 1 >= args_.size()) {
+      return false;
+    }
     value = args_[++index_];
     return true;
   }
@@ -125,7 +127,9 @@ std::optional<EarlyExit> parseBuildRunArguments(
       options.programArgs = cursor.getRemaining();
       break;
     } else if (parseSharedOption(cursor, options.shared, failure)) {
-      if (failure) return failure;
+      if (failure) {
+        return failure;
+      }
     } else if (arg == "-c" || arg == "--compile") {
       options.compileMode = true;
     } else if (cursor.takeValueOf("-o", value)) {
@@ -291,7 +295,9 @@ std::optional<EarlyExit> parseTestArguments(
       options.forwardedArgs.push_back("--test-filter");
       options.forwardedArgs.push_back(value);
     } else if (parseSharedOption(cursor, options.shared, failure)) {
-      if (failure) return failure;
+      if (failure) {
+        return failure;
+      }
     } else if (looksLikeOption(arg)) {
       return makeFailure("Unknown option for 'sun test': " + arg + "\n" +
                          kTestUsageFull);

@@ -18,10 +18,14 @@ namespace {
  */
 bool typeNeedsDropImpl(const Type* type,
                        std::unordered_set<const Type*>& visited) {
-  if (!type || !visited.insert(type).second) return false;
+  if (!type || !visited.insert(type).second) {
+    return false;
+  }
   if (type->isClass()) {
     auto* c = static_cast<const ClassType*>(type);
-    if (c->getMethod("deinit")) return true;
+    if (c->getMethod("deinit")) {
+      return true;
+    }
     for (const auto& field : c->getFields()) {
       if (field.type && typeNeedsDropImpl(field.type.get(), visited)) {
         return true;
@@ -33,7 +37,9 @@ bool typeNeedsDropImpl(const Type* type,
     auto* e = static_cast<const EnumType*>(type);
     for (const auto& v : e->getVariants()) {
       for (const auto& pt : v.payloadTypes) {
-        if (pt && typeNeedsDropImpl(pt.get(), visited)) return true;
+        if (pt && typeNeedsDropImpl(pt.get(), visited)) {
+          return true;
+        }
       }
     }
     return false;
@@ -74,7 +80,9 @@ namespace {
  */
 bool typeIsFrameCarryingImpl(const Type* type,
                              std::unordered_set<const Type*>& visited) {
-  if (!type || !visited.insert(type).second) return false;
+  if (!type || !visited.insert(type).second) {
+    return false;
+  }
   if (type->isLambda()) {
     return static_cast<const LambdaType*>(type)->hasRefCaptures();
   }
@@ -86,7 +94,9 @@ bool typeIsFrameCarryingImpl(const Type* type,
       }
     }
     for (const auto& arg : c->getTypeArguments()) {
-      if (arg && typeIsFrameCarryingImpl(arg.get(), visited)) return true;
+      if (arg && typeIsFrameCarryingImpl(arg.get(), visited)) {
+        return true;
+      }
     }
     return false;
   }
@@ -94,11 +104,15 @@ bool typeIsFrameCarryingImpl(const Type* type,
     auto* e = static_cast<const EnumType*>(type);
     for (const auto& v : e->getVariants()) {
       for (const auto& pt : v.payloadTypes) {
-        if (pt && typeIsFrameCarryingImpl(pt.get(), visited)) return true;
+        if (pt && typeIsFrameCarryingImpl(pt.get(), visited)) {
+          return true;
+        }
       }
     }
     for (const auto& arg : e->getGenericArgs()) {
-      if (arg && typeIsFrameCarryingImpl(arg.get(), visited)) return true;
+      if (arg && typeIsFrameCarryingImpl(arg.get(), visited)) {
+        return true;
+      }
     }
     return false;
   }
@@ -131,7 +145,9 @@ bool typeIsFrameCarrying(const TypePtr& type) {
  * The <'_> marker itself is identity and stays.
  */
 TypePtr eraseLifetimeNames(const TypePtr& type) {
-  if (!type) return type;
+  if (!type) {
+    return type;
+  }
   if (auto* lt = dynamic_cast<const LambdaType*>(type.get())) {
     bool named = !lt->getLifetimeName().empty();
     std::vector<TypePtr> params;
@@ -143,7 +159,9 @@ TypePtr eraseLifetimeNames(const TypePtr& type) {
     }
     auto ret = eraseLifetimeNames(lt->getReturnType());
     changed = changed || ret != lt->getReturnType();
-    if (!changed) return type;
+    if (!changed) {
+      return type;
+    }
     auto result = Types::Lambda(ret, std::move(params), lt->canThrow(),
                                 lt->requiresUnsafe());
     static_cast<LambdaType*>(result.get())
@@ -153,7 +171,9 @@ TypePtr eraseLifetimeNames(const TypePtr& type) {
   if (auto* rt = dynamic_cast<const ReferenceType*>(type.get())) {
     if (rt->getLifetimeName().empty() && rt->getClassLifetimeArgs().empty()) {
       auto referent = eraseLifetimeNames(rt->getReferencedType());
-      if (referent == rt->getReferencedType()) return type;
+      if (referent == rt->getReferencedType()) {
+        return type;
+      }
       return Types::Reference(referent, rt->isMutable());
     }
     return Types::Reference(eraseLifetimeNames(rt->getReferencedType()),

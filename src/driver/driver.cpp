@@ -100,7 +100,9 @@ void runJITExitHandlers() {
     void (*handler)() = nullptr;
     {
       std::lock_guard<std::mutex> lock(jitExitMutex());
-      if (jitExitHandlers().empty()) return;
+      if (jitExitHandlers().empty()) {
+        return;
+      }
       handler = jitExitHandlers().back();
       jitExitHandlers().pop_back();
     }
@@ -192,16 +194,21 @@ static uint32_t computeStaticInitOrder(
   uint32_t order = 0;
   for (const auto& moduleKey : importedModuleKeys) {
     if (const auto* metadata =
-            sun::moon_bundling::LibraryCache::instance().getMetadata(moduleKey))
+            sun::moon_bundling::LibraryCache::instance().getMetadata(
+                moduleKey)) {
       order = std::max(order, metadata->static_init_order() + 1);
+    }
   }
   for (const auto& moonImport : moonImports) {
     auto reader = sun::moon_bundling::MoonReader::open(moonImport.path);
-    if (!reader) continue;
+    if (!reader) {
+      continue;
+    }
     sun::abi::AbiCompatibilityChecker::current().validate(*reader);
     for (const auto& moduleKey : reader->listModules()) {
-      if (const auto* metadata = reader->getMetadata(moduleKey))
+      if (const auto* metadata = reader->getMetadata(moduleKey)) {
         order = std::max(order, metadata->static_init_order() + 1);
+      }
     }
   }
   return order;
@@ -218,9 +225,13 @@ static uint32_t computeStaticInitOrder(
  */
 static bool wrapStaticCtorsForJIT(llvm::Module& module) {
   auto* ctors = module.getGlobalVariable("llvm.global_ctors");
-  if (!ctors || !ctors->hasInitializer()) return false;
+  if (!ctors || !ctors->hasInitializer()) {
+    return false;
+  }
   auto* entries = llvm::dyn_cast<llvm::ConstantArray>(ctors->getInitializer());
-  if (!entries) return false;
+  if (!entries) {
+    return false;
+  }
 
   // Each entry is { i32 priority, ptr function, ptr data }. Lower priority
   // runs first; entries with equal priority keep their link order.
@@ -229,12 +240,16 @@ static bool wrapStaticCtorsForJIT(llvm::Module& module) {
     auto* entry = llvm::cast<llvm::ConstantStruct>(op.get());
     auto* fn = llvm::dyn_cast<llvm::Function>(
         entry->getOperand(1)->stripPointerCasts());
-    if (!fn || fn->isDeclaration()) continue;
+    if (!fn || fn->isDeclaration()) {
+      continue;
+    }
     uint64_t priority =
         llvm::cast<llvm::ConstantInt>(entry->getOperand(0))->getZExtValue();
     fns.push_back({priority, fn});
   }
-  if (fns.empty()) return false;
+  if (fns.empty()) {
+    return false;
+  }
   std::stable_sort(fns.begin(), fns.end(), [](const auto& a, const auto& b) {
     return a.first < b.first;
   });
@@ -246,7 +261,9 @@ static bool wrapStaticCtorsForJIT(llvm::Module& module) {
                              "__sun_run_static_ctors", module);
   auto* entry = llvm::BasicBlock::Create(module.getContext(), "entry", runner);
   llvm::IRBuilder<> builder(entry);
-  for (const auto& [priority, fn] : fns) builder.CreateCall(fn);
+  for (const auto& [priority, fn] : fns) {
+    builder.CreateCall(fn);
+  }
   builder.CreateRetVoid();
   return true;
 }
@@ -272,9 +289,13 @@ static bool hasStdlibImport(const std::vector<MoonImport>& moonImports) {
  */
 static bool declaresStdlibString(const BlockExprAST& block) {
   for (const auto& stmt : block.getBody()) {
-    if (!stmt || stmt->getType() != ASTNodeType::MODULE) continue;
+    if (!stmt || stmt->getType() != ASTNodeType::MODULE) {
+      continue;
+    }
     const auto& module = static_cast<const ModuleAST&>(*stmt);
-    if (module.getName() != "std") continue;
+    if (module.getName() != "std") {
+      continue;
+    }
     for (const auto& member : module.getBody().getBody()) {
       if (!member || member->getType() != ASTNodeType::CLASS_DEFINITION) {
         continue;
@@ -386,11 +407,17 @@ void Driver::dumpUserDefinedIR(llvm::raw_ostream& OS) {
   // Print user-defined global variables (skip library globals)
   for (auto& gv : ctx->mainModule->globals()) {
     std::string name = gv.getName().str();
-    if (name.empty()) continue;
+    if (name.empty()) {
+      continue;
+    }
     // Skip internal symbols starting with _
-    if (name[0] == '_') continue;
+    if (name[0] == '_') {
+      continue;
+    }
     // Skip library module globals (vtables, etc.)
-    if (name.rfind("std_", 0) == 0) continue;
+    if (name.rfind("std_", 0) == 0) {
+      continue;
+    }
     // Skip prefixed symbols from moon imports; a bundle build's own globals
     // carry its prefix too, and those are the user's
     if (name.rfind("$", 0) == 0 &&
@@ -406,9 +433,13 @@ void Driver::dumpUserDefinedIR(llvm::raw_ostream& OS) {
   for (auto& func : ctx->mainModule->functions()) {
     std::string name = func.getName().str();
     // Skip declarations (no body)
-    if (func.isDeclaration()) continue;
+    if (func.isDeclaration()) {
+      continue;
+    }
     // Only print functions that are user-defined
-    if (userDefined.count(name) == 0) continue;
+    if (userDefined.count(name) == 0) {
+      continue;
+    }
 
     func.print(OS);
     OS << "\n";
@@ -431,7 +462,9 @@ void Driver::printUserDefinedIR() {
  */
 static void collectReachableFunctions(llvm::Function* func,
                                       std::set<llvm::Function*>& visited) {
-  if (!func || func->isDeclaration() || visited.count(func)) return;
+  if (!func || func->isDeclaration() || visited.count(func)) {
+    return;
+  }
   visited.insert(func);
 
   for (auto& BB : *func) {
@@ -535,7 +568,8 @@ static void processMoonImports(BlockExprAST& blockAst, Parser& parser,
     readers.push_back(parser.openMoonImport(moonImport));
     snapshots.push_back(readers.back().get());
   }
-  abi::AbiCompatibilityChecker::current().validateImports(snapshots, parser.getFilePath());
+  abi::AbiCompatibilityChecker::current().validateImports(snapshots,
+                                                          parser.getFilePath());
 
   // Collect top-level module names from source files
   std::unordered_set<std::string> sourceModuleNames;
@@ -642,7 +676,9 @@ static void renameOwnExterns(BlockExprAST& block,
                              const std::map<std::string, std::string>& renames,
                              std::vector<std::string>& unmapped) {
   for (auto& stmt : block.mutableBody()) {
-    if (!stmt) continue;
+    if (!stmt) {
+      continue;
+    }
     switch (stmt->getType()) {
       case ASTNodeType::MODULE:
         renameOwnExterns(static_cast<ModuleAST&>(*stmt).mutableBody(), renames,
@@ -650,7 +686,9 @@ static void renameOwnExterns(BlockExprAST& block,
         break;
       case ASTNodeType::FUNCTION: {
         auto& func = static_cast<FunctionAST&>(*stmt);
-        if (!func.isCExtern()) break;
+        if (!func.isCExtern()) {
+          break;
+        }
         auto& proto = func.getProtoMut();
         auto it = renames.find(proto.getLinkName());
         if (it != renames.end()) {
@@ -662,7 +700,9 @@ static void renameOwnExterns(BlockExprAST& block,
       }
       case ASTNodeType::VARIABLE_CREATION: {
         auto& variable = static_cast<sun::ast::VariableCreationAST&>(*stmt);
-        if (!variable.isCExtern()) break;
+        if (!variable.isCExtern()) {
+          break;
+        }
         auto it = renames.find(variable.getLinkName());
         if (it != renames.end()) {
           variable.setLinkName(it->second);
@@ -691,26 +731,37 @@ static void warnAboutArchiveSet(const std::vector<std::string>& archives,
     byName[std::filesystem::path(path).filename().string()].push_back(path);
   }
   for (const auto& [name, paths] : byName) {
-    if (paths.size() < 2) continue;
+    if (paths.size() < 2) {
+      continue;
+    }
     sun::support::messageStream("warning")
         << paths.size() << " versions of " << name
         << " will be linked, each bound to the code that came with "
            "it:\n";
-    for (const auto& path : paths)
+    for (const auto& path : paths) {
       sun::support::messageStream("warning") << "  " << path << "\n";
+    }
   }
 
-  if (bareExterns.empty()) return;
+  if (bareExterns.empty()) {
+    return;
+  }
   std::set<std::string> wanted(bareExterns.begin(), bareExterns.end());
   std::set<std::string> reported;
   for (const auto& path : archives) {
     auto buffer = llvm::MemoryBuffer::getFile(path);
-    if (!buffer) continue;
+    if (!buffer) {
+      continue;
+    }
     for (const auto& [bare, recorded] :
          sun::moon_bundling::listArchiveDefinitions(
              (*buffer)->getMemBufferRef())) {
-      if (bare == recorded || !wanted.count(bare)) continue;
-      if (!reported.insert(bare).second) continue;
+      if (bare == recorded || !wanted.count(bare)) {
+        continue;
+      }
+      if (!reported.insert(bare).second) {
+        continue;
+      }
       sun::support::messageStream("warning")
           << "extern \"C\" '" << bare << "' names a symbol that "
           << std::filesystem::path(path).filename().string() << " carries as '"
@@ -727,7 +778,9 @@ static void warnAboutArchiveSet(const std::vector<std::string>& archives,
 
 void Driver::collectNativeArchives(const std::set<std::string>& linkedModules) {
   nativeArchivePaths_ = manifestArchivePaths_;
-  if (linkedModules.empty()) return;
+  if (linkedModules.empty()) {
+    return;
+  }
 
   std::error_code ec;
   if (archiveTempDir_.empty()) {
@@ -752,7 +805,9 @@ void Driver::collectNativeArchives(const std::set<std::string>& linkedModules) {
 }
 
 void Driver::registerArchivesWithJIT() {
-  if (!ctx->jit) return;
+  if (!ctx->jit) {
+    return;
+  }
 
   // The same archives the AOT link would use, so a program behaves alike
   // run directly and compiled. Their symbols carry the prefix of the bundle
@@ -772,7 +827,9 @@ void Driver::registerArchivesWithJIT() {
 }
 
 void Driver::addJITStaticLibrary(const std::string& path) {
-  if (!ctx->jit) return;
+  if (!ctx->jit) {
+    return;
+  }
   if (auto err = ctx->jit->addStaticLibrary(path)) {
     logAndThrowError("cannot load static archive '" + path +
                      "': " + llvm::toString(std::move(err)));
@@ -826,7 +883,9 @@ void visitTests(BlockExprAST& block, std::vector<std::string>& modulePath,
       auto& func = static_cast<FunctionAST&>(*stmt);
       func.setVisibility(sun::semantic_analysis::Visibility::Public);
       std::string path;
-      for (const auto& segment : modulePath) path += segment + ".";
+      for (const auto& segment : modulePath) {
+        path += segment + ".";
+      }
       path += func.getProto().getName();
       found->push_back(
           {path, func.getProto().getReturnType()->baseName == "_Result"
@@ -867,8 +926,9 @@ std::string synthesizeTestRunner(const std::vector<TestEntry>& tests) {
   env.set_lstrip_blocks(true);
   nlohmann::json data;
   data["tests"] = nlohmann::json::array();
-  for (const auto& test : tests)
+  for (const auto& test : tests) {
     data["tests"].push_back({{"name", test.name}, {"runner", test.runner}});
+  }
   return env.render(kTestRunnerTemplate, data);
 }
 
@@ -936,7 +996,9 @@ void Driver::applyTestHandling(BlockExprAST& blockAst) {
 static void appendOwnSourceBytes(const ExprAST& node,
                                  sun::serialization::ASTSerializer& serializer,
                                  std::string& out) {
-  if (node.getType() == ASTNodeType::MOON_SCOPE) return;
+  if (node.getType() == ASTNodeType::MOON_SCOPE) {
+    return;
+  }
   if (node.getType() == ASTNodeType::BLOCK) {
     sun::ast::forEachChild(node, [&](const ExprAST& child) {
       appendOwnSourceBytes(child, serializer, out);
@@ -1000,7 +1062,9 @@ void Driver::analyzeProgram(BlockExprAST& blockAst, Parser& parser) {
     ScopedStage stage("sema");
     // Executables have an artifact identity too; imported trees retain theirs.
     std::string artifactHash = ownBundleHash_;
-    if (artifactHash.empty()) artifactHash = computeOwnSourceHash(blockAst);
+    if (artifactHash.empty()) {
+      artifactHash = computeOwnSourceHash(blockAst);
+    }
     analyzer->pipeline().run(blockAst, [&] {
       sun::semantic_analysis::PortableDeclarationKey::assignOriginals(
           blockAst, analysisResults->declarations, artifactHash);
@@ -1076,7 +1140,9 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
   staticInitOrder_ =
       computeStaticInitOrder(parser.getPrecompiledImports(), moonImports_);
 
-  if (metadataCallback_) metadataCallback_(*blockAst, *analyzer);
+  if (metadataCallback_) {
+    metadataCallback_(*blockAst, *analyzer);
+  }
 
   // Register precompiled modules for lazy linking
   // This builds the symbol-to-module map without loading bitcode yet
@@ -1488,7 +1554,10 @@ SunValue Driver::executeFile(const std::string& filename, int argc,
                        resolved.moonImports.end());
     protoFiles.insert(protoFiles.end(), resolved.protoFiles.begin(),
                       resolved.protoFiles.end());
-    manifestArchivePaths_ = std::move(resolved.archiveFiles);
+    manifestArchivePaths_.clear();
+    for (auto& archive : resolved.nativeArchives) {
+      manifestArchivePaths_.push_back(std::move(archive.path));
+    }
     // test_files are part of the program only when building the test binary
     hasTests_ |= !resolved.testSunFiles.empty();
     if (testHandling_ == TestHandling::Compile) {
@@ -1614,7 +1683,10 @@ void Driver::compileFile(const std::string& filename) {
                        resolved.moonImports.end());
     protoFiles.insert(protoFiles.end(), resolved.protoFiles.begin(),
                       resolved.protoFiles.end());
-    manifestArchivePaths_ = std::move(resolved.archiveFiles);
+    manifestArchivePaths_.clear();
+    for (auto& archive : resolved.nativeArchives) {
+      manifestArchivePaths_.push_back(std::move(archive.path));
+    }
     // test_files are part of the program only when building the test binary
     hasTests_ |= !resolved.testSunFiles.empty();
     if (testHandling_ == TestHandling::Compile) {
@@ -1656,13 +1728,17 @@ static std::unique_ptr<BlockExprAST> mergeASTs(
 
   for (size_t fileIdx = 0; fileIdx < parsedFiles.size(); ++fileIdx) {
     auto& fileAST = parsedFiles[fileIdx];
-    if (!fileAST) continue;
+    if (!fileAST) {
+      continue;
+    }
 
     auto& body =
         const_cast<std::vector<std::unique_ptr<ExprAST>>&>(fileAST->getBody());
 
     for (auto& stmt : body) {
-      if (!stmt) continue;
+      if (!stmt) {
+        continue;
+      }
 
       if (stmt->getType() == ASTNodeType::MODULE) {
         // Collect module contents for merging
@@ -1703,8 +1779,9 @@ static std::unique_ptr<BlockExprAST> mergeASTs(
     const auto& origin = *moduleOrigins.at(modName);
     mergedMod->setVisibility(origin.getVisibility());
     mergedMod->setDoc(origin.getDoc());
-    if (origin.getNameLocation())
+    if (origin.getNameLocation()) {
       mergedMod->setNameLocation(*origin.getNameLocation());
+    }
     mergedMod->setLocation(origin.getLocation());
     mergedMod->setSourceFileId(origin.getSourceFileId());
     mergedBody.push_back(std::move(mergedMod));
@@ -1720,11 +1797,10 @@ static std::unique_ptr<BlockExprAST> mergeASTs(
 }
 
 void Driver::parseSynthesizedProtoModules(
-    const std::vector<std::string>& protoFiles,
+    const std::vector<sun::moon_bundling::SynthesizedProtoModule>& protoModules,
     std::vector<std::unique_ptr<BlockExprAST>>& parsedFiles,
     std::vector<std::string>& canonicalPaths) {
-  for (const auto& synthesized :
-       sun::moon_bundling::ProtoImporter::importAll(protoFiles, baseDir)) {
+  for (const auto& synthesized : protoModules) {
     // Registered under its pseudo-path so diagnostics cite the .proto and
     // show the synthesized source line
     SourceManager::instance().addSource(synthesized.pseudoPath,
@@ -1750,7 +1826,9 @@ void Driver::parseSynthesizedProtoModules(
 std::unique_ptr<BlockExprAST> Driver::parseAndMergeFiles(
     const std::vector<std::string>& sourceFiles,
     const std::vector<std::string>& protoFiles,
-    const std::map<std::string, std::string>& sourceOverrides) {
+    const std::map<std::string, std::string>& sourceOverrides,
+    const std::vector<sun::moon_bundling::SynthesizedProtoModule>&
+        protoModules) {
   if (sourceFiles.empty()) {
     throw SunError(SunError::Kind::Parse, "No source files specified");
   }
@@ -1803,7 +1881,10 @@ std::unique_ptr<BlockExprAST> Driver::parseAndMergeFiles(
   // Native protobuf import: each .proto becomes ordinary Sun source, parsed
   // like any other file so the merged AST (and everything after it) sees
   // normal code
-  parseSynthesizedProtoModules(protoFiles, parsedFiles, canonicalPaths);
+  const auto importedModules =
+      sun::moon_bundling::ProtoImporter::importAll(protoFiles, baseDir);
+  parseSynthesizedProtoModules(importedModules, parsedFiles, canonicalPaths);
+  parseSynthesizedProtoModules(protoModules, parsedFiles, canonicalPaths);
 
   // Merge all parsed files into a single AST
   return mergeASTs(parsedFiles);
@@ -1813,8 +1894,11 @@ void Driver::compileFiles(
     const std::vector<std::string>& sourceFiles,
     const std::vector<MoonImport>& moonImports,
     const std::vector<std::string>& protoFiles,
-    const std::map<std::string, std::string>& sourceOverrides) {
-  auto mergedAst = parseAndMergeFiles(sourceFiles, protoFiles, sourceOverrides);
+    const std::map<std::string, std::string>& sourceOverrides,
+    const std::vector<sun::moon_bundling::SynthesizedProtoModule>&
+        protoModules) {
+  auto mergedAst = parseAndMergeFiles(sourceFiles, protoFiles, sourceOverrides,
+                                      protoModules);
   auto stubParser = Parser::createStringParser("");
   moonImports_ = moonImports;
   runPipeline(std::move(mergedAst), stubParser, false);

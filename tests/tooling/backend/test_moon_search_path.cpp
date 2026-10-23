@@ -82,12 +82,12 @@ public module library {
   /** Releases the temporary files and state created for each test. */
   void TearDown() override { fs::remove_all(dir); }
 
-  /** Enables import logs for path assertions and executes the fixture program. */
+  /** Enables import logs for path assertions and executes the fixture program.
+   */
   int run(const std::string& command) {
-    return std::system(
-        ("env SUN_PATH= SUN_LOG_LEVEL=info " + command + " > " +
-         quote(dir / "log") + " 2>&1")
-            .c_str());
+    return std::system(("env SUN_PATH= SUN_LOG_LEVEL=info " + command + " > " +
+                        quote(dir / "log") + " 2>&1")
+                           .c_str());
   }
 
   /** Builds the fixture and checks that the expected library was selected. */

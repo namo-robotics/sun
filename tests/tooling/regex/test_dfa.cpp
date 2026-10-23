@@ -147,7 +147,9 @@ TEST(Tooling_Regex_Dfa, CaptureOffsetsOnMasterRegex) {
   // "  function" -- the leading whitespace is outside every named group, so
   // the winning capture starts at the first non-space byte.
   dfa.fullReset();
-  for (char c : std::string("  function")) dfa.step(c);
+  for (char c : std::string("  function")) {
+    dfa.step(c);
+  }
 
   const sun::parsing::RegexCapture* best = dfa.bestCapture();
   ASSERT_NE(best, nullptr);
@@ -162,14 +164,18 @@ TEST(Tooling_Regex_Dfa, LongestMatchWinsOverShorterAlternative) {
 
   // "static_ptr" is also a legal IDENTIFIER prefix; the longer keyword wins.
   dfa.fullReset();
-  for (char c : std::string("static_ptr")) dfa.step(c);
+  for (char c : std::string("static_ptr")) {
+    dfa.step(c);
+  }
   ASSERT_NE(dfa.bestCapture(), nullptr);
   EXPECT_EQ(dfa.bestCapture()->groupNameNum,
             static_cast<int>(TokenKind::STATIC_PTR));
 
   // One byte further and IDENTIFIER is the only (and longer) match.
   dfa.fullReset();
-  for (char c : std::string("static_ptrs")) dfa.step(c);
+  for (char c : std::string("static_ptrs")) {
+    dfa.step(c);
+  }
   ASSERT_NE(dfa.bestCapture(), nullptr);
   EXPECT_EQ(dfa.bestCapture()->groupNameNum,
             static_cast<int>(TokenKind::IDENTIFIER));
@@ -244,8 +250,9 @@ TEST(Tooling_Regex_Dfa, AcceptKindIsLowestTokenKindOnTies) {
   // lower TokenKind index (declaration order) wins.
   DFA& dfa = Lexer::getTokenDFA();
   int32_t s = dfa.startState();
-  for (char c : std::string("i32"))
+  for (char c : std::string("i32")) {
     s = dfa.step(s, static_cast<unsigned char>(c));
+  }
   ASSERT_FALSE(DFA::isDead(s));
   EXPECT_EQ(dfa.acceptKind(s), static_cast<int>(TokenKind::TYPE_I32));
   EXPECT_LT(static_cast<int>(TokenKind::TYPE_I32),

@@ -84,11 +84,15 @@ class MoonScopeAST : public ExprAST {
   /** Visits replaceable child expressions so tree passes can rewrite them in
    * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
-    if (body_) body_->forEachChildSlot(fn);
+    if (body_) {
+      body_->forEachChildSlot(fn);
+    }
   }
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
-    if (ownBundle_) return "own_bundle_scope(" + contentHash_ + ")";
+    if (ownBundle_) {
+      return "own_bundle_scope(" + contentHash_ + ")";
+    }
     return "moon_scope(" + getEffectiveName() + ")";
   }
 
@@ -126,7 +130,9 @@ class MoonScopeAST : public ExprAST {
 
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override {
-    if (ownBundle_) return "OwnBundleScope\n" + contentHash_;
+    if (ownBundle_) {
+      return "OwnBundleScope\n" + contentHash_;
+    }
     return "MoonScope\n" + getEffectiveName() +
            "\nhash: " + contentHash_.substr(0, 8);
   }

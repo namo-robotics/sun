@@ -89,15 +89,18 @@ int buildEntrypoints(const sun::driver::SunConfig& config,
                                                   : entry.outputName;
     const bool library =
         entry.type == sun::driver::ConfigEntrypoint::Type::Library;
-    if (library && std::filesystem::path(output).extension() != ".moon")
+    if (library && std::filesystem::path(output).extension() != ".moon") {
       output += ".moon";
+    }
     artifacts.push_back({entry.name, output, library});
   }
   const auto packages = sun::driver::planPackages(config, artifacts);
   std::set<std::string> packagedEntries;
-  for (const auto& package : packages)
-    for (const auto& artifact : package.artifacts)
+  for (const auto& package : packages) {
+    for (const auto& artifact : package.artifacts) {
       packagedEntries.insert(artifact.name);
+    }
+  }
   for (const auto& entry : config.entrypoints) {
     DependencyPathVariables dependencyVariables(config, entry);
     CompileJob job = base;

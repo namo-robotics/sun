@@ -319,8 +319,9 @@ TEST(Modules_SunConfig,
       (dir / "child/main.sun").string(), "aarch64-linux-gnu");
   ManifestProcessor::clearPathVariables();
   ASSERT_TRUE(manifest);
-  ASSERT_EQ(manifest->archiveFiles.size(), 1u);
-  EXPECT_EQ(manifest->archiveFiles[0], (dir / "arm-ssl/libssl.a").string());
+  ASSERT_EQ(manifest->nativeArchives.size(), 1u);
+  EXPECT_EQ(manifest->nativeArchives[0].path,
+            (dir / "arm-ssl/libssl.a").string());
 }
 
 TEST(Modules_SunConfig, target_can_name_test_binary_independently) {

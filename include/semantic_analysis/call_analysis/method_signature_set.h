@@ -27,18 +27,21 @@ class MethodSignatureSet {
     SemanticContext::ScopeSwitchGuard scope(context_, context_.scope());
     const auto& binders = prototype.getTypeParameters();
     if (!binders.empty()) {
-      for (size_t i = binders_.size(); i < binders.size(); ++i)
+      for (size_t i = binders_.size(); i < binders.size(); ++i) {
         binders_.push_back(
             prototype.declarationIdentity().typeParameters.at(i));
+      }
       std::vector<sun::types::TypePtr> bindings;
-      for (size_t i = 0; i < binders.size(); ++i)
+      for (size_t i = 0; i < binders.size(); ++i) {
         bindings.push_back(
             binders[i].toSunType(context_.declarationTable(), binders_[i]));
+      }
       context_.enterTypeParamScope(prototype.getTypeParameterNames(), bindings);
       signature.parameters.clear();
-      for (const auto& [name, annotation] : prototype.getArgs())
+      for (const auto& [name, annotation] : prototype.getArgs()) {
         signature.parameters.push_back(
             resolver_.typeAnnotationToType(annotation));
+      }
     }
     return signatures_.insert(std::move(signature)).second;
   }

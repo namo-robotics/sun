@@ -68,7 +68,9 @@ class Parser {
   /** Retains a comment and its attachment position for source formatting. */
   void recordComment(const Token& tok, int lastEndLine) {
     sun::support::Position span = tok.start;
-    if (!currentFilePath.empty()) span.filePath = currentFilePath;
+    if (!currentFilePath.empty()) {
+      span.filePath = currentFilePath;
+    }
     span.setEnd(tok.end.line, tok.end.column, tok.end.offset);
     comments_.insert_or_assign(
         tok.start.offset,
@@ -121,7 +123,9 @@ class Parser {
    * Helper: expect current token to be an identifier, or throw error
    */
   void expectIdentifier(const std::string& msg) {
-    if (curTok.kind != TokenKind::IDENTIFIER) throwIdentifierError(msg);
+    if (curTok.kind != TokenKind::IDENTIFIER) {
+      throwIdentifierError(msg);
+    }
   }
 
   /**
@@ -174,7 +178,9 @@ class Parser {
    * after a generic argument list: Box<<'a>() => i32>.
    */
   void splitLessIfShift() {
-    if (curTok.kind != TokenKind::LEFT_SHIFT) return;
+    if (curTok.kind != TokenKind::LEFT_SHIFT) {
+      return;
+    }
     sun::support::Position mid = curTok.start;
     mid.column += 1;
     mid.offset += 1;
@@ -259,7 +265,9 @@ class Parser {
    */
   sun::support::Position captureStart() const {
     sun::support::Position p = curTok.start;
-    if (!currentFilePath.empty()) p.filePath = currentFilePath;
+    if (!currentFilePath.empty()) {
+      p.filePath = currentFilePath;
+    }
     return p;
   }
 
@@ -268,8 +276,9 @@ class Parser {
    */
   static void extendSpanStart(ExprAST& node, sun::support::Position start) {
     const sun::support::Position& cur = node.getLocation();
-    if (cur.hasEnd())
+    if (cur.hasEnd()) {
       start.setEnd(*cur.endLine, *cur.endColumn, cur.endOffset.value_or(0));
+    }
     node.setLocation(std::move(start));
   }
 

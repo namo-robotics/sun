@@ -64,8 +64,9 @@ namespace {
 /** Collect ordinary calls in source traversal order. */
 void collectCalls(const sun::ast::ExprAST& node,
                   std::vector<const sun::ast::CallExprAST*>& calls) {
-  if (node.getType() == sun::ast::ASTNodeType::CALL)
+  if (node.getType() == sun::ast::ASTNodeType::CALL) {
     calls.push_back(&static_cast<const sun::ast::CallExprAST&>(node));
+  }
   sun::ast::forEachChild(node, [&](const sun::ast::ExprAST& child) {
     collectCalls(child, calls);
   });

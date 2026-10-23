@@ -9,26 +9,40 @@ namespace sun::types {
 
 /** Reports whether a value of one type can be assigned to another. */
 bool isAssignableTo(const TypePtr& from, const TypePtr& to) {
-  if (!from || !to) return false;
+  if (!from || !to) {
+    return false;
+  }
 
-  if (to->isInterface()) return false;
+  if (to->isInterface()) {
+    return false;
+  }
 
   // Exact equality always works
-  if (from->equals(*to)) return true;
+  if (from->equals(*to)) {
+    return true;
+  }
 
   // A non-throwing pointer may widen to the same throwing signature. The
   // reverse would let an indirect call bypass normal error handling.
   if (from->isFunction() && to->isFunction()) {
     const auto& source = static_cast<const FunctionType&>(*from);
     const auto& target = static_cast<const FunctionType&>(*to);
-    if (source.canThrow() && !target.canThrow()) return false;
-    if (source.requiresUnsafe() && !target.requiresUnsafe()) return false;
-    if (!source.getReturnType()->equals(*target.getReturnType())) return false;
-    if (source.getParamTypes().size() != target.getParamTypes().size())
+    if (source.canThrow() && !target.canThrow()) {
       return false;
+    }
+    if (source.requiresUnsafe() && !target.requiresUnsafe()) {
+      return false;
+    }
+    if (!source.getReturnType()->equals(*target.getReturnType())) {
+      return false;
+    }
+    if (source.getParamTypes().size() != target.getParamTypes().size()) {
+      return false;
+    }
     for (size_t i = 0; i < source.getParamTypes().size(); ++i) {
-      if (!source.getParamTypes()[i]->equals(*target.getParamTypes()[i]))
+      if (!source.getParamTypes()[i]->equals(*target.getParamTypes()[i])) {
         return false;
+      }
     }
     return true;
   }
@@ -38,7 +52,9 @@ bool isAssignableTo(const TypePtr& from, const TypePtr& to) {
   if (from->isStaticPointer() && to->isRawPointer()) {
     auto* s = static_cast<const StaticPointerType*>(from.get());
     auto* r = static_cast<const RawPointerType*>(to.get());
-    if (s->getPointeeType()->equals(*r->getPointeeType())) return true;
+    if (s->getPointeeType()->equals(*r->getPointeeType())) {
+      return true;
+    }
   }
 
   // Numeric widening
@@ -67,16 +83,22 @@ bool isAssignableTo(const TypePtr& from, const TypePtr& to) {
 
   // A borrow of a sized array stands in for a borrow of the unsized view
   // (the rank is erased); a sized array itself must match exactly.
-  if (to->isArray() && from->isArray()) return false;
+  if (to->isArray() && from->isArray()) {
+    return false;
+  }
 
-  if (ClassType::isInterfaceConvertible(from, to)) return true;
+  if (ClassType::isInterfaceConvertible(from, to)) {
+    return true;
+  }
 
   // Unwrap reference types and check inner compatibility. A const borrow
   // never becomes a mutable one.
   if (to->isReference() && from->isReference()) {
     auto* toRef = static_cast<const ReferenceType*>(to.get());
     auto* fromRef = static_cast<const ReferenceType*>(from.get());
-    if (!refMutabilityConvertible(*fromRef, *toRef)) return false;
+    if (!refMutabilityConvertible(*fromRef, *toRef)) {
+      return false;
+    }
     if (ClassType::isArrayCompatible(fromRef->getReferencedType(),
                                      toRef->getReferencedType())) {
       return true;
@@ -92,7 +114,9 @@ bool isAssignableTo(const TypePtr& from, const TypePtr& to) {
   // pop()/remove()/swap_remove().
   if (!to->isReference() && from->isReference()) {
     auto* fromRef = static_cast<const ReferenceType*>(from.get());
-    if (!typeCopiesByRead(to)) return false;
+    if (!typeCopiesByRead(to)) {
+      return false;
+    }
     return isAssignableTo(fromRef->getReferencedType(), to);
   }
 
@@ -103,26 +127,32 @@ bool isAssignableTo(const TypePtr& from, const TypePtr& to) {
 bool referenceParameterAccepts(const ReferenceType& param,
                                const TypePtr& argType) {
   const TypePtr& referent = param.getReferencedType();
-  if (referent->equals(*argType)) return true;
+  if (referent->equals(*argType)) {
+    return true;
+  }
   if (argType->isReference()) {
     const auto& argRef = static_cast<const ReferenceType&>(*argType);
     if (refMutabilityConvertible(argRef, param) &&
-        referent->equals(*argRef.getReferencedType()))
+        referent->equals(*argRef.getReferencedType())) {
       return true;
+    }
   }
   if (referent->isArray() && argType->isArray()) {
     const auto& paramArray = static_cast<const ArrayType&>(*referent);
     const auto& argArray = static_cast<const ArrayType&>(*argType);
     if (paramArray.isUnsized() &&
-        paramArray.getElementType()->equals(*argArray.getElementType()))
+        paramArray.getElementType()->equals(*argArray.getElementType())) {
       return true;
+    }
   }
   return false;
 }
 
 /** Accepts any raw_ptr where a raw_ptr to i8 or u8 is expected. */
 bool isBytePointerArgument(const TypePtr& argType, const TypePtr& paramType) {
-  if (!argType->isRawPointer() || !paramType->isRawPointer()) return false;
+  if (!argType->isRawPointer() || !paramType->isRawPointer()) {
+    return false;
+  }
   const auto& pointee =
       static_cast<const RawPointerType&>(*paramType).getPointeeType();
   return pointee->isInt8() || pointee->isUInt8();
@@ -131,29 +161,38 @@ bool isBytePointerArgument(const TypePtr& argType, const TypePtr& paramType) {
 /** Applies the call-site rules, then falls back to assignability. */
 bool argumentAccepts(const TypePtr& argType, const TypePtr& paramType,
                      bool allowBytePointer) {
-  if (paramType->equals(*argType)) return true;
+  if (paramType->equals(*argType)) {
+    return true;
+  }
 
   if (paramType->isReference()) {
     const auto& param = static_cast<const ReferenceType&>(*paramType);
-    if (referenceParameterAccepts(param, argType)) return true;
+    if (referenceParameterAccepts(param, argType)) {
+      return true;
+    }
     // Read through the pointer: raw_ptr<T> where ref T is expected
     if (argType->isRawPointer() &&
         static_cast<const RawPointerType&>(*argType).getPointeeType()->equals(
-            *param.getReferencedType()))
+            *param.getReferencedType())) {
       return true;
+    }
   }
 
   // Read through the pointer: raw_ptr<T> where a primitive T is expected
   if (argType->isRawPointer() && paramType->isPrimitive() &&
       static_cast<const RawPointerType&>(*argType).getPointeeType()->equals(
-          *paramType))
+          *paramType)) {
     return true;
+  }
 
   // Null is compatible with any pointer type
-  if (argType->isNullPointer() && paramType->isAnyPointer()) return true;
-
-  if (allowBytePointer && isBytePointerArgument(argType, paramType))
+  if (argType->isNullPointer() && paramType->isAnyPointer()) {
     return true;
+  }
+
+  if (allowBytePointer && isBytePointerArgument(argType, paramType)) {
+    return true;
+  }
 
   return isAssignableTo(argType, paramType);
 }

@@ -67,8 +67,9 @@ void VariableGenerator::declareBlockGlobals(
         // Inside a function, a variable with a value is an ordinary local,
         // emitted in its turn
         if (variable.isCExtern() || variable.isPrecompiled() ||
-            (scopes().empty() && variable.getValue()))
+            (scopes().empty() && variable.getValue())) {
           codegen(variable);
+        }
       });
 }
 
@@ -76,8 +77,9 @@ Value* VariableGenerator::codegen(const VariableCreationAST& expr) {
   // A global's storage is created up front, with the rest of its block's
   // globals, so by its own turn there is nothing left to do
   if (scopes().empty()) {
-    if (GlobalVariable* declared = findGlobal(expr.getDeclarationId()))
+    if (GlobalVariable* declared = findGlobal(expr.getDeclarationId())) {
       return declared;
+    }
   }
 
   // Get the type from the resolved type set by semantic analyzer
@@ -161,8 +163,9 @@ Value* VariableGenerator::codegen(const VariableCreationAST& expr) {
           expr.getLocation());
     }
     using sun::semantic_analysis::constants::GlobalInitKind;
-    if (decision->kind == GlobalInitKind::Image && decision->value)
+    if (decision->kind == GlobalInitKind::Image && decision->value) {
       return emitImageGlobal(expr, varType, *decision->value);
+    }
     return emitStartupGlobal(expr, varType);
   }
 
@@ -240,12 +243,17 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
   Value* value = declaredType && declaredType->isReference()
                      ? codegenBorrowAddress(*expr.getValue())
                      : nullptr;
-  if (!value) value = codegen(*expr.getValue());
-  if (!value) return nullptr;
+  if (!value) {
+    value = codegen(*expr.getValue());
+  }
+  if (!value) {
+    return nullptr;
+  }
   if (auto* view = classes().prepareClassForRefInterface(
           value, sun::types::unwrapRef(expr.getValue()->getResolvedType()),
-          declaredType))
+          declaredType)) {
     value = view;
+  }
   if (declaredType && declaredType->isReference() &&
       sun::types::areDifferentInterfaces(expr.getValue()->getResolvedType(),
                                          declaredType)) {
@@ -421,20 +429,25 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
 llvm::Value* VariableGenerator::convertToVariableType(
     llvm::Value* value, llvm::Type* varType, const TypePtr& valueSunType) {
   llvm::Type* valueType = value->getType();
-  if (valueType == varType) return value;
+  if (valueType == varType) {
+    return value;
+  }
 
   if (valueType->isIntegerTy() && varType->isIntegerTy()) {
     unsigned valueBits = valueType->getIntegerBitWidth();
     unsigned varBits = varType->getIntegerBitWidth();
-    if (valueBits < varBits)
+    if (valueBits < varBits) {
       return sun::codegen::support::extendInt(*ctx.builder, value, varType,
                                               valueSunType);
+    }
     return ctx.builder->CreateTrunc(value, varType, "trunc");
   }
-  if (valueType->isFloatTy() && varType->isDoubleTy())
+  if (valueType->isFloatTy() && varType->isDoubleTy()) {
     return ctx.builder->CreateFPExt(value, varType, "widen");
-  if (valueType->isDoubleTy() && varType->isFloatTy())
+  }
+  if (valueType->isDoubleTy() && varType->isFloatTy()) {
     return ctx.builder->CreateFPTrunc(value, varType, "trunc");
+  }
   return value;
 }
 
@@ -485,9 +498,10 @@ llvm::Constant* VariableGenerator::buildLlvmConstant(
     // One constant per element; a further dimension nests the same way
     std::vector<llvm::Constant*> elements;
     elements.reserve(value.getElements().size());
-    for (const auto& element : value.getElements())
+    for (const auto& element : value.getElements()) {
       elements.push_back(
           buildLlvmConstant(element, arrayType->getElementType(), location));
+    }
     return llvm::ConstantArray::get(arrayType, elements);
   }
 
@@ -590,24 +604,31 @@ static const std::vector<std::unique_ptr<ExprAST>>* constructorArgsForGlobal(
     const ExprAST& initExpr) {
   if (initExpr.getType() == ASTNodeType::CALL) {
     const auto& call = static_cast<const sun::ast::CallExprAST&>(initExpr);
-    if (sun::codegen::support::tryGetType<ClassType>(*call.getCallee()))
+    if (sun::codegen::support::tryGetType<ClassType>(*call.getCallee())) {
       return &call.getArgs();
+    }
     return nullptr;
   }
   if (initExpr.getType() == ASTNodeType::GENERIC_CALL) {
     const auto& call = static_cast<const sun::ast::GenericCallAST&>(initExpr);
-    if (call.getGenericFunctionAST()) return nullptr;
-    if (sun::codegen::intrinsics::isIntrinsic(call.getFunctionName()))
+    if (call.getGenericFunctionAST()) {
       return nullptr;
-    if (sun::codegen::support::tryGetType<ClassType>(call))
+    }
+    if (sun::codegen::intrinsics::isIntrinsic(call.getFunctionName())) {
+      return nullptr;
+    }
+    if (sun::codegen::support::tryGetType<ClassType>(call)) {
       return &call.getArgs();
+    }
   }
   return nullptr;
 }
 
 void VariableGenerator::emitStaticInitFunction(uint32_t initOrder,
                                                const std::string& bundleHash) {
-  if (staticInits.empty()) return;
+  if (staticInits.empty()) {
+    return;
+  }
   if (initOrder > kMaxStaticInitOrder) {
     logAndThrowError(
         "Too many levels of imported libraries: a library may be "
@@ -679,9 +700,10 @@ void VariableGenerator::emitStaticInitFunction(uint32_t initOrder,
           const auto& field = literal.getFields()[i];
           const sun::types::ClassField* classField =
               classType->getField(literal.resolvedFields().at(i));
-          if (!classField)
+          if (!classField) {
             logAndThrowError(
                 "Global initializer field target is not registered");
+          }
 
           Value* value = codegen(*field.value);
           if (!value) {

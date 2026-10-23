@@ -17,8 +17,9 @@ llvm::Value* IntrinsicsGenerator::codegenSimdF32(const CallExprAST& expr,
   const bool fused = operation == "fma" || operation == "mul_add";
   const bool binary =
       operation == "add" || operation == "sub" || operation == "mul" || fused;
-  if (expr.getArgs().size() != (fused ? 4 : binary ? 3 : 2))
+  if (expr.getArgs().size() != (fused ? 4 : binary ? 3 : 2)) {
     sun::support::logAndThrowError("Invalid argument count for SIMD intrinsic");
+  }
   auto* output = codegen(*expr.getArgs()[0]);
   auto* input = codegen(*expr.getArgs()[1]);
   auto* right = binary ? codegen(*expr.getArgs()[2]) : nullptr;
@@ -45,12 +46,15 @@ llvm::Value* IntrinsicsGenerator::codegenSimdF32(const CallExprAST& expr,
                                 : llvm::Intrinsic::fmuladd),
             {vectorType}, {a, b, c}, nullptr, "simd.fma");
       }
-      if (operation == "add")
+      if (operation == "add") {
         result = ctx.builder->CreateFAdd(a, b, "simd.add");
-      if (operation == "sub")
+      }
+      if (operation == "sub") {
         result = ctx.builder->CreateFSub(a, b, "simd.sub");
-      if (operation == "mul")
+      }
+      if (operation == "mul") {
         result = ctx.builder->CreateFMul(a, b, "simd.mul");
+      }
     }
   }
   return ctx.builder->CreateAlignedStore(result, output, llvm::Align(4));
@@ -60,10 +64,13 @@ llvm::Value* IntrinsicsGenerator::codegenSimdF32(const CallExprAST& expr,
 /** Implements runtime dispatch and isolated vector kernels with scalar ABIs. */
 namespace sun::codegen::intrinsics {
 llvm::Value* IntrinsicsGenerator::codegenCpuAvx2Fma(const CallExprAST& expr) {
-  if (!expr.getArgs().empty())
+  if (!expr.getArgs().empty()) {
     sun::support::logAndThrowError("_cpu_avx2_fma expects no arguments");
-  if (llvm::Triple(module->getTargetTriple()).getArch() != llvm::Triple::x86_64)
+  }
+  if (llvm::Triple(module->getTargetTriple()).getArch() !=
+      llvm::Triple::x86_64) {
     return ctx.builder->getFalse();
+  }
   auto* fn = module->getFunction("__sun_cpu_avx2_fma");
   if (!fn) {
     auto& context = ctx.getContext();
@@ -123,10 +130,13 @@ llvm::Value* IntrinsicsGenerator::codegenCpuAvx2Fma(const CallExprAST& expr) {
 
 llvm::Value* IntrinsicsGenerator::codegenGemmAvx2Fma(const CallExprAST& expr,
                                                      bool block) {
-  if (expr.getArgs().size() != (block ? 8 : 6))
+  if (expr.getArgs().size() != (block ? 8 : 6)) {
     sun::support::logAndThrowError("Invalid packed GEMM argument count");
+  }
   llvm::SmallVector<llvm::Value*, 8> args;
-  for (const auto& arg : expr.getArgs()) args.push_back(codegen(*arg));
+  for (const auto& arg : expr.getArgs()) {
+    args.push_back(codegen(*arg));
+  }
   const auto* name =
       block ? "__sun_gemm_block_avx2_fma" : "__sun_gemm_tile_avx2_fma";
   auto* fn = module->getFunction(name);
@@ -215,14 +225,16 @@ llvm::Value* IntrinsicsGenerator::codegenGemmAvx2Fma(const CallExprAST& expr,
     b.CreateCondBr(b.CreateFCmpOEQ(beta, llvm::ConstantFP::get(f32, 0)), start,
                    load);
     b.SetInsertPoint(load);
-    for (unsigned i = 0; i < 8; ++i)
+    for (unsigned i = 0; i < 8; ++i) {
       initialized[i] = b.CreateAlignedLoad(vec, output[i], llvm::Align(4));
+    }
     b.CreateCondBr(b.CreateFCmpOEQ(beta, llvm::ConstantFP::get(f32, 1)), start,
                    scale);
     b.SetInsertPoint(scale);
     auto* factor = b.CreateVectorSplat(8, beta);
-    for (unsigned i = 0; i < 8; ++i)
+    for (unsigned i = 0; i < 8; ++i) {
       scaled[i] = b.CreateFMul(factor, initialized[i]);
+    }
     b.CreateBr(start);
     b.SetInsertPoint(start);
     for (unsigned i = 0; i < 8; ++i) {
@@ -274,8 +286,9 @@ llvm::Value* IntrinsicsGenerator::codegenGemmAvx2Fma(const CallExprAST& expr,
       backedge->setMetadata(llvm::LLVMContext::MD_loop, metadata);
     }
     b.SetInsertPoint(done);
-    for (unsigned i = 0; i < 8; ++i)
+    for (unsigned i = 0; i < 8; ++i) {
       b.CreateAlignedStore(sums[i], output[i], llvm::Align(4));
+    }
     if (block) {
       column->addIncoming(b.CreateAdd(column, b.getInt64(16)), done);
       b.CreateBr(columns);

@@ -325,8 +325,9 @@ inline std::optional<std::string_view> getKeywordSpelling(TokenKind kind) {
             a{};
         for (const auto& [k, re] : tokenRegexes) {
           if (k == TokenKind::IDENTIFIER || re.empty() ||
-              !std::isalpha(static_cast<unsigned char>(re[0])))
+              !std::isalpha(static_cast<unsigned char>(re[0]))) {
             continue;
+          }
           bool word = true;
           for (char c : re) {
             if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') {
@@ -334,7 +335,9 @@ inline std::optional<std::string_view> getKeywordSpelling(TokenKind kind) {
               break;
             }
           }
-          if (word) a[static_cast<size_t>(k)] = std::string_view(re);
+          if (word) {
+            a[static_cast<size_t>(k)] = std::string_view(re);
+          }
         }
         return a;
       }();
@@ -611,8 +614,9 @@ struct Token {
   /** Returns the identifier stored by this object. */
   std::optional<std::string> getIdentifier() const {
     if (kind == TokenKind::IDENTIFIER ||
-        kind == TokenKind::INTRINSIC_IDENTIFIER)
+        kind == TokenKind::INTRINSIC_IDENTIFIER) {
       return std::get<std::string>(value);
+    }
     return std::nullopt;
   }
 
@@ -626,15 +630,17 @@ struct Token {
    * anything above the u64 maximum, and a leading minus is a separate token.
    */
   std::optional<uint64_t> getInteger() const {
-    if (kind == TokenKind::INTEGER || kind == TokenKind::TYPED_INTEGER)
+    if (kind == TokenKind::INTEGER || kind == TokenKind::TYPED_INTEGER) {
       return std::get<uint64_t>(value);
+    }
     return std::nullopt;
   }
 
   /** Returns the floating-point token value. */
   std::optional<double> getFloat() const {
-    if (kind == TokenKind::FLOAT || kind == TokenKind::TYPED_FLOAT)
+    if (kind == TokenKind::FLOAT || kind == TokenKind::TYPED_FLOAT) {
       return std::get<double>(value);
+    }
     return std::nullopt;
   }
 
@@ -642,7 +648,9 @@ struct Token {
    * Bare name of a lifetime token ('a yields "a").
    */
   std::optional<std::string> getLifetimeName() const {
-    if (kind == TokenKind::LIFETIME) return std::get<std::string>(value);
+    if (kind == TokenKind::LIFETIME) {
+      return std::get<std::string>(value);
+    }
     return std::nullopt;
   }
 
@@ -650,14 +658,17 @@ struct Token {
    * Decoded scalar value of a character literal, or byte of a byte literal.
    */
   std::optional<uint64_t> getCharValue() const {
-    if (kind == TokenKind::CHAR_LITERAL || kind == TokenKind::BYTE_LITERAL)
+    if (kind == TokenKind::CHAR_LITERAL || kind == TokenKind::BYTE_LITERAL) {
       return std::get<uint64_t>(value);
+    }
     return std::nullopt;
   }
 
   /** Returns the string token value. */
   std::optional<std::string> getString() const {
-    if (kind == TokenKind::STRING) return std::get<std::string>(value);
+    if (kind == TokenKind::STRING) {
+      return std::get<std::string>(value);
+    }
     return std::nullopt;
   }
 
@@ -817,8 +828,12 @@ class Lexer {
           scalar = scalar * 16 + static_cast<uint32_t>(digit);
           ++i;
         }
-        if (digits == 0) literalError(at, "\\u{} needs at least one hex digit");
-        if (i >= body.size()) literalError(at, "\\u{...} is missing its '}'");
+        if (digits == 0) {
+          literalError(at, "\\u{} needs at least one hex digit");
+        }
+        if (i >= body.size()) {
+          literalError(at, "\\u{...} is missing its '}'");
+        }
         if (scalar > sun::parsing::kMaxScalar) {
           literalError(at, "U+" + toHex(scalar) +
                                " is above the highest Unicode scalar value, "
@@ -970,7 +985,9 @@ class Lexer {
 
   /** Reads the next input byte without consuming it. */
   int peekByte() const {
-    if (currentPos.offset >= static_cast<int>(buffer.size())) return kEof;
+    if (currentPos.offset >= static_cast<int>(buffer.size())) {
+      return kEof;
+    }
     return static_cast<unsigned char>(buffer[currentPos.offset]);
   }
 
@@ -1015,7 +1032,9 @@ class Lexer {
    * Get a specific line from the source buffer (1-indexed)
    */
   std::string getSourceLine(int lineNum) const {
-    if (lineNum < 1 || buffer.empty()) return "";
+    if (lineNum < 1 || buffer.empty()) {
+      return "";
+    }
 
     int currentLine = 1;
     size_t lineStart = 0;
@@ -1035,7 +1054,9 @@ class Lexer {
       }
     }
 
-    if (currentLine < lineNum) return "";  // Line not found
+    if (currentLine < lineNum) {
+      return "";  // Line not found
+    }
 
     // Find the end of the line
     size_t lineEnd = lineStart;
@@ -1058,7 +1079,9 @@ class Lexer {
       std::vector<std::string> regexes;
       for (auto i = 0; i < N; ++i) {
         TokenKind kind = static_cast<TokenKind>(i);
-        if (tokenRegexes.find(kind) == tokenRegexes.end()) continue;
+        if (tokenRegexes.find(kind) == tokenRegexes.end()) {
+          continue;
+        }
         std::string regexStr = tokenRegexes.at(kind);
         regexes.push_back(std::format("(?<{}>{})", i, regexStr));
       }
@@ -1203,7 +1226,9 @@ class Lexer {
       } else {
         ++col;
       }
-      if (DFA::isDead(st)) break;
+      if (DFA::isDead(st)) {
+        break;
+      }
       const int32_t kindHere = dfa.acceptKind(st);
       if (kindHere >= 0) {
         bestKind = kindHere;
@@ -1241,8 +1266,9 @@ class Lexer {
     switch (kind) {
       case TokenKind::COMMENT:
       case TokenKind::BLOCK_COMMENT:
-        if (emitComments_)
+        if (emitComments_) {
           return Token::comment(kind, std::string(matched), startPos, endPos);
+        }
         // Skip comments by recursively getting the next token
         return getNextToken();
       case TokenKind::INTRINSIC_IDENTIFIER:
@@ -1269,7 +1295,9 @@ class Lexer {
         size_t cut = start;
         while (cut < text.size()) {
           int digit = sun::parsing::hexDigit(text[cut]);
-          if (text[cut] != '_' && (digit < 0 || digit >= base)) break;
+          if (text[cut] != '_' && (digit < 0 || digit >= base)) {
+            break;
+          }
           ++cut;
         }
         std::string digits = text.substr(0, cut);
@@ -1303,17 +1331,25 @@ class Lexer {
         std::string text(matched);
         auto isDig = [](char c) { return c >= '0' && c <= '9'; };
         size_t i = 0;
-        while (i < text.size() && isDig(text[i])) ++i;
+        while (i < text.size() && isDig(text[i])) {
+          ++i;
+        }
         if (i < text.size() && text[i] == '.') {
           ++i;
-          while (i < text.size() && isDig(text[i])) ++i;
+          while (i < text.size() && isDig(text[i])) {
+            ++i;
+          }
         }
         if (i < text.size() && (text[i] == 'e' || text[i] == 'E')) {
           size_t j = i + 1;
-          if (j < text.size() && (text[j] == '+' || text[j] == '-')) ++j;
+          if (j < text.size() && (text[j] == '+' || text[j] == '-')) {
+            ++j;
+          }
           if (j < text.size() && isDig(text[j])) {
             i = j;
-            while (i < text.size() && isDig(text[i])) ++i;
+            while (i < text.size() && isDig(text[i])) {
+              ++i;
+            }
           }
         }
         std::string body = text.substr(0, i);

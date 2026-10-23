@@ -96,7 +96,9 @@ TEST(Tooling_Backend_Debug, moon_json_describes_written_metadata) {
     ASSERT_NE(entry, nullptr);
     const auto* metadata = entry->getObject("metadata");
     ASSERT_NE(metadata, nullptr);
-    if (metadata->getString("module_name") != "inspection") continue;
+    if (metadata->getString("module_name") != "inspection") {
+      continue;
+    }
     found = true;
     EXPECT_GT(entry->getInteger("bitcode_size").value_or(0), 0);
     ASSERT_TRUE(entry->getString("module_key"));
@@ -106,10 +108,12 @@ TEST(Tooling_Backend_Debug, moon_json_describes_written_metadata) {
       const auto* record = declaration.getAsObject();
       ASSERT_NE(record, nullptr);
       ASSERT_TRUE(record->getString("kind"));
-      if (record->getString("name") == "inspection")
+      if (record->getString("name") == "inspection") {
         EXPECT_EQ(record->getString("kind"), "MODULE");
-      if (record->getString("name") == "answer")
+      }
+      if (record->getString("name") == "answer") {
         EXPECT_EQ(record->getString("kind"), "FUNCTION");
+      }
       ASSERT_TRUE(record->getString("key"));
       EXPECT_TRUE(record->getString("key")->starts_with("$"));
     }

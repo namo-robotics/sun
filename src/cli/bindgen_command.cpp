@@ -44,10 +44,18 @@ int runBindgenCommand(const std::vector<std::string>& arguments) {
                                       " requires a value");
         return 2;
       }
-      if (flag == "--target") options.target = value;
-      if (flag == "--module") options.module = value;
-      if (flag == "--output") options.output = value;
-      if (flag == "--allow") options.allow.push_back(value);
+      if (flag == "--target") {
+        options.target = value;
+      }
+      if (flag == "--module") {
+        options.module = value;
+      }
+      if (flag == "--output") {
+        options.output = value;
+      }
+      if (flag == "--allow") {
+        options.allow.push_back(value);
+      }
     } else if (options.header.empty() && !argument.starts_with("-")) {
       options.header = argument;
     } else {

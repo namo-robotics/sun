@@ -55,8 +55,9 @@ std::string computeSha256Hex(llvm::StringRef bytes) {
  */
 std::string integer(uint64_t value) {
   std::string result;
-  for (unsigned shift = 0; shift < 64; shift += 8)
+  for (unsigned shift = 0; shift < 64; shift += 8) {
     result.push_back(static_cast<char>(value >> shift));
+  }
   return result;
 }
 /** Frames a tagged field so arbitrary byte strings remain unambiguous. */
@@ -68,7 +69,9 @@ template <typename Range>
 std::string sortedFields(uint64_t tag, const Range& values) {
   std::set<std::string> ordered(values.begin(), values.end());
   std::string result;
-  for (const auto& value : ordered) result += field(tag, value);
+  for (const auto& value : ordered) {
+    result += field(tag, value);
+  }
   return result;
 }
 /** Encodes effective target properties rather than a triple's spelling. */
@@ -84,9 +87,12 @@ std::string encodeTarget(const TargetProfile& target) {
 void require(BundleContract& contract, const std::string& name,
              const std::string& implementation) {
   for (const auto& rule : contract.requirements()) {
-    if (rule.name() != name) continue;
-    if (rule.implementation() != implementation)
+    if (rule.name() != name) {
+      continue;
+    }
+    if (rule.implementation() != implementation) {
       sun::support::logAndThrowError("Conflicting bundle requirement: " + name);
+    }
     return;
   }
   auto* rule = contract.add_requirements();
@@ -99,8 +105,9 @@ void require(BundleContract& contract, const std::string& name,
 int collectLibraries(dl_phdr_info* info, size_t, void* opaque) {
   auto& paths = *static_cast<std::set<std::string>*>(opaque);
   std::string path = info->dlpi_name;
-  if (!path.empty() && path.find("linux-vdso") == std::string::npos)
+  if (!path.empty() && path.find("linux-vdso") == std::string::npos) {
     paths.insert(std::move(path));
+  }
   return 0;
 }
 /** Capture compiler dependencies before JIT code can load application
@@ -123,9 +130,11 @@ const std::set<std::string> implementationLibraryDigests = [] {
       digests.insert(computeSha256Hex((*bytes)->getBuffer()));
       continue;
     }
-    if (!path.starts_with("/usr/lib/") && !path.starts_with("/System/Library/"))
+    if (!path.starts_with("/usr/lib/") &&
+        !path.starts_with("/System/Library/")) {
       sun::support::logAndThrowError(
           "Cannot fingerprint implementation dependency: " + path);
+    }
     const auto* header = _dyld_get_image_header(i);
     const auto* command = reinterpret_cast<const load_command*>(
         reinterpret_cast<const char*>(header) + (header->magic == MH_MAGIC_64
@@ -144,9 +153,10 @@ const std::set<std::string> implementationLibraryDigests = [] {
       command = reinterpret_cast<const load_command*>(
           reinterpret_cast<const char*>(command) + command->cmdsize);
     }
-    if (!identified)
+    if (!identified) {
       sun::support::logAndThrowError("Missing system library build identity: " +
                                      path);
+    }
   }
   return digests;
 }();
@@ -180,11 +190,13 @@ const std::string& compatibilityImplementation() {
 
 std::string encodeBundleContract(const BundleContract& contract) {
   std::vector<std::string> dependencies;
-  for (const auto& revision : contract.dependency_abis())
+  for (const auto& revision : contract.dependency_abis()) {
     dependencies.push_back(encodeLibraryAbiSnapshot(revision));
+  }
   std::vector<std::string> rules;
-  for (const auto& rule : contract.requirements())
+  for (const auto& rule : contract.requirements()) {
     rules.push_back(field(1, rule.name()) + field(2, rule.implementation()));
+  }
   return field(1, "sun.abi.bundle-contract") +
          field(2, integer(contract.encoding_schema())) +
          field(3, encodeTarget(contract.target())) + sortedFields(4, rules) +
@@ -193,7 +205,8 @@ std::string encodeBundleContract(const BundleContract& contract) {
          sortedFields(7, contract.semantic_records()) +
          (contract.has_library_id() ? field(8, contract.library_id()) : "") +
          (contract.has_library_abi()
-              ? field(9, encodeLibraryAbiSnapshot(contract.library_abi())) : "") +
+              ? field(9, encodeLibraryAbiSnapshot(contract.library_abi()))
+              : "") +
          sortedFields(10, dependencies);
 }
 
@@ -212,14 +225,16 @@ TargetProfile compatibilityTarget(const std::string& requested) {
       requested.empty() ? llvm::sys::getDefaultTargetTriple() : requested));
   std::string error;
   const auto* target = llvm::TargetRegistry::lookupTarget(triple.str(), error);
-  if (!target)
+  if (!target) {
     sun::support::logAndThrowError("Unsupported compatibility target: " +
                                    error);
+  }
   llvm::TargetOptions options;
   std::unique_ptr<llvm::TargetMachine> machine(target->createTargetMachine(
       triple.str(), "generic", "", options, llvm::Reloc::PIC_));
-  if (!machine)
+  if (!machine) {
     sun::support::logAndThrowError("Cannot derive compatibility target");
+  }
   const auto layout = machine->createDataLayout();
   TargetProfile profile;
   profile.set_architecture(
@@ -236,42 +251,52 @@ std::vector<std::string> describeBoundaries(const llvm::Module& module) {
   std::set<std::string> records;
   const auto& layout = module.getDataLayout();
   std::map<std::string, llvm::StructType*> layouts;
-  for (auto* type : module.getIdentifiedStructTypes())
-    if (!type->isOpaque() && type->isSized())
+  for (auto* type : module.getIdentifiedStructTypes()) {
+    if (!type->isOpaque() && type->isSized()) {
       layouts.emplace(type->getName().str(), type);
-  for (const auto& [identity, type] : classLayouts(module))
+    }
+  }
+  for (const auto& [identity, type] : classLayouts(module)) {
     layouts.emplace("sun.declaration:" + identity, type);
+  }
   for (const auto& [identity, type] : layouts) {
     const auto structure = AggregateLayout::inspect(type, layout);
     std::string record = field(1, identity) +
                          field(2, integer(structure.size)) +
                          field(3, integer(structure.alignment));
-    for (unsigned i = 0; i < type->getNumElements(); ++i)
+    for (unsigned i = 0; i < type->getNumElements(); ++i) {
       record +=
           field(4, integer(structure.offsets.at(i)) +
                        field(1, machineTypeName(type->getElementType(i))));
+    }
     records.insert(field(1, record));
   }
   for (const auto& function : module) {
-    if (!function.hasLocalLinkage())
+    if (!function.hasLocalLinkage()) {
       records.insert(field(
           2,
           field(1, function.getName().str()) +
               field(2, machineTypeName(function.getFunctionType())) +
               field(3, integer(function.getCallingConv())) +
               field(4, CallDescriptor::inspect(function).encodedAttributes())));
-    for (const auto& block : function)
-      for (const auto& instruction : block)
-        if (const auto* call = llvm::dyn_cast<llvm::CallBase>(&instruction))
+    }
+    for (const auto& block : function) {
+      for (const auto& instruction : block) {
+        if (const auto* call = llvm::dyn_cast<llvm::CallBase>(&instruction)) {
           records.insert(field(
               3,
               field(1, machineTypeName(call->getFunctionType())) +
                   field(2, integer(call->getCallingConv())) +
                   field(3,
                         CallDescriptor::inspect(*call).encodedAttributes())));
+        }
+      }
+    }
   }
   for (const auto& global : module.globals()) {
-    if (global.hasLocalLinkage()) continue;
+    if (global.hasLocalLinkage()) {
+      continue;
+    }
     records.insert(
         field(4, field(1, global.getName().str()) +
                      field(2, machineTypeName(global.getValueType())) +
@@ -301,18 +326,22 @@ BundleContract describeContract(const llvm::Module& module) {
     const auto features = function.getFnAttribute("target-features");
     if (features.isValid()) {
       llvm::SubtargetFeatures parsed(features.getValueAsString());
-      for (const auto& feature : parsed.getFeatures())
-        if (!feature.empty() && feature[0] == '+')
+      for (const auto& feature : parsed.getFeatures()) {
+        if (!feature.empty() && feature[0] == '+') {
           contract.mutable_target()->add_cpu_features(feature.substr(1));
+        }
+      }
     }
     const auto cpu = function.getFnAttribute("target-cpu");
     if (cpu.isValid() && cpu.getValueAsString() != "generic" &&
-        cpu.getValueAsString() != "x86-64")
+        cpu.getValueAsString() != "x86-64") {
       require(contract, "llvm.cpu." + cpu.getValueAsString().str(),
               compatibilityImplementation());
+    }
   }
-  for (const auto& record : describeBoundaries(module))
+  for (const auto& record : describeBoundaries(module)) {
     contract.add_boundary_records(record);
+  }
   *contract.mutable_producer() = currentProducerIdentity();
   contract.set_compatibility_hash(hashBundleContract(contract));
   return contract;
@@ -324,56 +353,76 @@ void mergeContractRequirements(BundleContract& destination,
   auto right = inherited.target();
   left.clear_cpu_features();
   right.clear_cpu_features();
-  if (encodeTarget(left) != encodeTarget(right))
+  if (encodeTarget(left) != encodeTarget(right)) {
     sun::support::logAndThrowError(
         "Conflicting embedded bundle target requirements");
+  }
   BoundaryRequirements boundaries;
-  for (const auto& record : destination.boundary_records())
+  for (const auto& record : destination.boundary_records()) {
     boundaries.add(record);
-  for (const auto& record : inherited.boundary_records())
+  }
+  for (const auto& record : inherited.boundary_records()) {
     boundaries.add(record);
+  }
   // Merge into a copy so rejected dependencies cannot leave partial
   // requirements.
   auto merged = destination;
-  for (const auto& rule : inherited.requirements())
+  for (const auto& rule : inherited.requirements()) {
     require(merged, rule.name(), rule.implementation());
+  }
   std::set<std::string> features(destination.target().cpu_features().begin(),
                                  destination.target().cpu_features().end());
   features.insert(inherited.target().cpu_features().begin(),
                   inherited.target().cpu_features().end());
   merged.mutable_target()->clear_cpu_features();
-  for (const auto& feature : features)
+  for (const auto& feature : features) {
     merged.mutable_target()->add_cpu_features(feature);
+  }
   // Retain dependencies even when linking has internalized their code.
   merged.clear_boundary_records();
-  for (const auto& record : boundaries.records())
+  for (const auto& record : boundaries.records()) {
     merged.add_boundary_records(record);
+  }
   std::set<std::string> semantics(destination.semantic_records().begin(),
                                   destination.semantic_records().end());
   semantics.insert(inherited.semantic_records().begin(),
                    inherited.semantic_records().end());
   merged.clear_semantic_records();
-  for (const auto& record : semantics) merged.add_semantic_records(record);
+  for (const auto& record : semantics) {
+    merged.add_semantic_records(record);
+  }
   std::set<std::string> symbols(destination.native_link_symbols().begin(),
                                 destination.native_link_symbols().end());
   symbols.insert(inherited.native_link_symbols().begin(),
                  inherited.native_link_symbols().end());
   merged.clear_native_link_symbols();
-  for (const auto& symbol : symbols) merged.add_native_link_symbols(symbol);
+  for (const auto& symbol : symbols) {
+    merged.add_native_link_symbols(symbol);
+  }
   std::map<std::string, proto::LibraryAbiSnapshot> revisions;
   /** Retains one unambiguous requirement for each exact dependency artifact. */
   const auto addRevision = [&](const proto::LibraryAbiSnapshot& revision) {
-    const auto [it, added] = revisions.emplace(revision.artifact_hash(), revision);
-    if (!added && encodeLibraryAbiSnapshot(it->second) != encodeLibraryAbiSnapshot(revision))
-      sun::support::logAndThrowError("Conflicting dependency revision requirements");
+    const auto [it, added] =
+        revisions.emplace(revision.artifact_hash(), revision);
+    if (!added && encodeLibraryAbiSnapshot(it->second) !=
+                      encodeLibraryAbiSnapshot(revision)) {
+      sun::support::logAndThrowError(
+          "Conflicting dependency revision requirements");
+    }
   };
   for (const auto* source :
-       std::initializer_list<const BundleContract*>{&destination, &inherited})
-    for (const auto& revision : source->dependency_abis()) addRevision(revision);
-  if (inherited.has_library_abi()) addRevision(inherited.library_abi());
+       std::initializer_list<const BundleContract*>{&destination, &inherited}) {
+    for (const auto& revision : source->dependency_abis()) {
+      addRevision(revision);
+    }
+  }
+  if (inherited.has_library_abi()) {
+    addRevision(inherited.library_abi());
+  }
   merged.clear_dependency_abis();
-  for (const auto& [artifact, revision] : revisions)
+  for (const auto& [artifact, revision] : revisions) {
     *merged.add_dependency_abis() = revision;
+  }
   destination = std::move(merged);
 }
 

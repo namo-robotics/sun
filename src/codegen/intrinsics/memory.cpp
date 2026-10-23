@@ -30,7 +30,9 @@ Value* IntrinsicsGenerator::codegenLoadI64Intrinsic(const CallExprAST& expr) {
 
   llvm::Value* ptr = codegen(*args[0]);
   llvm::Value* index = codegen(*args[1]);
-  if (!ptr || !index) return nullptr;
+  if (!ptr || !index) {
+    return nullptr;
+  }
 
   auto* i64Ty = llvm::Type::getInt64Ty(ctx.getContext());
   llvm::Value* elemPtr = ctx.builder->CreateGEP(i64Ty, ptr, index, "i64.ptr");
@@ -48,7 +50,9 @@ Value* IntrinsicsGenerator::codegenStoreI64Intrinsic(const CallExprAST& expr) {
   llvm::Value* ptr = codegen(*args[0]);
   llvm::Value* index = codegen(*args[1]);
   llvm::Value* value = codegen(*args[2]);
-  if (!ptr || !index || !value) return nullptr;
+  if (!ptr || !index || !value) {
+    return nullptr;
+  }
 
   auto* i64Ty = llvm::Type::getInt64Ty(ctx.getContext());
   llvm::Value* elemPtr = ctx.builder->CreateGEP(i64Ty, ptr, index, "i64.ptr");
@@ -58,13 +62,15 @@ Value* IntrinsicsGenerator::codegenStoreI64Intrinsic(const CallExprAST& expr) {
 
 llvm::Value* IntrinsicsGenerator::codegenStackAlloc(const CallExprAST& expr) {
   constexpr uint64_t maxScratchBytes = 64 * 1024;
-  if (expr.getArgs().size() != 1)
+  if (expr.getArgs().size() != 1) {
     logAndThrowError("_stack_alloc expects one constant byte count");
+  }
   auto* bytes =
       llvm::dyn_cast_or_null<llvm::ConstantInt>(codegen(*expr.getArgs()[0]));
   if (!bytes || bytes->isNegative() || bytes->isZero() ||
-      bytes->getValue().ugt(maxScratchBytes))
+      bytes->getValue().ugt(maxScratchBytes)) {
     logAndThrowError("_stack_alloc requires a constant byte count in 1..65536");
+  }
   auto* function = ctx.builder->GetInsertBlock()->getParent();
   llvm::IRBuilder<> entry(&function->getEntryBlock(),
                           function->getEntryBlock().begin());
@@ -84,7 +90,9 @@ Value* IntrinsicsGenerator::codegenMallocIntrinsic(const CallExprAST& expr) {
   }
 
   llvm::Value* size = codegen(*args[0]);
-  if (!size) return nullptr;
+  if (!size) {
+    return nullptr;
+  }
 
   // Get or declare libc malloc: void* malloc(size_t)
   auto* i8PtrTy = llvm::PointerType::getUnqual(ctx.getContext());
@@ -113,7 +121,9 @@ Value* IntrinsicsGenerator::codegenFreeIntrinsic(const CallExprAST& expr) {
   }
 
   llvm::Value* ptr = codegen(*args[0]);
-  if (!ptr) return nullptr;
+  if (!ptr) {
+    return nullptr;
+  }
 
   // Get or declare libc free: void free(void*)
   auto* i8PtrTy = llvm::PointerType::getUnqual(ctx.getContext());
@@ -137,7 +147,9 @@ Value* IntrinsicsGenerator::codegenMemcpyIntrinsic(const CallExprAST& expr) {
   llvm::Value* dst = codegen(*args[0]);
   llvm::Value* src = codegen(*args[1]);
   llvm::Value* len = codegen(*args[2]);
-  if (!dst || !src || !len) return nullptr;
+  if (!dst || !src || !len) {
+    return nullptr;
+  }
 
   // Use LLVM's memcpy intrinsic for optimal codegen
   ctx.builder->CreateMemCpy(dst, llvm::MaybeAlign(1), src, llvm::MaybeAlign(1),
@@ -156,7 +168,9 @@ Value* IntrinsicsGenerator::codegenMemmoveIntrinsic(const CallExprAST& expr) {
   llvm::Value* dst = codegen(*args[0]);
   llvm::Value* src = codegen(*args[1]);
   llvm::Value* len = codegen(*args[2]);
-  if (!dst || !src || !len) return nullptr;
+  if (!dst || !src || !len) {
+    return nullptr;
+  }
 
   // LLVM preserves the source bytes when the ranges overlap.
   ctx.builder->CreateMemMove(dst, llvm::MaybeAlign(1), src, llvm::MaybeAlign(1),
@@ -175,7 +189,9 @@ Value* IntrinsicsGenerator::codegenMemsetIntrinsic(const CallExprAST& expr) {
   llvm::Value* dst = codegen(*args[0]);
   llvm::Value* val = codegen(*args[1]);
   llvm::Value* len = codegen(*args[2]);
-  if (!dst || !val || !len) return nullptr;
+  if (!dst || !val || !len) {
+    return nullptr;
+  }
 
   // Memset wants an i8 value
   auto* i8Ty = llvm::Type::getInt8Ty(ctx.getContext());
@@ -196,7 +212,9 @@ Value* IntrinsicsGenerator::codegenPtrOffsetIntrinsic(const CallExprAST& expr) {
 
   llvm::Value* ptr = codegen(*args[0]);
   llvm::Value* offset = codegen(*args[1]);
-  if (!ptr || !offset) return nullptr;
+  if (!ptr || !offset) {
+    return nullptr;
+  }
 
   // GEP with i8 type to do byte-level pointer arithmetic
   auto* i8Ty = llvm::Type::getInt8Ty(ctx.getContext());

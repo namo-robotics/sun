@@ -17,8 +17,9 @@ namespace {
 /** Encodes fixed-width integers independently of host byte order. */
 std::string integer(uint64_t value) {
   std::string result;
-  for (unsigned shift = 0; shift < 64; shift += 8)
+  for (unsigned shift = 0; shift < 64; shift += 8) {
     result.push_back(static_cast<char>(value >> shift));
+  }
   return result;
 }
 /** Frames an attribute's index and value without delimiter ambiguity. */
@@ -27,7 +28,9 @@ std::string field(uint64_t tag, const std::string& value) {
 }
 /** Selects attributes that must agree between declarations and call sites. */
 bool abiAttribute(llvm::Attribute attribute) {
-  if (attribute.isStringAttribute()) return false;
+  if (attribute.isStringAttribute()) {
+    return false;
+  }
   switch (attribute.getKindAsEnum()) {
     case llvm::Attribute::StructRet:
     case llvm::Attribute::ByVal:
@@ -52,14 +55,16 @@ bool abiAttribute(llvm::Attribute attribute) {
 
 AggregateLayout AggregateLayout::inspect(llvm::StructType* type,
                                          const llvm::DataLayout& layout) {
-  if (!type->isSized())
+  if (!type->isSized()) {
     sun::support::logAndThrowError("Cannot describe an unsized ABI layout");
+  }
   const auto* storage = layout.getStructLayout(type);
   AggregateLayout result{storage->getSizeInBytes().getFixedValue(),
                          storage->getAlignment().value(),
                          {}};
-  for (unsigned i = 0; i < type->getNumElements(); ++i)
+  for (unsigned i = 0; i < type->getNumElements(); ++i) {
     result.offsets.push_back(storage->getElementOffset(i));
+  }
   return result;
 }
 
@@ -67,9 +72,10 @@ llvm::StructType* AggregateLayout::build(llvm::LLVMContext& context,
                                          llvm::ArrayRef<llvm::Type*> fields,
                                          bool packed, uint64_t alignment) {
   if (alignment &&
-      (packed || (alignment & (alignment - 1)) || alignment > 65536))
+      (packed || (alignment & (alignment - 1)) || alignment > 65536)) {
     sun::support::logAndThrowError(
         "Invalid explicit class alignment in declaration metadata");
+  }
   std::vector<llvm::Type*> storage(fields.begin(), fields.end());
   if (alignment) {
     auto* marker =
@@ -83,18 +89,21 @@ EnumLayout EnumLayout::build(
     llvm::LLVMContext& context, const llvm::DataLayout& layout,
     const std::vector<std::vector<llvm::Type*>>& payloads) {
   llvm::Align alignment(4);
-  for (const auto& payload : payloads)
-    for (auto* type : payload)
+  for (const auto& payload : payloads) {
+    for (auto* type : payload) {
       alignment = std::max(alignment, layout.getABITypeAlign(type));
+    }
+  }
   const uint64_t unitBytes = alignment.value();
   const uint64_t tagArea = llvm::alignTo(4, unitBytes);
   uint64_t size = 8;
   EnumLayout result{};
   for (const auto& payload : payloads) {
     std::vector<llvm::Type*> fields{llvm::Type::getInt32Ty(context)};
-    if (tagArea > 4)
+    if (tagArea > 4) {
       fields.push_back(
           llvm::ArrayType::get(llvm::Type::getInt8Ty(context), tagArea - 4));
+    }
     fields.insert(fields.end(), payload.begin(), payload.end());
     auto* variant = llvm::StructType::get(context, fields);
     result.variants.push_back(variant);
@@ -116,8 +125,9 @@ CallDescriptor CallDescriptor::sun(llvm::Type* result,
                                    llvm::ArrayRef<llvm::Type*> parameters,
                                    bool closure) {
   std::vector<llvm::Type*> lowered;
-  if (closure)
+  if (closure) {
     lowered.push_back(llvm::PointerType::getUnqual(result->getContext()));
+  }
   lowered.insert(lowered.end(), parameters.begin(), parameters.end());
   return {llvm::FunctionType::get(result, lowered, false)};
 }
@@ -135,25 +145,33 @@ CallDescriptor CallDescriptor::forCall(llvm::FunctionType* signature,
                                        llvm::Value* callee) {
   if (auto* function =
           llvm::dyn_cast<llvm::Function>(callee->stripPointerCasts());
-      function && function->getFunctionType() == signature)
+      function && function->getFunctionType() == signature) {
     return inspect(*function);
+  }
   return {signature};
 }
 
 void CallDescriptor::apply(llvm::CallBase& call) const {
-  if (call.getFunctionType() != signature)
+  if (call.getFunctionType() != signature) {
     sun::support::logAndThrowError("Call does not match its ABI signature");
+  }
   call.setCallingConv(convention);
-  for (unsigned index : attributes.indexes())
-    for (auto attribute : attributes.getAttributes(index))
-      if (abiAttribute(attribute)) call.addAttributeAtIndex(index, attribute);
+  for (unsigned index : attributes.indexes()) {
+    for (auto attribute : attributes.getAttributes(index)) {
+      if (abiAttribute(attribute)) {
+        call.addAttributeAtIndex(index, attribute);
+      }
+    }
+  }
 }
 
 std::string CallDescriptor::encodedAttributes() const {
   std::string result;
-  for (unsigned index : attributes.indexes())
+  for (unsigned index : attributes.indexes()) {
     for (auto attribute : attributes.getAttributes(index)) {
-      if (!abiAttribute(attribute)) continue;
+      if (!abiAttribute(attribute)) {
+        continue;
+      }
       result += field(
           index,
           attribute.isTypeAttribute()
@@ -162,6 +180,7 @@ std::string CallDescriptor::encodedAttributes() const {
                     "(" + machineTypeName(attribute.getValueAsType()) + ")"
               : attribute.getAsString());
     }
+  }
   return result;
 }
 
@@ -174,17 +193,20 @@ std::string machineTypeName(llvm::Type* type) {
   if (auto* structure = llvm::dyn_cast<llvm::StructType>(type);
       structure && structure->isSized()) {
     std::string result = structure->isPacked() ? "packed{" : "struct{";
-    for (auto* member : structure->elements())
+    for (auto* member : structure->elements()) {
       result += machineTypeName(member) + ";";
+    }
     return result + "}";
   }
-  if (auto* array = llvm::dyn_cast<llvm::ArrayType>(type))
+  if (auto* array = llvm::dyn_cast<llvm::ArrayType>(type)) {
     return "array[" + std::to_string(array->getNumElements()) + ":" +
            machineTypeName(array->getElementType()) + "]";
+  }
   if (auto* function = llvm::dyn_cast<llvm::FunctionType>(type)) {
     std::string result = machineTypeName(function->getReturnType()) + "(";
-    for (auto* parameter : function->params())
+    for (auto* parameter : function->params()) {
       result += machineTypeName(parameter) + ";";
+    }
     return result + (function->isVarArg() ? "...)" : ")");
   }
   std::string result;
@@ -194,9 +216,10 @@ std::string machineTypeName(llvm::Type* type) {
 }
 void recordClassLayout(llvm::Module& module, const std::string& identity,
                        llvm::StructType* storage) {
-  if (identity.empty() || !storage->isSized())
+  if (identity.empty() || !storage->isSized()) {
     sun::support::logAndThrowError(
         "Cannot record an incomplete class ABI layout");
+  }
   auto& context = module.getContext();
   module.getOrInsertNamedMetadata("sun.abi.classes")
       ->addOperand(llvm::MDNode::get(
@@ -209,23 +232,28 @@ std::map<std::string, llvm::StructType*> classLayouts(
     const llvm::Module& module) {
   std::map<std::string, llvm::StructType*> layouts;
   const auto* records = module.getNamedMetadata("sun.abi.classes");
-  if (!records) return layouts;
+  if (!records) {
+    return layouts;
+  }
   for (const auto* record : records->operands()) {
-    if (record->getNumOperands() != 2)
+    if (record->getNumOperands() != 2) {
       sun::support::logAndThrowError("Malformed compiled class ABI descriptor");
+    }
     const auto* key =
         llvm::dyn_cast_or_null<llvm::MDString>(record->getOperand(0));
     const auto* value =
         llvm::dyn_cast_or_null<llvm::ConstantAsMetadata>(record->getOperand(1));
     auto* type =
         value ? llvm::dyn_cast<llvm::StructType>(value->getType()) : nullptr;
-    if (!key || key->getString().empty() || !type || !type->isSized())
+    if (!key || key->getString().empty() || !type || !type->isSized()) {
       sun::support::logAndThrowError("Malformed compiled class ABI descriptor");
+    }
     const auto [found, inserted] =
         layouts.emplace(key->getString().str(), type);
-    if (!inserted && machineTypeName(found->second) != machineTypeName(type))
+    if (!inserted && machineTypeName(found->second) != machineTypeName(type)) {
       sun::support::logAndThrowError("Conflicting compiled class ABI layout: " +
                                      key->getString().str());
+    }
   }
   return layouts;
 }

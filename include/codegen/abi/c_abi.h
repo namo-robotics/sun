@@ -110,9 +110,14 @@ struct SignatureLowering {
    * extension counts as rewriting: the call site must carry the attribute.
    */
   bool isTrivial() const {
-    if (!ret.isDirect() || ret.extend != Extend::None) return false;
-    for (const auto& p : params)
-      if (!p.isDirect() || p.extend != Extend::None) return false;
+    if (!ret.isDirect() || ret.extend != Extend::None) {
+      return false;
+    }
+    for (const auto& p : params) {
+      if (!p.isDirect() || p.extend != Extend::None) {
+        return false;
+      }
+    }
     return true;
   }
 };

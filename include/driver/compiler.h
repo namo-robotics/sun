@@ -53,10 +53,11 @@ inline std::string shellQuote(const std::string& s) {
   std::string out = "'";
   for (char c : s) {
     // A single-quoted string ends at the next quote; close, escape, reopen.
-    if (c == '\'')
+    if (c == '\'') {
       out += "'\\''";
-    else
+    } else {
       out += c;
+    }
   }
   out += "'";
   return out;
@@ -219,7 +220,9 @@ inline NativeLibraries loadNativeLibraries(const LinkOptions& opts) {
         break;
       }
     }
-    if (loaded) continue;
+    if (loaded) {
+      continue;
+    }
 
     // No shared library anywhere: fall back to a static archive in the -L
     // directories, matching what the AOT linker would pick up.
@@ -235,7 +238,9 @@ inline NativeLibraries loadNativeLibraries(const LinkOptions& opts) {
       }
     }
 
-    if (!foundArchive) result.failed.push_back(lib);
+    if (!foundArchive) {
+      result.failed.push_back(lib);
+    }
   }
 
   return result;
@@ -375,7 +380,9 @@ inline bool linkExecutable(const std::string& objectPath,
   // either way round). Apple's ld64 rejects those flags and resolves
   // archives iteratively anyway, so there the paths go in plain.
   if (!linkOpts.archives.empty()) {
-    if (!isDarwin) cmd += " -Wl,--start-group";
+    if (!isDarwin) {
+      cmd += " -Wl,--start-group";
+    }
     for (const auto& archive : linkOpts.archives) {
       cmd += " " + shellQuote(archive);
     }
@@ -385,7 +392,9 @@ inline bool linkExecutable(const std::string& objectPath,
   for (const auto& lib : linkOpts.libraries) {
     cmd += " -l" + shellQuote(lib);
   }
-  if (!linkOpts.archives.empty() && !isDarwin) cmd += " -Wl,--end-group";
+  if (!linkOpts.archives.empty() && !isDarwin) {
+    cmd += " -Wl,--end-group";
+  }
 
   cmd += isDarwin ? " -lc++" : " -lstdc++";
 
@@ -398,7 +407,9 @@ inline bool linkExecutable(const std::string& objectPath,
   }
   std::string output;
   char buffer[4096];
-  while (fgets(buffer, sizeof(buffer), pipe)) output += buffer;
+  while (fgets(buffer, sizeof(buffer), pipe)) {
+    output += buffer;
+  }
   int status = pclose(pipe);
   int result = status >= 0 && WIFEXITED(status) ? WEXITSTATUS(status) : -1;
   size_t start = 0;
@@ -410,7 +421,9 @@ inline bool linkExecutable(const std::string& objectPath,
                         : result != 0                              ? "error"
                                                                    : "info";
     sun::support::logMessage(level, line);
-    if (end == std::string::npos) break;
+    if (end == std::string::npos) {
+      break;
+    }
     start = end + 1;
   }
   if (result != 0) {

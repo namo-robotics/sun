@@ -98,32 +98,42 @@ bool operator==(const SunValue& v, T expected) {
      * A narrower expected value also matches an i64-returning program.
      */
     if constexpr (sizeof(T) == 1) {
-      if (auto* p = std::get_if<int8_t>(&v))
+      if (auto* p = std::get_if<int8_t>(&v)) {
         return *p == static_cast<int8_t>(expected);
+      }
     } else if constexpr (sizeof(T) == 2) {
-      if (auto* p = std::get_if<int16_t>(&v))
+      if (auto* p = std::get_if<int16_t>(&v)) {
         return *p == static_cast<int16_t>(expected);
+      }
     } else if constexpr (sizeof(T) == 4) {
-      if (auto* p = std::get_if<int32_t>(&v))
+      if (auto* p = std::get_if<int32_t>(&v)) {
         return *p == static_cast<int32_t>(expected);
+      }
     }
-    if (auto* p = std::get_if<int64_t>(&v))
+    if (auto* p = std::get_if<int64_t>(&v)) {
       return *p == static_cast<int64_t>(expected);
+    }
     return false;
   } else if constexpr (std::is_floating_point_v<T>) {
     // Allow comparison with any float type
-    if (auto* p = std::get_if<float>(&v))
+    if (auto* p = std::get_if<float>(&v)) {
       return *p == static_cast<float>(expected);
-    if (auto* p = std::get_if<double>(&v))
+    }
+    if (auto* p = std::get_if<double>(&v)) {
       return *p == static_cast<double>(expected);
+    }
     return false;
   } else if constexpr (std::is_same_v<T, const char*> ||
                        std::is_same_v<T, char*>) {
     // Allow comparison with C strings - compare against std::string
-    if (auto* p = std::get_if<std::string>(&v)) return *p == expected;
+    if (auto* p = std::get_if<std::string>(&v)) {
+      return *p == expected;
+    }
     return false;
   } else {
-    if (auto* p = std::get_if<T>(&v)) return *p == expected;
+    if (auto* p = std::get_if<T>(&v)) {
+      return *p == expected;
+    }
     return false;
   }
 }

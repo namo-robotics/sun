@@ -392,13 +392,15 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   EXPECT_EQ(result.results->types->getClass(id)->getDeclarationId(), id);
   EXPECT_EQ(result.results->declarations.get(id).specialization->source,
             generic.getDeclarationId());
-  for (const auto& method : instance->getMethods())
+  for (const auto& method : instance->getMethods()) {
     EXPECT_EQ(
         result.results->declarations.get(method.function->getDeclarationId())
             .owner,
         id);
-  for (const auto& field : instance->getFields())
+  }
+  for (const auto& field : instance->getFields()) {
     EXPECT_EQ(result.results->declarations.get(field.declaration.id).owner, id);
+  }
 }
 
 TEST(Tooling_Frontend_DeclarationIdentity,
@@ -580,9 +582,10 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   const auto& plain = static_cast<const sun::ast::EnumDefinitionAST&>(
       *result.ast->getBody()[0]);
   auto plainType = result.results->types->getEnum(plain.getDeclarationId());
-  for (size_t i = 0; i < plain.getVariants().size(); ++i)
+  for (size_t i = 0; i < plain.getVariants().size(); ++i) {
     EXPECT_EQ(plainType->getVariants()[i].declarationId,
               plain.getVariants()[i].declaration.id);
+  }
   const auto& generic = static_cast<const sun::ast::EnumDefinitionAST&>(
       *result.ast->getBody()[1]);
   ASSERT_EQ(generic.getSpecializations().size(), 2u);
@@ -639,8 +642,9 @@ TEST(Tooling_Frontend_DeclarationIdentity, captures_follow_analysis_lifetime) {
   ASSERT_FALSE(first.error);
   const LambdaAST* lambda = nullptr;
   std::function<void(const ExprAST&)> visit = [&](const ExprAST& node) {
-    if (node.getType() == ASTNodeType::LAMBDA)
+    if (node.getType() == ASTNodeType::LAMBDA) {
       lambda = &static_cast<const LambdaAST&>(node);
+    }
     forEachChild(node, visit);
   };
   visit(*first.ast);
@@ -696,9 +700,10 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   auto first = types->getInterface(firstId, {{}, "View"});
   auto second = types->getInterface(secondId, {{}, "View"});
   uint64_t ordinal = 1;
-  for (auto id : {classId, firstId, secondId})
+  for (auto id : {classId, firstId, secondId}) {
     results->declarations.bindPortable(
         id, PortableDeclarationKey::original(std::string(64, 'a'), ordinal++));
+  }
   sun::codegen::CodegenContext context("vtable_identity", nullptr);
   sun::codegen::CodegenVisitor gen(context, results);
   auto& classes = gen.classGenerator();

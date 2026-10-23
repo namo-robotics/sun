@@ -9,11 +9,13 @@
 #include "abi/abi_validation_scope.h"
 #include "cli/command_support.h"
 #include "driver/build_record.h"
+#include "driver/c_bindings.h"
 #include "driver/driver.h"
 #include "driver/git_source.h"
 #include "driver/input_hash.h"
 #include "driver/manifest_processor.h"
 #include "llvm/Support/raw_ostream.h"
+#include "moon_bundling/proto_importer.h"
 #include "support/terminal.h"
 
 using sun::driver::BuildRecord;
@@ -94,7 +96,7 @@ std::string computeJobInputHash(const CompileJob& job, bool forTests) {
 
   std::vector<std::string> sourceFiles = job.inputFiles;
   std::vector<std::string> protoFiles;
-  std::vector<std::string> archiveFiles;
+  std::vector<sun::moon_bundling::NativeArchive> nativeArchives;
   const std::string& entrypoint = job.inputFiles[0];
   // Several input files are compiled as given; one is an entrypoint whose
   // manifest names the rest.
@@ -111,16 +113,18 @@ std::string computeJobInputHash(const CompileJob& job, bool forTests) {
                                 manifest->moonImports.begin(),
                                 manifest->moonImports.end());
       protoFiles = std::move(manifest->protoFiles);
-      archiveFiles = std::move(manifest->archiveFiles);
+      nativeArchives = std::move(manifest->nativeArchives);
     }
   }
-  sun::driver::addSourceDigests(
-      inputs, sourceFiles, protoFiles,
-      fs::absolute(entrypoint).parent_path().string());
-  for (const auto& archive : archiveFiles) {
+  const auto baseDir = fs::absolute(entrypoint).parent_path().string();
+  sun::driver::generateCBindings(baseDir, job.targetTriple);
+  const auto protoModules =
+      sun::moon_bundling::ProtoImporter::importAll(protoFiles, baseDir);
+  sun::driver::addSourceDigests(inputs, sourceFiles, protoModules);
+  for (const auto& archive : nativeArchives) {
     inputs.archives.emplace_back(
-        fs::path(archive).filename().string(),
-        sun::driver::computeFileDigest(archive, "native archive"));
+        fs::path(archive.path).filename().string(),
+        sun::driver::computeFileDigest(archive.path, "native archive"));
   }
 
   // How the artifact is linked. Native libraries are named, not read: a
@@ -256,7 +260,9 @@ int compileEntrypoint(const CompileJob& job) {
       if (isUpToDate(job.outputFile, inputHash, built)) {
         sun::support::messageStream("info")
             << "Up to date: " << job.outputFile << "\n";
-        if (!wantTests || !built->hasTests) return 0;
+        if (!wantTests || !built->hasTests) {
+          return 0;
+        }
         return compileTestBinary(job);
       }
       // A program of only tests has no executable to find up to date; its
@@ -265,9 +271,10 @@ int compileEntrypoint(const CompileJob& job) {
           isUpToDate(getTestOutputName(job),
                      computeJobInputHash(job, /*forTests=*/true), built) &&
           !built->hasExecutable) {
-        if (job.requireProductionArtifact)
+        if (job.requireProductionArtifact) {
           sun::support::logAndThrowError(
               "packaged entrypoint has no production executable: " + inputFile);
+        }
         sun::support::messageStream("info")
             << "Up to date: " << getTestOutputName(job) << "\n";
         return 0;
@@ -307,9 +314,10 @@ int compileEntrypoint(const CompileJob& job) {
     std::string errorMsg;
     bool success = true;
     if (!emitProduction) {
-      if (job.requireProductionArtifact)
+      if (job.requireProductionArtifact) {
         sun::support::logAndThrowError(
             "packaged entrypoint has no production executable: " + inputFile);
+      }
       sun::support::messageStream("info")
           << "No main() found; emitting only the test binary\n";
     } else if (job.emitLLVMOnly) {
@@ -322,7 +330,9 @@ int compileEntrypoint(const CompileJob& job) {
         driver->getModule().print(output, nullptr);
         output.flush();
         success = !output.has_error();
-        if (!success) errorMsg = "Failed to write LLVM IR";
+        if (!success) {
+          errorMsg = "Failed to write LLVM IR";
+        }
       }
     } else if (job.emitObjOnly) {
       success = sun::driver::emitObjectFile(driver->getModule(), job.outputFile,

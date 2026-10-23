@@ -155,7 +155,9 @@ void DeclarationAnalyzer::applyFunctionInfoToProto(PrototypeAST& proto,
 void DeclarationAnalyzer::checkAnnotationLifetimes(
     const sun::ast::TypeAnnotation& annot, const Position& location) {
   auto checkName = [&](const std::string& name) {
-    if (name == "_") return;
+    if (name == "_") {
+      return;
+    }
     if (name == "this") {
       if (!ctx_.allowsThisLifetime()) {
         logAndThrowError(
@@ -176,13 +178,21 @@ void DeclarationAnalyzer::checkAnnotationLifetimes(
                        location);
     }
   };
-  if (!annot.lifetimeName.empty()) checkName(annot.lifetimeName);
-  for (const auto& name : annot.lifetimeArguments) checkName(name);
-  if (annot.elementType) checkAnnotationLifetimes(*annot.elementType, location);
+  if (!annot.lifetimeName.empty()) {
+    checkName(annot.lifetimeName);
+  }
+  for (const auto& name : annot.lifetimeArguments) {
+    checkName(name);
+  }
+  if (annot.elementType) {
+    checkAnnotationLifetimes(*annot.elementType, location);
+  }
   for (const auto& param : annot.paramTypes) {
     checkAnnotationLifetimes(*param, location);
   }
-  if (annot.returnType) checkAnnotationLifetimes(*annot.returnType, location);
+  if (annot.returnType) {
+    checkAnnotationLifetimes(*annot.returnType, location);
+  }
   for (const auto& typeArg : annot.typeArguments) {
     checkAnnotationLifetimes(*typeArg, location);
   }
@@ -238,14 +248,18 @@ FunctionInfo DeclarationAnalyzer::getLambdaInfo(sun::ast::LambdaAST& lambda) {
 
 void DeclarationAnalyzer::validateTypeParameter(const TypePtr& type,
                                                 const ExprAST& node) {
-  if (!type || !type->isTypeParameter()) return;
+  if (!type || !type->isTypeParameter()) {
+    return;
+  }
 
   auto* typeParam =
       static_cast<const sun::types::TypeParameterType*>(type.get());
 
   // Type traits (_Integer, _Float, etc.) are not scope-bound type parameters
-  if (sun::semantic_analysis::type_analysis::isTypeTrait(typeParam->getName()))
+  if (sun::semantic_analysis::type_analysis::isTypeTrait(
+          typeParam->getName())) {
     return;
+  }
 
   TypePtr found = ctx_.findTypeParameter(typeParam->getName());
   if (!found) {

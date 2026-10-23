@@ -192,137 +192,347 @@ inline Intrinsic getIntrinsic(const std::string& name) {
   // -------------------------------------------------------------------------
   // Generic intrinsics
   // -------------------------------------------------------------------------
-  if (name == "_alignof") return Intrinsic::Alignof;
-  if (name == "_aligned_malloc") return Intrinsic::AlignedMalloc;
-  if (name == "_assert_c_layout") return Intrinsic::AssertCLayout;
-  if (name == "_assert_c_target") return Intrinsic::AssertCTarget;
-  if (name == "_sizeof") return Intrinsic::Sizeof;
-  if (name == "_init") return Intrinsic::Init;
-  if (name == "_load") return Intrinsic::Load;
-  if (name == "_store") return Intrinsic::Store;
-  if (name == "_ptr_as_raw") return Intrinsic::PtrAsRaw;
-  if (name == "_is") return Intrinsic::Is;
-  if (name == "_address_of") return Intrinsic::AddressOf;
-  if (name == "_to_ref") return Intrinsic::ToRef;
-  if (name == "_deinit") return Intrinsic::Deinit;
-  if (name == "_enum_from_int") return Intrinsic::EnumFromInt;
-  if (name == "_convert") return Intrinsic::Convert;
-  if (name == "_bitcast") return Intrinsic::Bitcast;
-  if (name == "_spawn") return Intrinsic::Spawn;
-  if (name == "_thread_join") return Intrinsic::ThreadJoin;
-  if (name == "_thread_join_drop") return Intrinsic::ThreadJoinDrop;
+  if (name == "_alignof") {
+    return Intrinsic::Alignof;
+  }
+  if (name == "_aligned_malloc") {
+    return Intrinsic::AlignedMalloc;
+  }
+  if (name == "_assert_c_layout") {
+    return Intrinsic::AssertCLayout;
+  }
+  if (name == "_assert_c_target") {
+    return Intrinsic::AssertCTarget;
+  }
+  if (name == "_sizeof") {
+    return Intrinsic::Sizeof;
+  }
+  if (name == "_init") {
+    return Intrinsic::Init;
+  }
+  if (name == "_load") {
+    return Intrinsic::Load;
+  }
+  if (name == "_store") {
+    return Intrinsic::Store;
+  }
+  if (name == "_ptr_as_raw") {
+    return Intrinsic::PtrAsRaw;
+  }
+  if (name == "_is") {
+    return Intrinsic::Is;
+  }
+  if (name == "_address_of") {
+    return Intrinsic::AddressOf;
+  }
+  if (name == "_to_ref") {
+    return Intrinsic::ToRef;
+  }
+  if (name == "_deinit") {
+    return Intrinsic::Deinit;
+  }
+  if (name == "_enum_from_int") {
+    return Intrinsic::EnumFromInt;
+  }
+  if (name == "_convert") {
+    return Intrinsic::Convert;
+  }
+  if (name == "_bitcast") {
+    return Intrinsic::Bitcast;
+  }
+  if (name == "_spawn") {
+    return Intrinsic::Spawn;
+  }
+  if (name == "_thread_join") {
+    return Intrinsic::ThreadJoin;
+  }
+  if (name == "_thread_join_drop") {
+    return Intrinsic::ThreadJoinDrop;
+  }
 
   // -------------------------------------------------------------------------
   // Memory intrinsics
   // -------------------------------------------------------------------------
-  if (name == "_load_i64") return Intrinsic::LoadI64;
-  if (name == "_store_i64") return Intrinsic::StoreI64;
-  if (name == "_malloc") return Intrinsic::Malloc;
-  if (name == "_free") return Intrinsic::Free;
-  if (name == "_memcpy") return Intrinsic::Memcpy;
-  if (name == "_memmove") return Intrinsic::Memmove;
-  if (name == "_memset") return Intrinsic::Memset;
-  if (name == "_ptr_offset") return Intrinsic::PtrOffset;
+  if (name == "_load_i64") {
+    return Intrinsic::LoadI64;
+  }
+  if (name == "_store_i64") {
+    return Intrinsic::StoreI64;
+  }
+  if (name == "_malloc") {
+    return Intrinsic::Malloc;
+  }
+  if (name == "_free") {
+    return Intrinsic::Free;
+  }
+  if (name == "_memcpy") {
+    return Intrinsic::Memcpy;
+  }
+  if (name == "_memmove") {
+    return Intrinsic::Memmove;
+  }
+  if (name == "_memset") {
+    return Intrinsic::Memset;
+  }
+  if (name == "_ptr_offset") {
+    return Intrinsic::PtrOffset;
+  }
 
   // -------------------------------------------------------------------------
   // Print intrinsics
   // -------------------------------------------------------------------------
-  if (name == "_print_i32") return Intrinsic::PrintI32;
-  if (name == "_print_i64") return Intrinsic::PrintI64;
-  if (name == "_print_u64") return Intrinsic::PrintU64;
-  if (name == "_print_f64") return Intrinsic::PrintF64;
-  if (name == "_print_newline") return Intrinsic::PrintNewline;
-  if (name == "_print_bytes") return Intrinsic::PrintBytes;
-  if (name == "_print_char") return Intrinsic::PrintChar;
-  if (name == "_println_str") return Intrinsic::PrintlnStr;
+  if (name == "_print_i32") {
+    return Intrinsic::PrintI32;
+  }
+  if (name == "_print_i64") {
+    return Intrinsic::PrintI64;
+  }
+  if (name == "_print_u64") {
+    return Intrinsic::PrintU64;
+  }
+  if (name == "_print_f64") {
+    return Intrinsic::PrintF64;
+  }
+  if (name == "_print_newline") {
+    return Intrinsic::PrintNewline;
+  }
+  if (name == "_print_bytes") {
+    return Intrinsic::PrintBytes;
+  }
+  if (name == "_print_char") {
+    return Intrinsic::PrintChar;
+  }
+  if (name == "_println_str") {
+    return Intrinsic::PrintlnStr;
+  }
 
   // -------------------------------------------------------------------------
   // Atomic intrinsics
   // -------------------------------------------------------------------------
-  if (name == "_atomic_cmpxchg_i32") return Intrinsic::AtomicCmpxchgI32;
-  if (name == "_atomic_store_i32") return Intrinsic::AtomicStoreI32;
-  if (name == "_signal_state") return Intrinsic::SignalState;
-  if (name == "_signal_handler") return Intrinsic::SignalHandler;
-  if (name == "_atomic_load_i32") return Intrinsic::AtomicLoadI32;
-  if (name == "_atomic_fetch_add_i32") return Intrinsic::AtomicFetchAddI32;
-  if (name == "_atomic_fetch_sub_i32") return Intrinsic::AtomicFetchSubI32;
-  if (name == "_atomic_cmpxchg_i64") return Intrinsic::AtomicCmpxchgI64;
-  if (name == "_atomic_store_i64") return Intrinsic::AtomicStoreI64;
-  if (name == "_atomic_load_i64") return Intrinsic::AtomicLoadI64;
-  if (name == "_atomic_fetch_add_i64") return Intrinsic::AtomicFetchAddI64;
-  if (name == "_atomic_fetch_sub_i64") return Intrinsic::AtomicFetchSubI64;
-  if (name == "_atomic_cmpxchg_u64") return Intrinsic::AtomicCmpxchgU64;
-  if (name == "_atomic_store_u64") return Intrinsic::AtomicStoreU64;
-  if (name == "_atomic_load_u64") return Intrinsic::AtomicLoadU64;
-  if (name == "_atomic_fetch_add_u64") return Intrinsic::AtomicFetchAddU64;
-  if (name == "_atomic_fetch_sub_u64") return Intrinsic::AtomicFetchSubU64;
-  if (name == "_atomic_fence_acquire") return Intrinsic::AtomicFenceAcquire;
-  if (name == "_atomic_fence_release") return Intrinsic::AtomicFenceRelease;
+  if (name == "_atomic_cmpxchg_i32") {
+    return Intrinsic::AtomicCmpxchgI32;
+  }
+  if (name == "_atomic_store_i32") {
+    return Intrinsic::AtomicStoreI32;
+  }
+  if (name == "_signal_state") {
+    return Intrinsic::SignalState;
+  }
+  if (name == "_signal_handler") {
+    return Intrinsic::SignalHandler;
+  }
+  if (name == "_atomic_load_i32") {
+    return Intrinsic::AtomicLoadI32;
+  }
+  if (name == "_atomic_fetch_add_i32") {
+    return Intrinsic::AtomicFetchAddI32;
+  }
+  if (name == "_atomic_fetch_sub_i32") {
+    return Intrinsic::AtomicFetchSubI32;
+  }
+  if (name == "_atomic_cmpxchg_i64") {
+    return Intrinsic::AtomicCmpxchgI64;
+  }
+  if (name == "_atomic_store_i64") {
+    return Intrinsic::AtomicStoreI64;
+  }
+  if (name == "_atomic_load_i64") {
+    return Intrinsic::AtomicLoadI64;
+  }
+  if (name == "_atomic_fetch_add_i64") {
+    return Intrinsic::AtomicFetchAddI64;
+  }
+  if (name == "_atomic_fetch_sub_i64") {
+    return Intrinsic::AtomicFetchSubI64;
+  }
+  if (name == "_atomic_cmpxchg_u64") {
+    return Intrinsic::AtomicCmpxchgU64;
+  }
+  if (name == "_atomic_store_u64") {
+    return Intrinsic::AtomicStoreU64;
+  }
+  if (name == "_atomic_load_u64") {
+    return Intrinsic::AtomicLoadU64;
+  }
+  if (name == "_atomic_fetch_add_u64") {
+    return Intrinsic::AtomicFetchAddU64;
+  }
+  if (name == "_atomic_fetch_sub_u64") {
+    return Intrinsic::AtomicFetchSubU64;
+  }
+  if (name == "_atomic_fence_acquire") {
+    return Intrinsic::AtomicFenceAcquire;
+  }
+  if (name == "_atomic_fence_release") {
+    return Intrinsic::AtomicFenceRelease;
+  }
 
   // Futex intrinsics
-  if (name == "_futex_wait") return Intrinsic::FutexWait;
-  if (name == "_futex_wake") return Intrinsic::FutexWake;
+  if (name == "_futex_wait") {
+    return Intrinsic::FutexWait;
+  }
+  if (name == "_futex_wake") {
+    return Intrinsic::FutexWake;
+  }
 
   // Bit intrinsics
-  if (name == "_stack_alloc") return Intrinsic::StackAlloc;
-  if (name == "_cpu_avx2_fma") return Intrinsic::CpuAvx2Fma;
-  if (name == "_gemm_block_avx2_fma") return Intrinsic::GemmBlockAvx2Fma;
-  if (name == "_gemm_tile_avx2_fma") return Intrinsic::GemmTileAvx2Fma;
-  if (name == "_simd_f32x8_copy") return Intrinsic::SimdF32x8Copy;
-  if (name == "_simd_f32x8_splat") return Intrinsic::SimdF32x8Splat;
-  if (name == "_simd_f32x8_add") return Intrinsic::SimdF32x8Add;
-  if (name == "_simd_f32x8_sub") return Intrinsic::SimdF32x8Sub;
-  if (name == "_simd_f32x8_mul_add") return Intrinsic::SimdF32x8MulAdd;
-  if (name == "_simd_f32x8_fma") return Intrinsic::SimdF32x8Fma;
-  if (name == "_simd_f32x8_mul") return Intrinsic::SimdF32x8Mul;
-  if (name == "_simd_f32x4_copy") return Intrinsic::SimdF32x4Copy;
-  if (name == "_simd_f32x4_splat") return Intrinsic::SimdF32x4Splat;
-  if (name == "_simd_f32x4_add") return Intrinsic::SimdF32x4Add;
-  if (name == "_simd_f32x4_sub") return Intrinsic::SimdF32x4Sub;
-  if (name == "_simd_f32x4_mul_add") return Intrinsic::SimdF32x4MulAdd;
-  if (name == "_simd_f32x4_fma") return Intrinsic::SimdF32x4Fma;
-  if (name == "_simd_f32x4_mul") return Intrinsic::SimdF32x4Mul;
-  if (name == "_mul_hi_u64") return Intrinsic::MulHiU64;
-  if (name == "_ctlz_u64") return Intrinsic::CtlzU64;
-  if (name == "_cttz_u64") return Intrinsic::CttzU64;
-  if (name == "_bswap_u16") return Intrinsic::BswapU16;
-  if (name == "_bswap_u32") return Intrinsic::BswapU32;
-  if (name == "_bswap_u64") return Intrinsic::BswapU64;
+  if (name == "_stack_alloc") {
+    return Intrinsic::StackAlloc;
+  }
+  if (name == "_cpu_avx2_fma") {
+    return Intrinsic::CpuAvx2Fma;
+  }
+  if (name == "_gemm_block_avx2_fma") {
+    return Intrinsic::GemmBlockAvx2Fma;
+  }
+  if (name == "_gemm_tile_avx2_fma") {
+    return Intrinsic::GemmTileAvx2Fma;
+  }
+  if (name == "_simd_f32x8_copy") {
+    return Intrinsic::SimdF32x8Copy;
+  }
+  if (name == "_simd_f32x8_splat") {
+    return Intrinsic::SimdF32x8Splat;
+  }
+  if (name == "_simd_f32x8_add") {
+    return Intrinsic::SimdF32x8Add;
+  }
+  if (name == "_simd_f32x8_sub") {
+    return Intrinsic::SimdF32x8Sub;
+  }
+  if (name == "_simd_f32x8_mul_add") {
+    return Intrinsic::SimdF32x8MulAdd;
+  }
+  if (name == "_simd_f32x8_fma") {
+    return Intrinsic::SimdF32x8Fma;
+  }
+  if (name == "_simd_f32x8_mul") {
+    return Intrinsic::SimdF32x8Mul;
+  }
+  if (name == "_simd_f32x4_copy") {
+    return Intrinsic::SimdF32x4Copy;
+  }
+  if (name == "_simd_f32x4_splat") {
+    return Intrinsic::SimdF32x4Splat;
+  }
+  if (name == "_simd_f32x4_add") {
+    return Intrinsic::SimdF32x4Add;
+  }
+  if (name == "_simd_f32x4_sub") {
+    return Intrinsic::SimdF32x4Sub;
+  }
+  if (name == "_simd_f32x4_mul_add") {
+    return Intrinsic::SimdF32x4MulAdd;
+  }
+  if (name == "_simd_f32x4_fma") {
+    return Intrinsic::SimdF32x4Fma;
+  }
+  if (name == "_simd_f32x4_mul") {
+    return Intrinsic::SimdF32x4Mul;
+  }
+  if (name == "_mul_hi_u64") {
+    return Intrinsic::MulHiU64;
+  }
+  if (name == "_ctlz_u64") {
+    return Intrinsic::CtlzU64;
+  }
+  if (name == "_cttz_u64") {
+    return Intrinsic::CttzU64;
+  }
+  if (name == "_bswap_u16") {
+    return Intrinsic::BswapU16;
+  }
+  if (name == "_bswap_u32") {
+    return Intrinsic::BswapU32;
+  }
+  if (name == "_bswap_u64") {
+    return Intrinsic::BswapU64;
+  }
 
   // Target intrinsics
-  if (name == "_target_is") return Intrinsic::TargetIs;
+  if (name == "_target_is") {
+    return Intrinsic::TargetIs;
+  }
 
   // -------------------------------------------------------------------------
   // File I/O intrinsics
   // -------------------------------------------------------------------------
-  if (name == "__file_open") return Intrinsic::FileOpen;
-  if (name == "__file_close") return Intrinsic::FileClose;
-  if (name == "__file_write") return Intrinsic::FileWrite;
-  if (name == "__file_read") return Intrinsic::FileRead;
-  if (name == "__lseek") return Intrinsic::Lseek;
-  if (name == "__fstat") return Intrinsic::Fstat;
-  if (name == "__fsync") return Intrinsic::Fsync;
-  if (name == "__ftruncate") return Intrinsic::Ftruncate;
-  if (name == "__unlink") return Intrinsic::Unlink;
-  if (name == "__rename") return Intrinsic::Rename;
-  if (name == "__mkdir") return Intrinsic::Mkdir;
-  if (name == "__rmdir") return Intrinsic::Rmdir;
-  if (name == "__write") return Intrinsic::Write;
-  if (name == "__read") return Intrinsic::Read;
+  if (name == "__file_open") {
+    return Intrinsic::FileOpen;
+  }
+  if (name == "__file_close") {
+    return Intrinsic::FileClose;
+  }
+  if (name == "__file_write") {
+    return Intrinsic::FileWrite;
+  }
+  if (name == "__file_read") {
+    return Intrinsic::FileRead;
+  }
+  if (name == "__lseek") {
+    return Intrinsic::Lseek;
+  }
+  if (name == "__fstat") {
+    return Intrinsic::Fstat;
+  }
+  if (name == "__fsync") {
+    return Intrinsic::Fsync;
+  }
+  if (name == "__ftruncate") {
+    return Intrinsic::Ftruncate;
+  }
+  if (name == "__unlink") {
+    return Intrinsic::Unlink;
+  }
+  if (name == "__rename") {
+    return Intrinsic::Rename;
+  }
+  if (name == "__mkdir") {
+    return Intrinsic::Mkdir;
+  }
+  if (name == "__rmdir") {
+    return Intrinsic::Rmdir;
+  }
+  if (name == "__write") {
+    return Intrinsic::Write;
+  }
+  if (name == "__read") {
+    return Intrinsic::Read;
+  }
 
   // -------------------------------------------------------------------------
   // Network intrinsics
   // -------------------------------------------------------------------------
-  if (name == "__socket") return Intrinsic::Socket;
-  if (name == "__bind") return Intrinsic::Bind;
-  if (name == "__listen") return Intrinsic::Listen;
-  if (name == "__accept") return Intrinsic::Accept;
-  if (name == "__connect") return Intrinsic::Connect;
-  if (name == "__send") return Intrinsic::Send;
-  if (name == "__recv") return Intrinsic::Recv;
-  if (name == "__shutdown") return Intrinsic::Shutdown;
-  if (name == "__setsockopt") return Intrinsic::SetSockOpt;
-  if (name == "__getsockopt") return Intrinsic::GetSockOpt;
+  if (name == "__socket") {
+    return Intrinsic::Socket;
+  }
+  if (name == "__bind") {
+    return Intrinsic::Bind;
+  }
+  if (name == "__listen") {
+    return Intrinsic::Listen;
+  }
+  if (name == "__accept") {
+    return Intrinsic::Accept;
+  }
+  if (name == "__connect") {
+    return Intrinsic::Connect;
+  }
+  if (name == "__send") {
+    return Intrinsic::Send;
+  }
+  if (name == "__recv") {
+    return Intrinsic::Recv;
+  }
+  if (name == "__shutdown") {
+    return Intrinsic::Shutdown;
+  }
+  if (name == "__setsockopt") {
+    return Intrinsic::SetSockOpt;
+  }
+  if (name == "__getsockopt") {
+    return Intrinsic::GetSockOpt;
+  }
 
   return Intrinsic::None;
 }

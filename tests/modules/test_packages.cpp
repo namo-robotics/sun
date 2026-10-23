@@ -46,10 +46,11 @@ class Packages : public testing::Test {
   /** Restores process settings after every test, including failed assertions.
    */
   void TearDown() override {
-    if (hadCache)
+    if (hadCache) {
       setenv("SUN_DEPENDENCY_CACHE", previousCache.c_str(), 1);
-    else
+    } else {
       unsetenv("SUN_DEPENDENCY_CACHE");
+    }
     ManifestProcessor::clearPathVariables();
   }
   /** Parses a fixture configuration for an explicit target. */
@@ -245,7 +246,9 @@ void maliciousArchive(const fs::path& path, const std::string& name,
   archive_entry_set_filetype(entry, link ? AE_IFLNK : AE_IFREG);
   archive_entry_set_perm(entry, 0644);
   archive_entry_set_size(entry, 0);
-  if (link) archive_entry_set_symlink(entry, "/etc/passwd");
+  if (link) {
+    archive_entry_set_symlink(entry, "/etc/passwd");
+  }
   archive_write_header(writer, entry);
   archive_entry_free(entry);
   archive_write_close(writer);

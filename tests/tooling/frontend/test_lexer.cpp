@@ -37,7 +37,9 @@ std::vector<Token> lexAll(const std::string& source, bool emitComments = true) {
     Token tok = lexer.getNextToken();
     bool eof = tok.isEof();
     tokens.push_back(std::move(tok));
-    if (eof) break;
+    if (eof) {
+      break;
+    }
   }
   return tokens;
 }
@@ -47,7 +49,9 @@ std::vector<TokenKind> kindsOf(const std::string& source,
                                bool emitComments = false) {
   std::vector<TokenKind> kinds;
   for (const Token& tok : lexAll(source, emitComments)) {
-    if (tok.isEof()) break;
+    if (tok.isEof()) {
+      break;
+    }
     kinds.push_back(tok.kind);
   }
   return kinds;
@@ -90,7 +94,9 @@ TEST(Tooling_Frontend_Lexer, EveryKeywordLexesAsItself) {
   for (int i = 0; i < static_cast<int>(TokenKind::COUNT); ++i) {
     TokenKind kind = static_cast<TokenKind>(i);
     auto word = getKeywordSpelling(kind);
-    if (!word) continue;
+    if (!word) {
+      continue;
+    }
     ++count;
     auto kinds = kindsOf(std::string(*word));
     ASSERT_EQ(kinds.size(), 1u) << *word;
@@ -351,11 +357,15 @@ TEST(Tooling_Frontend_Lexer, RelexFromSavedPosition) {
   lexer.getNextToken();  // var
   sun::support::Position saved = lexer.getPosition();
   std::vector<TokenKind> first;
-  for (int i = 0; i < 5; ++i) first.push_back(lexer.getNextToken().kind);
+  for (int i = 0; i < 5; ++i) {
+    first.push_back(lexer.getNextToken().kind);
+  }
 
   lexer.setPosition(saved);
   std::vector<TokenKind> second;
-  for (int i = 0; i < 5; ++i) second.push_back(lexer.getNextToken().kind);
+  for (int i = 0; i < 5; ++i) {
+    second.push_back(lexer.getNextToken().kind);
+  }
 
   EXPECT_EQ(first, second);
 }
@@ -370,7 +380,9 @@ TEST(Tooling_Frontend_Lexer, RelexAfterInputExhausted) {
   sun::support::Position afterFirst;
   Token t = lexer.getNextToken();
   afterFirst = lexer.getPosition();
-  while (!t.isEof()) t = lexer.getNextToken();  // drain to EOF, setting eofbit
+  while (!t.isEof()) {
+    t = lexer.getNextToken();  // drain to EOF, setting eofbit
+  }
 
   lexer.setPosition(afterFirst);
   EXPECT_EQ(lexer.getNextToken().kind, TokenKind::LESS);
@@ -427,7 +439,9 @@ TEST(Tooling_Frontend_Lexer, DISABLED_ThroughputMBps) {
       "}\n";
 
   std::string source;
-  while (source.size() < 2u * 1024 * 1024) source += unit;
+  while (source.size() < 2u * 1024 * 1024) {
+    source += unit;
+  }
 
   const int kRuns = 5;
   auto begin = std::chrono::steady_clock::now();
@@ -435,7 +449,9 @@ TEST(Tooling_Frontend_Lexer, DISABLED_ThroughputMBps) {
   for (int r = 0; r < kRuns; ++r) {
     std::istringstream ss(source);
     Lexer lexer(ss);
-    while (!lexer.getNextToken().isEof()) ++tokens;
+    while (!lexer.getNextToken().isEof()) {
+      ++tokens;
+    }
   }
   auto elapsed =
       std::chrono::duration<double>(std::chrono::steady_clock::now() - begin)

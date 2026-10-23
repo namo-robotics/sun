@@ -22,42 +22,48 @@ TypePtr CallAnalyzer::resolveIntrinsicCallType(
   const std::string& funcName = genericCall.getFunctionName();
 
   if (funcName == "_assert_c_layout") {
-    if (!ctx_.isAtModuleLevel())
+    if (!ctx_.isAtModuleLevel()) {
       logAndThrowError("_assert_c_layout is only allowed at module scope",
                        genericCall.getLocation());
-    if (typeArgs.size() != 1 || !typeArgs[0]->isClass())
+    }
+    if (typeArgs.size() != 1 || !typeArgs[0]->isClass()) {
       logAndThrowError("_assert_c_layout requires one concrete class type",
                        genericCall.getLocation());
+    }
     auto& cls = static_cast<const sun::types::ClassType&>(*typeArgs[0]);
-    if (genericCall.getArgs().size() != cls.getFields().size() + 2)
+    if (genericCall.getArgs().size() != cls.getFields().size() + 2) {
       logAndThrowError(
           "_assert_c_layout requires size, alignment and one offset per field",
           genericCall.getLocation());
+    }
     for (const auto& arg : genericCall.getArgs()) {
       auto* number = dynamic_cast<const sun::ast::NumberExprAST*>(arg.get());
       if (!number || !number->isInteger() || number->isNegative() ||
-          number->hasSuffix())
+          number->hasSuffix()) {
         logAndThrowError(
             "_assert_c_layout requires nonnegative integer literals",
             arg->getLocation());
+      }
     }
     return Types::Void();
   }
   if (funcName == "_aligned_malloc") {
     if (typeArgs.size() != 1 || typeArgs[0]->isVoid() ||
         genericCall.getArgs().size() != 1 ||
-        !genericCall.getArgs()[0]->getResolvedType()->isIntegral())
+        !genericCall.getArgs()[0]->getResolvedType()->isIntegral()) {
       logAndThrowError(
           "_aligned_malloc<T> requires a storage type and one integer byte "
           "count",
           genericCall.getLocation());
+    }
     return Types::RawPointer(Types::UInt8());
   }
   if (funcName == "_alignof" || funcName == "_sizeof") {
     if (typeArgs.size() != 1 || typeArgs[0]->isVoid() ||
-        !genericCall.getArgs().empty())
+        !genericCall.getArgs().empty()) {
       logAndThrowError(funcName + " requires one storage type and no arguments",
                        genericCall.getLocation());
+    }
     return Types::Int64();
   }
   if (funcName == "_load") {

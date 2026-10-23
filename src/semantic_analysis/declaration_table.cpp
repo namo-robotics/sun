@@ -19,8 +19,9 @@ ImportIndex indexImportRecords(
   std::vector<PortableDeclarationKey> keys(records.size());
   for (size_t i = 0; i < records.size(); ++i) {
     keys[i] = PortableDeclarationKey::fromString(records[i].key);
-    if (records[i].kind > static_cast<uint32_t>(DeclarationKind::Alias))
+    if (records[i].kind > static_cast<uint32_t>(DeclarationKind::Alias)) {
       logAndThrowError("Imported declaration has an unknown kind");
+    }
     keyToIndex.try_emplace(records[i].key, i);
   }
   return {std::move(keyToIndex), std::move(keys)};
@@ -39,7 +40,9 @@ void DeclarationTable::importLibraryDeclarationRecords(
   std::deque<size_t> ready;
   for (size_t i = 0; i < records.size(); ++i) {
     for (const auto* link : {&records[i].owner, &records[i].module}) {
-      if (link->empty()) continue;
+      if (link->empty()) {
+        continue;
+      }
       auto found = keyToIndex.find(*link);
       if (found != keyToIndex.end()) {
         ++pending[i];
@@ -48,7 +51,9 @@ void DeclarationTable::importLibraryDeclarationRecords(
         logAndThrowError("Imported declaration refers to a missing owner");
       }
     }
-    if (!pending[i]) ready.push_back(i);
+    if (!pending[i]) {
+      ready.push_back(i);
+    }
   }
 
   // Resolve an owner or module key, preserving absent references.
@@ -67,12 +72,16 @@ void DeclarationTable::importLibraryDeclarationRecords(
                              record.name, reference(record.owner),
                              reference(record.module), record.bundleHash);
     ++restored;
-    for (auto dependent : dependents[i])
-      if (--pending[dependent] == 0) ready.push_back(dependent);
+    for (auto dependent : dependents[i]) {
+      if (--pending[dependent] == 0) {
+        ready.push_back(dependent);
+      }
+    }
   }
 
-  if (restored != records.size())
+  if (restored != records.size()) {
     logAndThrowError("Imported declaration ownership contains a cycle");
+  }
 }
 
 }  // namespace sun::semantic_analysis

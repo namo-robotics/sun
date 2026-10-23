@@ -50,12 +50,18 @@ class FunctionType : public Type {
   std::string toString() const override {
     std::string result = "function (";
     for (size_t i = 0; i < paramTypes.size(); ++i) {
-      if (i > 0) result += ", ";
+      if (i > 0) {
+        result += ", ";
+      }
       result += paramTypes[i]->toString();
     }
     result += ") " + returnType->toString();
-    if (requiresUnsafe_) result = "unsafe " + result;
-    if (canThrow_) result += " throws IError";
+    if (requiresUnsafe_) {
+      result = "unsafe " + result;
+    }
+    if (canThrow_) {
+      result += " throws IError";
+    }
     return result;
   }
 
@@ -63,24 +69,40 @@ class FunctionType : public Type {
   std::string toDisplayString() const override {
     std::string result = "function (";
     for (size_t i = 0; i < paramTypes.size(); ++i) {
-      if (i > 0) result += ", ";
+      if (i > 0) {
+        result += ", ";
+      }
       result += paramTypes[i]->toDisplayString();
     }
     result += ") " + returnType->toDisplayString();
-    if (requiresUnsafe_) result = "unsafe " + result;
-    if (canThrow_) result += " throws IError";
+    if (requiresUnsafe_) {
+      result = "unsafe " + result;
+    }
+    if (canThrow_) {
+      result += " throws IError";
+    }
     return result;
   }
 
   /** Reports whether the other type has the same semantic identity. */
   bool equals(const Type& other) const override {
     if (auto* f = dynamic_cast<const FunctionType*>(&other)) {
-      if (requiresUnsafe_ != f->requiresUnsafe_) return false;
-      if (canThrow_ != f->canThrow_) return false;
-      if (!returnType->equals(*f->returnType)) return false;
-      if (paramTypes.size() != f->paramTypes.size()) return false;
+      if (requiresUnsafe_ != f->requiresUnsafe_) {
+        return false;
+      }
+      if (canThrow_ != f->canThrow_) {
+        return false;
+      }
+      if (!returnType->equals(*f->returnType)) {
+        return false;
+      }
+      if (paramTypes.size() != f->paramTypes.size()) {
+        return false;
+      }
       for (size_t i = 0; i < paramTypes.size(); ++i) {
-        if (!paramTypes[i]->equals(*f->paramTypes[i])) return false;
+        if (!paramTypes[i]->equals(*f->paramTypes[i])) {
+          return false;
+        }
       }
       return true;
     }

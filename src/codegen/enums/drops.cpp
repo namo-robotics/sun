@@ -17,11 +17,15 @@ namespace sun::codegen::enums {
 
 Function* EnumGenerator::getOrCreateDropFunction(
     sun::types::EnumType& enumType) {
-  if (!sun::types::typeNeedsDrop(&enumType)) return nullptr;
+  if (!sun::types::typeNeedsDrop(&enumType)) {
+    return nullptr;
+  }
 
   std::string name =
       state_.declarationSymbol(enumType.getDeclarationId(), "enum-drop");
-  if (Function* existing = state_.module->getFunction(name)) return existing;
+  if (Function* existing = state_.module->getFunction(name)) {
+    return existing;
+  }
 
   auto* voidTy = llvm::Type::getVoidTy(ctx.getContext());
   auto* ptrTy = PointerType::getUnqual(ctx.getContext());
@@ -46,7 +50,9 @@ Function* EnumGenerator::getOrCreateDropFunction(
   SwitchInst* sw = ctx.builder->CreateSwitch(tag, doneBB);
 
   for (const auto& variant : enumType.getVariants()) {
-    if (!variant.hasPayload()) continue;
+    if (!variant.hasPayload()) {
+      continue;
+    }
     bool owns = false;
     for (const auto& pt : variant.payloadTypes) {
       if (pt && sun::types::typeNeedsDrop(pt)) {
@@ -54,7 +60,9 @@ Function* EnumGenerator::getOrCreateDropFunction(
         break;
       }
     }
-    if (!owns) continue;
+    if (!owns) {
+      continue;
+    }
 
     BasicBlock* caseBB =
         BasicBlock::Create(ctx.getContext(), "drop." + variant.name, fn);
@@ -65,7 +73,9 @@ Function* EnumGenerator::getOrCreateDropFunction(
         typeResolver.getEnumVariantStruct(enumType, variant.name);
     for (size_t i = 0; i < variant.payloadTypes.size(); ++i) {
       const sun::types::TypePtr& pt = variant.payloadTypes[i];
-      if (!pt || !sun::types::typeNeedsDrop(pt)) continue;
+      if (!pt || !sun::types::typeNeedsDrop(pt)) {
+        continue;
+      }
       unsigned idx =
           typeResolver.enumPayloadFieldIndex(enumType, variant.name, i);
       Value* fieldPtr = ctx.builder->CreateStructGEP(

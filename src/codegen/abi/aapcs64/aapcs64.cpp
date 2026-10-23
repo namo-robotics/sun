@@ -45,9 +45,15 @@ bool collectHFALeaves(llvm::Type* type, llvm::Type*& base, unsigned& count) {
     return true;
   }
 
-  if (!type->isFloatTy() && !type->isDoubleTy()) return false;
-  if (!base) base = type;
-  if (base != type) return false;
+  if (!type->isFloatTy() && !type->isDoubleTy()) {
+    return false;
+  }
+  if (!base) {
+    base = type;
+  }
+  if (base != type) {
+    return false;
+  }
   ++count;
   return true;
 }
@@ -60,7 +66,9 @@ bool collectHFALeaves(llvm::Type* type, llvm::Type*& base, unsigned& count) {
 bool isHFA(llvm::Type* type, llvm::Type*& base, unsigned& count) {
   base = nullptr;
   count = 0;
-  if (!collectHFALeaves(type, base, count)) return false;
+  if (!collectHFALeaves(type, base, count)) {
+    return false;
+  }
   return count >= 1 && count <= 4;
 }
 
@@ -70,9 +78,15 @@ bool isHFA(llvm::Type* type, llvm::Type*& base, unsigned& count) {
  * may rely on the upper bits. ELF specifies no such contract and gets None.
  */
 Extend extendFor(llvm::Type* type, Variant variant, bool isSigned) {
-  if (variant != Variant::Darwin) return Extend::None;
-  if (!type || !type->isIntegerTy()) return Extend::None;
-  if (type->getIntegerBitWidth() >= 32) return Extend::None;
+  if (variant != Variant::Darwin) {
+    return Extend::None;
+  }
+  if (!type || !type->isIntegerTy()) {
+    return Extend::None;
+  }
+  if (type->getIntegerBitWidth() >= 32) {
+    return Extend::None;
+  }
   return isSigned ? Extend::Sign : Extend::Zero;
 }
 
@@ -97,14 +111,18 @@ ArgLowering lowerAggregate(llvm::Type* type, const llvm::DataLayout& dl,
       size == count * dl.getTypeAllocSize(base).getFixedValue()) {
     // Returned HFAs keep the literal struct type — clang emits
     // `declare %struct.H @f()` — and LLVM assigns the FP registers itself.
-    if (isReturn) return result;  // Direct
+    if (isReturn) {
+      return result;  // Direct
+    }
     // As an argument the HFA coerces to one [N x float/double] value. ELF
     // adds alignstack(8) so a spill to the stack stays 8-byte aligned;
     // Darwin packs stack slots naturally and carries no such attribute.
     result.kind = ArgKind::Coerced;
     result.pieces.push_back(llvm::ArrayType::get(base, count));
     result.pieceOffsets.push_back(0);
-    if (variant == Variant::Elf) result.stackAlign = 8;
+    if (variant == Variant::Elf) {
+      result.stackAlign = 8;
+    }
     return result;
   }
 

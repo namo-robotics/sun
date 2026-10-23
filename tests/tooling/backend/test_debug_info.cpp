@@ -87,7 +87,9 @@ bool haveTool(const std::string& tool) {
 /** Finds an installed validation tool under its supported executable names. */
 std::string findTool(const std::vector<std::string>& candidates) {
   for (const auto& tool : candidates) {
-    if (haveTool(tool)) return tool;
+    if (haveTool(tool)) {
+      return tool;
+    }
   }
   return "";
 }
@@ -106,7 +108,9 @@ std::string readFile(const std::string& path) {
  */
 int dwarfdumpVerify(llvm::Module& module, const std::string& objPath) {
   std::string tool = findTool({"llvm-dwarfdump-20", "llvm-dwarfdump"});
-  if (tool.empty()) return -1;
+  if (tool.empty()) {
+    return -1;
+  }
   std::string errorMsg;
   EXPECT_TRUE(sun::driver::emitObjectFile(module, objPath, errorMsg))
       << errorMsg;
@@ -204,7 +208,9 @@ function main() i32 {
 TEST(Tooling_Backend_DebugInfo, moon_bundle_carries_debug_info_into_g_compile) {
   initTestEnvironment();
   auto imports = sun::driver::getStdlibMoonImports();
-  if (imports.empty()) GTEST_SKIP() << "stdlib.moon not built";
+  if (imports.empty()) {
+    GTEST_SKIP() << "stdlib.moon not built";
+  }
 
   auto driver = Driver::createForAOT("moon_debug_test", "", /*debugInfo=*/true);
   driver->setMoonImports(imports);
@@ -231,7 +237,9 @@ function main() i32 {
 TEST(Tooling_Backend_DebugInfo, moon_debug_info_stripped_from_non_g_compile) {
   initTestEnvironment();
   auto imports = sun::driver::getStdlibMoonImports();
-  if (imports.empty()) GTEST_SKIP() << "stdlib.moon not built";
+  if (imports.empty()) {
+    GTEST_SKIP() << "stdlib.moon not built";
+  }
 
   auto driver = Driver::createForAOT("moon_strip_test");
   driver->setMoonImports(imports);
@@ -310,7 +318,9 @@ TEST(Tooling_Backend_DebugInfo, object_file_dwarf_verifies) {
   auto driver = compileWithDebug(kClassProgram);
   std::string objPath = ::testing::TempDir() + "sun_debug_info_test.o";
   int rc = dwarfdumpVerify(driver->getModule(), objPath);
-  if (rc < 0) GTEST_SKIP() << "llvm-dwarfdump not installed";
+  if (rc < 0) {
+    GTEST_SKIP() << "llvm-dwarfdump not installed";
+  }
   EXPECT_EQ(rc, 0);
 }
 
@@ -318,7 +328,9 @@ TEST(Tooling_Backend_DebugInfo, cross_target_object_dwarf_verifies) {
   auto driver = compileWithDebug(kSimpleProgram, "aarch64-linux-gnu");
   std::string objPath = ::testing::TempDir() + "sun_debug_info_a64_test.o";
   int rc = dwarfdumpVerify(driver->getModule(), objPath);
-  if (rc < 0) GTEST_SKIP() << "llvm-dwarfdump not installed";
+  if (rc < 0) {
+    GTEST_SKIP() << "llvm-dwarfdump not installed";
+  }
   EXPECT_EQ(rc, 0);
 }
 
@@ -360,10 +372,14 @@ std::string linkSimpleDebugBinary(const std::string& name,
 }  // namespace
 
 TEST(Tooling_Backend_DebugInfo, gdb_breaks_reads_args_and_steps) {
-  if (!haveTool("gdb")) GTEST_SKIP() << "gdb not installed";
+  if (!haveTool("gdb")) {
+    GTEST_SKIP() << "gdb not installed";
+  }
   std::string skipReason;
   std::string binary = linkSimpleDebugBinary("sun_dbg_gdb", skipReason);
-  if (binary.empty()) GTEST_SKIP() << skipReason;
+  if (binary.empty()) {
+    GTEST_SKIP() << skipReason;
+  }
 
   std::string outPath = ::testing::TempDir() + "sun_debug_info_gdb.out";
   std::string cmd =
@@ -384,7 +400,9 @@ TEST(Tooling_Backend_DebugInfo, gdb_breaks_reads_args_and_steps) {
 }
 
 TEST(Tooling_Backend_DebugInfo, gdb_debugs_jit_executed_code) {
-  if (!haveTool("gdb")) GTEST_SKIP() << "gdb not installed";
+  if (!haveTool("gdb")) {
+    GTEST_SKIP() << "gdb not installed";
+  }
   if (!std::filesystem::exists("build/sun")) {
     GTEST_SKIP() << "build/sun not found (test runs from workspace root)";
   }
@@ -422,10 +440,14 @@ function main() i32 { return sununiqadd(3, 4); }
 
 TEST(Tooling_Backend_DebugInfo, lldb_breaks_reads_variables_and_steps) {
   std::string lldb = findTool({"lldb-20", "lldb"});
-  if (lldb.empty()) GTEST_SKIP() << "lldb not installed";
+  if (lldb.empty()) {
+    GTEST_SKIP() << "lldb not installed";
+  }
   std::string skipReason;
   std::string binary = linkSimpleDebugBinary("sun_dbg_lldb", skipReason);
-  if (binary.empty()) GTEST_SKIP() << skipReason;
+  if (binary.empty()) {
+    GTEST_SKIP() << skipReason;
+  }
 
   // DEBUGINFOD_URLS= : lldb otherwise blocks on unreachable symbol servers.
   // disable-aslr false: sandboxes may deny the personality() syscall lldb

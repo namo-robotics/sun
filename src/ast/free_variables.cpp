@@ -64,10 +64,12 @@ std::set<std::string> collectFreeVariables(const ExprAST& expr,
                   .getName());
         }
       }
-      if (forExpr.getCondition())
+      if (forExpr.getCondition()) {
         collectFrom(*forExpr.getCondition(), innerBound);
-      if (forExpr.getIncrement())
+      }
+      if (forExpr.getIncrement()) {
         collectFrom(*forExpr.getIncrement(), innerBound);
+      }
       collectFrom(*forExpr.getBody(), innerBound);
       break;
     }

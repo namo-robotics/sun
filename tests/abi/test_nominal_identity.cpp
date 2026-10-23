@@ -94,15 +94,18 @@ TEST(ABI_NominalIdentity, LibraryIdsPreserveTextAndLimitBytes) {
   for (const auto& id : {std::string("org.example/shapes"),
                          std::string("04B519E8-4339-4A5E-BAC1-743376951068"),
                          std::string(" \t名前\n"), std::string("a\0b", 3),
-                         std::string(512, 'x')})
+                         std::string(512, 'x')}) {
     EXPECT_NO_THROW(sun::abi::validateLibraryId(id));
+  }
   EXPECT_THROW(sun::abi::validateLibraryId(""), sun::support::SunError);
   EXPECT_THROW(sun::abi::validateLibraryId(std::string(513, 'x')),
                sun::support::SunError);
   EXPECT_THROW(sun::abi::validateLibraryId(std::string("\xff", 1)),
                sun::support::SunError);
   std::string unicode;
-  for (int i = 0; i < 256; ++i) unicode += "é";
+  for (int i = 0; i < 256; ++i) {
+    unicode += "é";
+  }
   EXPECT_NO_THROW(sun::abi::validateLibraryId(unicode));
   EXPECT_THROW(sun::abi::validateLibraryId(unicode + "x"),
                sun::support::SunError);

@@ -36,7 +36,9 @@ std::string spanText(const std::string& source, const sun::ast::ExprAST& node) {
   const sun::support::Position& loc = node.getLocation();
   EXPECT_TRUE(loc.endOffset.has_value())
       << "node has no endOffset: " << node.toString();
-  if (!loc.endOffset) return "";
+  if (!loc.endOffset) {
+    return "";
+  }
   return source.substr(loc.offset, *loc.endOffset - loc.offset);
 }
 
@@ -44,7 +46,9 @@ std::string spanText(const std::string& source, const sun::ast::ExprAST& node) {
 std::string spanText(const std::string& source,
                      const sun::support::Position& loc) {
   EXPECT_TRUE(loc.endOffset.has_value()) << "position has no endOffset";
-  if (!loc.endOffset) return "";
+  if (!loc.endOffset) {
+    return "";
+  }
   return source.substr(loc.offset, *loc.endOffset - loc.offset);
 }
 

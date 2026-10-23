@@ -33,11 +33,15 @@ static int runDefaultCommand(const std::string& programName,
   }
   applyBuildRunSettings(options);
 
-  if (options.emitMoon) return runBundleCommand(options);
+  if (options.emitMoon) {
+    return runBundleCommand(options);
+  }
   if (options.compileMode && options.configInput) {
     return runConfigBuildCommand(options);
   }
-  if (options.compileMode) return runCompileCommand(options);
+  if (options.compileMode) {
+    return runCompileCommand(options);
+  }
   return runJitCommand(options);
 }
 
@@ -48,7 +52,9 @@ static int runDefaultCommand(const std::string& programName,
 int main(int argc, char* argv[]) {
   const std::string programName = argc > 0 ? argv[0] : "sun";
   std::vector<std::string> args;
-  if (argc > 1) args.assign(argv + 1, argv + argc);
+  if (argc > 1) {
+    args.assign(argv + 1, argv + argc);
+  }
 
   // A subcommand is only recognised as the first argument
   if (!args.empty() && args[0] == "bindgen") {

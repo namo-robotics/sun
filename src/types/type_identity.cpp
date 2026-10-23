@@ -6,12 +6,21 @@ namespace sun::types {
 
 /** Compare identity recursively without accepting implicit conversions. */
 bool sameTypeIdentity(const TypePtr& left, const TypePtr& right) {
-  if (left == right) return true;
-  if (!left || !right || left->getKind() != right->getKind()) return false;
+  if (left == right) {
+    return true;
+  }
+  if (!left || !right || left->getKind() != right->getKind()) {
+    return false;
+  }
   auto parameters = [](const auto& a, const auto& b) {
-    if (a.size() != b.size()) return false;
-    for (size_t i = 0; i < a.size(); ++i)
-      if (!sameTypeIdentity(a[i], b[i])) return false;
+    if (a.size() != b.size()) {
+      return false;
+    }
+    for (size_t i = 0; i < a.size(); ++i) {
+      if (!sameTypeIdentity(a[i], b[i])) {
+        return false;
+      }
+    }
     return true;
   };
   auto callable = [&](const auto& a, const auto& b) {
@@ -61,9 +70,14 @@ bool sameTypeIdentity(const TypePtr& left, const TypePtr& right) {
 /** Compare concrete argument lists in their declared order. */
 bool sameTypeArguments(const std::vector<TypePtr>& left,
                        const std::vector<TypePtr>& right) {
-  if (left.size() != right.size()) return false;
-  for (size_t i = 0; i < left.size(); ++i)
-    if (!sameTypeIdentity(left[i], right[i])) return false;
+  if (left.size() != right.size()) {
+    return false;
+  }
+  for (size_t i = 0; i < left.size(); ++i) {
+    if (!sameTypeIdentity(left[i], right[i])) {
+      return false;
+    }
+  }
   return true;
 }
 

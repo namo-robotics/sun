@@ -46,10 +46,14 @@ class SliceExprAST : public ExprAST {
   }
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
-    if (!isRange_) return start_ ? start_->toString() : "";
+    if (!isRange_) {
+      return start_ ? start_->toString() : "";
+    }
     std::string result = start_ ? start_->toString() : "";
     result += ":";
-    if (end_) result += end_->toString();
+    if (end_) {
+      result += end_->toString();
+    }
     return result;
   }
 

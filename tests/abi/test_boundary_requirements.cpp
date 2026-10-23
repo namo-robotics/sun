@@ -80,8 +80,9 @@ TEST(ABI_Compatibility, ConflictingNamedBoundariesAreRejectedAtomically) {
 TEST(ABI_Compatibility, ConflictingBoundaryMetadataCannotAuthorizeImport) {
   auto description = functionContract(llvm::CallingConv::C);
   const auto conflicting = functionContract(llvm::CallingConv::Fast);
-  for (const auto& record : conflicting.boundary_records())
+  for (const auto& record : conflicting.boundary_records()) {
     description.add_boundary_records(record);
+  }
   description.set_compatibility_hash(sun::abi::hashBundleContract(description));
   sun::abi::AbiCompatibilityChecker checker("x86_64-linux-gnu");
   try {
@@ -113,7 +114,9 @@ TEST(ABI_Compatibility, BoundaryFramesRejectTruncationAndUnknownKinds) {
   sun::abi::BoundaryRequirements boundaries;
   EXPECT_THROW(boundaries.add(unknown), sun::support::SunError);
   auto oversized = record;
-  for (size_t i = 8; i < 16; ++i) oversized[i] = static_cast<char>(0xff);
+  for (size_t i = 8; i < 16; ++i) {
+    oversized[i] = static_cast<char>(0xff);
+  }
   EXPECT_THROW(boundaries.add(oversized), sun::support::SunError);
   EXPECT_NO_THROW(boundaries.add(record));
   EXPECT_NO_THROW(boundaries.add(record));

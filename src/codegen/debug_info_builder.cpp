@@ -23,7 +23,9 @@ using namespace llvm;
 DebugInfoBuilder::DebugInfoBuilder(llvm::Module* module, bool enabled,
                                    bool optimized)
     : module_(module), optimized_(optimized) {
-  if (!enabled || !module) return;
+  if (!enabled || !module) {
+    return;
+  }
   di_ = std::make_unique<DIBuilder>(*module);
   if (!module->getModuleFlag("Debug Info Version")) {
     module->addModuleFlag(Module::Warning, "Debug Info Version",
@@ -40,7 +42,9 @@ DebugInfoBuilder::DebugInfoBuilder(llvm::Module* module, bool enabled,
 
 DICompileUnit* DebugInfoBuilder::ensureCompileUnit(
     const std::optional<std::string>& hint) {
-  if (cu_) return cu_;
+  if (cu_) {
+    return cu_;
+  }
   DIFile* file;
   if (hint && !hint->empty()) {
     file = getFile(hint);
@@ -54,14 +58,18 @@ DICompileUnit* DebugInfoBuilder::ensureCompileUnit(
 }
 
 DIFile* DebugInfoBuilder::getFile(const std::optional<std::string>& path) {
-  if (!di_) return nullptr;
+  if (!di_) {
+    return nullptr;
+  }
   if (!path || path->empty()) {
     // Fall back to the compile unit's file for locations with no source path
     // (string-evaluated sources, synthesized nodes).
     return ensureCompileUnit(std::nullopt)->getFile();
   }
   auto it = fileCache_.find(*path);
-  if (it != fileCache_.end()) return it->second;
+  if (it != fileCache_.end()) {
+    return it->second;
+  }
   std::filesystem::path p(*path);
   DIFile* file = di_->createFile(
       p.filename().string(),
@@ -74,7 +82,9 @@ DISubprogram* DebugInfoBuilder::enterFunction(llvm::IRBuilderBase& builder,
                                               llvm::Function* func,
                                               const std::string& name,
                                               const Position& loc) {
-  if (!di_ || !func) return nullptr;
+  if (!di_ || !func) {
+    return nullptr;
+  }
   ensureCompileUnit(loc.filePath);
   DIFile* file = getFile(loc.filePath);
   auto* spType = di_->createSubroutineType(di_->getOrCreateTypeArray({}));
@@ -97,38 +107,54 @@ DISubprogram* DebugInfoBuilder::enterFunction(llvm::IRBuilderBase& builder,
 }
 
 void DebugInfoBuilder::exitFunction(llvm::Function* func) {
-  if (!di_ || !func) return;
+  if (!di_ || !func) {
+    return;
+  }
   auto* sp = func->getSubprogram();
-  if (!sp) return;
+  if (!sp) {
+    return;
+  }
   while (!scopeStack_.empty()) {
     auto* top = scopeStack_.back();
     scopeStack_.pop_back();
-    if (top == sp) break;
+    if (top == sp) {
+      break;
+    }
   }
   di_->finalizeSubprogram(sp);
 }
 
 bool DebugInfoBuilder::pushLexicalBlock(llvm::IRBuilderBase& builder,
                                         const Position& loc) {
-  if (!di_ || scopeStack_.empty() || !builder.GetInsertBlock()) return false;
+  if (!di_ || scopeStack_.empty() || !builder.GetInsertBlock()) {
+    return false;
+  }
   auto* parent = dyn_cast<DILocalScope>(scopeStack_.back());
   auto* sp = builder.GetInsertBlock()->getParent()->getSubprogram();
   // Only nest under the subprogram currently being emitted; the stack top can
   // belong to another function around nested function codegen.
-  if (!parent || !sp || parent->getSubprogram() != sp) return false;
+  if (!parent || !sp || parent->getSubprogram() != sp) {
+    return false;
+  }
   scopeStack_.push_back(di_->createLexicalBlock(parent, getFile(loc.filePath),
                                                 loc.line, loc.column));
   return true;
 }
 
 void DebugInfoBuilder::popLexicalBlock() {
-  if (!di_ || scopeStack_.empty()) return;
-  if (isa<DILexicalBlock>(scopeStack_.back())) scopeStack_.pop_back();
+  if (!di_ || scopeStack_.empty()) {
+    return;
+  }
+  if (isa<DILexicalBlock>(scopeStack_.back())) {
+    scopeStack_.pop_back();
+  }
 }
 
 void DebugInfoBuilder::attachExpressionLocation(llvm::IRBuilderBase& builder,
                                                 const Position& loc) {
-  if (!di_) return;
+  if (!di_) {
+    return;
+  }
   auto* block = builder.GetInsertBlock();
   llvm::Function* func = block ? block->getParent() : nullptr;
   DISubprogram* sp = func ? func->getSubprogram() : nullptr;
@@ -144,13 +170,17 @@ void DebugInfoBuilder::attachExpressionLocation(llvm::IRBuilderBase& builder,
 }
 
 void DebugInfoBuilder::clearLocation(llvm::IRBuilderBase& builder) {
-  if (!di_) return;
+  if (!di_) {
+    return;
+  }
   builder.SetCurrentDebugLocation(DebugLoc());
 }
 
 DILocalScope* DebugInfoBuilder::currentLocalScope(llvm::Function* func) const {
   auto* sp = func ? func->getSubprogram() : nullptr;
-  if (!sp) return nullptr;
+  if (!sp) {
+    return nullptr;
+  }
   for (auto it = scopeStack_.rbegin(); it != scopeStack_.rend(); ++it) {
     if (auto* local = dyn_cast<DILocalScope>(*it);
         local && local->getSubprogram() == sp) {
@@ -177,9 +207,13 @@ void DebugInfoBuilder::declareParameter(llvm::IRBuilderBase& builder,
                                         const TypePtr& type,
                                         const Position& loc, unsigned argNo,
                                         bool artificial) {
-  if (!di_ || !alloca || !builder.GetInsertBlock()) return;
+  if (!di_ || !alloca || !builder.GetInsertBlock()) {
+    return;
+  }
   auto* scope = currentLocalScope(builder.GetInsertBlock()->getParent());
-  if (!scope) return;
+  if (!scope) {
+    return;
+  }
   auto* var = di_->createParameterVariable(
       scope, name, argNo, getFile(loc.filePath), loc.line, resolveType(type),
       /*AlwaysPreserve=*/true,
@@ -191,9 +225,13 @@ void DebugInfoBuilder::declareParameter(llvm::IRBuilderBase& builder,
 void DebugInfoBuilder::declareThisParameter(llvm::IRBuilderBase& builder,
                                             llvm::AllocaInst* alloca,
                                             const TypePtr& classType) {
-  if (!di_ || !alloca || !builder.GetInsertBlock()) return;
+  if (!di_ || !alloca || !builder.GetInsertBlock()) {
+    return;
+  }
   auto* scope = currentLocalScope(builder.GetInsertBlock()->getParent());
-  if (!scope) return;
+  if (!scope) {
+    return;
+  }
   auto* var = di_->createParameterVariable(
       scope, "this", 1, ensureCompileUnit(std::nullopt)->getFile(), 0,
       pointerTo(resolveType(classType)),
@@ -206,9 +244,13 @@ void DebugInfoBuilder::declareLocal(llvm::IRBuilderBase& builder,
                                     llvm::AllocaInst* alloca,
                                     const std::string& name,
                                     const TypePtr& type, const Position& loc) {
-  if (!di_ || !alloca || !builder.GetInsertBlock()) return;
+  if (!di_ || !alloca || !builder.GetInsertBlock()) {
+    return;
+  }
   auto* scope = currentLocalScope(builder.GetInsertBlock()->getParent());
-  if (!scope) return;
+  if (!scope) {
+    return;
+  }
   auto* var =
       di_->createAutoVariable(scope, name, getFile(loc.filePath), loc.line,
                               resolveType(type), /*AlwaysPreserve=*/true);
@@ -248,15 +290,23 @@ DIType* DebugInfoBuilder::structFor(
   di_->replaceTemporary(llvm::TempDIType(fwd), full);
   // Per-function verification runs mid-codegen, before DIBuilder::finalize()
   // would resolve temporary-node cycles — resolve eagerly.
-  if (!full->isResolved()) full->resolveCycles();
+  if (!full->isResolved()) {
+    full->resolveCycles();
+  }
   return full;
 }
 
 DIType* DebugInfoBuilder::resolveType(const TypePtr& type) {
-  if (!di_) return nullptr;
-  if (!type) return di_->createUnspecifiedType("unknown");
+  if (!di_) {
+    return nullptr;
+  }
+  if (!type) {
+    return di_->createUnspecifiedType("unknown");
+  }
   auto it = typeCache_.find(type.get());
-  if (it != typeCache_.end()) return it->second;
+  if (it != typeCache_.end()) {
+    return it->second;
+  }
   auto* resolved = resolveTypeImpl(*type);
   typeCache_[type.get()] = resolved;
   return resolved;
@@ -344,7 +394,9 @@ DIType* DebugInfoBuilder::resolveTypeImpl(const sun::types::Type& type) {
       SmallVector<Metadata*, 8> variants;
       std::set<std::string> seen;
       for (const auto& v : et.getVariants()) {
-        if (!seen.insert(v.name).second) continue;
+        if (!seen.insert(v.name).second) {
+          continue;
+        }
         variants.push_back(di_->createEnumerator(
             v.name, v.value, et.getUnderlyingType()->isUnsigned()));
       }
@@ -354,7 +406,9 @@ DIType* DebugInfoBuilder::resolveTypeImpl(const sun::types::Type& type) {
           dl.getTypeSizeInBits(tagType),
           dl.getABITypeAlign(tagType).value() * 8,
           di_->getOrCreateArray(variants), resolveType(et.getUnderlyingType()));
-      if (!et.hasPayload()) return tagDI;
+      if (!et.hasPayload()) {
+        return tagDI;
+      }
 
       // Payload enum: describe the storage struct { tag, payload bytes }.
       // A proper DW_TAG_variant_part description is future work.
@@ -387,7 +441,9 @@ DIType* DebugInfoBuilder::resolveTypeImpl(const sun::types::Type& type) {
       const auto* layout = dl.getStructLayout(st);
       SmallVector<Metadata*, 8> elems;
       for (const auto& field : ct.getFields()) {
-        if (field.index >= st->getNumElements()) continue;
+        if (field.index >= st->getNumElements()) {
+          continue;
+        }
         llvm::Type* elemTy = st->getElementType(field.index);
         elems.push_back(di_->createMemberType(
             fwd, field.name, file, 0, dl.getTypeSizeInBits(elemTy),
@@ -401,7 +457,9 @@ DIType* DebugInfoBuilder::resolveTypeImpl(const sun::types::Type& type) {
           /*DerivedFrom=*/nullptr, di_->getOrCreateArray(elems));
       di_->replaceTemporary(llvm::TempDIType(fwd), full);
       // Resolve eagerly: per-function verification runs before finalize()
-      if (!full->isResolved()) full->resolveCycles();
+      if (!full->isResolved()) {
+        full->resolveCycles();
+      }
       typeCache_[&type] = full;
       return full;
     }
@@ -464,7 +522,9 @@ DIType* DebugInfoBuilder::resolveTypeImpl(const sun::types::Type& type) {
 }
 
 void DebugInfoBuilder::finalize() {
-  if (!di_ || finalized_) return;
+  if (!di_ || finalized_) {
+    return;
+  }
   di_->finalize();
   finalized_ = true;
 }
@@ -473,13 +533,17 @@ void DebugInfoBuilder::stripFromModule(llvm::Module& module) {
   llvm::StripDebugInfo(module);
   // StripDebugInfo leaves module flags; rebuild them without the debug ones.
   auto* flags = module.getModuleFlagsMetadata();
-  if (!flags) return;
+  if (!flags) {
+    return;
+  }
   SmallVector<Module::ModuleFlagEntry, 8> entries;
   module.getModuleFlagsMetadata(entries);
   flags->eraseFromParent();
   for (const auto& entry : entries) {
     StringRef key = entry.Key->getString();
-    if (key == "Debug Info Version" || key == "Dwarf Version") continue;
+    if (key == "Debug Info Version" || key == "Dwarf Version") {
+      continue;
+    }
     module.addModuleFlag(entry.Behavior, key, entry.Val);
   }
 }

@@ -50,7 +50,9 @@ std::pair<Value*, ClassType*> VariableGenerator::codegenObjectPtr(
   }
 
   Value* objectPtr = codegen(object);
-  if (!objectPtr) return {nullptr, nullptr};
+  if (!objectPtr) {
+    return {nullptr, nullptr};
+  }
 
   // For generic method bodies, 'this' may have a type parameter type; use the
   // specialized state_.frame.currentClass instead
@@ -105,7 +107,9 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
         const auto& body = static_cast<const sun::ast::UnsafeBlockAST&>(expr)
                                .getBody()
                                .getBody();
-        if (!body.empty()) return tryCodegenAddress(*body.back());
+        if (!body.empty()) {
+          return tryCodegenAddress(*body.back());
+        }
         break;
       }
       default:
@@ -121,7 +125,9 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
 
       // Module references read as a null-pointer sentinel - never hand that
       // out as a storage address
-      if (varType && varType->isModule()) return nullptr;
+      if (varType && varType->isModule()) {
+        return nullptr;
+      }
 
       AllocaInst* alloca =
           scopes().findVariable(varRef.getTargetDeclarationId());
@@ -153,7 +159,9 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
         bool owned = false;
         Value* slotAddr = functionGen().createCaptureSlotAddress(
             varRef.getTargetDeclarationId(), nullptr, &byRef, &owned);
-        if (slotAddr && (byRef || owned)) return slotAddr;
+        if (slotAddr && (byRef || owned)) {
+          return slotAddr;
+        }
       }
 
       // Retrieve the selected global storage.
@@ -180,11 +188,15 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
       }
 
       auto [objectPtr, classType] = codegenObjectPtr(*memberAccess.getObject());
-      if (!objectPtr || !classType) return nullptr;
+      if (!objectPtr || !classType) {
+        return nullptr;
+      }
 
       const sun::types::ClassField* field =
           classType->getField(memberAccess.getTargetDeclarationId());
-      if (!field) return nullptr;
+      if (!field) {
+        return nullptr;
+      }
 
       return sun::codegen::support::fieldPtr(
           *ctx.builder, classType, objectPtr, *field,
@@ -197,8 +209,12 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
           sun::types::unwrapRef(indexExpr.getTarget()->getResolvedType());
       // Class __index__/__setindex__ targets have no address - callers
       // dispatch to the method protocol instead
-      if (baseType && baseType->isClass()) return nullptr;
-      if (indexExpr.hasSlices()) return nullptr;
+      if (baseType && baseType->isClass()) {
+        return nullptr;
+      }
+      if (indexExpr.hasSlices()) {
+        return nullptr;
+      }
       return gen_.codegenIndexElementPtr(indexExpr);
     }
 
@@ -216,11 +232,15 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
 // addresses. Only the borrow-binding paths ask for this; every other lvalue
 // use goes through tryCodegenAddress, which leaves a conditional alone.
 Value* VariableGenerator::codegenBorrowAddress(const ExprAST& expr) {
-  if (expr.getType() != ASTNodeType::TERNARY) return tryCodegenAddress(expr);
+  if (expr.getType() != ASTNodeType::TERNARY) {
+    return tryCodegenAddress(expr);
+  }
 
   const auto& ternary = static_cast<const sun::ast::TernaryExprAST&>(expr);
   Value* cond = codegen(*ternary.getCond());
-  if (!cond) return nullptr;
+  if (!cond) {
+    return nullptr;
+  }
   cond = sun::codegen::coerceCondToBool(ctx, cond);
 
   Function* func = ctx.builder->GetInsertBlock()->getParent();
@@ -284,7 +304,9 @@ Value* VariableGenerator::emitCompoundOpValue(
     const sun::ast::CompoundAssignmentAST& expr, Value* cur, llvm::Type* slotTy,
     const TypePtr& slotSunType) {
   Value* rhs = codegen(*expr.getValue());
-  if (!rhs) return nullptr;
+  if (!rhs) {
+    return nullptr;
+  }
 
   const sun::support::Position& loc = expr.getLocation();
   bool unsignedOp = slotSunType && slotSunType->isUnsigned();
@@ -293,7 +315,9 @@ Value* VariableGenerator::emitCompoundOpValue(
                            expr.getValue()->getResolvedType(), loc);
   Value* result =
       gen_.emitBinaryOp(expr.binaryOpKind(), cur, rhs, unsignedOp, loc);
-  if (!result) return nullptr;
+  if (!result) {
+    return nullptr;
+  }
 
   if (result->getType() != slotTy) {
     if (result->getType()->isIntegerTy() && slotTy->isIntegerTy()) {
@@ -329,15 +353,23 @@ Value* VariableGenerator::codegen(const sun::ast::CompoundAssignmentAST& expr) {
     if (baseType && baseType->isClass()) {
       auto* classType = static_cast<ClassType*>(baseType.get());
       Value* objPtr = codegen(*indexExpr.getTarget());
-      if (!objPtr) return nullptr;
+      if (!objPtr) {
+        return nullptr;
+      }
       llvm::Value* idxArr = gen_.boxIndicesToArrayRef(indexExpr);
-      if (!idxArr) return nullptr;
+      if (!idxArr) {
+        return nullptr;
+      }
 
       Value* cur = gen_.emitClassIndexCall(objPtr, idxArr,
                                            indexExpr.getTargetDeclarationId());
-      if (!cur) return nullptr;
+      if (!cur) {
+        return nullptr;
+      }
       Value* result = emitCompoundOpValue(expr, cur, slotTy, slotSunType);
-      if (!result) return nullptr;
+      if (!result) {
+        return nullptr;
+      }
       return gen_.emitClassSetIndexCall(
           objPtr, idxArr, result,
           classType->getMethod(expr.getTargetDeclarationId()));
@@ -351,7 +383,9 @@ Value* VariableGenerator::codegen(const sun::ast::CompoundAssignmentAST& expr) {
     Value* cur =
         ctx.builder->CreateAlignedLoad(slotTy, addr, align, "compound.cur");
     Value* result = emitCompoundOpValue(expr, cur, slotTy, slotSunType);
-    if (!result) return nullptr;
+    if (!result) {
+      return nullptr;
+    }
     ctx.builder->CreateAlignedStore(result, addr, align);
     return result;
   }

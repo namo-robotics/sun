@@ -98,7 +98,9 @@ class DeclarationTable {
   DeclarationId module(const std::string& name, DeclarationId owner = {}) {
     auto key = std::make_pair(owner, name);
     auto found = modules_.find(key);
-    if (found != modules_.end()) return found->second;
+    if (found != modules_.end()) {
+      return found->second;
+    }
     auto id = add(DeclarationKind::Module, name, owner, owner);
     modules_.emplace(std::move(key), id);
     return id;
@@ -140,9 +142,15 @@ class DeclarationTable {
       std::shared_ptr<const SpecializationKey> specialization = {},
       DeclarationId origin = {}, std::string generatedRole = {},
       uint64_t generatedSlot = 0) {
-    if (owner) get(owner);
-    if (module) get(module);
-    if (origin) get(origin);
+    if (owner) {
+      get(owner);
+    }
+    if (module) {
+      get(module);
+    }
+    if (origin) {
+      get(origin);
+    }
     records_.push_back({kind, std::move(name), owner, module, std::nullopt,
                         std::move(specialization), origin,
                         std::move(generatedRole), generatedSlot});
@@ -160,8 +168,9 @@ class DeclarationTable {
       const auto& record = get(existing);
       if (record.kind != kind || record.name != name || record.owner != owner ||
           record.module != module || record.bundleHash != bundleHash ||
-          record.specialization || record.origin)
+          record.specialization || record.origin) {
         logAndThrowError("Conflicting imported declaration identity");
+      }
       return existing;
     }
     auto id = kind == DeclarationKind::Module ? this->module(name, owner)
@@ -178,18 +187,22 @@ class DeclarationTable {
   DeclarationId importedSyntax(const std::string& encoded, DeclarationKind kind,
                                const std::string& name) const {
     auto id = findPortable(PortableDeclarationKey::fromString(encoded));
-    if (!id) logAndThrowError("Imported syntax has no declaration record");
+    if (!id) {
+      logAndThrowError("Imported syntax has no declaration record");
+    }
     const auto& record = get(id);
     if (record.specialization || record.origin || record.kind != kind ||
-        (kind != DeclarationKind::Module && record.name != name))
+        (kind != DeclarationKind::Module && record.name != name)) {
       logAndThrowError("Imported syntax does not match its declaration record");
+    }
     return id;
   }
 
   /** Find a declaration in this session; unassigned identities are errors. */
   const DeclarationRecord& get(DeclarationId id) const {
-    if (!id || id.index() > records_.size())
+    if (!id || id.index() > records_.size()) {
       logAndThrowError("Declaration identity does not belong to this analysis");
+    }
     return records_[id.index() - 1];
   }
 
@@ -205,10 +218,13 @@ class DeclarationTable {
   void bindValidatedAlias(const PortableDeclarationKey& required,
                           const PortableDeclarationKey& replacement) {
     const auto id = findPortable(replacement);
-    if (!id) logAndThrowError("Replacement declaration is not imported");
+    if (!id) {
+      logAndThrowError("Replacement declaration is not imported");
+    }
     const auto [it, added] = portableDeclarations_.emplace(required, id);
-    if (!added && it->second != id)
+    if (!added && it->second != id) {
       logAndThrowError("Conflicting validated declaration correspondence");
+    }
   }
 
   /** Bind a portable identity exactly once, rejecting conflicting declarations.
@@ -216,16 +232,21 @@ class DeclarationTable {
   void bindPortable(DeclarationId id, const PortableDeclarationKey& key,
                     const std::string& bundleHash = {}) {
     get(id);
-    if (key.empty()) logAndThrowError("Cannot bind an unassigned portable key");
+    if (key.empty()) {
+      logAndThrowError("Cannot bind an unassigned portable key");
+    }
     auto& record = records_[id.index() - 1];
-    if (record.portableKey && !(*record.portableKey == key))
+    if (record.portableKey && !(*record.portableKey == key)) {
       logAndThrowError("Declaration already has another portable identity");
+    }
     auto existing = findPortable(key);
-    if (existing && existing != id)
+    if (existing && existing != id) {
       logAndThrowError(
           "Portable identity already belongs to another declaration");
-    if (!record.bundleHash.empty() && record.bundleHash != bundleHash)
+    }
+    if (!record.bundleHash.empty() && record.bundleHash != bundleHash) {
       logAndThrowError("Declaration already belongs to another bundle");
+    }
     portableDeclarations_.emplace(key, id);
     record.portableKey = key;
     record.bundleHash = bundleHash;

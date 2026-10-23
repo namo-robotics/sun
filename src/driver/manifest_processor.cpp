@@ -104,9 +104,10 @@ static std::optional<std::string> expandVariables(const std::string& input,
       if (pathVariables().count(name) ||
           dependencyPathVariables().count(name) ||
           defaultPathVariables().count(name) ||
-          config->pathVariables.count(name) || std::getenv(name.c_str()))
+          config->pathVariables.count(name) || std::getenv(name.c_str())) {
         sun::support::logAndThrowError("dependency path variable collision: " +
                                        name);
+      }
       out += resolveConfigDependency(*config, name).string();
       i = nameEnd;
       continue;
@@ -117,7 +118,9 @@ static std::optional<std::string> expandVariables(const std::string& input,
     }
     if (!value) {
       auto it = dependencyPathVariables().find(name);
-      if (it != dependencyPathVariables().end()) value = &it->second;
+      if (it != dependencyPathVariables().end()) {
+        value = &it->second;
+      }
     }
     if (!value && config) {
       auto it = config->pathVariables.find(name);
@@ -136,7 +139,9 @@ static std::optional<std::string> expandVariables(const std::string& input,
     } else if (const char* env = std::getenv(name.c_str())) {
       out += env;
     } else {
-      if (!required) return std::nullopt;
+      if (!required) {
+        return std::nullopt;
+      }
       sun::support::logAndThrowError(
           "undefined path variable '$" + name + "' in manifest entry '" +
           input + "'; define it in sun-config.json, with --path-var " + name +
@@ -194,13 +199,17 @@ std::string ManifestProcessor::resolvePath(const std::string& path,
     return resolved.string();
   }
   resolved = sun::support::SunPath::resolveInstalledBundle(path, targetTriple);
-  if (!resolved.empty()) return resolved.lexically_normal().string();
+  if (!resolved.empty()) {
+    return resolved.lexically_normal().string();
+  }
   return path;
 }
 
 std::optional<SunConfig> ManifestProcessor::configFor(
     const std::string& baseDir, const std::string& targetTriple) {
-  if (sourceConfig) return *sourceConfig;
+  if (sourceConfig) {
+    return *sourceConfig;
+  }
   return SunConfig::findFrom(baseDir, targetTriple);
 }
 
@@ -228,17 +237,19 @@ ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
   auto addMoons = [&](const std::vector<sun::ast::ManifestMoonDependency>&
                           moons) {
     for (const auto& moonDep : moons) {
-      if (moonDep.url)
+      if (moonDep.url) {
         sun::support::logAndThrowError(
             "manifest library URLs are no longer supported; move the URL and "
             "hash to sun-config.json dependencies and use a local .moon path");
+      }
       std::string resolved =
           resolvePath(expandPathVariables(moonDep.path, config), baseDir,
                       config, targetTriple);
       if (std::filesystem::path(resolved).extension() != ".moon" ||
-          resolved.find("://") != std::string::npos)
+          resolved.find("://") != std::string::npos) {
         sun::support::logAndThrowError(
             "manifest libraries must name local .moon files");
+      }
       if (moonDep.rename.has_value()) {
         out.moonImports.emplace_back(resolved, moonDep.rename.value(),
                                      moonDep.rename.value());
@@ -257,14 +268,10 @@ ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
   auto addArchives =
       [&](const std::vector<sun::ast::ManifestArchiveDependency>& archives) {
         for (const auto& archiveDep : archives) {
-          out.archiveFiles.push_back(resolvePath(
-              expandPathVariables(archiveDep.path, config), baseDir, config));
-          out.nativeCPUFeatures.insert(out.nativeCPUFeatures.end(),
-                                       archiveDep.cpuFeatures.begin(),
-                                       archiveDep.cpuFeatures.end());
-          out.nativeRuntimeServices.insert(out.nativeRuntimeServices.end(),
-                                           archiveDep.runtimeServices.begin(),
-                                           archiveDep.runtimeServices.end());
+          out.nativeArchives.push_back(
+              {resolvePath(expandPathVariables(archiveDep.path, config),
+                           baseDir, config),
+               archiveDep.cpuFeatures, archiveDep.runtimeServices});
         }
       };
 
@@ -285,7 +292,9 @@ ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
   auto osName = sun::support::targetOsName(
       sun::support::resolvedTargetTriple(targetTriple));
   for (const auto& block : manifest.getTargets()) {
-    if (!osName || block.os != *osName) continue;
+    if (!osName || block.os != *osName) {
+      continue;
+    }
     addSuns(block.suns);
     addTestSuns(block.testSuns);
   }
@@ -297,7 +306,9 @@ ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
   addArchives(manifest.getArchives());
 
   for (const auto& block : manifest.getTargets()) {
-    if (!osName || block.os != *osName) continue;
+    if (!osName || block.os != *osName) {
+      continue;
+    }
     addMoons(block.moons);
     addProtos(block.protos);
     addArchives(block.archives);

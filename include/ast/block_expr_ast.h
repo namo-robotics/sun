@@ -89,7 +89,9 @@ class BlockExprAST : public ExprAST {
   /** Visits replaceable child expressions so tree passes can rewrite them in
    * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
-    for (auto& stmt : Body) fn(stmt);
+    for (auto& stmt : Body) {
+      fn(stmt);
+    }
   }
 
   /**

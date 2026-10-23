@@ -88,7 +88,9 @@ class ManifestAST : public ExprAST {
         targets(std::move(targets)),
         libraryId(std::move(libraryId)),
         testSuns(std::move(testSuns)) {
-    if (this->libraryId) sun::abi::validateLibraryId(*this->libraryId);
+    if (this->libraryId) {
+      sun::abi::validateLibraryId(*this->libraryId);
+    }
   }
 
   /** Returns the syntax-node kind used to dispatch tree visitors. */

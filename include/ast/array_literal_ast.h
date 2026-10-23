@@ -28,13 +28,17 @@ class ArrayLiteralAST : public ExprAST {
   /** Visits replaceable child expressions so tree passes can rewrite them in
    * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
-    for (auto& elem : elements) fn(elem);
+    for (auto& elem : elements) {
+      fn(elem);
+    }
   }
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string result = "[";
     for (size_t i = 0; i < elements.size(); ++i) {
-      if (i > 0) result += ", ";
+      if (i > 0) {
+        result += ", ";
+      }
       result += elements[i]->toString();
     }
     return result + "]";

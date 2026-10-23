@@ -47,7 +47,9 @@ class SunPath {
   static std::vector<std::filesystem::path> getPaths() {
     std::vector<std::filesystem::path> paths = extraPaths();
     const char* env = std::getenv("SUN_PATH");
-    if (!env || std::strlen(env) == 0) return paths;
+    if (!env || std::strlen(env) == 0) {
+      return paths;
+    }
 
     std::string pathList(env);
     std::istringstream stream(pathList);
@@ -107,10 +109,14 @@ class SunPath {
     for (const auto& dir : systemInstallDirs()) {
       for (const auto& target : targets) {
         auto candidate = dir / target / path;
-        if (std::filesystem::exists(candidate)) return candidate;
+        if (std::filesystem::exists(candidate)) {
+          return candidate;
+        }
       }
       auto candidate = dir / path;
-      if (std::filesystem::exists(candidate)) return candidate;
+      if (std::filesystem::exists(candidate)) {
+        return candidate;
+      }
     }
     return {};
   }

@@ -39,17 +39,26 @@ std::string nativeFixture(
       secondVersion ? SUN_FFI_TESTLIB_V2_DIR : SUN_FFI_TESTLIB_DIR;
   auto bytes = llvm::MemoryBuffer::getFile(std::string(directory) +
                                            std::string("/") + archiveName);
-  if (!bytes) throw std::runtime_error("Native fixture is missing");
-  if (!isolate) return (*bytes)->getBuffer().str();
+  if (!bytes) {
+    throw std::runtime_error("Native fixture is missing");
+  }
+  if (!isolate) {
+    return (*bytes)->getBuffer().str();
+  }
   auto scan =
       sun::moon_bundling::scanArchiveSymbols((*bytes)->getMemBufferRef());
-  if (!scan) throw std::runtime_error(llvm::toString(scan.takeError()));
+  if (!scan) {
+    throw std::runtime_error(llvm::toString(scan.takeError()));
+  }
   std::map<std::string, std::string> renames;
-  for (const auto& symbol : scan->defined)
+  for (const auto& symbol : scan->defined) {
     renames.emplace(symbol, "$abcd$_" + symbol);
+  }
   auto renamed = sun::moon_bundling::renameArchiveSymbols(
       (*bytes)->getMemBufferRef(), renames);
-  if (!renamed) throw std::runtime_error(llvm::toString(renamed.takeError()));
+  if (!renamed) {
+    throw std::runtime_error(llvm::toString(renamed.takeError()));
+  }
   return std::move(*renamed);
 }
 }  // namespace
@@ -102,8 +111,9 @@ TEST(ABI_Compatibility, NativeInstructionsDoNotRequireAnAllowlist) {
           llvm::dyn_cast<llvm::object::ObjectFile>(binary->get());
       ASSERT_NE(object, nullptr);
       for (const auto& section : object->sections()) {
-        if (!section.isText() || section.getSize() < instruction.size())
+        if (!section.isText() || section.getSize() < instruction.size()) {
           continue;
+        }
         auto code = section.getContents();
         ASSERT_TRUE(static_cast<bool>(code))
             << llvm::toString(code.takeError());
@@ -116,7 +126,9 @@ TEST(ABI_Compatibility, NativeInstructionsDoNotRequireAnAllowlist) {
         changed = true;
         break;
       }
-      if (changed) break;
+      if (changed) {
+        break;
+      }
     }
     ASSERT_FALSE(static_cast<bool>(error)) << llvm::toString(std::move(error));
     ASSERT_TRUE(changed);
@@ -192,24 +204,26 @@ TEST(ABI_Compatibility, NativeRelocationsAreDelegatedToTheLinker) {
     const auto* object =
         llvm::dyn_cast<llvm::object::ObjectFile>(binary->get());
     ASSERT_NE(object, nullptr);
-    for (const auto& section : object->sections())
+    for (const auto& section : object->sections()) {
       for (const auto& relocation : section.relocations()) {
         const auto type = relocation.getType();
-        if (object->isMachO())
+        if (object->isMachO()) {
           foundGotReference |=
               object->getArch() == llvm::Triple::aarch64
                   ? type == llvm::MachO::ARM64_RELOC_GOT_LOAD_PAGE21 ||
                         type == llvm::MachO::ARM64_RELOC_GOT_LOAD_PAGEOFF12
                   : type == llvm::MachO::X86_64_RELOC_GOT_LOAD ||
                         type == llvm::MachO::X86_64_RELOC_GOT;
-        else if (object->getArch() == llvm::Triple::aarch64)
+        } else if (object->getArch() == llvm::Triple::aarch64) {
           foundGotReference |= type == llvm::ELF::R_AARCH64_ADR_GOT_PAGE ||
                                type == llvm::ELF::R_AARCH64_LD64_GOT_LO12_NC;
-        else
+        } else {
           foundGotReference |= type == llvm::ELF::R_X86_64_GOTPCREL ||
                                type == llvm::ELF::R_X86_64_GOTPCRELX ||
                                type == llvm::ELF::R_X86_64_REX_GOTPCRELX;
+        }
       }
+    }
   }
   ASSERT_FALSE(static_cast<bool>(error)) << llvm::toString(std::move(error));
   ASSERT_TRUE(foundGotReference);
@@ -237,8 +251,9 @@ TEST(ABI_Compatibility, NativeGotBaseIsSuppliedByTheLinker) {
 /** ELF object structure can be checked for a declared musl target without host
  * libc inference. */
 TEST(ABI_Compatibility, NativeELFSupportsDeclaredMuslTarget) {
-  if (!llvm::Triple(llvm::sys::getDefaultTargetTriple()).isOSLinux())
+  if (!llvm::Triple(llvm::sys::getDefaultTargetTriple()).isOSLinux()) {
     GTEST_SKIP() << "This fixture tests ELF libc declarations";
+  }
   const auto bytes = nativeFixture(true);
   EXPECT_NO_THROW(sun::abi::validateNativeArchives(
       {{llvm::MemoryBufferRef(bytes, "fixture.a"), "$abcd$_"}},
@@ -417,8 +432,7 @@ TEST(ABI_Compatibility, ManifestNativeRequirementsReachTheBundleContract) {
     std::ofstream file(source);
     file << "manifest { archives: [{ path: \"" << SUN_FFI_TESTLIB_DIR
          << "/libsun_abi_relocations.a\", "
-         << "cpu_features: [\"" << feature
-         << "\"], runtime: [" << runtime
+         << "cpu_features: [\"" << feature << "\"], runtime: [" << runtime
          << "] }] }\n"
          << "/** Exports a scalar function. */\npublic module native_decl {\n"
          << "/** Returns the fixture value. */\n"
@@ -427,8 +441,18 @@ TEST(ABI_Compatibility, ManifestNativeRequirementsReachTheBundleContract) {
   writeSource("\"thread_local\"");
   sun::moon_bundling::MoonBuildOptions options;
   options.targetTriple = llvm::sys::getDefaultTargetTriple();
-  ASSERT_NO_THROW(
-      sun::moon_bundling::MoonBuilder::build(source.string(), output, options));
+  sun::moon_bundling::MoonBuildReport initialReport;
+  ASSERT_NO_THROW(initialReport = sun::moon_bundling::MoonBuilder::build(
+                      source.string(), output, options));
+  ASSERT_EQ(initialReport.nativeArchives.size(), 1u);
+  EXPECT_EQ(
+      initialReport.nativeArchives[0].path,
+      (std::filesystem::path(SUN_FFI_TESTLIB_DIR) / "libsun_abi_relocations.a")
+          .string());
+  EXPECT_EQ(initialReport.nativeArchives[0].cpuFeatures,
+            std::vector<std::string>{feature});
+  EXPECT_EQ(initialReport.nativeArchives[0].runtimeServices,
+            std::vector<std::string>{"thread_local"});
   auto reader = sun::moon_bundling::MoonReader::open(output);
   ASSERT_NE(reader, nullptr);
   const auto originalHash =
@@ -475,11 +499,12 @@ TEST(ABI_Compatibility, UnknownNativeDeclarationsFailAtomically) {
 /** Malformed archive declarations fail before paths are resolved or code runs.
  */
 TEST(ABI_Compatibility, MalformedArchiveDeclarationsAreRejected) {
-  for (const auto* declaration : {"{ cpu_features: [\"avx2\"] }",
-                                  "{ path: \"lib.a\", path: \"other.a\" }",
-                                  "{ path: \"lib.a\", cpu_features: \"avx2\" }",
-                                  "{ path: \"lib.a\", provenance: \"vendor build\" }",
-                                  "{ path: \"lib.a\", unknown: [] }"}) {
+  for (const auto* declaration :
+       {"{ cpu_features: [\"avx2\"] }",
+        "{ path: \"lib.a\", path: \"other.a\" }",
+        "{ path: \"lib.a\", cpu_features: \"avx2\" }",
+        "{ path: \"lib.a\", provenance: \"vendor build\" }",
+        "{ path: \"lib.a\", unknown: [] }"}) {
     auto parser = sun::parsing::Parser::createStringParser(
         std::string("manifest { archives: [") + declaration + "] }");
     EXPECT_THROW(parser.parseProgram(), sun::support::SunError);
@@ -499,11 +524,43 @@ TEST(ABI_Compatibility, NativeDeclarationsFollowManifestTargetSelection) {
   ASSERT_NE(manifest, nullptr);
   const auto resolved = sun::driver::ManifestProcessor::process(
       *manifest, ".", "x86_64-linux-gnu");
-  EXPECT_EQ(resolved.nativeCPUFeatures, std::vector<std::string>{"sse2"});
-  EXPECT_TRUE(resolved.nativeRuntimeServices.empty());
-  ASSERT_EQ(resolved.archiveFiles.size(), 1u);
-  EXPECT_EQ(std::filesystem::path(resolved.archiveFiles[0]).filename(),
+  ASSERT_EQ(resolved.nativeArchives.size(), 1u);
+  EXPECT_EQ(resolved.nativeArchives[0].cpuFeatures,
+            std::vector<std::string>{"sse2"});
+  EXPECT_TRUE(resolved.nativeArchives[0].runtimeServices.empty());
+  EXPECT_EQ(std::filesystem::path(resolved.nativeArchives[0].path).filename(),
             "linux.a");
+}
+
+/** Resolving archives preserves each archive's own capability declarations. */
+TEST(ABI_Compatibility, NativeDeclarationsStayWithTheirArchive) {
+  auto parser = sun::parsing::Parser::createStringParser(R"(
+    manifest { archives: [
+      { path: "vector.a", cpu_features: ["avx2"], runtime: ["thread_local"] },
+      { path: "startup.a", cpu_features: ["sse2"], runtime: ["initializers"] },
+      "plain.a"
+    ] }
+  )");
+  auto program = parser.parseProgram();
+  const auto* manifest = sun::driver::ManifestProcessor::findManifest(*program);
+  ASSERT_NE(manifest, nullptr);
+  const auto resolved = sun::driver::ManifestProcessor::process(
+      *manifest, ".", "x86_64-linux-gnu");
+  ASSERT_EQ(resolved.nativeArchives.size(), 3u);
+  const auto& vectorArchive = resolved.nativeArchives[0];
+  EXPECT_EQ(std::filesystem::path(vectorArchive.path).filename(), "vector.a");
+  EXPECT_EQ(vectorArchive.cpuFeatures, std::vector<std::string>{"avx2"});
+  EXPECT_EQ(vectorArchive.runtimeServices,
+            std::vector<std::string>{"thread_local"});
+  const auto& startupArchive = resolved.nativeArchives[1];
+  EXPECT_EQ(std::filesystem::path(startupArchive.path).filename(), "startup.a");
+  EXPECT_EQ(startupArchive.cpuFeatures, std::vector<std::string>{"sse2"});
+  EXPECT_EQ(startupArchive.runtimeServices,
+            std::vector<std::string>{"initializers"});
+  const auto& plainArchive = resolved.nativeArchives[2];
+  EXPECT_EQ(std::filesystem::path(plainArchive.path).filename(), "plain.a");
+  EXPECT_TRUE(plainArchive.cpuFeatures.empty());
+  EXPECT_TRUE(plainArchive.runtimeServices.empty());
 }
 
 /** Both Mach-O architectures use declared trust while retaining structural,

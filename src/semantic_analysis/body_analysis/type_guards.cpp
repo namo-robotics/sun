@@ -15,7 +15,9 @@ namespace sun::semantic_analysis {
 std::optional<std::pair<std::string, TypePtr>> BodyAnalyzer::extractTypeGuard(
     const ExprAST& cond) {
   auto guard = matchIsGuard(cond);
-  if (!guard) return std::nullopt;
+  if (!guard) {
+    return std::nullopt;
+  }
   const std::string& varName = guard->variable;
   const std::string& typeName = guard->typeName;
 

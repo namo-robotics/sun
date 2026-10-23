@@ -26,7 +26,9 @@ class TypeAnalysis_SpecializationBodies : public ::testing::Test {
   void prepare(const std::string& source) {
     std::istringstream input;
     sun::parsing::Parser parser(input);
-    if (tree) earlierTrees.push_back(std::move(tree));
+    if (tree) {
+      earlierTrees.push_back(std::move(tree));
+    }
     tree = parser.parseString(source);
     passes::FieldInitializerPreparationPass().run(*tree);
     passes::DeclarationIdentityPass(results->declarations).run(*tree);

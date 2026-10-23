@@ -16,6 +16,7 @@
 #include "codegen/codegen_visitor.h"
 #include "driver/sun_value.h"
 #include "moon_bundling/moon_import.h"
+#include "moon_bundling/proto_importer.h"
 #include "parsing/parser.h"
 #include "semantic_analysis/analysis_results.h"
 #include "semantic_analysis/semantic_analyzer.h"
@@ -171,12 +172,15 @@ class Driver {
   /**
    * Generate configured C binding files, then read, parse and merge manifest
    * sources and protobuf modules. sourceOverrides maps a canonical path to text
-   * used instead of the file on disk (an editor's unsaved buffer).
+   * used instead of the file on disk (an editor's unsaved buffer). Prepared
+   * protobuf modules are parsed alongside any schemas named in protoFiles.
    */
   std::unique_ptr<BlockExprAST> parseAndMergeFiles(
       const std::vector<std::string>& sourceFiles,
       const std::vector<std::string>& protoFiles,
-      const std::map<std::string, std::string>& sourceOverrides);
+      const std::map<std::string, std::string>& sourceOverrides,
+      const std::vector<sun::moon_bundling::SynthesizedProtoModule>&
+          protoModules = {});
 
   /**
    * Initialize LLVM targets once (thread-safe)
@@ -191,11 +195,12 @@ class Driver {
   }
 
   /**
-   * Synthesize Sun modules for manifest .proto files and parse them into
-   * parsedFiles/canonicalPaths (see ProtoImporter)
+   * Parse prepared protobuf Sun modules into parsedFiles/canonicalPaths
+   * and register their generated text for diagnostics.
    */
   void parseSynthesizedProtoModules(
-      const std::vector<std::string>& protoFiles,
+      const std::vector<sun::moon_bundling::SynthesizedProtoModule>&
+          protoModules,
       std::vector<std::unique_ptr<BlockExprAST>>& parsedFiles,
       std::vector<std::string>& canonicalPaths);
 
@@ -358,12 +363,16 @@ class Driver {
    * @param moonImports Precompiled .moon libraries with optional aliasing
    * @param protoFiles .proto schemas to synthesize into Sun modules
    * @param sourceOverrides Editor buffers keyed by normalized source paths
+   * @param protoModules Already synthesized modules, avoiding schema
+   * regeneration; omit their schemas from protoFiles
    */
   void compileFiles(
       const std::vector<std::string>& sourceFiles,
       const std::vector<MoonImport>& moonImports = {},
       const std::vector<std::string>& protoFiles = {},
-      const std::map<std::string, std::string>& sourceOverrides = {});
+      const std::map<std::string, std::string>& sourceOverrides = {},
+      const std::vector<sun::moon_bundling::SynthesizedProtoModule>&
+          protoModules = {});
 
   /**
    * Execute multiple source files with optional precompiled moon libraries
