@@ -9,7 +9,6 @@
 #include <llvm/TargetParser/Triple.h>
 
 #include <algorithm>
-#include <filesystem>
 #include <optional>
 
 #include "abi/abi_validation_scope.h"
@@ -23,44 +22,13 @@
 #include "moon_bundling/moon.h"
 #include "support/error.h"
 #include "support/terminal.h"
+#include "support/terminal_format.h"
 
 /** Owns compatibility policy independently of bundle container decoding. */
 namespace sun::abi {
 
 /** Formats diagnostic branches from validated bundle requirements. */
 namespace {
-/** Links existing files, using visible absolute paths for VS Code detection.
- * Missing files and filesystem errors fall back to plain text.
- */
-std::string dependencyFileLabel(const std::filesystem::path& path) {
-  const auto label = path.filename().string();
-  if (!sun::support::terminalColors(llvm::errs())) return label;
-  std::error_code error;
-  if (!std::filesystem::is_regular_file(path, error) || error) return label;
-  const auto absolute = std::filesystem::absolute(path, error);
-  if (error) return label;
-  // VS Code resolves visible file paths in its editor, including remote workspaces.
-  const char* terminal = std::getenv("TERM_PROGRAM");
-  if (terminal && std::string_view(terminal) == "vscode")
-    return "\033[4:1;58;5;3m" + absolute.lexically_normal().string() +
-           "\033[24;59m";
-  std::string uri = "file://";
-  constexpr char hex[] = "0123456789ABCDEF";
-  for (const unsigned char byte : absolute.lexically_normal().generic_string()) {
-    if ((byte >= 'a' && byte <= 'z') || (byte >= 'A' && byte <= 'Z') ||
-        (byte >= '0' && byte <= '9') || byte == '/' || byte == '-' ||
-        byte == '_' || byte == '.' || byte == '~') {
-      uri += static_cast<char>(byte);
-    } else {
-      uri += '%';
-      uri += hex[byte >> 4];
-      uri += hex[byte & 15];
-    }
-  }
-  // Set underline color independently of the filename's foreground color.
-  return "\033]8;;" + uri + "\033\\\033[4:1;58;5;3m" + label +
-         "\033[24;59m\033]8;;\033\\";
-}
 /** Shows every import retaining an artifact and the selected compatible import.
  * Embedded requirements include transitive dependencies; intermediate edges are
  * not retained in the bundle contract.
@@ -76,22 +44,18 @@ std::string artifactDependencyTree(
       if (dependency.library_id() == required.library_id() &&
           dependency.artifact_hash() == required.artifact_hash())
         embeddedPaths.insert(reader->getPath().string());
-  /** Colors only the connectors, leaving dependency labels in the default style. */
-  const auto lines = [](const std::string& value) {
-    return sun::support::terminalColors(llvm::errs())
-               ? "\033[1;33m" + value + "\033[0m"
-               : value;
-  };
-  std::string tree = "\n  " +
-      (entrypoint.empty() ? std::string("Current compilation")
-                          : dependencyFileLabel(entrypoint));
-  for (const auto& path : embeddedPaths) {
-    tree += "\n  " + lines("├── ") + dependencyFileLabel(path) +
-            "\n  " + lines("│   └── ") + required.library_id() +
-            "\n  " + lines("│       ") + "artifact: " + required.artifact_hash();
-  }
-  tree += "\n  " + lines("└── ") + selected.library_id() + " [selected import]" +
-          "\n      artifact: " + selected.artifact_hash();
+  auto& stream = llvm::errs();
+  sun::support::TerminalTreeNode root{
+      entrypoint.empty() ? "Current compilation"
+                         : sun::support::terminalFileLabel(entrypoint, stream),
+      {}, {}};
+  for (const auto& path : embeddedPaths)
+    root.children.push_back({
+        sun::support::terminalFileLabel(path, stream), {},
+        {{required.library_id(), {"artifact: " + required.artifact_hash()}, {}}}});
+  root.children.push_back({selected.library_id() + " [selected import]",
+                           {"artifact: " + selected.artifact_hash()}, {}});
+  const auto tree = "\n" + sun::support::terminalTree(root, stream, "warning", "  ");
   return tree;
 }
 }  // namespace

@@ -16,17 +16,21 @@ inline bool terminalColors(llvm::raw_ostream& stream) {
          (!term || std::string(term) != "dumb");
 }
 
+/** Styles text with a severity color, leaving redirected output unchanged. */
+inline std::string terminalStyledText(const std::string& text,
+                                      const std::string& level,
+                                      llvm::raw_ostream& stream) {
+  if (!terminalColors(stream)) return text;
+  const char* color = level == "error"     ? "\033[1;31m"
+                      : level == "warning" ? "\033[1;33m"
+                                           : "\033[36m";
+  return color + text + "\033[0m";
+}
+
 /** Builds a severity prefix, coloring it only for an interactive terminal. */
 inline std::string messagePrefix(const std::string& level,
                                  llvm::raw_ostream& stream) {
-  std::string prefix = "[sun][" + level + "]:";
-  if (terminalColors(stream)) {
-    const char* color = level == "error"     ? "\033[1;31m"
-                        : level == "warning" ? "\033[1;33m"
-                                             : "\033[36m";
-    prefix = color + prefix + "\033[0m";
-  }
-  return prefix + " ";
+  return terminalStyledText("[sun][" + level + "]:", level, stream) + " ";
 }
 
 /** Filters progress and warnings using SUN_LOG_LEVEL (info, warn, or error).

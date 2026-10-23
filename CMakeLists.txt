@@ -343,6 +343,8 @@ add_library(sun_lib
     # AST serialization
     src/serialization/ast_serializer.cpp
     src/serialization/ast_deserializer.cpp
+    # Structured terminal diagnostics
+    src/support/terminal_format.cpp
     # ABI requirements and compatibility decisions
     src/abi/compatibility.cpp
     src/abi/payload_requirements.cpp

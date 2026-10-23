@@ -2,12 +2,15 @@
 #include <gtest/gtest.h>
 
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <optional>
 #include <string>
 
 #include "driver/compiler.h"
 #include "support/error.h"
 #include "support/terminal.h"
+#include "support/terminal_format.h"
 
 /** Keeps process-environment fixtures local to these tests. */
 namespace {
@@ -35,6 +38,100 @@ class ScopedEnvironment {
   std::string name_;
   std::optional<std::string> old_;
 };
+
+/** Simulates a color-capable terminal without requiring a real terminal device. */
+class ColoredStringStream : public llvm::raw_string_ostream {
+ public:
+  /** Captures output in the supplied string. */
+  explicit ColoredStringStream(std::string& output)
+      : llvm::raw_string_ostream(output) {}
+  /** Enables terminal styling for isolated rendering checks. */
+  bool has_colors() const override { return true; }
+};
+
+/** Keeps test files isolated and removes them even when an assertion fails. */
+class TerminalFileFixture : public testing::Test {
+ protected:
+  std::filesystem::path directory;
+  /** Creates a scratch directory under the workspace temporary directory. */
+  void SetUp() override {
+    directory = std::filesystem::current_path() / "tmp" / "terminal_format";
+    std::filesystem::create_directories(directory);
+  }
+  /** Removes this fixture's scratch files. */
+  void TearDown() override { std::filesystem::remove_all(directory); }
+};
+
+/** Trees preserve ancestor guides, details, and sibling order without escapes. */
+TEST(Tooling_Cli_Terminal, tree_layout_supports_nested_details) {
+  std::string output;
+  llvm::raw_string_ostream stream(output);
+  const sun::support::TerminalTreeNode root{
+      "main.sun", {},
+      {{"reader.moon", {}, {{"shapes", {"artifact: old", "ABI: same"}, {}}}},
+       {"shapes", {"artifact: new"}, {}}}};
+  EXPECT_EQ(sun::support::terminalTree(root, stream, "warning", "  "),
+            "  main.sun\n"
+            "  ├── reader.moon\n"
+            "  │   └── shapes\n"
+            "  │       artifact: old\n"
+            "  │       ABI: same\n"
+            "  └── shapes\n"
+            "      artifact: new");
+  EXPECT_EQ(sun::support::terminalTree({"alone", {}, {}}, stream), "alone");
+}
+
+/** Tree colors match severity prefixes while labels retain their own style. */
+TEST(Tooling_Cli_Terminal, tree_colors_only_connectors) {
+  ScopedEnvironment term("TERM", "xterm");
+  ScopedEnvironment noColor("NO_COLOR", nullptr);
+  std::string output;
+  ColoredStringStream stream(output);
+  const sun::support::TerminalTreeNode root{"root", {}, {{"leaf", {}, {}}}};
+  EXPECT_EQ(sun::support::terminalTree(root, stream),
+            "root\n\033[1;33m└── \033[0mleaf");
+  EXPECT_EQ(sun::support::terminalTree(root, stream, "error"),
+            "root\n\033[1;31m└── \033[0mleaf");
+  {
+    ScopedEnvironment disabled("NO_COLOR", "1");
+    EXPECT_EQ(sun::support::terminalTree(root, stream), "root\n└── leaf");
+  }
+  ScopedEnvironment dumb("TERM", "dumb");
+  EXPECT_EQ(sun::support::terminalTree(root, stream), "root\n└── leaf");
+}
+
+/** File links encode special bytes and retain plain fallbacks and VS Code paths. */
+TEST_F(TerminalFileFixture, links_preserve_paths_and_terminal_preferences) {
+  ScopedEnvironment term("TERM", "xterm");
+  ScopedEnvironment noColor("NO_COLOR", nullptr);
+  ScopedEnvironment program("TERM_PROGRAM", "other");
+  const auto file = directory / "source #%.sun";
+  std::ofstream(file) << "test";
+  std::string output;
+  ColoredStringStream stream(output);
+  llvm::raw_string_ostream plain(output);
+  const auto link = sun::support::terminalFileLabel(file, stream);
+  EXPECT_NE(link.find("source%20%23%25.sun"), std::string::npos);
+  EXPECT_NE(link.find("\033[4:1;58;5;3msource #%.sun\033[24;59m"),
+            std::string::npos);
+  EXPECT_NE(link.find("\033]8;;file://"), std::string::npos);
+  EXPECT_TRUE(link.ends_with("\033]8;;\033\\"));
+  EXPECT_EQ(sun::support::terminalFileLabel(file, plain), "source #%.sun");
+  EXPECT_EQ(sun::support::terminalFileLabel(directory / "missing.sun", stream),
+            "missing.sun");
+  EXPECT_EQ(sun::support::terminalFileLabel(directory, stream), "terminal_format");
+  {
+    ScopedEnvironment vscode("TERM_PROGRAM", "vscode");
+    EXPECT_EQ(sun::support::terminalFileLabel(file, stream),
+              "\033[4:1;58;5;3m" + file.string() + "\033[24;59m");
+  }
+  {
+    ScopedEnvironment disabled("NO_COLOR", "1");
+    EXPECT_EQ(sun::support::terminalFileLabel(file, stream), "source #%.sun");
+  }
+  ScopedEnvironment dumb("TERM", "dumb");
+  EXPECT_EQ(sun::support::terminalFileLabel(file, stream), "source #%.sun");
+}
 
 /** Checks that captured diagnostics remain plain text with severity labels. */
 TEST(Tooling_Cli_Terminal, redirected_messages_have_plain_prefixes) {
