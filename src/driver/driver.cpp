@@ -535,7 +535,7 @@ static void processMoonImports(BlockExprAST& blockAst, Parser& parser,
     readers.push_back(parser.openMoonImport(moonImport));
     snapshots.push_back(readers.back().get());
   }
-  abi::AbiCompatibilityChecker::current().validateImports(snapshots);
+  abi::AbiCompatibilityChecker::current().validateImports(snapshots, parser.getFilePath());
 
   // Collect top-level module names from source files
   std::unordered_set<std::string> sourceModuleNames;

@@ -36,6 +36,8 @@ struct BuildInputs {
   // What is being built: "bundle", "executable", "object" or "tests". The
   // same sources make a different artifact of each kind.
   std::string artifactKind;
+  // Diagnostic label only; excluded from the input hash.
+  std::string entrypoint;
   // Digest of each source text, generated sources included, in any order
   std::vector<std::string> sourceDigests;
   // Native archives, each as its file name and a digest of its bytes

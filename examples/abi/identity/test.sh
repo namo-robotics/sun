@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Runs the compatible consumer and checks the incompatible dependency rejection.
 set -euo pipefail
-source "$(dirname "$0")/../common.sh"
-output="$ABI_EXAMPLES/identity"
+cd "$(dirname "$0")"
+output="."
 "$output/revised"
 rm -f "$output/rejected"
 
 status=0
-bash "$ABI_EXAMPLES/identity/build-incompatible.sh" \
+bash "./build-incompatible.sh" \
   2>&1 | tee "$output/rejected.log" || status=$?
 
 # Require the intended error, not a crash or an unrelated build failure.

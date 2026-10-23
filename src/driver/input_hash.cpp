@@ -111,6 +111,7 @@ void addSourceDigests(BuildInputs& inputs,
                       const std::vector<std::string>& sourceFiles,
                       const std::vector<std::string>& protoFiles,
                       const std::string& baseDir) {
+  if (!sourceFiles.empty()) inputs.entrypoint = sourceFiles.front();
   generateCBindings(baseDir, inputs.targetTriple);
   for (const auto& path : sourceFiles) {
     inputs.sourceDigests.push_back(computeFileDigest(path, "source"));
@@ -164,7 +165,7 @@ std::string computeInputHash(const BuildInputs& inputs) {
     snapshots.push_back(reader.get());
     readers.push_back(std::move(reader));
   }
-  checker.validateImports(snapshots);
+  checker.validateImports(snapshots, inputs.entrypoint);
   std::vector<std::string> dependencies;
   for (size_t i = 0; i < inputs.moonImports.size(); ++i)
     dependencies.push_back(

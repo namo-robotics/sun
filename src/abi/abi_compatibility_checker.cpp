@@ -9,6 +9,7 @@
 #include <llvm/TargetParser/Triple.h>
 
 #include <algorithm>
+#include <filesystem>
 #include <optional>
 
 #include "abi/abi_validation_scope.h"
@@ -25,6 +26,43 @@
 
 /** Owns compatibility policy independently of bundle container decoding. */
 namespace sun::abi {
+
+/** Formats diagnostic branches from validated bundle requirements. */
+namespace {
+/** Shows every import retaining an artifact and the selected compatible import.
+ * Embedded requirements include transitive dependencies; intermediate edges are
+ * not retained in the bundle contract.
+ */
+std::string artifactDependencyTree(
+    const proto::LibraryAbiSnapshot& required,
+    const proto::LibraryAbiSnapshot& selected,
+    const std::vector<moon_bundling::MoonReader*>& readers,
+    const std::string& entrypoint) {
+  std::set<std::string> embeddedPaths;
+  for (const auto* reader : readers)
+    for (const auto& dependency : reader->getLibrary().bundle_contract().dependency_abis())
+      if (dependency.library_id() == required.library_id() &&
+          dependency.artifact_hash() == required.artifact_hash())
+        embeddedPaths.insert(reader->getPath().filename().string());
+  /** Colors only the connectors, leaving dependency labels in the default style. */
+  const auto lines = [](const std::string& value) {
+    return sun::support::terminalColors(llvm::errs())
+               ? "\033[1;33m" + value + "\033[0m"
+               : value;
+  };
+  std::string tree = "\n  " +
+      (entrypoint.empty() ? std::string("Current compilation")
+                          : std::filesystem::path(entrypoint).filename().string());
+  for (const auto& path : embeddedPaths) {
+    tree += "\n  " + lines("├── ") + path +
+            "\n  " + lines("│   └── ") + required.library_id() +
+            "\n  " + lines("│       ") + "artifact: " + required.artifact_hash();
+  }
+  tree += "\n  " + lines("└── ") + selected.library_id() + " [selected import]" +
+          "\n      artifact: " + selected.artifact_hash();
+  return tree;
+}
+}  // namespace
 
 AbiCompatibilityChecker::AbiCompatibilityChecker(std::string targetTriple,
                                                  NativeExecution execution)
@@ -97,7 +135,8 @@ ValidatedBundle AbiCompatibilityChecker::validate(
 }
 
 void AbiCompatibilityChecker::validateImports(
-    const std::vector<moon_bundling::MoonReader*>& readers) {
+    const std::vector<moon_bundling::MoonReader*>& readers,
+    const std::string& entrypoint) {
   std::vector<const moon::ModuleMetadata*> metadata;
   std::set<std::string> snapshots;
   std::string imports;
@@ -153,12 +192,8 @@ void AbiCompatibilityChecker::validateImports(
       artifactWarnings.emplace(
           std::minmax(required.artifact_hash(), candidate.artifact_hash()),
           "Library '" + required.library_id() +
-              "' is used through different artifacts: '" +
-              reader->getPath().string() + "' embeds " +
-              required.artifact_hash() + ", while the selected import is " +
-              candidate.artifact_hash() +
-              ". Their ABI contracts match; continuing with independent "
-              "implementations.");
+              "' is used through different artifacts." +
+              artifactDependencyTree(required, candidate, readers, entrypoint));
       std::map<std::string, std::string> keys;
       for (const auto& item : candidate.declarations())
         if (!keys.emplace(item.identity(), item.key()).second)

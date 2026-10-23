@@ -79,7 +79,8 @@ class AbiCompatibilityChecker {
   ValidatedBundle validate(moon_bundling::MoonReader& reader);
   /** Checks a complete import set, including external references, before use.
    */
-  void validateImports(const std::vector<moon_bundling::MoonReader*>& readers);
+  void validateImports(const std::vector<moon_bundling::MoonReader*>& readers,
+                       const std::string& entrypoint = "");
   /** Checks an explicitly selected target without changing the compilation
    * target. */
   ValidatedBundle validate(moon_bundling::MoonReader& reader,
