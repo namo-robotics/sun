@@ -99,13 +99,26 @@ void require(BundleContract& contract, const std::string& name,
   rule->set_name(name);
   rule->set_implementation(implementation);
 }
+/** Identifies compiler runtimes without including unrelated preloaded
+ * libraries. */
+bool isCompilerRuntimeLibrary(llvm::StringRef path) {
+  const auto name = path.rsplit('/').second;
+  for (const auto prefix :
+       {"libLLVM", "libclang", "libprotobuf", "libstdc++.", "libc++.",
+        "libc++abi.", "libc.so", "libSystem.", "libarchive."}) {
+    if (name.starts_with(prefix)) {
+      return true;
+    }
+  }
+  return false;
+}
 #ifdef __linux__
 /** Collects the actual shared implementation dependencies, excluding the host
  * executable. */
 int collectLibraries(dl_phdr_info* info, size_t, void* opaque) {
   auto& paths = *static_cast<std::set<std::string>*>(opaque);
   std::string path = info->dlpi_name;
-  if (!path.empty() && path.find("linux-vdso") == std::string::npos) {
+  if (isCompilerRuntimeLibrary(path)) {
     paths.insert(std::move(path));
   }
   return 0;
@@ -125,6 +138,9 @@ const std::set<std::string> implementationLibraryDigests = [] {
   std::set<std::string> digests;
   for (uint32_t i = 1; i < _dyld_image_count(); ++i) {
     const std::string path = _dyld_get_image_name(i);
+    if (!isCompilerRuntimeLibrary(path)) {
+      continue;
+    }
     auto bytes = llvm::MemoryBuffer::getFile(path);
     if (bytes) {
       digests.insert(computeSha256Hex((*bytes)->getBuffer()));
@@ -164,6 +180,11 @@ const std::set<std::string> implementationLibraryDigests = [] {
 }  // namespace
 
 const std::string& compatibilityImplementation() {
+  static const std::string implementation = SUN_COMPATIBILITY_IMPLEMENTATION;
+  return implementation;
+}
+
+const std::string& runtimeFingerprint() {
   static const std::string fingerprint = [] {
     std::set<std::string> digests;
 #ifdef __linux__
@@ -182,7 +203,7 @@ const std::string& compatibilityImplementation() {
         "macOS; this "
         "host is unsupported");
 #endif
-    return computeSha256Hex(field(1, SUN_COMPATIBILITY_IMPLEMENTATION) +
+    return computeSha256Hex(field(1, "sun.runtime.provenance.v1") +
                             sortedFields(2, digests));
   }();
   return fingerprint;

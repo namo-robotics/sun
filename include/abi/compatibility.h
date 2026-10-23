@@ -25,9 +25,11 @@ using ProducerIdentity = proto::ProducerIdentity;
 std::string encodeBundleContract(const BundleContract& contract);
 /** Computes the domain-separated SHA-256 compatibility identifier. */
 std::string hashBundleContract(const BundleContract& contract);
-/** Returns the conservative compiler, toolchain, and runtime implementation
- * closure. */
+/** Returns the build-time compiler and toolchain implementation identity. */
 const std::string& compatibilityImplementation();
+/** Returns diagnostic provenance for the compiler's loaded runtime libraries.
+ */
+const std::string& runtimeFingerprint();
 /** Constructs effective target properties from the target machine. */
 TargetProfile compatibilityTarget(const std::string& triple);
 /** Describes emitted layouts, signatures and call sites without function

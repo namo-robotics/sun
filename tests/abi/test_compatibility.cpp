@@ -62,6 +62,67 @@ TEST(ABI_Compatibility, ApplicationLibrariesDoNotChangeImplementation) {
   dlclose(library);
 }
 
+/** Runtime provenance differences warn once after the contract is validated. */
+TEST(ABI_Compatibility, RuntimeDifferencesWarnWithoutRejectingValidBundles) {
+  llvm::LLVMContext context;
+  llvm::Module module("runtime_warning", context);
+  module.setTargetTriple("x86_64-linux-gnu");
+  module.setDataLayout(
+      sun::abi::compatibilityTarget(module.getTargetTriple()).data_layout());
+  sun::moon_bundling::MoonWriter writer(std::string(64, 'a'));
+  sun::moon::ModuleMetadata metadata;
+  metadata.set_source_hash("runtime_warning");
+  writer.addModule(module, metadata);
+  const auto path = bundlePath();
+  ASSERT_TRUE(writer.write(path));
+  std::ifstream input(path, std::ios::binary);
+  std::string bytes((std::istreambuf_iterator<char>(input)), {});
+  input.close();
+  const auto runtime =
+      sun::abi::currentProducerIdentity().runtime_fingerprint();
+  ASSERT_FALSE(runtime.empty());
+  const auto offset = bytes.find(runtime);
+  ASSERT_NE(offset, std::string::npos);
+  bytes.replace(offset, runtime.size(), runtime.size(), 'x');
+  {
+    std::ofstream output(path, std::ios::binary);
+    output.write(bytes.data(), bytes.size());
+  }
+  auto reader = sun::moon_bundling::MoonReader::open(path);
+  ASSERT_NE(reader, nullptr);
+  sun::abi::AbiCompatibilityChecker checker("x86_64-linux-musl");
+  testing::internal::CaptureStderr();
+  EXPECT_THROW(checker.validate(*reader), sun::support::SunError);
+  auto output = testing::internal::GetCapturedStderr();
+  EXPECT_EQ(output.find("[sun][warning]"), std::string::npos);
+
+  checker.beginCompilation("x86_64-linux-gnu");
+  testing::internal::CaptureStderr();
+  EXPECT_NO_THROW(checker.validate(*reader));
+  EXPECT_NO_THROW(checker.validate(*reader));
+  output = testing::internal::GetCapturedStderr();
+  const auto warning = output.find("different runtime libraries");
+  ASSERT_NE(warning, std::string::npos);
+  EXPECT_EQ(output.find("different runtime libraries", warning + 1),
+            std::string::npos);
+  EXPECT_NE(output.find("bundle contract verified"), std::string::npos);
+  std::filesystem::remove(path);
+}
+
+/** A runtime difference cannot excuse an unsupported implementation
+ * requirement. */
+TEST(ABI_Compatibility,
+     RuntimeDifferencesDoNotAuthorizeUnknownImplementations) {
+  auto unsupported = contract();
+  unsupported.mutable_producer()->set_runtime_fingerprint("different runtime");
+  unsupported.mutable_requirements(0)->set_implementation("unsupported");
+  unsupported.set_compatibility_hash(sun::abi::hashBundleContract(unsupported));
+  sun::abi::AbiCompatibilityChecker checker("x86_64-linux-gnu");
+  EXPECT_THROW(
+      checker.validateContract(unsupported, "runtime-test", "x86_64-linux-gnu"),
+      sun::support::SunError);
+}
+
 /** Set traversal and diagnostic metadata must not change compiled requirements.
  */
 TEST(ABI_Compatibility, CanonicalSetsExcludeProducerMetadata) {
@@ -73,6 +134,7 @@ TEST(ABI_Compatibility, CanonicalSetsExcludeProducerMetadata) {
   reordered.mutable_requirements()->SwapElements(0, 1);
   reordered.mutable_producer()->set_build("future compiler");
   reordered.mutable_producer()->set_release_order(999);
+  reordered.mutable_producer()->set_runtime_fingerprint("different runtime");
   EXPECT_EQ(sun::abi::encodeBundleContract(original),
             sun::abi::encodeBundleContract(reordered));
   reordered.add_boundary_records("new boundary");

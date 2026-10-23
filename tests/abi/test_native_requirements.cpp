@@ -1,7 +1,11 @@
 /** Exercises native archive structure and declared requirement validation. */
+// clang-format off
+// Parse LLVM declarations before any headers can introduce Apple Mach macros.
+#include <llvm/BinaryFormat/MachO.h>
+// clang-format on
+
 #include <gtest/gtest.h>
 #include <llvm/BinaryFormat/ELF.h>
-#include <llvm/BinaryFormat/MachO.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/Object/Archive.h>
 #include <llvm/Object/ObjectFile.h>

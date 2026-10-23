@@ -660,6 +660,16 @@ void AbiCompatibilityChecker::recordValidatedImport(
     return;
   }
   const auto current = currentProducerIdentity();
+  const auto& producerRuntime = contract.producer().runtime_fingerprint();
+  if (!producerRuntime.empty() &&
+      producerRuntime != current.runtime_fingerprint()) {
+    sun::support::messageStream("warning")
+        << "dependency " << bundle
+        << " was built with different runtime libraries"
+        << "\n  producer runtime: " << producerRuntime
+        << "\n  consumer runtime: " << current.runtime_fingerprint()
+        << "\n  bundle contract verified; continuing\n";
+  }
   const auto ordering = compareProducerIdentity(contract.producer(), current);
   if ((ordering == ProducerOrdering::Older ||
        ordering == ProducerOrdering::Unknown) &&

@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.21)
 
 # Hash a deliberately broad source/configuration/tool closure for experimental
-# semantics. Shared libraries are additionally hashed by the running consumer.
+# semantics. Runtime libraries on the consuming host are diagnostic provenance;
+# they must not change the identity of an already built compiler.
 file(GLOB_RECURSE inputs FOLLOW_SYMLINKS LIST_DIRECTORIES false
     "${SOURCE_DIR}/src/*" "${SOURCE_DIR}/include/*"
     "${SOURCE_DIR}/stdlib/*" "${SOURCE_DIR}/third_party/*"

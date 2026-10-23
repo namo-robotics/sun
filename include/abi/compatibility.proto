@@ -26,6 +26,8 @@ message ProducerIdentity {
   // Zero means unknown; comparable only within the same nonempty release series.
   uint64 release_order = 2;
   string release_series = 3;
+  // Relevant loaded runtime bytes are diagnostic, not a compatibility gate.
+  string runtime_fingerprint = 4;
 }
 
 /** Maps one exact declaration to its revision-independent nominal origin. */

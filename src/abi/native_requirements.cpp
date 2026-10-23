@@ -1,4 +1,9 @@
-/** Load LLVM Mach-O declarations before Protobuf imports Apple Mach macros. */
+/** Checks native archive structure and declared runtime requirements. */
+// clang-format off
+// Parse LLVM declarations before Protobuf can introduce Apple Mach macros.
+#include <llvm/Object/MachO.h>
+// clang-format on
+
 #include "abi/native_requirements.h"
 
 #include <llvm/BinaryFormat/ELF.h>
@@ -6,7 +11,6 @@
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Object/Archive.h>
 #include <llvm/Object/ELFObjectFile.h>
-#include <llvm/Object/MachO.h>
 
 #include <set>
 

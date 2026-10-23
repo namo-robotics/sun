@@ -1,3 +1,7 @@
+# LLVM Mach-O declarations must precede Apple macros imported by the shared PCH.
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/test_native_requirements.cpp"
+    TARGET_DIRECTORY sun_tests PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+
 target_sources(sun_tests PRIVATE test_compatibility.cpp test_boundary_requirements.cpp test_semantic_requirements.cpp test_native_requirements.cpp test_nominal_identity.cpp test_library_abi_snapshot.cpp)
 
 # Verify release configuration independently of the current compiler identity.
@@ -57,3 +61,16 @@ endforeach()
 add_custom_target(sun_abi_macho_fixtures DEPENDS ${macho_fixtures})
 add_dependencies(sun_tests sun_abi_macho_fixtures)
 add_dependencies(sun_abi_tests sun_abi_macho_fixtures)
+
+# Exercise runtime drift in fresh compiler processes without changing stdlib bytes.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT SKIP_STDLIB)
+    add_test(NAME ABI_Compatibility.RuntimeProvenanceAcrossProcesses
+        COMMAND ${CMAKE_COMMAND}
+            -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+            -DSUN=$<TARGET_FILE:sun>
+            -DSTDLIB=${CMAKE_BINARY_DIR}/stdlib.moon
+            -DRUNTIME_LIBRARY=${LibArchive_LIBRARY}
+            -DUNRELATED_LIBRARY=$<TARGET_FILE:sun_ffi_testlib>
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/test_runtime_provenance.cmake
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endif()

@@ -10,6 +10,7 @@ ProducerIdentity currentProducerIdentity() {
                      compatibilityImplementation());
   identity.set_release_order(SUN_RELEASE_ORDER);
   identity.set_release_series(SUN_RELEASE_SERIES);
+  identity.set_runtime_fingerprint(runtimeFingerprint());
   return identity;
 }
 
