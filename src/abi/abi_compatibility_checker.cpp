@@ -29,6 +29,38 @@ namespace sun::abi {
 
 /** Formats diagnostic branches from validated bundle requirements. */
 namespace {
+/** Links existing files, using visible absolute paths for VS Code detection.
+ * Missing files and filesystem errors fall back to plain text.
+ */
+std::string dependencyFileLabel(const std::filesystem::path& path) {
+  const auto label = path.filename().string();
+  if (!sun::support::terminalColors(llvm::errs())) return label;
+  std::error_code error;
+  if (!std::filesystem::is_regular_file(path, error) || error) return label;
+  const auto absolute = std::filesystem::absolute(path, error);
+  if (error) return label;
+  // VS Code resolves visible file paths in its editor, including remote workspaces.
+  const char* terminal = std::getenv("TERM_PROGRAM");
+  if (terminal && std::string_view(terminal) == "vscode")
+    return "\033[4:1;58;5;3m" + absolute.lexically_normal().string() +
+           "\033[24;59m";
+  std::string uri = "file://";
+  constexpr char hex[] = "0123456789ABCDEF";
+  for (const unsigned char byte : absolute.lexically_normal().generic_string()) {
+    if ((byte >= 'a' && byte <= 'z') || (byte >= 'A' && byte <= 'Z') ||
+        (byte >= '0' && byte <= '9') || byte == '/' || byte == '-' ||
+        byte == '_' || byte == '.' || byte == '~') {
+      uri += static_cast<char>(byte);
+    } else {
+      uri += '%';
+      uri += hex[byte >> 4];
+      uri += hex[byte & 15];
+    }
+  }
+  // Set underline color independently of the filename's foreground color.
+  return "\033]8;;" + uri + "\033\\\033[4:1;58;5;3m" + label +
+         "\033[24;59m\033]8;;\033\\";
+}
 /** Shows every import retaining an artifact and the selected compatible import.
  * Embedded requirements include transitive dependencies; intermediate edges are
  * not retained in the bundle contract.
@@ -43,7 +75,7 @@ std::string artifactDependencyTree(
     for (const auto& dependency : reader->getLibrary().bundle_contract().dependency_abis())
       if (dependency.library_id() == required.library_id() &&
           dependency.artifact_hash() == required.artifact_hash())
-        embeddedPaths.insert(reader->getPath().filename().string());
+        embeddedPaths.insert(reader->getPath().string());
   /** Colors only the connectors, leaving dependency labels in the default style. */
   const auto lines = [](const std::string& value) {
     return sun::support::terminalColors(llvm::errs())
@@ -52,9 +84,9 @@ std::string artifactDependencyTree(
   };
   std::string tree = "\n  " +
       (entrypoint.empty() ? std::string("Current compilation")
-                          : std::filesystem::path(entrypoint).filename().string());
+                          : dependencyFileLabel(entrypoint));
   for (const auto& path : embeddedPaths) {
-    tree += "\n  " + lines("├── ") + path +
+    tree += "\n  " + lines("├── ") + dependencyFileLabel(path) +
             "\n  " + lines("│   └── ") + required.library_id() +
             "\n  " + lines("│       ") + "artifact: " + required.artifact_hash();
   }
