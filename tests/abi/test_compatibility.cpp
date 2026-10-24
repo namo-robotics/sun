@@ -100,11 +100,17 @@ TEST(ABI_Compatibility, RuntimeDifferencesWarnWithoutRejectingValidBundles) {
   EXPECT_NO_THROW(checker.validate(*reader));
   EXPECT_NO_THROW(checker.validate(*reader));
   output = testing::internal::GetCapturedStderr();
-  const auto warning = output.find("different runtime libraries");
+  const auto warning = output.find("different compiler shared libraries");
   ASSERT_NE(warning, std::string::npos);
-  EXPECT_EQ(output.find("different runtime libraries", warning + 1),
+  EXPECT_EQ(output.find("different compiler shared libraries", warning + 1),
             std::string::npos);
-  EXPECT_NE(output.find("bundle contract verified"), std::string::npos);
+  EXPECT_NE(output.find("built by Sun"), std::string::npos);
+  EXPECT_NE(output.find("current Sun process"), std::string::npos);
+  EXPECT_NE(output.find("not your application's runtime dependencies"),
+            std::string::npos);
+  EXPECT_NE(output.find("ABI compatibility checks passed"), std::string::npos);
+  EXPECT_EQ(output.find("producer runtime:"), std::string::npos);
+  EXPECT_EQ(output.find("consumer runtime:"), std::string::npos);
   std::filesystem::remove(path);
 }
 

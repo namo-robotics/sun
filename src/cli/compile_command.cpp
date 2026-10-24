@@ -195,6 +195,9 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
        job.optimize});
   const std::string& inputFile = job.inputFiles[0];
   const std::string testOutput = getTestOutputName(job);
+  sun::support::messageStream("info")
+      << "Building tests: " << inputFile << " -> " << testOutput << "\n";
+  llvm::outs().flush();
 
   const std::string inputHash = computeJobInputHash(job, /*forTests=*/true);
   std::optional<BuildRecord> existing;
@@ -249,6 +252,9 @@ int compileEntrypoint(const CompileJob& job) {
   const std::string& inputFile = job.inputFiles[0];
 
   try {
+    sun::support::messageStream("info")
+        << "Building: " << inputFile << " -> " << job.outputFile << "\n";
+    llvm::outs().flush();
     const bool wantTests = !job.noTest && !job.emitObjOnly;
     const std::string inputHash = computeJobInputHash(job, /*forTests=*/false);
 
@@ -281,8 +287,6 @@ int compileEntrypoint(const CompileJob& job) {
       }
     }
 
-    sun::support::messageStream("info")
-        << "Compiling: " << inputFile << " -> " << job.outputFile << "\n";
     auto driver = Driver::createForAOT("main_module", job.targetTriple,
                                        job.debugInfo, job.optimize);
     if (job.debugMode) {
