@@ -55,7 +55,6 @@ override_dh_auto_install:
 			fi; \
 		done; \
 	done
-	ln -sfn aarch64-linux-gnu debian/sun/usr/lib/sun/aarch64-linux-musl
 	# Install stdlib source files (for reference/debugging)
 	install -d debian/sun/usr/share/sun/stdlib
 	cp -R stdlib/stdlib.sun stdlib/std debian/sun/usr/share/sun/stdlib/

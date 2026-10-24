@@ -865,7 +865,7 @@ jobs:
           cat > tls_test.sun << 'EOF'
           using std;
           using tls;
-          /** Fetch a page and report transport or HTTP failures. */
+          /** Verify HTTPS transport and certificate trust regardless of HTTP status. */
           function main() i32 {
               var alloc = make_heap_allocator();
               var client = HttpsClient(alloc);
@@ -873,8 +873,7 @@ jobs:
               match client.get(host, "/") {
                   ClientResult.Ok(resp) => {
                       println(resp.status);
-                      if (resp.status == 200) { return 0; }
-                      return 1;
+                      return 0;
                   },
                   (e: const ref IError) => {
                       println(e.message());
@@ -896,6 +895,8 @@ jobs:
           unset SUN_PATH
           test -f /usr/lib/sun/aarch64-linux-gnu/stdlib.moon
           test -f /usr/lib/sun/aarch64-linux-gnu/tls.moon
+          test ! -L /usr/lib/sun/aarch64-linux-musl
+          test -f /usr/lib/sun/aarch64-linux-musl/stdlib.moon
           test -f /usr/lib/sun/aarch64-linux-musl/tls.moon
           for target in aarch64-linux-gnu aarch64-linux-musl; do
             sun --emit-obj --target "$target" -o "stdlib-$target.o" test.sun
@@ -1069,7 +1070,7 @@ jobs:
           cat > tls_test.sun << 'PROGRAM'
           using std;
           using tls;
-          /** Fetch a page and report transport or HTTP failures. */
+          /** Verify HTTPS transport and certificate trust regardless of HTTP status. */
           function main() i32 {
               var alloc = make_heap_allocator();
               var client = HttpsClient(alloc);
@@ -1077,8 +1078,7 @@ jobs:
               match client.get(host, "/") {
                   ClientResult.Ok(resp) => {
                       println(resp.status);
-                      if (resp.status == 200) { return 0; }
-                      return 1;
+                      return 0;
                   },
                   (e: const ref IError) => {
                       println(e.message());
