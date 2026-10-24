@@ -265,7 +265,6 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
       md.set_content_hash(bundleHash);
       md.set_source_hash(bundleHash + "-" + std::to_string(it->second));
       md.set_source_path(stmt.getLocation().filePath.value_or(""));
-      md.set_version("1.0.0");
       auto module = moduleIdentities[path];
       std::vector<std::string> modules;
       while (module) {

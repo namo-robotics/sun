@@ -876,3 +876,24 @@ inside a module. A global outside any module could not be reached by an
 importer, so `--emit-moon` rejects it, and importing a bundle that carries one
 is an error.
 
+
+
+### Bundle version names
+
+Use `sun --emit-moon library.sun --version-name v1.0.0` to attach a
+human-readable name. For configured libraries, use
+`sun -c sun-config.json --version-name v1.0.0`. The name applies to each
+library built by that invocation, not to dependency builds or binary outputs.
+Omitting the flag or passing an empty string leaves the name absent.
+
+Names are opaque labels: they affect artifact hashes and rebuild decisions,
+but never compatibility, release ordering, or dependency selection. They are
+available in bundle inspection JSON. There is no manifest or configuration field.
+
+Compiler builds accept `-DSUN_VERSION_NAME=...` in CMake; an explicit empty
+value suppresses the name. Otherwise a clean checkout uses its exact release
+tag (beginning with a digit or `v` followed by a digit), or `dev` if none exists.
+Multiple matching tags are resolved lexicographically. Local modifications
+produce `dev`, excluding packaging edits to `debian/changelog`.
+The distribution build scripts explicitly name bundles using the same rule;
+the `SUN_VERSION_NAME` environment variable overrides their chosen name.

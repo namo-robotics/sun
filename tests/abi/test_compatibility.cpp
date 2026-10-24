@@ -1012,3 +1012,43 @@ TEST(ABI_Compatibility, ChangingExecutionModeRechecksDestinationCPU) {
   EXPECT_TRUE(checker.importedContracts().empty());
   std::filesystem::remove(path);
 }
+
+/** Human-readable producer names affect neither ordering nor compatibility. */
+TEST(ABI_Compatibility, VersionNamesAreDiagnosticOnly) {
+  auto producer = sun::abi::currentProducerIdentity();
+  auto renamed = producer;
+  renamed.set_version_name("an unrelated release name");
+  EXPECT_EQ(sun::abi::compareProducerIdentity(producer, renamed),
+            sun::abi::ProducerOrdering::SameBuild);
+  sun::abi::BundleContract first;
+  *first.mutable_producer() = producer;
+  auto second = first;
+  *second.mutable_producer() = renamed;
+  EXPECT_EQ(sun::abi::hashBundleContract(first),
+            sun::abi::hashBundleContract(second));
+}
+
+/** Legacy module version fields remain readable as unknown protobuf metadata.
+ */
+TEST(ABI_Compatibility, LegacyModuleVersionRemainsReadable) {
+  llvm::LLVMContext context;
+  llvm::Module module("legacy_version", context);
+  module.setTargetTriple("x86_64-linux-gnu");
+  module.setDataLayout(
+      sun::abi::compatibilityTarget(module.getTargetTriple()).data_layout());
+  sun::moon::ModuleMetadata metadata;
+  metadata.set_source_hash("legacy_version");
+  metadata.GetReflection()->MutableUnknownFields(&metadata)->AddLengthDelimited(
+      3, "1.0.0");
+  sun::moon_bundling::MoonWriter writer(std::string(64, 'a'));
+  writer.addModule(module, metadata);
+  const auto path = bundlePath();
+  ASSERT_TRUE(writer.write(path));
+  auto reader = sun::moon_bundling::MoonReader::open(path);
+  ASSERT_TRUE(reader);
+  EXPECT_FALSE(reader->getLibrary().has_version_name());
+  ASSERT_NE(reader->getMetadata("legacy_version"), nullptr);
+  EXPECT_NO_THROW(sun::abi::AbiCompatibilityChecker::current().validate(
+      *reader, module.getTargetTriple()));
+  std::filesystem::remove(path);
+}

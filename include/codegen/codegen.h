@@ -115,7 +115,8 @@ class CodegenContext {
     cgam = std::make_unique<CGSCCAnalysisManager>();
     mam = std::make_unique<ModuleAnalysisManager>();
     pic = std::make_unique<PassInstrumentationCallbacks>();
-    si = std::make_unique<StandardInstrumentations>(ctx, /*DebugLogging*/ false);
+    si =
+        std::make_unique<StandardInstrumentations>(ctx, /*DebugLogging*/ false);
 
     InitializeNativeTarget();
     InitializeNativeTargetAsmPrinter();

@@ -95,7 +95,7 @@ const std::string& getCompilerDigest() {
     }
     // The executable cannot be found or read; the release it came from is
     // the best identity left.
-    return digestBytes(std::string(SUN_VERSION) + "-" + SUN_GIT_HASH);
+    return digestBytes(std::string(SUN_VERSION_NAME) + "-" + SUN_GIT_HASH);
   }();
   return digest;
 }
@@ -200,6 +200,7 @@ std::string computeInputHash(const BuildInputs& inputs) {
   // committed or not; LLVM is named separately because it may be a shared
   // library the executable's bytes say nothing about.
   input += hashField("compiler", getCompilerDigest());
+  input += hashField("compiler_version_name", SUN_VERSION_NAME);
   input += hashField("llvm", LLVM_VERSION_STRING);
   return sun::moon_bundling::computeSha256Hex(input);
 }

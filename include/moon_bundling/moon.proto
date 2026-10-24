@@ -62,6 +62,8 @@ message MoonLibrary {
   string content_hash = 2;
   repeated LibraryModule modules = 3;
   repeated LibraryArchive native_archives = 4;
+  // Human-readable name, excluded from compatibility decisions.
+  optional string version_name = 5;
 }
 
 /**
@@ -78,7 +80,8 @@ message ModuleMetadata {
   // Source identification
   string source_hash = 1;     // Unique key for this declaration entry
   string module_name = 2;     // Namespace name (e.g., "sun")
-  string version = 3;         // Semantic version (e.g., "1.0.0")
+  reserved 3;
+  reserved "version";
   string content_hash = 4;    // Bundle-wide hash for symbol isolation
 
   // Dependencies

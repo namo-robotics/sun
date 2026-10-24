@@ -185,6 +185,7 @@ CompileJob makeCompileJob(const BuildRunOptions& options) {
   job.dumpProtoSun = options.dumpProtoSun;
   job.noTest = options.noTest;
   job.forceRebuild = options.forceRebuild;
+  job.versionName = options.versionName;
   return job;
 }
 

@@ -495,8 +495,8 @@ endif()
 # Main executable
 # ------------------------------------------------------------------
 # Build-time git hash for `sun --version` (regenerated every build, only
-# rewritten when it changes). SUN_VERSION may be passed to override the
-# version string read from debian/changelog.
+# rewritten when it changes). SUN_VERSION_NAME overrides the display name
+# otherwise derived from a clean release tag or dev.
 # Header-only template engine (inja + nlohmann/json, both vendored) for
 # rendering synthesized Sun source like the test runner.
 target_include_directories(sun_lib PRIVATE ${CMAKE_SOURCE_DIR}/third_party)
@@ -538,12 +538,16 @@ set(SUN_RELEASE_ORDER "0" CACHE STRING "Official release order, or zero when unk
 set(SUN_RELEASE_SERIES "" CACHE STRING "Namespace for official release ordering")
 include(cmake/abi/ReleaseIdentity.cmake)
 
+set(SUN_VERSION_NAME_ARGUMENT)
+if(DEFINED SUN_VERSION_NAME)
+    set(SUN_VERSION_NAME_ARGUMENT "-DSUN_VERSION_NAME=${SUN_VERSION_NAME}")
+endif()
 set(SUN_VERSION_HEADER ${CMAKE_BINARY_DIR}/generated/sun_version.h)
 add_custom_target(sun_version
     COMMAND ${CMAKE_COMMAND}
         -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
         -DOUTPUT_FILE=${SUN_VERSION_HEADER}
-        -DSUN_VERSION=${SUN_VERSION}
+        ${SUN_VERSION_NAME_ARGUMENT}
         -DSUN_RELEASE_ORDER=${SUN_RELEASE_ORDER}
         -DSUN_RELEASE_SERIES=${SUN_RELEASE_SERIES}
         -P ${CMAKE_SOURCE_DIR}/cmake/GitVersion.cmake
@@ -618,7 +622,8 @@ if(NOT SKIP_STDLIB)
     # Keep whole-config packaging available explicitly. Independent product targets
     # let compiler tests rebuild stdlib without packaging unrelated native bundles.
     add_custom_target(sun_config_products
-        COMMAND $<TARGET_FILE:sun> -c ${SUN_BUNDLE_FLAGS}
+        COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/build-config.sh
+                $<TARGET_FILE:sun> ${SUN_BUNDLE_FLAGS}
                 ${CMAKE_SOURCE_DIR}/sun-config.json
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         COMMENT "Checking all sun-config.json products"

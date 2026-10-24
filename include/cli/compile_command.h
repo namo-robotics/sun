@@ -45,6 +45,7 @@ struct CompileJob {
   bool requireProductionArtifact = false;
   // Build every artifact even when the one on disk is up to date
   bool forceRebuild = false;
+  std::string versionName;  // Optional human-readable bundle name.
 };
 
 /**

@@ -90,3 +90,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
             PASS_REGULAR_EXPRESSION "[1-9][0-9]* passed, 0 failed")
     endif()
 endif()
+
+
+add_test(NAME ABI_VersionName
+    COMMAND ${CMAKE_COMMAND}
+        -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test_version_name.cmake)

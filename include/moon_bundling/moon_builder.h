@@ -44,6 +44,7 @@ struct MoonBuildOptions {
   // Rebuild even when the bundle on disk was made from the same inputs
   // (--force-rebuild)
   bool forceRebuild = false;
+  std::string versionName;  // Optional human-readable bundle name.
   // Called once the build is known to go ahead, before anything is compiled,
   // so a caller can announce it. Not called for a skipped build.
   std::function<void()> onBuildStart;

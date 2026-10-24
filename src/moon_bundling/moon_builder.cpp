@@ -136,6 +136,9 @@ MoonBuilder::LoadedInputs MoonBuilder::loadInputs(
   // is compiled (see input_hash.h)
   sun::driver::BuildInputs inputs;
   inputs.artifactKind = "bundle";
+  if (!options.versionName.empty()) {
+    inputs.settings.emplace_back("version_name", options.versionName);
+  }
   inputs.moonImports = report.moonImports;
   inputs.targetTriple = options.targetTriple;
   inputs.debugInfo = options.debugInfo;
@@ -405,6 +408,7 @@ std::vector<std::string> MoonBuilder::writeBundle(
     const MoonBuildOptions& options) {
   auto& driver = compiled.driver;
   MoonWriter writer(inputs.inputHash);
+  writer.setVersionName(options.versionName);
   for (const auto& metadata : compiled.metadata.records) {
     writer.addModule(driver->getModule(), metadata);
   }
@@ -455,9 +459,8 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
                                          options.debugInfo, options.optimize});
   sun::driver::GitDependencyBuildScope dependencyScope(
       options.debugInfo, options.optimize, options.forceRebuild);
-  sun::support::messageStream("info")
-      << "Building library: " << entrypoint << " -> " << outputPath.string()
-      << "\n";
+  sun::support::messageStream("info") << "Building library: " << entrypoint
+                                      << " -> " << outputPath.string() << "\n";
   llvm::outs().flush();
   auto inputs = loadInputs(entrypoint, options);
   if (isUpToDate(inputs.inputHash, outputPath, options)) {

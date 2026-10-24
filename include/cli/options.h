@@ -65,6 +65,7 @@ struct BuildRunOptions {
   bool noTest = false;                   // --no-test
   bool refreshSources = false;           // --refresh-sources
   bool forceRebuild = false;             // --force-rebuild
+  std::string versionName;               // Optional human-readable bundle name.
   std::string githubToken;               // --gh-token <tok>
   std::vector<std::string> programArgs;  // everything after --
   // True when the single input is a sun-config.json standing in for the

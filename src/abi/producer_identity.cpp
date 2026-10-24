@@ -6,7 +6,10 @@
 namespace sun::abi {
 ProducerIdentity currentProducerIdentity() {
   ProducerIdentity identity;
-  identity.set_build(std::string(SUN_VERSION) + ":" + SUN_GIT_HASH + ":" +
+  if (!std::string(SUN_VERSION_NAME).empty()) {
+    identity.set_version_name(SUN_VERSION_NAME);
+  }
+  identity.set_build(std::string(SUN_GIT_HASH) + ":" +
                      compatibilityImplementation());
   identity.set_release_order(SUN_RELEASE_ORDER);
   identity.set_release_series(SUN_RELEASE_SERIES);
