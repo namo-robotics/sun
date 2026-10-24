@@ -93,6 +93,11 @@ std::string compatibilitySupportJson() {
        "the linker; native TLS and "
        "initialization require native linking; relocation support delegated to "
        "the linker"},
+      {"cpu_selection",
+       "Native linking uses the generic destination CPU, matching object "
+       "emission; JIT uses host capabilities. Compiler AVX2/FMA kernels are "
+       "optional only behind independently checked CPU/OS probe guards. "
+       "Custom destination CPU/feature overrides are not supported."},
       {"support_window",
        "No fixed support window during the experimental stage"},
       {"rebuild_guidance",

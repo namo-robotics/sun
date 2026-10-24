@@ -5,6 +5,7 @@
 #include <llvm/IR/Metadata.h>
 #include <llvm/TargetParser/Triple.h>
 
+#include "abi/cpu_requirements.h"
 #include "codegen/codegen_visitor.h"
 #include "codegen/intrinsics/intrinsics_generator.h"
 #include "support/error.h"
@@ -71,60 +72,7 @@ llvm::Value* IntrinsicsGenerator::codegenCpuAvx2Fma(const CallExprAST& expr) {
       llvm::Triple::x86_64) {
     return ctx.builder->getFalse();
   }
-  auto* fn = module->getFunction("__sun_cpu_avx2_fma");
-  if (!fn) {
-    auto& context = ctx.getContext();
-    llvm::IRBuilder<> b(context);
-    auto* type = llvm::FunctionType::get(b.getInt1Ty(), false);
-    fn = llvm::Function::Create(type, llvm::GlobalValue::InternalLinkage,
-                                "__sun_cpu_avx2_fma", module);
-    fn->addFnAttr(llvm::Attribute::NoInline);
-    fn->addFnAttr("target-cpu", "x86-64");
-    fn->addFnAttr("target-features", "-avx,-avx2,-fma,-avx512f");
-    auto* entry = llvm::BasicBlock::Create(context, "entry", fn);
-    auto* features = llvm::BasicBlock::Create(context, "features", fn);
-    auto* state = llvm::BasicBlock::Create(context, "os.state", fn);
-    auto* avx2 = llvm::BasicBlock::Create(context, "avx2", fn);
-    auto* no = llvm::BasicBlock::Create(context, "unsupported", fn);
-    auto* regs = llvm::StructType::get(
-        context,
-        {b.getInt32Ty(), b.getInt32Ty(), b.getInt32Ty(), b.getInt32Ty()});
-    auto* cpuidType =
-        llvm::FunctionType::get(regs, {b.getInt32Ty(), b.getInt32Ty()}, false);
-    auto* cpuid = llvm::InlineAsm::get(cpuidType, "cpuid",
-                                       "={ax},={bx},={cx},={dx},0,2", true);
-    b.SetInsertPoint(entry);
-    auto* limits = b.CreateCall(cpuid, {b.getInt32(0), b.getInt32(0)});
-    b.CreateCondBr(
-        b.CreateICmpUGE(b.CreateExtractValue(limits, 0), b.getInt32(7)),
-        features, no);
-    b.SetInsertPoint(features);
-    auto* leaf1 = b.CreateCall(cpuid, {b.getInt32(1), b.getInt32(0)});
-    const uint32_t mask = (1u << 12) | (1u << 26) | (1u << 27) | (1u << 28);
-    auto* ecx = b.CreateExtractValue(leaf1, 2);
-    b.CreateCondBr(
-        b.CreateICmpEQ(b.CreateAnd(ecx, b.getInt32(mask)), b.getInt32(mask)),
-        state, no);
-    b.SetInsertPoint(state);
-    auto* xcrType = llvm::FunctionType::get(
-        llvm::StructType::get(context, {b.getInt32Ty(), b.getInt32Ty()}),
-        {b.getInt32Ty()}, false);
-    auto* xgetbv =
-        llvm::InlineAsm::get(xcrType, "xgetbv", "={ax},={dx},{cx}", true);
-    auto* xcr = b.CreateExtractValue(b.CreateCall(xgetbv, {b.getInt32(0)}), 0);
-    // XGETBV is reached only after OSXSAVE; both XMM and YMM state must be
-    // enabled.
-    b.CreateCondBr(
-        b.CreateICmpEQ(b.CreateAnd(xcr, b.getInt32(6)), b.getInt32(6)), avx2,
-        no);
-    b.SetInsertPoint(avx2);
-    auto* leaf7 = b.CreateCall(cpuid, {b.getInt32(7), b.getInt32(0)});
-    auto* ebx = b.CreateExtractValue(leaf7, 1);
-    b.CreateRet(
-        b.CreateICmpNE(b.CreateAnd(ebx, b.getInt32(1u << 5)), b.getInt32(0)));
-    b.SetInsertPoint(no);
-    b.CreateRet(b.getFalse());
-  }
+  auto* fn = sun::abi::createAvx2FmaProbe(*module);
   return ctx.builder->CreateCall(fn);
 }
 
@@ -295,6 +243,23 @@ llvm::Value* IntrinsicsGenerator::codegenGemmAvx2Fma(const CallExprAST& expr,
     } else {
       b.CreateRetVoid();
     }
+  }
+  if (llvm::Triple(module->getTargetTriple()).getArch() ==
+      llvm::Triple::x86_64) {
+    // Keep the guard next to every targeted call, including unsafe intrinsic
+    // callers. The source-level dispatcher supplies the ordinary fallback.
+    auto* supported =
+        ctx.builder->CreateCall(sun::abi::createAvx2FmaProbe(*module));
+    auto* caller = ctx.builder->GetInsertBlock()->getParent();
+    auto* ready =
+        llvm::BasicBlock::Create(ctx.getContext(), "cpu.ready", caller);
+    auto* unavailable =
+        llvm::BasicBlock::Create(ctx.getContext(), "cpu.unavailable", caller);
+    ctx.builder->CreateCondBr(supported, ready, unavailable);
+    ctx.builder->SetInsertPoint(unavailable);
+    ctx.builder->CreateIntrinsic(llvm::Intrinsic::trap, {}, {});
+    ctx.builder->CreateUnreachable();
+    ctx.builder->SetInsertPoint(ready);
   }
   return ctx.builder->CreateCall(fn, args);
 }

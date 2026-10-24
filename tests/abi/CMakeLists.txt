@@ -75,3 +75,18 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT SKIP_STDLIB)
             -P ${CMAKE_CURRENT_SOURCE_DIR}/test_runtime_provenance.cmake
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif()
+
+# Exercise the ordinary fallback on an emulated CPU without AVX or FMA.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
+   CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$" AND NOT SKIP_STDLIB)
+    find_program(SUN_ABI_QEMU_X86_64 NAMES qemu-x86_64)
+    if(SUN_ABI_QEMU_X86_64)
+        add_test(NAME ABI_Compatibility.GenericCPUExecution
+            COMMAND ${SUN_ABI_QEMU_X86_64} -cpu Nehalem
+                ${CMAKE_BINARY_DIR}/stdlib_tests_test
+                --test-sequential --test-filter std.linalg_tests
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+        set_tests_properties(ABI_Compatibility.GenericCPUExecution PROPERTIES
+            PASS_REGULAR_EXPRESSION "[1-9][0-9]* passed, 0 failed")
+    endif()
+endif()
