@@ -675,10 +675,11 @@ void AbiCompatibilityChecker::recordValidatedImport(
       producerRuntime != current.runtime_fingerprint()) {
     sun::support::messageStream("warning")
         << "dependency " << bundle
-        << " was built with different runtime libraries"
-        << "\n  producer runtime: " << producerRuntime
-        << "\n  consumer runtime: " << current.runtime_fingerprint()
-        << "\n  bundle contract verified; continuing\n";
+        << " was built by Sun using different compiler shared libraries than "
+           "the current Sun process"
+        << "\n  This compares compiler environments, not your application's "
+           "runtime dependencies."
+        << "\n  ABI compatibility checks passed; continuing\n";
   }
   const auto ordering = compareProducerIdentity(contract.producer(), current);
   if ((ordering == ProducerOrdering::Older ||

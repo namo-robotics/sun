@@ -10,16 +10,20 @@ set(compile "${SUN}" --emit-moon --force-rebuild -o "${fixture}/consumer.moon"
 # Compile against the original stdlib with a controlled loader environment.
 function(check_runtime expected_warning)
     execute_process(COMMAND "${CMAKE_COMMAND}" -E env --unset=LD_PRELOAD
-        --unset=LD_LIBRARY_PATH ${ARGN} ${compile}
-        RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
+        --unset=LD_LIBRARY_PATH SUN_LOG_LEVEL=info ${ARGN} ${compile}
+        RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE output)
     if(NOT result EQUAL 0)
-        message(FATAL_ERROR "Runtime changed bundle compatibility: ${output}${error}")
+        message(FATAL_ERROR "Runtime changed bundle compatibility: ${output}")
     endif()
-    string(FIND "${error}" "different runtime libraries" warning)
+    string(FIND "${output}" "different compiler shared libraries" warning)
     if(expected_warning AND warning EQUAL -1)
-        message(FATAL_ERROR "Runtime drift did not produce a warning: ${error}")
+        message(FATAL_ERROR "Runtime drift did not produce a warning: ${output}")
     elseif(NOT expected_warning AND NOT warning EQUAL -1)
-        message(FATAL_ERROR "Unrelated runtime produced a warning: ${error}")
+        message(FATAL_ERROR "Unrelated runtime produced a warning: ${output}")
+    endif()
+    string(FIND "${output}" "Building library:" context)
+    if(context EQUAL -1 OR (expected_warning AND context GREATER warning))
+        message(FATAL_ERROR "Missing artifact context: ${output}")
     endif()
 endfunction()
 

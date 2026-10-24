@@ -18,13 +18,8 @@ int buildMoonBundle(const std::string& entrypoint,
                     const std::filesystem::path& outputPath,
                     const MoonBuildOptions& buildOptions) {
   try {
-    MoonBuildOptions announced = buildOptions;
-    announced.onBuildStart = [&] {
-      sun::support::messageStream("info")
-          << "Creating moon: " << outputPath.string() << "\n";
-    };
     auto report = sun::moon_bundling::MoonBuilder::build(entrypoint, outputPath,
-                                                         announced);
+                                                         buildOptions);
     if (report.upToDate) {
       sun::support::messageStream("info")
           << "Up to date: " << outputPath.string() << "\n";

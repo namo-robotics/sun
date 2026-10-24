@@ -455,6 +455,10 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
                                          options.debugInfo, options.optimize});
   sun::driver::GitDependencyBuildScope dependencyScope(
       options.debugInfo, options.optimize, options.forceRebuild);
+  sun::support::messageStream("info")
+      << "Building library: " << entrypoint << " -> " << outputPath.string()
+      << "\n";
+  llvm::outs().flush();
   auto inputs = loadInputs(entrypoint, options);
   if (isUpToDate(inputs.inputHash, outputPath, options)) {
     return readExistingReport(outputPath, inputs.archiveSetHash,
