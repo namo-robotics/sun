@@ -45,7 +45,7 @@ override_dh_auto_install:
 	# Install the TLS bundle (carries its own static OpenSSL)
 	install -D -m 644 obj-*/tls.moon debian/sun/usr/lib/sun/tls.moon
 	# Ship the native CUDA wrapper; NVIDIA shared libraries remain external.
-	install -D -m 644 obj-*/cuda.moon debian/sun/usr/lib/sun/cuda.moon
+	install -D -m 644 obj-*/cuda.moon debian/sun-cuda/usr/lib/sun/cuda.moon
 	# Keep every cross bundle beside others built for the same target.
 	for dir in obj-*/*/; do \
 		for moon in stdlib tls; do \

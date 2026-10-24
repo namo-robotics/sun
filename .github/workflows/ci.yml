@@ -138,7 +138,8 @@ jobs:
           fi
 
   cuda-gpu:
-    needs: build-and-test
+    needs: [build-and-test, build-deb]
+    if: needs.build-and-test.outputs.gpu-available == 'true'
     name: CUDA tests, examples, and GPU benchmarks
     runs-on: linux-x64-gpu
     timeout-minutes: 60
@@ -187,6 +188,25 @@ jobs:
             build-essential cmake ninja-build python3 \
             libllvm20 libclang1-20 libarchive13t64
 
+      - name: Download Debian package
+        uses: actions/download-artifact@v4
+        with:
+          name: sun-deb-package-${{ env.BUILD_SHA }}
+          path: tmp/gpu-ci/packages
+
+      - name: Download CUDA package
+        uses: actions/download-artifact@v4
+        with:
+          name: sun-cuda-package-${{ env.BUILD_SHA }}
+          path: tmp/gpu-ci/packages
+
+      - name: Test CUDA package installation
+        run: |
+          sudo apt-get install -y ./tmp/gpu-ci/packages/*.deb
+          test -s /usr/lib/sun/cuda.moon
+          cmp /usr/lib/sun/cuda.moon tmp/gpu-ci/packages/cuda-x86_64-linux-gnu.moon
+          dpkg-query -S /usr/lib/sun/cuda.moon | grep '^sun-cuda:'
+
       - name: Install CUDA toolkit without GPU drivers
         run: |
           source /etc/os-release
@@ -227,9 +247,12 @@ jobs:
           "$sun" "${flags[@]}" "$source" | tee tmp/gpu-ci/example-jit.log
           "$sun" "${flags[@]}" -c --dynamic -o tmp/gpu-ci/gpu-matrices "$source"
           tmp/gpu-ci/gpu-matrices | tee tmp/gpu-ci/example-native.log
+          /usr/bin/sun --lib-path /usr/lib/sun \
+            -L "$CUDAToolkit_ROOT/lib64" -lcublas -lcudart -lpthread \
+            "$source" | tee tmp/gpu-ci/example-installed.log
           python3 - <<'PY'
           from pathlib import Path
-          for mode in ('jit', 'native'):
+          for mode in ('jit', 'native', 'installed'):
               result = Path(f'tmp/gpu-ci/example-{mode}.log').read_text().split()
               assert [float(value) for value in result] == [7, 10, 15, 22], result
           PY
@@ -311,6 +334,8 @@ jobs:
 
   build-and-test:
     runs-on: ubuntu-24.04
+    outputs:
+      gpu-available: ${{ steps.gpu-runner.outputs.available }}
 
     env:
       # Required for ccache to cache compilations that use precompiled headers
@@ -467,6 +492,22 @@ jobs:
             echo "::endgroup::"
           done
           exit $fail
+
+      - name: Check GPU runner availability
+        id: gpu-runner
+        env:
+          # Organization Administration: read permission; skip if absent or inaccessible.
+          GH_TOKEN: ${{ secrets.GPU_RUNNER_READ_TOKEN }}
+          GH_ORG: ${{ github.repository_owner }}
+        run: |
+          if [ -n "$GH_TOKEN" ] && timeout 60s gh api --paginate \
+              "orgs/$GH_ORG/actions/hosted-runners" \
+              | jq -se 'any(.[].runners[]; .name == "linux-x64-gpu" and .status == "Ready" and .maximum_runners > 0)' > /dev/null; then
+            echo 'available=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            echo '::warning::Skipping GPU work: runner unavailable or its status could not be checked.'
+          fi
 
   # Native macOS (Apple Silicon): builds the compiler with Homebrew LLVM and
   # runs the suite and examples on real hardware — the things the Linux job's
@@ -661,7 +702,7 @@ jobs:
       - name: Record Debian package name
         id: deb
         run: |
-          mapfile -t packages < <(find dist -maxdepth 1 -type f -name '*.deb' -printf '%f\n')
+          mapfile -t packages < <(find dist -maxdepth 1 -type f -name 'sun_*.deb' -printf '%f\n')
           if [ "${#packages[@]}" -ne 1 ]; then
             echo "Expected exactly one Debian package, found ${#packages[@]}" >&2
             exit 1
@@ -672,12 +713,25 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sun-deb-package-${{ env.BUILD_SHA }}
-          path: dist/*
+          path: |
+            dist/sun_*.deb
+            dist/stdlib-*.moon
+            dist/tls-*.moon
           retention-days: 30
 
-  # Publish only after compiler tests and this package's installation pass.
+      - name: Upload CUDA package and bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: sun-cuda-package-${{ env.BUILD_SHA }}
+          path: |
+            dist/sun-cuda_*.deb
+            dist/cuda-*.moon
+          if-no-files-found: error
+          retention-days: 30
+
+  # Publish regular packages without waiting for GPU tests.
   publish-deb:
-    needs: [build-deb, build-and-test, build-and-test-macos, cuda-gpu, test-install]
+    needs: [build-deb, build-and-test, build-and-test-macos, test-install]
     permissions:
       contents: write
     runs-on: ubuntu-24.04
@@ -706,7 +760,9 @@ jobs:
 
             The temporary path is reachable by APT's restricted `_apt` user, and mode `0644` handles restrictive user umasks.
 
-            The `.deb` installs the compiler, stdlib, TLS, and CUDA bundles on Linux.
+            The `sun` .deb installs the compiler, stdlib, and TLS on Linux.
+            The optional `sun-cuda` .deb and standalone CUDA bundle are published
+            separately after GPU tests pass; install `sun-cuda` alongside the matching `sun` version.
             On macOS, `brew install namo-robotics/sun/sun` installs the compiler,
             stdlib, and TLS from the `.tar.gz` here. The `.moon` files are the bundles on
             their own, for dropping next to an existing compiler; each is
@@ -760,7 +816,9 @@ jobs:
 
             The temporary path is reachable by APT's restricted `_apt` user, and mode `0644` handles restrictive user umasks.
 
-            The `.deb` installs the compiler, stdlib, TLS, and CUDA bundles on Linux.
+            The `sun` .deb installs the compiler, stdlib, and TLS on Linux.
+            The optional `sun-cuda` .deb and standalone CUDA bundle are published
+            separately after GPU tests pass; install `sun-cuda` alongside the matching `sun` version.
             On macOS, `brew install namo-robotics/sun/sun` installs the compiler,
             stdlib, and TLS from the `.tar.gz` here. The `.moon` files are the bundles on
             their own, for dropping next to an existing compiler; each is
@@ -791,6 +849,27 @@ jobs:
             ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # CUDA assets require GPU validation; regular releases do not wait for this job.
+  publish-cuda:
+    needs: [build-deb, publish-deb, cuda-gpu]
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download CUDA package and bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: sun-cuda-package-${{ env.BUILD_SHA }}
+          path: dist/
+
+      # publish-deb owns the release notes and creates the release first.
+      - name: Upload CUDA assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.build-deb.outputs.release-tag || 'dev' }}
+          files: dist/*
+          fail_on_unmatched_files: true
 
   test-install:
     needs: build-deb
@@ -840,7 +919,7 @@ jobs:
 
       - name: Test installation
         run: |
-          test -s /usr/lib/sun/cuda.moon
+          test ! -e /usr/lib/sun/cuda.moon
           which sun
           sun --help || true
           # Test with stdlib import (stdlib.moon installed to /usr/lib/sun/)

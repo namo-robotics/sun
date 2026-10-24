@@ -37,3 +37,13 @@ Description: The Sun Programming Language Compiler
   - Designed for AI: N-D matrices and linear algebra built-in
   - Memory safe: Rust-style borrow checking (in development)
   - Readable: Straightforward syntax for humans and AIs
+
+Package: sun-cuda
+Architecture: any
+Depends: ${misc:Depends},
+         sun (= ${binary:Version})
+Replaces: sun (<= ${binary:Version})
+Description: CUDA bundle for the Sun Programming Language
+ Provides the CUDA bundle for GPU programs compiled with Sun.
+ CUDA runtime and cuBLAS shared libraries and an NVIDIA driver are required
+ when running GPU programs.

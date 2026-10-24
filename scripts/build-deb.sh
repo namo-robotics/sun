@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# Build Debian package for Sun compiler
+# Build Debian packages for the Sun compiler and optional CUDA bundle
 # Usage: ./scripts/build-deb.sh [--install]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -178,6 +178,7 @@ build_package() {
         --exclude='node_modules' \
         --exclude='./debian/.debhelper' \
         --exclude='./debian/sun' \
+        --exclude='./debian/sun-cuda' \
         --exclude='./debian/files' \
         --exclude='./debian/*.debhelper*' \
         --exclude='./debian/*.substvars' \
@@ -203,9 +204,9 @@ build_package() {
     ls -la dist/
 }
 
-# Install the package locally
+# Install the compiler package locally; CUDA is an optional separate install.
 install_package() {
-    local deb_file=$(ls dist/*.deb 2>/dev/null | head -1)
+    local deb_file=$(ls dist/sun_*.deb 2>/dev/null | head -1)
     
     if [ -z "$deb_file" ]; then
         error "No .deb file found in dist/"
