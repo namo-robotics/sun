@@ -459,15 +459,17 @@ void AbiCompatibilityChecker::validateContract(
     fail("incompatible target profile for current target '" + targetTriple +
          "'");
   }
-  // Preserve native-host capability checks; cross targets use their own
-  // baseline rather than borrowing features from the build host.
+  // Native code is emitted for the generic destination CPU. Only JIT
+  // execution may rely on capabilities of the compiler host.
   llvm::StringMap<bool> availableFeatures;
   const bool nativeArchitecture =
       expected.architecture() ==
       llvm::Triple::getArchTypeName(
           llvm::Triple(llvm::sys::getDefaultTargetTriple()).getArch())
           .str();
-  if (nativeArchitecture) {
+  const bool hostExecution = nativeArchitecture &&
+                             context_.execution == NativeExecution::JIT;
+  if (hostExecution) {
     availableFeatures = llvm::sys::getHostCPUFeatures();
   }
   // LLVM does not report host features on every platform (including Apple
@@ -485,7 +487,7 @@ void AbiCompatibilityChecker::validateContract(
     std::unique_ptr<llvm::MCSubtargetInfo> subtarget(
         target->createMCSubtargetInfo(
             triple,
-            nativeArchitecture ? llvm::sys::getHostCPUName() : "generic", ""));
+            hostExecution ? llvm::sys::getHostCPUName() : "generic", ""));
     if (!subtarget) {
       fail("cannot determine target CPU capabilities");
     }

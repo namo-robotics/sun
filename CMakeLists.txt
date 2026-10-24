@@ -346,6 +346,7 @@ add_library(sun_lib
     # Structured terminal diagnostics
     src/support/terminal_format.cpp
     # ABI requirements and compatibility decisions
+    src/abi/cpu_requirements.cpp
     src/abi/compatibility.cpp
     src/abi/payload_requirements.cpp
     src/abi/semantic_requirements.cpp

@@ -115,7 +115,7 @@ class CodegenContext {
     cgam = std::make_unique<CGSCCAnalysisManager>();
     mam = std::make_unique<ModuleAnalysisManager>();
     pic = std::make_unique<PassInstrumentationCallbacks>();
-    si = std::make_unique<StandardInstrumentations>(ctx, /*DebugLogging*/ true);
+    si = std::make_unique<StandardInstrumentations>(ctx, /*DebugLogging*/ false);
 
     InitializeNativeTarget();
     InitializeNativeTargetAsmPrinter();
@@ -131,7 +131,9 @@ class CodegenContext {
 
     si->registerCallbacks(*pic, mam.get());
 
-    PassBuilder PB;
+    // Honor optnone on independently reconstructed CPU probes, including
+    // when optimizing code embedded from another bundle.
+    PassBuilder PB(nullptr, PipelineTuningOptions(), std::nullopt, pic.get());
     PB.registerModuleAnalyses(*mam);
     PB.registerFunctionAnalyses(*fam);
     PB.registerLoopAnalyses(*lam);

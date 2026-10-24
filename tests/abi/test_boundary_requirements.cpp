@@ -2,10 +2,17 @@
 #include <gtest/gtest.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
+#include <unistd.h>
+
+#include <cstring>
+#include <filesystem>
+#include <fstream>
 
 #include "abi/abi_compatibility_checker.h"
 #include "abi/boundary_requirements.h"
+#include "abi/cpu_requirements.h"
 #include "abi/lowering_descriptors.h"
+#include "moon_bundling/moon.h"
 #include "support/error.h"
 
 /** Builds small generated contracts for independent boundary scenarios. */
@@ -271,4 +278,182 @@ TEST(ABI_Compatibility, SharedEnumDescriptorPreservesAlignedPayloads) {
     EXPECT_EQ(view.offsets.back(), storage.offsets[1]);
     EXPECT_LE(view.size, storage.size);
   }
+}
+
+/** Constructs a real compiler probe and a directly guarded local kernel. */
+namespace {
+/** Owns a small dispatch module for independent guard and requirement checks.
+ */
+struct CPUDispatchFixture {
+  llvm::LLVMContext context;
+  llvm::Module module{"dispatch", context};
+  llvm::Function* kernel;
+  llvm::Function* caller;
+  llvm::BranchInst* guard;
+  llvm::BasicBlock* ready;
+  llvm::BasicBlock* fallback;
+
+  /** Creates a baseline caller whose successful probe edge gates AVX2/FMA. */
+  CPUDispatchFixture() {
+    module.setTargetTriple("x86_64-linux-gnu");
+    module.setDataLayout(
+        sun::abi::compatibilityTarget(module.getTargetTriple()).data_layout());
+    llvm::IRBuilder<> builder(context);
+    auto* signature = llvm::FunctionType::get(builder.getVoidTy(), false);
+    kernel = llvm::Function::Create(
+        signature, llvm::GlobalValue::InternalLinkage, "kernel", module);
+    kernel->addFnAttr(llvm::Attribute::NoInline);
+    kernel->addFnAttr("target-cpu", "x86-64");
+    kernel->addFnAttr("target-features", "+avx,+avx2,+fma,-avx512f");
+    builder.SetInsertPoint(llvm::BasicBlock::Create(context, "entry", kernel));
+    builder.CreateRetVoid();
+    caller = llvm::Function::Create(
+        signature, llvm::GlobalValue::ExternalLinkage, "caller", module);
+    auto* entry = llvm::BasicBlock::Create(context, "entry", caller);
+    ready = llvm::BasicBlock::Create(context, "ready", caller);
+    fallback = llvm::BasicBlock::Create(context, "fallback", caller);
+    builder.SetInsertPoint(entry);
+    auto* supported = builder.CreateCall(sun::abi::createAvx2FmaProbe(module));
+    guard = builder.CreateCondBr(supported, ready, fallback);
+    builder.SetInsertPoint(ready);
+    builder.CreateCall(kernel);
+    builder.CreateRetVoid();
+    builder.SetInsertPoint(fallback);
+    builder.CreateRetVoid();
+  }
+};
+}  // namespace
+
+/** Optional kernels do not raise the destination baseline when every call is
+ * guarded. */
+TEST(ABI_Compatibility, GuardedLLVMKernelAcceptsGenericDestination) {
+  CPUDispatchFixture fixture;
+  ASSERT_TRUE(sun::abi::hasGuardedCPURequirements(*fixture.kernel));
+  auto contract = sun::abi::describeContract(fixture.module);
+  EXPECT_EQ(contract.target().cpu_features_size(), 0);
+  sun::abi::AbiCompatibilityChecker checker(
+      "x86_64-linux-gnu", sun::abi::NativeExecution::NativeLink);
+  EXPECT_NO_THROW(
+      checker.validateContract(contract, "guarded.moon", "x86_64-linux-gnu"));
+  // Symbol isolation can rename the probe without changing its implementation.
+  sun::abi::createAvx2FmaProbe(fixture.module)->setName("isolated.probe");
+  EXPECT_TRUE(sun::abi::hasGuardedCPURequirements(*fixture.kernel));
+}
+
+/** An inverted guard or a forged always-true probe cannot suppress
+ * requirements. */
+TEST(ABI_Compatibility, LLVMDispatchRequiresActualProbeAndSuccessfulEdge) {
+  CPUDispatchFixture fixture;
+  fixture.guard->swapSuccessors();
+  EXPECT_FALSE(sun::abi::hasGuardedCPURequirements(*fixture.kernel));
+  fixture.guard->swapSuccessors();
+  auto* probe = sun::abi::createAvx2FmaProbe(fixture.module);
+  probe->deleteBody();
+  llvm::IRBuilder<> builder(
+      llvm::BasicBlock::Create(fixture.context, "entry", probe));
+  builder.CreateRet(builder.getTrue());
+  EXPECT_FALSE(sun::abi::hasGuardedCPURequirements(*fixture.kernel));
+  auto contract = sun::abi::describeContract(fixture.module);
+  EXPECT_GT(contract.target().cpu_features_size(), 0);
+  sun::abi::AbiCompatibilityChecker checker(
+      "x86_64-linux-gnu", sun::abi::NativeExecution::NativeLink);
+  EXPECT_THROW(
+      checker.validateContract(contract, "forged.moon", "x86_64-linux-gnu"),
+      sun::support::SunError);
+}
+
+/** Every entry into a targeted kernel must be guarded, including escaped
+ * addresses. */
+TEST(ABI_Compatibility, LLVMDispatchRejectsUnguardedCallsAndEscapingKernels) {
+  CPUDispatchFixture fixture;
+  llvm::IRBuilder<> builder(fixture.fallback->getTerminator());
+  auto* unguarded = builder.CreateCall(fixture.kernel);
+  EXPECT_FALSE(sun::abi::hasGuardedCPURequirements(*fixture.kernel));
+  unguarded->eraseFromParent();
+  EXPECT_TRUE(sun::abi::hasGuardedCPURequirements(*fixture.kernel));
+  new llvm::GlobalVariable(fixture.module, fixture.kernel->getType(), false,
+                           llvm::GlobalValue::ExternalLinkage, fixture.kernel,
+                           "escaped");
+  EXPECT_FALSE(sun::abi::hasGuardedCPURequirements(*fixture.kernel));
+}
+
+/** A probe covers only its known instruction set, not arbitrary targeted code.
+ */
+TEST(ABI_Compatibility, LLVMDispatchDoesNotAuthorizeAdditionalFeatures) {
+  CPUDispatchFixture fixture;
+  fixture.kernel->addFnAttr("target-features", "+avx,+avx2,+fma,+avx512f");
+  EXPECT_FALSE(sun::abi::hasGuardedCPURequirements(*fixture.kernel));
+}
+
+/** Native compilation checks the generic destination even on an AVX2 build
+ * host. */
+TEST(ABI_Compatibility, NativeDestinationDoesNotBorrowHostFeatures) {
+  CPUDispatchFixture fixture;
+  auto contract = sun::abi::describeContract(fixture.module);
+  contract.mutable_target()->add_cpu_features("avx2");
+  contract.set_compatibility_hash(sun::abi::hashBundleContract(contract));
+  sun::abi::AbiCompatibilityChecker checker(
+      "x86_64-linux-gnu", sun::abi::NativeExecution::NativeLink);
+  EXPECT_THROW(checker.validateContract(contract, "required-avx2.moon",
+                                        "x86_64-linux-gnu"),
+               sun::support::SunError);
+}
+
+/** Rehashing metadata cannot conceal an unsafe dispatch edge in actual bitcode.
+ */
+TEST(ABI_Compatibility, RehashedDispatchContractCannotHideUnguardedPayload) {
+  CPUDispatchFixture fixture;
+  std::filesystem::create_directories("tmp");
+  const auto path = std::filesystem::path("tmp") /
+                    ("abi_dispatch_" + std::to_string(getpid()) + ".moon");
+  sun::moon::ModuleMetadata metadata;
+  metadata.set_source_hash("dispatch");
+  sun::moon_bundling::MoonWriter original(std::string(64, 'd'));
+  original.addModule(fixture.module, metadata);
+  ASSERT_TRUE(original.write(path));
+  auto reader = sun::moon_bundling::MoonReader::open(path);
+  ASSERT_NE(reader, nullptr);
+  sun::abi::AbiCompatibilityChecker checker(
+      "x86_64-linux-gnu", sun::abi::NativeExecution::NativeLink);
+  ASSERT_NO_THROW(checker.validate(*reader));
+
+  fixture.guard->swapSuccessors();
+  sun::moon_bundling::MoonWriter changed(std::string(64, 'e'));
+  changed.addModule(fixture.module, metadata);
+  ASSERT_TRUE(changed.write(path));
+  reader = sun::moon_bundling::MoonReader::open(path);
+  ASSERT_NE(reader, nullptr);
+  auto library = reader->getLibrary();
+  auto* contract = library.mutable_bundle_contract();
+  ASSERT_GT(contract->target().cpu_features_size(), 0);
+  contract->mutable_target()->clear_cpu_features();
+  contract->set_compatibility_hash(sun::abi::hashBundleContract(*contract));
+  ASSERT_NO_THROW(
+      checker.validateContract(*contract, path.string(), "x86_64-linux-gnu"));
+  auto bytes = *reader->getBytes();
+  sun::moon_bundling::MoonHeader header;
+  std::memcpy(&header, bytes.data(), sizeof(header));
+  auto encoded = library.SerializeAsString();
+  bytes.resize(header.bundleMetadataOffset);
+  bytes += encoded;
+  header.bundleMetadataSize = encoded.size();
+  std::memcpy(bytes.data(), &header, sizeof(header));
+  {
+    std::ofstream output(path, std::ios::binary);
+    output.write(bytes.data(), bytes.size());
+  }
+  reader = sun::moon_bundling::MoonReader::open(path);
+  ASSERT_NE(reader, nullptr);
+  EXPECT_THROW(checker.validate(*reader), sun::support::SunError);
+  std::filesystem::remove(path);
+}
+
+/** A direct call does not authorize passing the kernel address as call data. */
+TEST(ABI_Compatibility, LLVMDispatchRejectsKernelAddressInOperandBundle) {
+  CPUDispatchFixture fixture;
+  llvm::IRBuilder<> builder(fixture.ready->getTerminator());
+  llvm::OperandBundleDef escaped("deopt",
+                                 std::vector<llvm::Value*>{fixture.kernel});
+  builder.CreateCall(fixture.kernel, {}, {escaped});
+  EXPECT_FALSE(sun::abi::hasGuardedCPURequirements(*fixture.kernel));
 }

@@ -60,9 +60,22 @@ archives: [{
 ```
 
 These requirements are added to detected and inherited requirements. Unknown
-names fail packaging. CPU checks
-still need better handling of destination CPUs and runtime dispatch: an optional
-AVX2 kernel should not imply that the whole library requires AVX2.
+names fail packaging. Native builds validate CPU requirements against the generic
+CPU for the selected target, matching object emission, even when the build host
+supports more instructions. JIT imports use the executing host's capabilities.
+There is currently no custom destination CPU or feature override.
+
+Compiler-generated AVX2/FMA kernels remain optional when every use is a direct
+call guarded by the compiler's CPU-and-OS-state probe. Validation reconstructs
+the probe body and checks that its successful branch dominates each call.
+Unguarded calls, escaping kernel addresses, and additional instruction features
+remain unconditional requirements. The compiler preserves a local guard even
+for unsafe intrinsic calls; invoking one without support traps. Normal library
+dispatch selects its ordinary fallback first. This recognition is deliberately
+limited to the implemented AVX2/FMA probe, not arbitrary user-written dispatch.
+Native archives continue to use producer-declared minimum requirements.
+On Linux x86-64, when `qemu-x86_64` is installed, CTest also executes the
+linalg tests on an emulated CPU without AVX/FMA to exercise the ordinary fallback.
 
 ## Why compatible-looking builds can be rejected
 
@@ -95,7 +108,6 @@ library acceptable. Checking an existing output for build skipping does not warn
 ## Remaining work
 
 - Finish shared descriptions for closures and interface dispatch, and metadata-to-code checks.
-- Finish destination CPU and runtime-dispatch modeling.
 - Finish transitive fingerprint coverage.
 - Test successful compatibility across historical compilers and libraries; current historical coverage only proves rejection.
 

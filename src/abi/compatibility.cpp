@@ -16,6 +16,7 @@
 #include <mutex>
 
 #include "abi/boundary_requirements.h"
+#include "abi/cpu_requirements.h"
 #include "abi/library_abi_snapshot.h"
 #include "abi/lowering_descriptors.h"
 #include "abi/support_inventory.h"
@@ -344,8 +345,9 @@ BundleContract describeContract(const llvm::Module& module) {
   require(contract, "sun.experimental.semantics",
           emissionImplementation("sun.experimental.semantics"));
   for (const auto& function : module) {
+    const bool guarded = hasGuardedCPURequirements(function);
     const auto features = function.getFnAttribute("target-features");
-    if (features.isValid()) {
+    if (features.isValid() && !guarded) {
       llvm::SubtargetFeatures parsed(features.getValueAsString());
       for (const auto& feature : parsed.getFeatures()) {
         if (!feature.empty() && feature[0] == '+') {

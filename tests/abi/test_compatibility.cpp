@@ -959,3 +959,50 @@ TEST(ABI_Compatibility, PackagingPreservesEntrypointLibraryIdentity) {
   EXPECT_NE(reader->getLibrary().content_hash(), firstHash);
   std::filesystem::remove_all(directory);
 }
+
+/** Rebuilt stdlib kernels remain importable by the generic native destination.
+ */
+TEST(ABI_Compatibility, StdlibSupportsGenericNativeDestination) {
+  auto reader = sun::moon_bundling::MoonReader::open("build/stdlib.moon");
+  ASSERT_NE(reader, nullptr);
+  sun::abi::AbiCompatibilityChecker checker(
+      "", sun::abi::NativeExecution::NativeLink);
+  EXPECT_NO_THROW(checker.validate(*reader));
+}
+
+/** A JIT authorization cannot approve AVX2 code for a generic native build. */
+TEST(ABI_Compatibility, ChangingExecutionModeRechecksDestinationCPU) {
+  if (!llvm::sys::getHostCPUFeatures().lookup("avx2")) {
+    GTEST_SKIP() << "This execution-mode contrast requires an AVX2 host";
+  }
+  llvm::LLVMContext context;
+  llvm::Module module("cpu.cache", context);
+  module.setTargetTriple(llvm::sys::getDefaultTargetTriple());
+  module.setDataLayout(
+      sun::abi::compatibilityTarget(module.getTargetTriple()).data_layout());
+  auto* function = llvm::Function::Create(
+      llvm::FunctionType::get(llvm::Type::getVoidTy(context), false),
+      llvm::Function::ExternalLinkage, "requires_avx2", module);
+  function->addFnAttr("target-features", "+avx2");
+  llvm::IRBuilder<> builder(
+      llvm::BasicBlock::Create(context, "entry", function));
+  builder.CreateRetVoid();
+  sun::moon_bundling::MoonWriter writer(std::string(64, 'c'));
+  sun::moon::ModuleMetadata metadata;
+  metadata.set_source_hash("cpu.cache");
+  writer.addModule(module, metadata);
+  const auto path = bundlePath();
+  ASSERT_TRUE(writer.write(path));
+  auto reader = sun::moon_bundling::MoonReader::open(path);
+  ASSERT_NE(reader, nullptr);
+  sun::abi::AbiCompatibilityChecker checker;
+  ASSERT_NO_THROW(checker.validate(*reader));
+  ASSERT_EQ(checker.importedContracts().size(), 1u);
+  auto native = checker.context();
+  native.execution = sun::abi::NativeExecution::NativeLink;
+  checker.configure(native);
+  EXPECT_TRUE(checker.importedContracts().empty());
+  EXPECT_THROW(checker.validate(*reader), sun::support::SunError);
+  EXPECT_TRUE(checker.importedContracts().empty());
+  std::filesystem::remove(path);
+}
