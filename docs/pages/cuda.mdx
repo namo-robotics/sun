@@ -48,8 +48,10 @@ musl, and cross-compiled GPU programs are not supported in this first version.
 Linux CI installs the CUDA toolkit and builds `cuda.moon` without requiring a
 GPU. Validation, fault-injection, and simulated-backend tests run on CPU-only
 runners; the hardware test skips when no usable device is available. Linux
-releases include the native x86-64 bundle in the Debian package and as
-`cuda-x86_64-linux-gnu.moon`. CUDA is not included in macOS releases or the
+releases publish the native x86-64 bundle in the optional `sun-cuda` Debian
+package and as `cuda-x86_64-linux-gnu.moon` after GPU tests pass. Install
+`sun-cuda` alongside the matching version of `sun`. Regular `sun` releases
+do not wait for GPU availability. CUDA is not included in macOS releases or the
 cross-compiled ARM64 bundles. Using the GPU API still requires the NVIDIA
 shared libraries and a compatible driver on the execution machine.
 
