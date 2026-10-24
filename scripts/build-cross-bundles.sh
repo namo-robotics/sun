@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build AArch64 Linux bundles using the workspace's shared configuration.
+# Build distinct GNU and musl AArch64 Linux bundles using the workspace's shared configuration.
 # Usage: scripts/build-cross-bundles.sh <sun> [compiler flags...]
 
 if [ "$#" -lt 1 ]; then
@@ -13,5 +13,7 @@ SUN_COMPILER="$1"
 shift
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-exec "$SUN_COMPILER" -c --target aarch64-linux-gnu --no-test \
-    "$@" "$SOURCE_ROOT/sun-config.json"
+for target in aarch64-linux-gnu aarch64-linux-musl; do
+    "$SUN_COMPILER" -c --target "$target" --no-test \
+        "$@" "$SOURCE_ROOT/sun-config.json"
+done

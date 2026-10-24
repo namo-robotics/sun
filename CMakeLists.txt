@@ -689,7 +689,7 @@ if(NOT SKIP_STDLIB)
     foreach(cross_triple ${SUN_CROSS_STDLIB_TARGETS})
         set(CROSS_MOON ${CMAKE_BINARY_DIR}/${cross_triple}/stdlib.moon)
         # The combined config owns both AArch64 outputs when TLS is enabled.
-        if(NOT (SUN_CROSS_TLS_AARCH64 AND cross_triple STREQUAL "aarch64-linux-gnu"))
+        if(NOT (SUN_CROSS_TLS_AARCH64 AND cross_triple MATCHES "^aarch64-linux-(gnu|musl)$"))
             add_custom_target(stdlib_cross_moon_${cross_triple}
                 COMMAND bash ${BUILD_MOON_SCRIPT} $<TARGET_FILE:sun>
                         ${STDLIB_ENTRYPOINT} ${CROSS_MOON}
@@ -715,7 +715,12 @@ if(NOT SKIP_STDLIB)
         if(NOT "aarch64-linux-gnu" IN_LIST SUN_CROSS_STDLIB_TARGETS)
             message(FATAL_ERROR "AArch64 TLS requires aarch64-linux-gnu in SUN_CROSS_STDLIB_TARGETS")
         endif()
-        set(CROSS_BUNDLE_DIR ${CMAKE_SOURCE_DIR}/build/aarch64-linux-gnu)
+        set(CROSS_BUNDLE_OUTPUTS "")
+        foreach(cross_triple aarch64-linux-gnu aarch64-linux-musl)
+            list(APPEND CROSS_BUNDLE_OUTPUTS
+                ${CMAKE_SOURCE_DIR}/build/${cross_triple}/stdlib.moon
+                ${CMAKE_SOURCE_DIR}/build/${cross_triple}/tls.moon)
+        endforeach()
         set(CROSS_OPENSSL_DIR ${CMAKE_SOURCE_DIR}/third_party/openssl/aarch64-linux-musl)
         foreach(archive libssl.a libcrypto.a)
             if(NOT EXISTS ${CROSS_OPENSSL_DIR}/${archive})
@@ -726,7 +731,7 @@ if(NOT SKIP_STDLIB)
         add_custom_target(cross_bundles_aarch64
             COMMAND bash ${BUILD_CROSS_BUNDLES_SCRIPT} $<TARGET_FILE:sun>
                     ${SUN_BUNDLE_FLAGS}
-            BYPRODUCTS ${CROSS_BUNDLE_DIR}/stdlib.moon ${CROSS_BUNDLE_DIR}/tls.moon
+            BYPRODUCTS ${CROSS_BUNDLE_OUTPUTS}
             COMMENT "Checking AArch64 stdlib and TLS from sun-config.json"
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
             COMMAND_EXPAND_LISTS
@@ -735,19 +740,25 @@ if(NOT SKIP_STDLIB)
         add_dependencies(cross_bundles_aarch64 sun)
         # The shared config names source-relative outputs. Package builds
         # collect those artifacts in their separate CMake build directory.
-        set(CROSS_PACKAGE_DIR ${CMAKE_BINARY_DIR}/aarch64-linux-gnu)
-        if(NOT CROSS_PACKAGE_DIR STREQUAL CROSS_BUNDLE_DIR)
-            add_custom_command(
-                OUTPUT ${CROSS_PACKAGE_DIR}/stdlib.moon ${CROSS_PACKAGE_DIR}/tls.moon
-                COMMAND ${CMAKE_COMMAND} -E make_directory ${CROSS_PACKAGE_DIR}
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                        ${CROSS_BUNDLE_DIR}/stdlib.moon ${CROSS_BUNDLE_DIR}/tls.moon
-                        ${CROSS_PACKAGE_DIR}
-                DEPENDS ${CROSS_BUNDLE_DIR}/stdlib.moon ${CROSS_BUNDLE_DIR}/tls.moon
-                VERBATIM
-            )
-        endif()
-        add_custom_target(tls_cross_moon ALL DEPENDS ${CROSS_PACKAGE_DIR}/tls.moon)
+        set(CROSS_PACKAGE_OUTPUTS "")
+        foreach(cross_triple aarch64-linux-gnu aarch64-linux-musl)
+            set(CROSS_BUNDLE_DIR ${CMAKE_SOURCE_DIR}/build/${cross_triple})
+            set(CROSS_PACKAGE_DIR ${CMAKE_BINARY_DIR}/${cross_triple})
+            if(NOT CROSS_PACKAGE_DIR STREQUAL CROSS_BUNDLE_DIR)
+                add_custom_command(
+                    OUTPUT ${CROSS_PACKAGE_DIR}/stdlib.moon ${CROSS_PACKAGE_DIR}/tls.moon
+                    COMMAND ${CMAKE_COMMAND} -E make_directory ${CROSS_PACKAGE_DIR}
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                            ${CROSS_BUNDLE_DIR}/stdlib.moon ${CROSS_BUNDLE_DIR}/tls.moon
+                            ${CROSS_PACKAGE_DIR}
+                    DEPENDS ${CROSS_BUNDLE_DIR}/stdlib.moon ${CROSS_BUNDLE_DIR}/tls.moon
+                    VERBATIM
+                )
+            endif()
+            list(APPEND CROSS_PACKAGE_OUTPUTS
+                ${CROSS_PACKAGE_DIR}/stdlib.moon ${CROSS_PACKAGE_DIR}/tls.moon)
+        endforeach()
+        add_custom_target(tls_cross_moon ALL DEPENDS ${CROSS_PACKAGE_OUTPUTS})
         add_dependencies(tls_cross_moon cross_bundles_aarch64)
         # One target owns the shared outputs so parallel Make builds cannot
         # run the bundle command twice or delete an output still in use.
