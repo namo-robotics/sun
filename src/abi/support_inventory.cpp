@@ -20,6 +20,12 @@ const std::string& bitcodeContractHash() {
   return identity;
 }
 
+/** Recognizes the wire encoding shared by contract hashes and fingerprints. */
+bool isHash(const std::string& identity) {
+  return identity.size() == 64 &&
+         identity.find_first_not_of("0123456789abcdef") == std::string::npos;
+}
+
 /** Uses the same identity for supported rules and emitted requirements. */
 std::string implementationIdentity(const std::string& name,
                                    const std::string& version) {
@@ -54,8 +60,7 @@ std::map<std::string, std::string> supportedRules() {
 
 bool isExperimentalFingerprint(const std::string& name,
                                const std::string& implementation) {
-  if (implementation.size() != 64 ||
-      implementation.find_first_not_of("0123456789abcdef") != std::string::npos) {
+  if (!isHash(implementation)) {
     return false;
   }
   for (const auto& rule : compilerAbiSupport().rules()) {
@@ -70,6 +75,7 @@ bool compatibleRuleImplementations(const std::string& name,
                                    const std::string& required,
                                    const std::string& supported) {
   return required == supported ||
+         (name == "llvm.bitcode" && isHash(required) && isHash(supported)) ||
          (isExperimentalFingerprint(name, required) &&
           isExperimentalFingerprint(name, supported));
 }

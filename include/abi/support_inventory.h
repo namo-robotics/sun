@@ -15,7 +15,8 @@ std::map<std::string, std::string> supportedRules();
 /** Recognizes well-formed advisory fingerprints for implemented experimental rules. */
 bool isExperimentalFingerprint(const std::string& name,
                                const std::string& implementation);
-/** Compares rule identities, allowing advisory experimental fingerprint changes. */
+/** Compares rule identities, allowing experimental fingerprints and bitcode
+ * hashes to differ. Bitcode still requires payload and ABI validation. */
 bool compatibleRuleImplementations(const std::string& name,
                                    const std::string& required,
                                    const std::string& supported);
