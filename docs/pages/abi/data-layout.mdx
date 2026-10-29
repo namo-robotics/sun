@@ -5,15 +5,27 @@ of current releases. Open decisions must be resolved before stabilization.
 
 ## Data layout
 
-| Subject | Level | Requirement |
+Imagine a library returning a rectangle. These offsets are hypothetical, not
+Sun's specified layout:
+
+```text
+producer: width at offset 0, height at offset 8
+consumer: reads height at offset 8 → agrees
+consumer: reads height at offset 4 → wrong bytes; reject
+```
+
+Even if `height` is public and the preceding field is private, the consumer must
+use the producer's layout. “Private” does not remove the bytes from the value.
+
+| Minimal example | Level | Requirement |
 | --- | --- | --- |
-| Boundary types | MUST | Define each type's layout for its ABI revision and target profile. |
-| Imported layouts | MUST | Preserve the producer's layout, including private fields that determine a public value's size. |
-| Layout contract | MUST | Specify size, alignment, field offsets, array stride, valid representations, and padding. |
-| Padding | MUST NOT | Treat padding as initialized application data or use it for semantic equality. |
-| Inconsistent metadata | MUST | Reject it instead of silently recomputing a layout with a newer algorithm. |
-| Layout fingerprints | MUST NOT | Use them in place of nominal identity or a defined layout algorithm. |
-| Layout changes | MUST NOT | Change field order, enum encoding, or alignment within an ABI revision unless the change is unobservable at every supported boundary. |
+| `area` reads a `Rectangle` created by another bundle. | MUST | Define each type's layout for its ABI revision and target profile. |
+| A private field before `height` changes its offset. | MUST | Preserve the producer's layout, including private fields that determine a public value's size. |
+| An array indexes its second rectangle using the element stride. | MUST | Specify size, alignment, field offsets, array stride, valid representations, and padding. |
+| Two equal rectangles have different unused padding bytes. | MUST NOT | Treat padding as initialized application data or use it for semantic equality. |
+| Metadata says offset 4; compiled code reads offset 8. | MUST | Reject it instead of silently recomputing a layout with a newer algorithm. |
+| Two unrelated `Point` types have identical bytes. | MUST NOT | Use them in place of nominal identity or a defined layout algorithm. |
+| Reordering `x` and `y` swaps what an old reader sees. | MUST NOT | Change field order, enum encoding, or alignment within an ABI revision unless the change is unobservable at every supported boundary. |
 
 Layouts can be stored in metadata or derived from versioned rules. Internal types
 can be optimized when their representation does not escape through calls,
@@ -39,9 +51,9 @@ These are implementation observations, not stable layout guarantees.
 
 Before stabilization, each target profile needs the following definitions.
 
-| Category | Level | Required definitions |
+| Minimal example | Level | Required definitions |
 | --- | --- | --- |
-| Scalars | MUST | Widths and alignment, Boolean storage and valid values, character representation, and floating-point formats. |
-| Aggregates | MUST | Field order, tail padding, empty values, arrays and shapes, and vector alignment. |
-| Enums | MUST | Discriminants and payload offsets. |
-| Spare representations | MUST | Whether layouts may use spare bits or otherwise invalid values to encode variants. |
+| A caller stores a Boolean that the callee reads. | MUST | Widths and alignment, Boolean storage and valid values, character representation, and floating-point formats. |
+| A caller allocates storage for two consecutive rectangles. | MUST | Field order, tail padding, empty values, arrays and shapes, and vector alignment. |
+| A consumer reads the tag before choosing a payload. | MUST | Discriminants and payload offsets. |
+| An enum uses a reserved pointer value for its empty case. | MUST | Whether layouts may use spare bits or otherwise invalid values to encode variants. |

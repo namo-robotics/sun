@@ -5,19 +5,31 @@ of current releases. Open decisions must be resolved before stabilization.
 
 ## Generic specialization
 
+Suppose a bundle retains a generic operation that selects the first array element:
+
+```text
+library: generic first<Element>, referring to a particular helper declaration
+app:     requests first<Point>
+compiler: generates code using Point's layout and the recorded helper
+```
+
+Adding a new overload named `helper` must not silently redirect the old body's
+call. Parsing its serialized fields successfully does not establish that its
+names, ownership operations, or layout assumptions still mean the same thing.
+
 The design keeps compile-time specialization. It does not require runtime
 type-erased generics. Retaining generic bodies is separate from optionally
 [embedding complete source](/abi/moon-format#optional-complete-source): complete
 source also contains ordinary implementations and inputs needed to rebuild the
 bundle. Specialization alone does not rebuild its existing compiled code.
 
-| Subject | Level | Requirement |
+| Minimal example | Level | Requirement |
 | --- | --- | --- |
-| Imported bodies | MUST | Specialize an exported body using its declared semantic revision and exact referenced declarations. |
-| Changed language rules | MUST NOT | Silently apply changed name lookup, overload selection, ownership, intrinsic, or layout rules to an old body. |
-| Precompiled specialization | MUST | Reuse it only when its identity and contracts match the requested specialization. |
-| New concrete types | MUST | Generate a compatible specialization using the new type's declared layout and operations, or reject the combination. |
-| Existing layouts | MUST NOT | Change a new type's layout to satisfy an old generic's ABI. |
+| An old generic `first` is specialized for a new `Point` type. | MUST | Specialize an exported body using its declared semantic revision and exact referenced declarations. |
+| An old body calls `helper`; a new overload must not change that binding. | MUST NOT | Silently apply changed name lookup, overload selection, ownership, intrinsic, or layout rules to an old body. |
+| The bundle already contains `first` specialized for `i32`. | MUST | Reuse it only when its identity and contracts match the requested specialization. |
+| A new element type has stricter alignment than `i32`. | MUST | Generate a compatible specialization using the new type's declared layout and operations, or reject the combination. |
+| The old generic expects assumptions that the new element type cannot satisfy. | MUST NOT | Change a new type's layout to satisfy an old generic's ABI. |
 
 ## Open decisions
 

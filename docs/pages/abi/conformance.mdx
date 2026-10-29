@@ -11,6 +11,25 @@ This page defines the release criteria and tests used to check those claims,
 including tests that import real bundles built by other compiler versions. It
 also summarizes what is implemented and what remains before declaring a stable ABI.
 
+## Start with one saved library
+
+A minimal compatibility test has two compiler builds and one unchanged artifact:
+
+```text
+old compiler → geometry.moon with area(Rectangle)
+save those exact bundle bytes
+new compiler → app importing that saved geometry.moon
+run app → check that the returned area is correct
+```
+
+Rebuilding geometry with the new compiler would test a different case. It would
+not show whether the new reader accepts the old output.
+
+Pair this with a failure: change a recorded field offset without changing the
+compiled function. Import must fail even after recomputing the contract hash.
+Pair it with a warning: change only a well-formed experimental fingerprint;
+validated payloads continue, with one warning per rule and bundle.
+
 ## Implementation baseline and release criteria
 
 The compiler currently has portable declaration keys, C ABI lowering, serialized
@@ -28,14 +47,14 @@ Other relevant code is in `src/semantic_analysis/portable_declaration_key.cpp`,
 `src/codegen/abi/`, `include/moon_bundling/moon.proto`, and
 `src/moon_bundling/module_linker.cpp`. See [Code Generation](/architecture/codegen).
 
-| Subject | Level | Requirement |
+| Minimal example | Level | Requirement |
 | --- | --- | --- |
-| Stable revision | MUST NOT | Declare stability before supported targets, all reachable type categories, call lowering, ownership, symbols, and runtime contracts have precise definitions and compatibility tests. |
-| Unsupported categories | MUST | Reject them with a diagnostic. |
-| Historical artifacts | MUST | Test real artifacts built by older compiler releases. Rebuilding both sides with the new compiler does not test compatibility with old output. |
-| ABI changes | MUST | Detect changes through generated contracts and regression checks. An unchanged version number is insufficient. |
-| Passing tests | MUST NOT | Override an unsupported contract. |
-| Stable behavior | MUST | Specify stable semantic rules instead of relying on hashes of compiler implementation files. |
+| A scalar call passes, but closure cleanup is still unspecified. | MUST NOT | Declare stability before supported targets, all reachable type categories, call lowering, ownership, symbols, and runtime contracts have precise definitions and compatibility tests. |
+| A bundle needs a call representation the consumer cannot lower. | MUST | Reject the unsupported representation with a diagnostic. |
+| Today’s compiler imports the exact geometry bundle saved last year. | MUST | Test real artifacts built by older compiler releases. Rebuilding both sides with the new compiler does not test compatibility with old output. |
+| A field moves even though the release version stays unchanged. | MUST | Detect changes through generated contracts and regression checks. An unchanged version number is insufficient. |
+| A smoke test passes, but a required runtime service is unavailable. | MUST NOT | Override an unsupported contract. |
+| A source refactor changes a fingerprint without changing defined calls. | MUST | Specify stable semantic rules instead of relying on hashes of compiler implementation files. |
 
 ## Required test coverage
 
@@ -43,41 +62,44 @@ The suite must cover every row below. Source-recompilation cases apply when that
 optional feature is supported. Saved layout and signature fixtures
 supplement executable tests.
 
-| Area | Level | Cases |
+| Minimal test | Level | Cases |
 | --- | --- | --- |
-| Dependency graphs | MUST | Old producer with new consumer; transitive and diamond dependencies; inherited requirements folded into one bundle contract. |
-| Bundle acceptance | MUST | Reject a complete bundle if an embedded dependency needs unsupported behavior, even when the consumer supports the outer producer’s own code. Accept supported bundles without per-artifact compatibility manifests. |
-| Values and calls | MUST | Scalar and aggregate arguments and returns, enums, arrays, and alignment. |
-| Indirect calls | MUST | Closures, interface methods, and callback ownership. |
-| Cleanup | MUST | Moves, destruction counts, allocation/free pairing, and exceptional cleanup. |
-| Generics | MUST | Old bodies with new concrete types; precompiled specializations; rejection of conflicting specializations. |
-| Runtime | MUST | Global initialization, shared state, and supported error propagation. |
-| Unsupported inputs | MUST | Reject incompatible targets, formats, ABI revisions, and capabilities. |
-| Toolchain changes | MUST | Supported optimization levels and LLVM upgrades for each target profile. |
-| Age warnings | MUST | Warn once per older compatible imported bundle, including diamond imports; do not require warnings for embedded artifacts. |
-| Failed validation | MUST | Exit with a nonzero status when a compiled dependency is unsupported and no selected source rebuild succeeds and passes validation. |
-| Producer ordering | MUST | Newer compatible producers and divergent development-build histories. |
-| Forward and backward imports | MUST | Test newer consumers with old artifacts and retained older readers with new bundles using supported rules. |
-| Optional extensions | MUST | Accept unknown skippable fields, preserve omitted-field defaults, and reject unknown required semantics. |
-| Unrelated additions | MUST | Preserve a bundle's compiled contract when adding unused compiler or runtime features, diagnostic metadata, or optional source. |
-| Shared runtime support | MUST | Test old service interfaces implemented by current code or adapters without duplicating process-wide state. |
-| Contract changes | MUST | Detect structural and semantic changes without manual version bumps; preserve unaffected contracts after unrelated changes. |
-| Cached results | MUST | Invalidate after contract, target, artifact, or relevant option changes. |
-| Legacy support | MUST | Missing bundle contracts and retained implementations of complete old bundle contracts. |
-| Optional source embedding | MUST | Test bundles with and without source, private implementations, initializers, embedded dependencies, and missing build inputs. |
-| Consumer recompilation | MUST | Test explicit rebuilding of compatible bundles, selected fallback for unsupported compiled contracts, and no rebuild when source is merely present. |
-| Rebuilt artifacts | MUST | Test new identities and contracts, rebuilding dependent code when needed, retained native binary checks, and rebuild-cache invalidation. |
-| Source failures | MUST | Reject unsupported source semantics and incomplete rebuilds; never use an unsupported original payload after a failed rebuild. |
+| `app → left/right → geometry` reaches the same library twice. | MUST | Old producer with new consumer; transitive and diamond dependencies; inherited requirements folded into one bundle contract. |
+| Geometry embeds math code requiring an unsupported runtime service. | MUST | Reject a complete bundle if an embedded dependency needs unsupported behavior, even when the consumer supports the outer producer’s own code. Accept supported bundles without per-artifact compatibility manifests. |
+| Pass a rectangle across the boundary and check its returned area. | MUST | Scalar and aggregate arguments and returns, enums, arrays, and alignment. |
+| Call the same operation directly, through an interface, and through a closure. | MUST | Closures, interface methods, and callback ownership. |
+| Move one resource across the call; count exactly one destruction. | MUST | Moves, destruction counts, allocation/free pairing, and exceptional cleanup. |
+| Instantiate a saved old generic body for a new aligned element type. | MUST | Old bodies with new concrete types; precompiled specializations; rejection of conflicting specializations. |
+| Two dependency paths share one initialized counter. | MUST | Global initialization, shared state, and supported error propagation. |
+| Import AArch64 code into an x86-64 program. | MUST | Reject incompatible targets, formats, ABI revisions, and capabilities. |
+| Run the same saved bundle with different optimization settings. | MUST | Supported optimization levels and LLVM upgrades for each target profile. |
+| Import the same older bundle twice; count one age warning. | MUST | Warn once per older compatible imported bundle, including diamond imports; do not require warnings for embedded artifacts. |
+| Change only an experimental fingerprint, then import the same bundle twice. | MUST | Continue after payload and ABI validation and emit one warning per rule and bundle. A concrete mismatch must still fail before warning. |
+| A bad field offset fails import and produces no successful executable. | MUST | Exit with a nonzero status when a compiled dependency is unsupported and no selected source rebuild succeeds and passes validation. |
+| Use bundles from two divergent development branches. | MUST | Newer compatible producers and divergent development-build histories. |
+| An older reader imports new output using only its supported rules. | MUST | Test newer consumers with old artifacts and retained older readers with new bundles using supported rules. |
+| Add a skippable label, then separately add a required unknown capability. | MUST | Accept unknown skippable fields, preserve omitted-field defaults, and reject unknown required semantics. |
+| Add an unused calling convention; keep the old library contract. | MUST | Preserve a bundle's compiled contract when adding unused compiler or runtime features, diagnostic metadata, or optional source. |
+| An old allocation call uses an adapter and the same process allocator. | MUST | Test old service interfaces implemented by current code or adapters without duplicating process-wide state. |
+| Change a layout rule, then separately change only a diagnostic. | MUST | Detect structural and semantic changes without manual version bumps; preserve unaffected contracts after unrelated changes. |
+| Validate for x86-64, then request AArch64 in the same process. | MUST | Invalidate after contract, target, artifact, or relevant option changes. |
+| Read a saved bundle with no contract using a supported legacy decoder, if one exists. | MUST | Missing bundle contracts and retained implementations of complete old bundle contracts. |
+| Remove a private implementation from an otherwise complete source package. | MUST | Test bundles with and without source, private implementations, initializers, embedded dependencies, and missing build inputs. |
+| Select an explicit rebuild, then import the same package without that selection. | MUST | Test explicit rebuilding of compatible bundles, selected fallback for unsupported compiled contracts, and no rebuild when source is merely present. |
+| Rebuild geometry while another bundle still references its original artifact. | MUST | Test new identities and contracts, rebuilding dependent code when needed, retained native binary checks, and rebuild-cache invalidation. |
+| A selected rebuild fails because its generated header is missing. | MUST | Reject unsupported source semantics and incomplete rebuilds; never use an unsupported original payload after a failed rebuild. |
 
-## Suggested implementation sequence
+## Work still needed for a stable promise
 
-1. Audit current representations and runtime calls; choose initial targets.
-2. Specify layout and calling-convention algorithms.
-3. Centralize Sun lowering and add layout and signature fixtures.
-4. Generate one contract and hash per bundle; implement validation, warnings, and errors.
-5. Define generic compatibility and preserve imported layouts.
-6. Add archived cross-version fixtures and publish the supported-contract inventory.
-7. Declare a stable revision after meeting the release criteria.
+Start from the saved rectangle test and extend it to every supported boundary:
+closures must call the right function, moved resources must be destroyed once,
+and generic specializations must retain their referenced declarations. Each case
+needs a specified rule as well as a test. The current contract and validation
+implementation does not by itself finish those specifications.
+
+Add successful historical imports and publish the supported-contract inventory
+before declaring a stable revision. The [implementation page](/abi/implementation)
+lists remaining checks; passing today’s tests alone is not a stability promise.
 
 Library replacement, layouts that can change without recompiling consumers, and
 runtime type-erased generics remain separate proposals. Swift's

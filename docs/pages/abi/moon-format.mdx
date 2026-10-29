@@ -15,6 +15,17 @@ does not yet specify every byte needed to implement a reader or writer.
 
 ## Current container structure
 
+For a small geometry library, picture the file as:
+
+```text
+[header][geometry bitcode][optional native archive][MoonLibrary protobuf]
+                                                   ↑ header points here
+```
+
+A module record points back to its bitcode bytes. Two module records can point
+to exactly the same image; this does not require storing that image twice.
+The table below is a byte-layout reference for that picture.
+
 The container contains a small header, compiled payload bytes, and one
 `MoonLibrary` protobuf. The library record owns the module and archive indexes;
 there are no separate custom index tables. Several modules may reference the
@@ -39,6 +50,10 @@ A matching container revision does not authorize semantic import: compatibility
 validation still precedes use of declarations or compiled code.
 
 ## Library record
+
+Suppose the header points to the final protobuf correctly, but a module claims
+its bitcode extends beyond the file. The reader must reject that range before
+trying to decode it. A correct outer header does not validate every inner record.
 
 `include/moon_bundling/moon.proto` defines the following structure:
 
@@ -73,6 +88,11 @@ stable ABI support.
 
 ## Module metadata
 
+For `area(Rectangle)`, metadata tells the importer about the function and its
+rectangle declaration; bitcode holds the compiled body. A retained generic body
+may additionally name a private helper, so that helper’s identity must remain
+available even though application source cannot name it.
+
 `include/moon_bundling/moon.proto` defines the current protobuf metadata, reusing
 AST schemas. It carries module names and visibility, declaration records and
 portable references, artifact identities, dependencies, target triple, static
@@ -90,6 +110,19 @@ see [generic semantics](/abi/generics).
 
 ## Optional complete source
 
+Imagine these rebuild inputs (illustrative filenames):
+
+```text
+geometry.sun        public entrypoint
+rectangle.sun       private implementation
+init.sun            global initialization
+shape_data.sun      generated input, or a reproducible recipe to generate it
+```
+
+Embedding only `geometry.sun` is not complete source. A consumer rebuilding for
+another target needs the private implementation and initialization too. This
+source-packaging feature is proposed, not an existing rebuild guarantee.
+
 A producer may embed all source code so a consumer can choose to rebuild the
 bundle with its own compiler and target settings. This can make a library usable
 when its existing compiled contract is unsupported. Source embedding and consumer
@@ -103,21 +136,26 @@ understands the recorded source language and can satisfy external requirements.
 Recompilation does not promise that arbitrary future compilers accept old source
 or produce identical behavior.
 
-| Subject | Level | Requirement when offering complete source recompilation |
+| Minimal example | Level | Requirement when offering complete source recompilation |
 | --- | --- | --- |
-| Source coverage | MUST | Include all source needed to rebuild the claimed scope, including private code, initializers, and embedded dependency code. Identify any binary-only components rather than describe them as rebuildable. |
-| Build inputs | MUST | Record source language versions, module paths, exact dependency identities, relevant build settings, generated inputs or their reproducible generation recipe, resources, and required external tools or libraries. |
-| Source selection | MUST | Let the consumer choose recompilation, including when the existing compiled contract is supported. |
-| Import behavior | MUST NOT | Recompile merely because source is present. A consumer may explicitly configure recompilation as a fallback after compiled-contract rejection. |
-| Source validation | MUST | Check source and build requirements independently of the old compiled ABI. Reject missing inputs or unsupported source semantics with a clear error. |
-| Native components | MUST | Rebuild native components when their source and toolchain are available, or check the compatibility of any retained binaries. |
-| Build result | MUST | Produce a distinct artifact with one newly generated bundle contract and hash covering rebuilt code and any retained binaries. Preserve the original bundle. |
+| A public wrapper calls a private helper that was omitted from the source package. | MUST | Include all source needed to rebuild the claimed scope, including private code, initializers, and embedded dependency code. Identify any binary-only components rather than describe them as rebuildable. |
+| The library needs a generated file and an exact external dependency. | MUST | Record source language versions, module paths, exact dependency identities, relevant build settings, generated inputs or their reproducible generation recipe, resources, and required external tools or libraries. |
+| The caller explicitly chooses to rebuild an otherwise compatible library. | MUST | Let the consumer choose recompilation, including when the existing compiled contract is supported. |
+| The bundle contains source, but the caller chooses its compiled payload. | MUST NOT | Recompile merely because source is present. A consumer may explicitly configure recompilation as a fallback after compiled-contract rejection. |
+| A required source-language feature or generated input is unavailable. | MUST | Check source and build requirements independently of the old compiled ABI. Reject missing inputs or unsupported source semantics with a clear error. |
+| Sun code rebuilds for AArch64, but its retained archive is x86-64. | MUST | Rebuild native components when their source and toolchain are available, or check the compatibility of any retained binaries. |
+| Rebuilding geometry produces new code with a new contract. | MUST | Produce a distinct artifact with one newly generated bundle contract and hash covering rebuilt code and any retained binaries. Preserve the original bundle. |
 
 The source-package encoding, build-description schema, and consumer options remain
 to be specified. Source files and build metadata do not introduce per-artifact ABI
 contracts; the resulting compiled bundle still has one contract.
 
 ## Dependency and native archive handling
+
+If geometry embeds math revision A, installing math revision B alongside it does
+not replace the already embedded instructions. Similarly, isolating two archives’
+symbol names prevents a name collision; it does not make their allocators
+interchangeable.
 
 Current bundles include linked bitcode from compiled dependencies. The dependency
 list is not a dynamic-loader instruction to replace that code with the newest
@@ -132,6 +170,16 @@ part of the [runtime](/abi/runtime) and [ownership](/abi/ownership) contracts.
 
 ## Bundle producer and compatibility contract
 
+```text
+geometry.moon
+  artifact identity: which exact library implementation is this?
+  bundle contract:   what does all its compiled code require?
+  producer metadata: which compiler built it?
+```
+
+Changing a producer label alone does not change the required layouts or calls.
+Changing an embedded dependency’s required runtime behavior does.
+
 The metadata stores one [bundle contract hash](/abi/compatibility#computed-abi-hashes)
 and the information needed to derive its complete contract. Existing type,
 declaration, and target metadata can supply part of that description. The experimental schema is `include/abi/compatibility.proto`, referenced once
@@ -141,45 +189,54 @@ same protobuf (`native_link_symbols`) as diagnostic metadata, excluded from the
 compatibility hash and import authorization. Embedded dependency diagnostics are
 retained; no per-archive compatibility hash is introduced.
 
-| Subject | Level | Requirement |
+| Minimal example | Level | Requirement |
 | --- | --- | --- |
-| Bundle contract | MUST | Cover the bundle's code, generic bodies, and all embedded dependency requirements with one contract and hash. |
-| Producer metadata | MUST | Store the bundle producer's build identity and ordering separately from the contract. |
-| Embedded dependencies | MUST NOT | Require separate compatibility manifests, hashes, or compiler-age metadata for embedded artifacts. |
-| Dependency identity | MUST | Preserve exact identities and references needed by declarations and generic bodies. |
+| Geometry embeds math code requiring an extra runtime service. | MUST | Cover the bundle's code, generic bodies, and all embedded dependency requirements with one contract and hash. |
+| Only the recorded compiler build name changes. | MUST | Store the bundle producer's build identity and ordering separately from the contract. |
+| Three embedded libraries are described by the outer bundle’s contract. | MUST NOT | Require separate compatibility manifests, hashes, or compiler-age metadata for embedded artifacts. |
+| An old generic refers to a helper from one exact artifact. | MUST | Preserve exact identities and references needed by declarations and generic bodies. |
 
 The [compatibility procedure](/abi/compatibility#automatic-compatibility-decision)
 accepts or rejects the complete bundle contract. Older compatible bundles produce
-warnings. Unsupported or unverifiable contracts reject use of the compiled
-payload. If the consumer selects source recompilation, it validates the rebuilt
+warnings. Differing experimental compiler fingerprints also warn after validation.
+Unsupported required contracts and concrete mismatches reject the compiled payload. If the consumer selects source recompilation, it validates the rebuilt
 artifact instead. The producer's version does not authorize an import.
 
 ## Proposed encoding requirements
+
+Compare two new fields: an optional build label can be skipped without changing
+execution; a new required interpretation of a generic operation cannot. The
+schema must distinguish those cases rather than reject every unfamiliar field
+or accept all of them.
 
 The proposed encoding uses fixed-width little-endian container integers,
 byte-counted UTF-8 text, and defined offsets. Current files do not yet follow
 this proposal. Target payload byte order is a separate property.
 
-| Subject | Level | Requirement |
+| Minimal example | Level | Requirement |
 | --- | --- | --- |
-| Wire encoding | MUST | Define an encoding independent of C++ padding and producer host byte order. |
-| Format specification | MUST | Define header bytes, existing indexes, bundle metadata fields, shared ranges, strings, resource limits, and integrity checks. |
-| Capabilities | MUST | Provide a way to mark required capabilities without making every unknown field mandatory. |
-| Optional extensions | MUST | Use tagged, skippable metadata fields with stable defaults. Older readers may ignore an unknown optional field only when doing so leaves import and execution behavior unchanged. |
-| Required extensions | MUST | Mark new semantics as required when ignoring them would change interpretation or behavior. Readers that cannot satisfy those requirements must reject the bundle. |
-| Field identity | MUST NOT | Reuse a field identifier for a different meaning or change an existing field's meaning. |
-| Format revisions | MUST NOT | Require a new container revision solely for additive optional metadata that existing readers can safely skip. |
-| Optional source | MUST | Allow compiled-code consumers to skip an unsupported optional source package without changing the compiled contract. |
-| Language features | MUST | Reject unknown required features under the generic semantics contract. |
-| Lengths and counts | MUST | Validate them before allocation. |
-| Ranges and references | MUST | Check ranges without integer overflow; reject truncation, invalid references, and conflicting duplicate identities. |
-| Overlapping records | MUST NOT | Accept arbitrary overlap between unrelated records. Shared bitcode ranges are allowed; exact overlap rules still need a specification. |
-| Artifact identity | MUST NOT | Treat build-input identity as a checksum of serialized bytes. |
-| Integrity digests | MUST | Define payload-integrity digests separately from artifact identity. |
+| A reader on another host must interpret the same header integers. | MUST | Define an encoding independent of C++ padding and producer host byte order. |
+| A reader needs to know whether a length counts bytes or entries. | MUST | Define header bytes, existing indexes, bundle metadata fields, shared ranges, strings, resource limits, and integrity checks. |
+| An unknown debug label differs from an unknown required call rule. | MUST | Provide a way to mark required capabilities without making every unknown field mandatory. |
+| An older reader skips an added diagnostic label. | MUST | Use tagged, skippable metadata fields with stable defaults. Older readers may ignore an unknown optional field only when doing so leaves import and execution behavior unchanged. |
+| Ignoring a new field would change how a generic body is interpreted. | MUST | Mark new semantics as required when ignoring them would change interpretation or behavior. Readers that cannot satisfy those requirements must reject the bundle. |
+| A field formerly storing a name must not start storing a layout. | MUST NOT | Reuse a field identifier for a different meaning or change an existing field's meaning. |
+| A producer adds only a safely skippable diagnostic field. | MUST NOT | Require a new container revision solely for additive optional metadata that existing readers can safely skip. |
+| A compiled-code reader does not understand the embedded source format. | MUST | Allow compiled-code consumers to skip an unsupported optional source package without changing the compiled contract. |
+| An old generic reader encounters a required unknown operation. | MUST | Reject unknown required features under the generic semantics contract. |
+| A tiny file claims to contain billions of module records. | MUST | Validate them before allocation. |
+| A payload begins inside the file but ends past its last byte. | MUST | Check ranges without integer overflow; reject truncation, invalid references, and conflicting duplicate identities. |
+| Two modules share exactly one bitcode image; an archive overlaps only half of it. | MUST NOT | Accept arbitrary overlap between unrelated records. Shared bitcode ranges are allowed; exact overlap rules still need a specification. |
+| An input hash stays fixed while serialized output bytes are corrupted. | MUST NOT | Treat build-input identity as a checksum of serialized bytes. |
+| Check the actual payload bytes independently of the build-input identity. | MUST | Define payload-integrity digests separately from artifact identity. |
 
 A digest does not prove that an untrusted producer followed Sun's safety rules.
 
 ## Import validation order
+
+For the geometry file, validate its byte ranges before reading its declarations,
+then validate those declarations and its payload before `app` uses them. Reading
+the file must not run geometry’s startup code as a side effect.
 
 For compiled-code imports, the proposed reader performs these checks before
 generated code uses the bundle:
@@ -191,34 +248,33 @@ generated code uses the bundle:
 5. Validate imported declarations, layouts, and signatures under that contract before lowering dependent code.
 6. Load or link supported payloads and specialize supported generic bodies.
 
-| Subject | Level | Requirement |
+| Minimal example | Level | Requirement |
 | --- | --- | --- |
-| Validation timing | MUST | Complete the checks above before using the compiled bundle. For selected source recompilation, validate the source inputs and resulting artifact before use. Lazy loading must reject incompatible data before use. |
-| Parsing | MUST NOT | Run startup code merely because the container is being parsed. |
+| Lazy loading must validate a function before its first use. | MUST | Complete the checks above before using the compiled bundle. For selected source recompilation, validate the source inputs and resulting artifact before use. Lazy loading must reject incompatible data before use. |
+| Listing module names must not execute library initializers. | MUST NOT | Run startup code merely because the container is being parsed. |
 
 ## Format decisions still required
 
 - Exact byte-level specification and migration from native header encoding.
-- Placement and encoding of the single bundle contract, its hash, and producer metadata.
 - Bounds, resource limits, overlap rules, and integrity coverage.
 - Whether future bundles carry native Sun objects, optional bitcode, or both.
 - Stable field identifiers, extension defaults, older readers, and supported revision lifetimes.
 - Versioned interface and generic-body schemas with reference validation.
 - Optional source-package encoding, completeness rules, build descriptions, and consumer recompilation options.
 
-| Subject | Level | Required tests |
+| Minimal example | Level | Required tests |
 | --- | --- | --- |
-| Historical bundles | MUST | Retain old artifacts in the [conformance suite](/abi/conformance). |
-| Container validation | MUST | Cover malformed offsets, overflowing lengths, truncation, shared blobs, duplicate records, unknown capabilities, and unsupported payloads. |
+| Keep a saved old bundle instead of rebuilding it with today’s compiler. | MUST | Retain old artifacts in the [conformance suite](/abi/conformance). |
+| Truncate a valid file, then try an overflowing payload length. | MUST | Cover malformed offsets, overflowing lengths, truncation, shared blobs, duplicate records, unknown capabilities, and unsupported payloads. |
 
 ## Compiled payloads
 
 Moon currently carries LLVM bitcode, declarations, and generic bodies. The initial
 design can keep this model.
 
-| Subject | Level | Requirement |
+| Minimal example | Level | Requirement |
 | --- | --- | --- |
-| Payload compatibility | MUST | Cover bitcode reader compatibility, Sun ABI compatibility, and generic semantics in the single bundle contract; matching one alone is insufficient. |
+| LLVM reads the module, but its Sun signature disagrees with the metadata. | MUST | Cover bitcode reader compatibility, Sun ABI compatibility, and generic semantics in the single bundle contract; matching one alone is insufficient. |
 
 LLVM's backward bitcode compatibility helps newer consumers load older code;
 it does not define Sun layouts or permit older readers to consume arbitrary

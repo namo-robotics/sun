@@ -5,19 +5,31 @@ of current releases. Open decisions must be resolved before stabilization.
 
 ## Ownership, borrowing, and allocation
 
+Suppose `app` moves an owned file into a library operation:
+
+```text
+before transfer: app is responsible for closing the file
+successful move: library is responsible; app no longer owns it
+destruction:     the file is closed once
+```
+
+Closing it on both sides is a bug; closing it on neither side leaks the resource.
+The calling contract must also say who cleans up if the call fails during transfer.
+This example describes ownership, not an implicit copy operation.
+
 Moving bits does not grant permission to copy ownership. Destroying a value and
 freeing its storage are separate operations.
 
-| Subject | Level | Requirement |
+| Minimal example | Level | Requirement |
 | --- | --- | --- |
-| Copies | MUST NOT | Introduce implicit Sun copies across a compiled boundary. |
-| Ownership transfer | MUST | Leave exactly one owner responsible for cleanup after a successful transfer. |
-| Failed calls | MUST | Define the transfer point and cleanup responsibility if argument evaluation, construction, or the call fails. |
-| Partial initialization | MUST | Destroy only the parts that were initialized. |
-| Borrow metadata | MUST | Preserve mutability, lifetime relationships, and aliasing constraints needed for safety checks. A machine pointer alone is insufficient. |
-| Borrow optimization | MUST NOT | Give the producer and consumer conflicting optimizer assumptions about the same borrowed storage. |
-| Deallocation | MUST | Use a compatible deallocation operation with the required alignment and allocator state. |
-| Runtime lifetime | MUST | Keep destruction and deallocation services available for the allocation's lifetime. |
+| Passing one owned file must not produce two independent owners. | MUST NOT | Introduce implicit Sun copies across a compiled boundary. |
+| After moving a file to the library, only the library closes it. | MUST | Leave exactly one owner responsible for cleanup after a successful transfer. |
+| A second argument fails to initialize after the first was moved. | MUST | Define the transfer point and cleanup responsibility if argument evaluation, construction, or the call fails. |
+| Constructing field B fails after field A succeeded. | MUST | Destroy only the parts that were initialized. |
+| A library returns a reference tied to an argument lifetime. | MUST | Preserve mutability, lifetime relationships, and aliasing constraints needed for safety checks. A machine pointer alone is insufficient. |
+| One side assumes a reference is exclusive while the other aliases it. | MUST NOT | Give the producer and consumer conflicting optimizer assumptions about the same borrowed storage. |
+| Memory from allocator A is incorrectly returned to allocator B. | MUST | Use a compatible deallocation operation with the required alignment and allocator state. |
+| A value still needs its destructor after its creating component shuts down. | MUST | Keep destruction and deallocation services available for the allocation's lifetime. |
 
 For example, `Unique<T>` currently stores a pointer, destroys `T`, and then calls
 `_free`. It stores no allocator identity. Passing it across a boundary requires

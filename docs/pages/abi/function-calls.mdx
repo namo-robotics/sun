@@ -5,26 +5,37 @@ of current releases. Open decisions must be resolved before stabilization.
 
 ## Function calls
 
-Signature lowering translates a Sun function signature into machine arguments,
-results, and calling rules.
+Suppose `area` takes a rectangle and returns an integer. These are illustrative
+calling rules, not a chosen Sun calling convention:
 
-| Subject | Level | Requirement |
+```text
+caller: puts rectangle fields into two argument registers
+callee: expects a pointer to rectangle storage
+result: the callee interprets a field value as an address; reject the mismatch
+```
+
+Both sides knowing the fields is insufficient: they must agree on how the fields
+reach the function. This translation is called signature lowering.
+
+| Minimal example | Level | Requirement |
 | --- | --- | --- |
-| Shared procedure | MUST | Use one defined lowering procedure for definitions, declarations, direct and indirect calls, interface methods, callbacks, and returns. |
-| Argument order | MUST | Specify the order of parameters, including receivers, closure arguments, and result-storage arguments. |
-| Scalars | MUST | Specify scalar extension rules and Boolean handling. |
-| Aggregates | MUST | Specify whether each value is passed directly, split into scalars, or passed through storage. |
-| Indirect storage | MUST | Specify alignment and aliasing rules for arguments and results. |
-| Empty values and parameter packs | MUST | Specify how empty parameters and results are passed and how specialized parameter packs expand. |
-| Ownership | MUST | Define ownership and lifetimes on normal and exceptional exits, including who owns caller-provided storage. |
-| Target convention | MUST | Specify the calling convention and all function attributes that affect the ABI. |
-| Indirect passing | MUST NOT | Introduce an implicit Sun copy or a hidden heap allocation. |
+| A direct call and a callback invoke the same `area` function. | MUST | Use one defined lowering procedure for definitions, declarations, direct and indirect calls, interface methods, callbacks, and returns. |
+| The caller sends `(width, height)`; the callee must not read `(height, width)`. | MUST | Specify the order of parameters, including receivers, closure arguments, and result-storage arguments. |
+| A small signed integer must arrive with the same sign. | MUST | Specify scalar extension rules and Boolean handling. |
+| A rectangle is passed as fields or through a storage pointer. | MUST | Specify whether each value is passed directly, split into scalars, or passed through storage. |
+| The caller provides the memory where the result is written. | MUST | Specify alignment and aliasing rules for arguments and results. |
+| Specializing a parameter pack produces three arguments. | MUST | Specify how empty parameters and results are passed and how specialized parameter packs expand. |
+| A moved resource is returned or destroyed after a failed call. | MUST | Define ownership and lifetimes on normal and exceptional exits, including who owns caller-provided storage. |
+| The caller and callee disagree about which register holds the result. | MUST | Specify the calling convention and all function attributes that affect the ABI. |
+| Passing an argument by address must not secretly clone or heap-allocate it. | MUST NOT | Introduce an implicit Sun copy or a hidden heap allocation. |
 
 ## Proposed implementation
 
-Add a Sun signature-lowering layer alongside the C ABI layer. Describe the Sun
-passing rules first, then translate them into LLVM types and attributes.
-Caller-provided storage can hold a moved argument or return value.
+The implementation shares Sun call descriptors with ABI validation; this draft
+still needs the stable rules those descriptors promise. For example, if `area`
+uses caller-provided storage, both the call emitter and the checker must agree
+on its alignment and ownership. An LLVM structure type alone does not settle
+those choices.
 
 ## Open decisions
 

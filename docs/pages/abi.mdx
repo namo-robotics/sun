@@ -8,7 +8,23 @@ import { Callout } from 'nextra/components'
   this draft.
 </Callout>
 
-Requirements appear in tables throughout these pages:
+Start with a program importing a library:
+
+```text
+geometry.moon: compiled by an older Sun compiler, provides area(Rectangle)
+app:           compiled today, calls that function
+```
+
+The ABI is the agreement that lets the call work: where rectangle fields live,
+how the argument is passed, who owns its resources, and how the result returns.
+If one side reads a different field offset, the call can return the wrong value
+even though both sides use the name `Rectangle`.
+
+The pages below change one part of this example at a time. Text diagrams are
+schematic, not executable Sun syntax or chosen machine layouts. For runnable
+examples, use [ABI Examples](/abi/examples).
+
+Requirements appear beside their examples. Their levels mean:
 
 | Level | Meaning |
 | --- | --- |
@@ -34,17 +50,17 @@ platform C ABI; a stable Sun ABI does not make arbitrary C calls safe.
 
 | Scenario | Proposed behavior |
 | --- | --- |
-| New compiler imports an older supported bundle | Warn and continue when contract checks pass. |
-| Old compiler imports a newer bundle | Accept only if it supports the required formats, semantics, ABI, and capabilities. |
-| Library is rebuilt with changed code or API | Treat it as a distinct artifact; replacement compatibility is not promised. |
-| Library is replaced beneath an existing executable | Outside the initial guarantee. |
-| Bundle targets another architecture or platform ABI | Use a compatible payload, or rebuild from complete source when selected and supported; otherwise reject. |
-| Consumer selects recompilation from embedded source | Build a new artifact and validate its contract; source and build requirements still apply. |
-| Future compiler imports a historical bundle | Support is limited to published supported revisions. |
+| Today’s compiler imports the saved `geometry.moon`. | Warn and continue when contract checks pass. |
+| An older compiler reads a newly built geometry library using only familiar rules. | Accept only if it supports the required formats, semantics, ABI, and capabilities. |
+| Geometry is rebuilt after its constructor changes. | Treat it as a distinct artifact; replacement compatibility is not promised. |
+| Someone swaps a library without rebuilding the installed application. | Outside the initial guarantee. |
+| An x86-64 app tries to import an AArch64 library. | Use a compatible payload, or rebuild from complete source when selected and supported; otherwise reject. |
+| The caller selects a rebuild of geometry for its own target. | Build a new artifact and validate its contract; source and build requirements still apply. |
+| A future compiler reads a geometry bundle saved today. | Support is limited to published supported revisions. |
 
-Compiler compatibility means accepting code built by another compiler version.
-Library evolution is a separate promise: changing a library while keeping it
-compatible with programs already compiled against it.
+Keeping the same geometry bundle while upgrading the compiler tests compiler
+compatibility. Changing geometry while keeping an already compiled application
+tests library evolution. The latter needs additional guarantees.
 
 | Subject | Level | Requirement |
 | --- | --- | --- |
