@@ -45,6 +45,12 @@ implementations and precompiled specialization symbols retain exact identities;
 ordinary compiled body changes do not affect nominal correspondence. Retained
 generic body changes do affect the semantic contract.
 
+The shipped libraries use persistent IDs `sun/stdlib`, `sun/tls`, and `sun/cuda`.
+Their target variants share the same ID; target compatibility is checked
+separately. These IDs do not change when rebuilding or releasing.
+Existing bundles must be rebuilt to record the IDs and dependency ABI metadata;
+adding an ID to source does not update an already compiled bundle.
+
 Libraries without this metadata keep exact dependency behavior. The
 [identity example](/abi/examples) exercises a compatible constructor revision
 and an incompatible layout revision.

@@ -15,6 +15,12 @@
 /** Keeps process-environment fixtures local to these tests. */
 namespace {
 
+/** Flushes LLVM output before redirecting stdout for an isolated assertion. */
+void captureStdout() {
+  llvm::outs().flush();
+  testing::internal::CaptureStdout();
+}
+
 /** Restores an environment variable after a test changes it. */
 class ScopedEnvironment {
  public:
@@ -166,7 +172,9 @@ TEST(Tooling_Cli_Terminal, multiline_warnings_are_prefixed) {
 TEST(Tooling_Cli_Terminal, default_level_is_info) {
   ScopedEnvironment level("SUN_LOG_LEVEL", nullptr);
   ScopedEnvironment noColor("NO_COLOR", "1");
-  testing::internal::CaptureStdout();
+  // Earlier tests can leave messages in LLVM's buffer when stdout is redirected.
+  llvm::outs() << "output before capture\n";
+  captureStdout();
   testing::internal::CaptureStderr();
   sun::support::logMessage("info", "progress");
   sun::support::logMessage("warning", "warning");
@@ -182,7 +190,7 @@ TEST(Tooling_Cli_Terminal, default_level_is_info) {
 TEST(Tooling_Cli_Terminal, info_level_restores_progress) {
   ScopedEnvironment level("SUN_LOG_LEVEL", "info");
   ScopedEnvironment noColor("NO_COLOR", "1");
-  testing::internal::CaptureStdout();
+  captureStdout();
   sun::support::logMessage("info", "progress");
   llvm::outs().flush();
   EXPECT_EQ(testing::internal::GetCapturedStdout(), "[sun][info]: progress\n");
