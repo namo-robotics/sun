@@ -406,7 +406,16 @@ jobs:
 
       - name: Configure
         run: |
+          # Bound compiler and test concurrency to half the available cores.
+          test_jobs=$(($(nproc) / 2))
+          if [ "$test_jobs" -lt 1 ]; then test_jobs=1; fi
+          echo "SUN_CI_JOBS=$test_jobs" >> "$GITHUB_ENV"
+          # Optimize the compiler under test without disabling C/C++ assertions.
           cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_FLAGS_RELWITHDEBINFO="-O2 -g" \
+            -DCMAKE_CXX_FLAGS_RELWITHDEBINFO="-O2 -g" \
+            -DSUN_TEST_SHARDS="$((test_jobs * 2))" \
             -DCMAKE_C_COMPILER=clang-20 \
             -DCMAKE_CXX_COMPILER=clang++-20 \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
@@ -414,7 +423,7 @@ jobs:
             -DSUN_ENABLE_CUDA=ON -DSUN_CUDA_REQUIRE_GPU=OFF
 
       - name: Build
-        run: cmake --build build -j$(($(nproc)/2))
+        run: cmake --build build -j"$SUN_CI_JOBS"
 
       - name: Package compiler and standard library for GPU tests
         run: |
@@ -440,27 +449,20 @@ jobs:
 
       - name: Test
         run: |
-          cd build
-          ctest -j$(($(nproc)/2)) --output-on-failure
+          # The fast Sun suites run in their own visible steps below.
+          ctest --test-dir build -j"$SUN_CI_JOBS" --output-on-failure \
+            -E '^(stdlib_sun_tests|tls_sun_tests)$'
         env:
           SUN_PATH: ${{ github.workspace }}
 
       - name: Run stdlib Sun tests
-        # The stdlib's own suite (stdlib/std/**/*_tests.sun), AOT-compiled to
-        # build/stdlib_tests_test by the CMake build. ctest above already runs
-        # it as one entry and hides its output on success; this step runs it
-        # again so every test's PASS/FAIL line is in the log, and fails
-        # loudly if the binary was never built. Sequential, as in ctest: the
-        # env and cwd tests change process-wide state.
+        # Sequential: environment and cwd tests change process-wide state.
         run: |
           test -x build/stdlib_tests_test
           build/stdlib_tests_test --test-sequential
 
       - name: Run tls Sun tests
-        # The tls bundle's suite (tls/*_tests.sun), AOT-compiled to
-        # build/tls_tests_test alongside tls.moon. Same visible rerun as the
-        # stdlib's; sequential because the handshake tests set SSL_CERT_FILE,
-        # which is process-wide.
+        # Sequential: handshake tests change SSL_CERT_FILE process-wide.
         run: |
           test -x build/tls_tests_test
           build/tls_tests_test --test-sequential
@@ -548,7 +550,16 @@ jobs:
 
       - name: Configure
         run: |
+          # Bound compiler and test concurrency to half the available cores.
+          test_jobs=$(($(sysctl -n hw.logicalcpu) / 2))
+          if [ "$test_jobs" -lt 1 ]; then test_jobs=1; fi
+          echo "SUN_CI_JOBS=$test_jobs" >> "$GITHUB_ENV"
+          # Optimize the compiler under test without disabling C/C++ assertions.
           cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_FLAGS_RELWITHDEBINFO="-O2 -g" \
+            -DCMAKE_CXX_FLAGS_RELWITHDEBINFO="-O2 -g" \
+            -DSUN_TEST_SHARDS="$((test_jobs * 2))" \
             -DCMAKE_C_COMPILER="$(brew --prefix llvm@20)/bin/clang" \
             -DCMAKE_CXX_COMPILER="$(brew --prefix llvm@20)/bin/clang++" \
             -DLLVM_DIR="$(brew --prefix llvm@20)/lib/cmake/llvm" \
@@ -557,7 +568,7 @@ jobs:
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build
-        run: cmake --build build -j4
+        run: cmake --build build -j"$SUN_CI_JOBS"
 
       - name: Check tls.moon was built
         # The example skips itself when the bundle is missing; without this
@@ -566,10 +577,23 @@ jobs:
 
       - name: Test
         run: |
-          cd build
-          ctest -j4 --output-on-failure
+          # The fast Sun suites run in their own visible steps below.
+          ctest --test-dir build -j"$SUN_CI_JOBS" --output-on-failure \
+            -E '^(stdlib_sun_tests|tls_sun_tests)$'
         env:
           SUN_PATH: ${{ github.workspace }}
+
+      - name: Run stdlib Sun tests
+        # Sequential: environment and cwd tests change process-wide state.
+        run: |
+          test -x build/stdlib_tests_test
+          build/stdlib_tests_test --test-sequential
+
+      - name: Run tls Sun tests
+        # Sequential: handshake tests change SSL_CERT_FILE process-wide.
+        run: |
+          test -x build/tls_tests_test
+          build/tls_tests_test --test-sequential
 
       - name: Verify Darwin process bindings
         run: |
@@ -590,21 +614,6 @@ jobs:
             build/sun fmt --no-ignore "tmp/process_darwin_$arch.sun"
             diff -u "stdlib/std/process/bindings/process_darwin_$arch.sun" "tmp/process_darwin_$arch.sun"
           done
-
-      - name: Run stdlib Sun tests
-        # Same as the Linux job: a visible run of stdlib/std/**/*_tests.sun on real
-        # macOS hardware, sequential because the env and cwd tests change
-        # process-wide state.
-        run: |
-          test -x build/stdlib_tests_test
-          build/stdlib_tests_test --test-sequential
-
-      - name: Run tls Sun tests
-        # Same as the Linux job, on real macOS hardware. Sequential because
-        # the handshake tests set SSL_CERT_FILE, which is process-wide.
-        run: |
-          test -x build/tls_tests_test
-          build/tls_tests_test --test-sequential
 
       - name: Add compiler to PATH
         run: echo "${GITHUB_WORKSPACE}/build" >> "$GITHUB_PATH"
