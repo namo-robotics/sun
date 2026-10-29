@@ -31,7 +31,12 @@ public module std {
       m.insert(1, 10);
       m.insert(2, 20);
       m.insert(3, 30);
-      try std.test.assert_eq((try std.test.expect_lookup_value(m.get(1))) + (try std.test.expect_lookup_value(m.get(2))) + (try std.test.expect_lookup_value(m.get(3))), 60);
+      try std.test.assert_eq(
+        (try std.test.expect_lookup_value(m.get(1))) +
+          (try std.test.expect_lookup_value(m.get(2))) +
+          (try std.test.expect_lookup_value(m.get(3))),
+        60
+      );
     }
 
     /** Checks update existing key. */
@@ -199,7 +204,13 @@ public module std {
       m.insert(4, 2);
       m.insert(8, 3);
       m.insert(12, 4);
-      try std.test.assert_eq((try std.test.expect_lookup_value(m.get(0))) + (try std.test.expect_lookup_value(m.get(4))) + (try std.test.expect_lookup_value(m.get(8))) + (try std.test.expect_lookup_value(m.get(12))), 10);
+      try std.test.assert_eq(
+        (try std.test.expect_lookup_value(m.get(0))) +
+          (try std.test.expect_lookup_value(m.get(4))) +
+          (try std.test.expect_lookup_value(m.get(8))) +
+          (try std.test.expect_lookup_value(m.get(12))),
+        10
+      );
     }
 
     /** Checks iteration sum values. */

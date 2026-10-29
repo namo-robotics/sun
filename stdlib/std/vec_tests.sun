@@ -36,7 +36,12 @@ public module std {
       v.push(10);
       v.push(20);
       v.push(30);
-      try std.test.assert_eq((try std.test.expect_access_value(v.get(0))) + (try std.test.expect_access_value(v.get(1))) + (try std.test.expect_access_value(v.get(2))), 60);
+      try std.test.assert_eq(
+        (try std.test.expect_access_value(v.get(0))) +
+          (try std.test.expect_access_value(v.get(1))) +
+          (try std.test.expect_access_value(v.get(2))),
+        60
+      );
     }
 
     /** Checks set element. */
@@ -339,7 +344,12 @@ public module std {
       for (var i: i64 = 0; i < 20; i = i + 1) {
         v.push(i * 10);
       }
-      try std.test.assert_eq((try std.test.expect_access_value(v.get(0))) + (try std.test.expect_access_value(v.get(10))) + (try std.test.expect_access_value(v.get(19))), 290);
+      try std.test.assert_eq(
+        (try std.test.expect_access_value(v.get(0))) +
+          (try std.test.expect_access_value(v.get(10))) +
+          (try std.test.expect_access_value(v.get(19))),
+        290
+      );
     }
 
     /** Checks first and lsyntax tree. */
@@ -367,7 +377,11 @@ public module std {
       var v = Vec<i32>(allocator, 8);
       v.push(5);
       v.push(10);
-      try std.test.assert_eq((try std.test.expect_access_value(v.get(0))) + (try std.test.expect_access_value(v.get(1))), 15);
+      try std.test.assert_eq(
+        (try std.test.expect_access_value(v.get(0))) +
+          (try std.test.expect_access_value(v.get(1))),
+        15
+      );
     }
 
     /** Checks iteration. */

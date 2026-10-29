@@ -45,7 +45,13 @@ public module std {
   }
 
   /** Apply listener options before binding; the caller owns cleanup on failure. */
-  function configure_listener(fd: i32, ip: i32, port: i32, reuse_address: bool, reuse_port: bool) SystemResult<void> {
+  function configure_listener(
+    fd: i32,
+    ip: i32,
+    port: i32,
+    reuse_address: bool,
+    reuse_port: bool
+  ) SystemResult<void> {
     try set_fd_close_on_exec(fd, true);
     try set_socket_reuse_address(fd, reuse_address);
     if (reuse_port) {
@@ -121,7 +127,9 @@ public module std {
    */
   public function resolve_host_ipv4(host: ref String) SystemResult<i32> {
     var list: raw_ptr<u8> = null;
-    var rc: i32 = unsafe { c_getaddrinfo(host.c_str(), null, null, _address_of<raw_ptr<u8>>(list)); };
+    var rc: i32 = unsafe {
+      c_getaddrinfo(host.c_str(), null, null, _address_of<raw_ptr<u8>>(list));
+    };
     if (rc != 0) {
       var alloc: HeapAllocator = HeapAllocator();
       var msg: String = from_c_str(alloc, unsafe { c_gai_strerror(rc); });
@@ -306,7 +314,14 @@ public module std {
     public method try_write(buffer: const ref ByteSlice) std.io.WriteResult {
       var written: i64 = 0;
       while (written < buffer.size()) {
-        var count = unsafe { __send(this.fd, _ptr_offset(buffer.raw_data(), written), buffer.size() - written, MSG_NOSIGNAL); };
+        var count = unsafe {
+          __send(
+            this.fd,
+            _ptr_offset(buffer.raw_data(), written),
+            buffer.size() - written,
+            MSG_NOSIGNAL
+          );
+        };
         if (count > 0) {
           written = written + count;
         } else {
@@ -544,7 +559,12 @@ public module std {
      * be requested by every participating listener; distribution differs by OS.
      * Configuration or bind failure closes the new socket.
      */
-    public method bind(addr: const ref Ipv4Addr, port: i32, reuse_address: bool, reuse_port: bool) SystemResult<void> {
+    public method bind(
+      addr: const ref Ipv4Addr,
+      port: i32,
+      reuse_address: bool,
+      reuse_port: bool
+    ) SystemResult<void> {
       if (this.owns_fd) {
         return SystemResult.Error(Error(22, "listener is already open"));
       }
@@ -878,8 +898,15 @@ public module std {
     /**
      * Send one datagram of len bytes to addr:port. Returns bytes sent.
      */
-    public method send_to(data: raw_ptr<u8>, len: i64, addr: const ref Ipv4Addr, port: i32) SystemResult<i64> {
-      var result: i64 = unsafe { __sendto_ipv4(this.fd, data, len, MSG_NOSIGNAL, addr.to_network_i32(), port); };
+    public method send_to(
+      data: raw_ptr<u8>,
+      len: i64,
+      addr: const ref Ipv4Addr,
+      port: i32
+    ) SystemResult<i64> {
+      var result: i64 = unsafe {
+        __sendto_ipv4(this.fd, data, len, MSG_NOSIGNAL, addr.to_network_i32(), port);
+      };
       if (result < 0) {
         var err_code: i32 = errno();
         return SystemResult.Error(Error(err_code, "send failed"));
@@ -890,7 +917,11 @@ public module std {
     /**
      * Send string data as one datagram
      */
-    public method send_str_to(data: static_ptr<u8>, addr: const ref Ipv4Addr, port: i32) SystemResult<i64> {
+    public method send_str_to(
+      data: static_ptr<u8>,
+      addr: const ref Ipv4Addr,
+      port: i32
+    ) SystemResult<i64> {
       return SystemResult.Ok((try this.send_to(data.raw(), data.length(), addr, port)));
     }
 
@@ -923,7 +954,10 @@ public module std {
      * ipv4_any() to let the OS pick the interface. The socket then receives
      * datagrams sent to the group on its bound port.
      */
-    public method join_multicast(group: const ref Ipv4Addr, iface: const ref Ipv4Addr) SystemResult<void> {
+    public method join_multicast(
+      group: const ref Ipv4Addr,
+      iface: const ref Ipv4Addr
+    ) SystemResult<void> {
       var request = IpMreq(group.to_network_i32(), iface.to_network_i32());
       var result: i32 = unsafe {
         __setsockopt(this.fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, _address_of<IpMreq>(request), 8);
@@ -938,7 +972,10 @@ public module std {
     /**
      * Leave a multicast group joined with the same group and interface.
      */
-    public method leave_multicast(group: const ref Ipv4Addr, iface: const ref Ipv4Addr) SystemResult<void> {
+    public method leave_multicast(
+      group: const ref Ipv4Addr,
+      iface: const ref Ipv4Addr
+    ) SystemResult<void> {
       var request = IpMreq(group.to_network_i32(), iface.to_network_i32());
       var result: i32 = unsafe {
         __setsockopt(this.fd, IPPROTO_IP, IP_DROP_MEMBERSHIP, _address_of<IpMreq>(request), 8);

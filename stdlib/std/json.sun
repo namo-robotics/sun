@@ -102,7 +102,9 @@ public module std {
   function json_element<T>(items: ref Vec<T>, index: i64) JsonResult<ref T> {
     return match items.get(index) {
       AccessResult.Ok(value) => JsonResult.Ok(value),
-      AccessResult.OutOfBounds(_) => JsonResult.Error(JsonError("JSON container index out of range", -1))
+      AccessResult.OutOfBounds(_) => JsonResult.Error(
+        JsonError("JSON container index out of range", -1)
+      )
     };
   }
 
@@ -745,7 +747,11 @@ public module std {
     /**
      * Consume `literal` at pos or fail
      */
-    method expect_literal(text: const ref String, literal: static_ptr<u8>, what: static_ptr<u8>) JsonResult<void> {
+    method expect_literal(
+      text: const ref String,
+      literal: static_ptr<u8>,
+      what: static_ptr<u8>
+    ) JsonResult<void> {
       var data: raw_ptr<u8> = literal.raw();
       var n: i64 = literal.length();
       var start: i64 = this.pos;
@@ -970,7 +976,8 @@ public module std {
           if (code >= 55296 and code <= 56319) {
             // high surrogate
             var low: i64 = -1;
-            if (this.peek(text) == b'\\' and this.pos + 1 < text.length() and unsafe { text.unsafe_at(this.pos + 1); } == b'u') {
+            if (this.peek(text) == b'\\' and this.pos + 1 < text.length() and
+              unsafe { text.unsafe_at(this.pos + 1); } == b'u') {
               var save: i64 = this.pos;
               this.pos = this.pos + 2;
               low = (try this.parse_hex4(text));
@@ -1001,7 +1008,8 @@ public module std {
      */
     method parse_digits(text: const ref String) i64 {
       var count: i64 = 0;
-      while (this.pos < text.length() and unsafe { text.unsafe_at(this.pos); } >= b'0' and unsafe { text.unsafe_at(this.pos); } <= b'9') {
+      while (this.pos < text.length() and unsafe { text.unsafe_at(this.pos); } >= b'0' and
+        unsafe { text.unsafe_at(this.pos); } <= b'9') {
         this.pos = this.pos + 1;
         count = count + 1;
       }
@@ -1021,7 +1029,9 @@ public module std {
         // '0' must stand alone
         this.pos = this.pos + 1;
         if (this.peek(text) >= b'0' and this.peek(text) <= b'9') {
-          return JsonResult.Error(JsonError("leading zeros are not allowed in JSON numbers", start));
+          return JsonResult.Error(
+            JsonError("leading zeros are not allowed in JSON numbers", start)
+          );
         }
       } else if (first >= b'1' and first <= b'9') {
         this.parse_digits(text);

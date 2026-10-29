@@ -11,7 +11,9 @@ public module std.process {
     function error_code<T>(result: SystemResult<T>) std.test.AssertionResult<i32> {
       return match result {
         SystemResult.Error(error) => std.test.AssertionResult.Ok(error.code()),
-        _ => std.test.AssertionResult.Error(std.test.AssertionError("expected process operation to fail"))
+        _ => std.test.AssertionResult.Error(
+          std.test.AssertionError("expected process operation to fail")
+        )
       };
     }
 
@@ -20,7 +22,10 @@ public module std.process {
       var alloc = make_heap_allocator();
       var snapshot = try std.test.expect_system(inspect_process(alloc, pid()));
       var identity = try std.test.expect_system(process_identity(alloc, pid()));
-      try std.test.assert(snapshot.identity.equals(identity), "snapshot keeps the observed identity");
+      try std.test.assert(
+        snapshot.identity.equals(identity),
+        "snapshot keeps the observed identity"
+      );
       var rss = try std.test.expect_system(snapshot.rss_bytes);
       var cpu = try std.test.expect_system(snapshot.cpu_time_ns);
       var page = try std.test.expect_system(page_size_bytes());

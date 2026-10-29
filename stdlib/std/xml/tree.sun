@@ -48,7 +48,9 @@ public module std {
         XmlNodeValue.Element(e) => XmlNode(XmlNodeValue.Element(e.clone(alloc))),
         XmlNodeValue.Text(t) => XmlNode(XmlNodeValue.Text(t.clone(alloc))),
         XmlNodeValue.Comment(t) => XmlNode(XmlNodeValue.Comment(t.clone(alloc))),
-        XmlNodeValue.Instruction(p) => XmlNode(XmlNodeValue.Instruction(XmlInstruction(p.target.clone(alloc), p.data.clone(alloc))))
+        XmlNodeValue.Instruction(p) => XmlNode(
+          XmlNodeValue.Instruction(XmlInstruction(p.target.clone(alloc), p.data.clone(alloc)))
+        )
       };
     }
 
@@ -275,7 +277,12 @@ public module std {
     public const method clone(alloc: ref HeapAllocator) XmlElement {
       var result = XmlElement(alloc, this.name_.clone(alloc));
       for (var i: i64 = 0; i < this.attributes.size(); i += 1) {
-        result.attributes.push(XmlAttribute(this.attributes[i].name.clone(alloc), this.attributes[i].value.clone(alloc)));
+        result.attributes.push(
+          XmlAttribute(
+            this.attributes[i].name.clone(alloc),
+            this.attributes[i].value.clone(alloc)
+          )
+        );
       }
       for (var i: i64 = 0; i < this.namespaces.size(); i += 1) {
         result.namespaces.push(this.namespaces[i].clone(alloc));

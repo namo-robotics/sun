@@ -2,7 +2,10 @@
 public module std.process {
 
   /** Read the BSD start timeval as an opaque microsecond start marker. */
-  function native_process_identity(alloc: ref HeapAllocator, target: i32) SystemResult<ProcessIdentity> {
+  function native_process_identity(
+    alloc: ref HeapAllocator,
+    target: i32
+  ) SystemResult<ProcessIdentity> {
     var record = ContiguousBuffer<darwin_process_abi.proc_bsdinfo>(alloc, 1);
     var record_size = _convert<i32>(_sizeof<darwin_process_abi.proc_bsdinfo>());
     var got = unsafe { c_proc_pidinfo(target, 3, 0, record.raw_data(), record_size); };
@@ -63,7 +66,11 @@ public module std.process {
   }
 
   /** Decode KERN_PROCARGS2, using argc to exclude the trailing environment. */
-  function darwin_process_arguments(alloc: ref HeapAllocator, data: ref ContiguousBuffer<u8>, size: i64) SystemResult<Vec<String>> {
+  function darwin_process_arguments(
+    alloc: ref HeapAllocator,
+    data: ref ContiguousBuffer<u8>,
+    size: i64
+  ) SystemResult<Vec<String>> {
     if (size < 4 or size > data.size()) {
       return SystemResult.Error(Error(22, "invalid process argument record"));
     }
@@ -95,10 +102,21 @@ public module std.process {
   }
 
   /** Read argv through sysctl; access denial remains a field error. */
-  function native_process_arguments(alloc: ref HeapAllocator, target: i32) SystemResult<Vec<String>> {
+  function native_process_arguments(
+    alloc: ref HeapAllocator,
+    target: i32
+  ) SystemResult<Vec<String>> {
     var max_size: i32 = 0;
     var length: u64 = 4;
-    if (unsafe { c_sysctlbyname("kern.argmax", _bitcast<raw_ptr<u8>>(_address_of<i32>(max_size)), _address_of<u64>(length), null, 0); } < 0) {
+    if (unsafe {
+      c_sysctlbyname(
+        "kern.argmax",
+        _bitcast<raw_ptr<u8>>(_address_of<i32>(max_size)),
+        _address_of<u64>(length),
+        null,
+        0
+      );
+    } < 0) {
       return SystemResult.Error(Error(errno(), "argument limit unavailable"));
     }
     if (max_size < 4 or length != 4) {
@@ -110,7 +128,16 @@ public module std.process {
     name[1] = 49;
     name[2] = target;
     length = _convert<u64>(max_size);
-    if (unsafe { c_sysctl(_bitcast<raw_ptr<i32>>(name.raw_data()), 3, data.raw_data(), _address_of<u64>(length), null, 0); } < 0) {
+    if (unsafe {
+      c_sysctl(
+        _bitcast<raw_ptr<i32>>(name.raw_data()),
+        3,
+        data.raw_data(),
+        _address_of<u64>(length),
+        null,
+        0
+      );
+    } < 0) {
       return SystemResult.Error(Error(errno(), "process arguments unavailable"));
     }
     return darwin_process_arguments(alloc, data, _convert<i64>(length));
@@ -143,7 +170,9 @@ public module std.process {
   /** Convert libproc's cumulative Mach CPU ticks to nanoseconds. */
   function process_cpu_ns(user: u64, system: u64) SystemResult<u64> {
     var timebase = ProcessTimebase();
-    var code = unsafe { c_mach_timebase_info(_bitcast<raw_ptr<u8>>(_address_of<ProcessTimebase>(timebase))); };
+    var code = unsafe {
+      c_mach_timebase_info(_bitcast<raw_ptr<u8>>(_address_of<ProcessTimebase>(timebase)));
+    };
     if (code != 0) {
       return SystemResult.Error(Error(code, "Mach timebase unavailable"));
     }
@@ -154,7 +183,10 @@ public module std.process {
   }
 
   /** Read libproc cumulative CPU nanoseconds and resident bytes independently of text. */
-  function native_process_snapshot(alloc: ref HeapAllocator, target: i32) SystemResult<ProcessSnapshot> {
+  function native_process_snapshot(
+    alloc: ref HeapAllocator,
+    target: i32
+  ) SystemResult<ProcessSnapshot> {
     var identity = try process_identity(alloc, target);
     var record = ContiguousBuffer<darwin_process_abi.proc_taskinfo>(alloc, 1);
     var record_size = _convert<i32>(_sizeof<darwin_process_abi.proc_taskinfo>());
@@ -166,14 +198,30 @@ public module std.process {
       rss = SystemResult.Ok(record[0].pti_resident_size);
       cpu = process_cpu_ns(record[0].pti_total_user, record[0].pti_total_system);
     }
-    return SystemResult.Ok(ProcessSnapshot(identity, cpu, rss, process_executable(alloc, target), native_process_arguments(alloc, target)));
+    return SystemResult.Ok(
+      ProcessSnapshot(
+        identity,
+        cpu,
+        rss,
+        process_executable(alloc, target),
+        native_process_arguments(alloc, target)
+      )
+    );
   }
 
   /** Query installed memory without Mach task privileges. */
   function native_physical_memory_bytes() SystemResult<u64> {
     var bytes: u64 = 0;
     var length: u64 = 8;
-    if (unsafe { c_sysctlbyname("hw.memsize", _bitcast<raw_ptr<u8>>(_address_of<u64>(bytes)), _address_of<u64>(length), null, 0); } < 0) {
+    if (unsafe {
+      c_sysctlbyname(
+        "hw.memsize",
+        _bitcast<raw_ptr<u8>>(_address_of<u64>(bytes)),
+        _address_of<u64>(length),
+        null,
+        0
+      );
+    } < 0) {
       return SystemResult.Error(Error(errno(), "physical memory unavailable"));
     }
     if (length != 8 or bytes == 0) {
@@ -188,7 +236,10 @@ public module std.process {
   }
 
   /** Validate the supplied identity before activating a checked handle. */
-  function native_process_open(alloc: ref HeapAllocator, identity: const ref ProcessIdentity) SystemResult<i64> {
+  function native_process_open(
+    alloc: ref HeapAllocator,
+    identity: const ref ProcessIdentity
+  ) SystemResult<i64> {
     var observed = try process_identity(alloc, identity.pid);
     if (not identity.equals(observed)) {
       return SystemResult.Error(Error(3, "process identity changed"));
@@ -197,7 +248,12 @@ public module std.process {
   }
 
   /** Recheck immediately before kill; PID reuse can still occur between the calls. */
-  function native_process_signal(alloc: ref HeapAllocator, identity: const ref ProcessIdentity, token: i64, signal: i32) SystemResult<void> {
+  function native_process_signal(
+    alloc: ref HeapAllocator,
+    identity: const ref ProcessIdentity,
+    token: i64,
+    signal: i32
+  ) SystemResult<void> {
     var observed = try process_identity(alloc, identity.pid);
     if (not identity.equals(observed)) {
       return SystemResult.Error(Error(3, "process identity changed"));

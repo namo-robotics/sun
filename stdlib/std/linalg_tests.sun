@@ -52,7 +52,9 @@ public module std.linalg_tests {
       }
     };
     var transposed = Matrix<T>(alloc, [3, 3]);
-    try expect_ok(transposed.gemm(_convert<T>(1), a, Transpose.Transpose, a, Transpose.None, _convert<T>(0)));
+    try expect_ok(
+      transposed.gemm(_convert<T>(1), a, Transpose.Transpose, a, Transpose.None, _convert<T>(0))
+    );
     try std.test.assert_eq(transposed[0, 0], _convert<T>(17));
     try std.test.assert_eq(transposed[2, 2], _convert<T>(45));
     return std.test.AssertionResult.Ok;
@@ -87,7 +89,10 @@ public module std.linalg_tests {
       }
     };
     try expect_error(a.matmul_into(a, a), LinalgErrorReason.OverlappingOutput);
-    try expect_error(a.gemm(0.0, a, Transpose.None, a, Transpose.None, 0.0), LinalgErrorReason.OverlappingOutput);
+    try expect_error(
+      a.gemm(0.0, a, Transpose.None, a, Transpose.None, 0.0),
+      LinalgErrorReason.OverlappingOutput
+    );
     try std.test.assert_eq(a[0, 0], 2.0);
     var left = Matrix<f64>(alloc, [2, 0]);
     var right = Matrix<f64>(alloc, [0, 3]);
@@ -272,7 +277,26 @@ public module std.linalg_tests {
   /** Checks packing thresholds, cache-panel edges, and tails against scalar dot products. */
   test_function packed_panel_boundaries() {
     var alloc = make_heap_allocator();
-    var shapes: array<i64, 18, 3> = [[15i64, 31i64, 15i64], [16i64, 32i64, 16i64], [17i64, 63i64, 23i64], [33i64, 65i64, 65i64], [36i64, 129i64, 72i64], [32i64, 64i64, 64i64], [19i64, 66i64, 28i64], [20i64, 33i64, 31i64], [20i64, 33i64, 32i64], [21i64, 33i64, 33i64], [20i64, 127i64, 127i64], [20i64, 128i64, 128i64], [21i64, 129i64, 129i64], [32i64, 64i64, 127i64], [32i64, 64i64, 128i64], [21i64, 1023i64, 19i64], [22i64, 1024i64, 20i64], [23i64, 1025i64, 31i64]];
+    var shapes: array<i64, 18, 3> = [
+      [15i64, 31i64, 15i64],
+      [16i64, 32i64, 16i64],
+      [17i64, 63i64, 23i64],
+      [33i64, 65i64, 65i64],
+      [36i64, 129i64, 72i64],
+      [32i64, 64i64, 64i64],
+      [19i64, 66i64, 28i64],
+      [20i64, 33i64, 31i64],
+      [20i64, 33i64, 32i64],
+      [21i64, 33i64, 33i64],
+      [20i64, 127i64, 127i64],
+      [20i64, 128i64, 128i64],
+      [21i64, 129i64, 129i64],
+      [32i64, 64i64, 127i64],
+      [32i64, 64i64, 128i64],
+      [21i64, 1023i64, 19i64],
+      [22i64, 1024i64, 20i64],
+      [23i64, 1025i64, 31i64]
+    ];
     for (var shape: i64 = 0; shape < 18; shape = shape + 1) {
       var m = shapes[shape, 0];
       var k = shapes[shape, 1];
@@ -670,7 +694,9 @@ public module std.linalg_tests {
     var empty_rows = Matrix<f64>(alloc, [0, 2]);
     var right = Matrix<f64>(alloc, [2, 3]);
     var out_rows = Matrix<f64>(alloc, [0, 3]);
-    try expect_ok(gemm<f64>(1.0, empty_rows, Transpose.None, right, Transpose.None, 0.0, out_rows));
+    try expect_ok(
+      gemm<f64>(1.0, empty_rows, Transpose.None, right, Transpose.None, 0.0, out_rows)
+    );
     var left = Matrix<f64>(alloc, [3, 2]);
     var empty_cols = Matrix<f64>(alloc, [2, 0]);
     var out_cols = Matrix<f64>(alloc, [3, 0]);
@@ -678,7 +704,10 @@ public module std.linalg_tests {
   }
 
   /** Confirms that a rejected operation reports its structured reason. */
-  function expect_error(result: LinalgResult<void>, reason: LinalgErrorReason) std.test.AssertionResult<void> {
+  function expect_error(
+    result: LinalgResult<void>,
+    reason: LinalgErrorReason
+  ) std.test.AssertionResult<void> {
     match result {
       LinalgResult.Ok => {
         return std.test.fail("expected GEMM validation failure");
@@ -696,13 +725,28 @@ public module std.linalg_tests {
     var b = Matrix<f32>([[3.0f32]], alloc);
     var c = Matrix<f32>([[9.0f32]], alloc);
     var vector = Matrix<f32>([1.0f32], alloc);
-    try expect_error(gemm<f32>(1.0f32, vector, Transpose.None, b, Transpose.None, 0.0f32, c), LinalgErrorReason.InvalidDimensions);
+    try expect_error(
+      gemm<f32>(1.0f32, vector, Transpose.None, b, Transpose.None, 0.0f32, c),
+      LinalgErrorReason.InvalidDimensions
+    );
     var wrong = Matrix<f32>(alloc, [2, 1]);
-    try expect_error(gemm<f32>(1.0f32, a, Transpose.None, wrong, Transpose.None, 0.0f32, c), LinalgErrorReason.IncompatibleShapes);
-    try expect_error(gemm<f32>(1.0f32, a, Transpose.None, b, Transpose.None, 0.0f32, wrong), LinalgErrorReason.IncompatibleShapes);
+    try expect_error(
+      gemm<f32>(1.0f32, a, Transpose.None, wrong, Transpose.None, 0.0f32, c),
+      LinalgErrorReason.IncompatibleShapes
+    );
+    try expect_error(
+      gemm<f32>(1.0f32, a, Transpose.None, b, Transpose.None, 0.0f32, wrong),
+      LinalgErrorReason.IncompatibleShapes
+    );
     try std.test.assert_eq(c[0, 0], 9.0f32);
-    try expect_error(gemm<f32>(0.0f32, a, Transpose.None, b, Transpose.None, 0.0f32, a), LinalgErrorReason.OverlappingOutput);
-    try expect_error(gemm<f32>(1.0f32, a, Transpose.None, b, Transpose.None, 0.0f32, b), LinalgErrorReason.OverlappingOutput);
+    try expect_error(
+      gemm<f32>(0.0f32, a, Transpose.None, b, Transpose.None, 0.0f32, a),
+      LinalgErrorReason.OverlappingOutput
+    );
+    try expect_error(
+      gemm<f32>(1.0f32, a, Transpose.None, b, Transpose.None, 0.0f32, b),
+      LinalgErrorReason.OverlappingOutput
+    );
     try std.test.assert_eq(a[0, 0], 2.0f32);
     try std.test.assert_eq(b[0, 0], 3.0f32);
   }

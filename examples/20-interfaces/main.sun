@@ -59,5 +59,7 @@ function main() i32 {
 }
 
 manifest {
-  libraries: ["stdlib.moon"]
+  libraries: [
+    "stdlib.moon"
+  ]
 }

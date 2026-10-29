@@ -131,7 +131,24 @@ public module std.signal {
       if (not this.owns) {
         return SystemResult.Error(Error(9, "signal subscription is not active"));
       }
-      var bytes: array<u8, 16> = [0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8];
+      var bytes: array<u8, 16> = [
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8
+      ];
       while (true) {
         var count = unsafe { c_read(this.reader, _address_of<u8>(bytes[0]), 16); };
         if (count > 0) {
@@ -164,7 +181,11 @@ public module std.signal {
       }
       if (this.int_installed) {
         if (unsafe {
-          c_sigaction(std.process.SIGINT, _bitcast<raw_ptr<u8>>(_address_of<SignalAction>(this.saved_int)), null);
+          c_sigaction(
+            std.process.SIGINT,
+            _bitcast<raw_ptr<u8>>(_address_of<SignalAction>(this.saved_int)),
+            null
+          );
         } < 0) {
           return SystemResult.Error(Error(errno(), "failed to restore SIGINT"));
         }
@@ -172,7 +193,11 @@ public module std.signal {
       }
       if (this.term_installed) {
         if (unsafe {
-          c_sigaction(std.process.SIGTERM, _bitcast<raw_ptr<u8>>(_address_of<SignalAction>(this.saved_term)), null);
+          c_sigaction(
+            std.process.SIGTERM,
+            _bitcast<raw_ptr<u8>>(_address_of<SignalAction>(this.saved_term)),
+            null
+          );
         } < 0) {
           return SystemResult.Error(Error(errno(), "failed to restore SIGTERM"));
         }
@@ -221,7 +246,9 @@ public module std.signal {
     if (unsafe { c_sigemptyset(action.mask_pointer()); } < 0) {
       return SystemResult.Error(Error(errno(), "failed to initialize SIGPIPE mask"));
     }
-    if (unsafe { c_sigaction(13, _bitcast<raw_ptr<u8>>(_address_of<SignalAction>(action)), null); } < 0) {
+    if (unsafe {
+      c_sigaction(13, _bitcast<raw_ptr<u8>>(_address_of<SignalAction>(action)), null);
+    } < 0) {
       return SystemResult.Error(Error(errno(), "failed to ignore SIGPIPE"));
     }
     return SystemResult.Ok;

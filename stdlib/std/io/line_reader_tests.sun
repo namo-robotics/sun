@@ -2,7 +2,11 @@
 public module std.io.line_reader_tests {
 
   /** Verifies a line's status and exact bytes. */
-  function expect_line(reader: ref std.io.LineReader, expected: static_ptr<u8>, incomplete: bool) std.test.AssertionResult<void> {
+  function expect_line(
+    reader: ref std.io.LineReader,
+    expected: static_ptr<u8>,
+    incomplete: bool
+  ) std.test.AssertionResult<void> {
     match reader.next() {
       std.io.LineReadResult.Complete => {
         try std.test.assert(not incomplete, "complete line");

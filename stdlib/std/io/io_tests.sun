@@ -32,7 +32,10 @@ public module std {
       var dirs: i32 = 0;
       for (var e: std.io.DirEntry in entries) {
         // "." and ".." are excluded, so nothing starts with a dot here.
-        try std.test.assert((try std.test.expect_access(e.name().at(0))) != b'.', "dot entries are excluded");
+        try std.test.assert(
+          (try std.test.expect_access(e.name().at(0))) != b'.',
+          "dot entries are excluded"
+        );
         if (e.is_dir()) {
           dirs = dirs + 1;
         }
@@ -198,10 +201,16 @@ public module std {
       // throw, so no litter is left behind even on failure.
       var alloc = make_heap_allocator();
       var body = String("literal path");
-      try std.test.expect_system_success(std.io.write_string("/tmp/sun_stdlib_io_literal_overload.txt", body));
+      try std.test.expect_system_success(
+        std.io.write_string("/tmp/sun_stdlib_io_literal_overload.txt", body)
+      );
       var there = std.io.exists("/tmp/sun_stdlib_io_literal_overload.txt");
-      var back = try std.test.expect_system(std.io.read_to_string(alloc, "/tmp/sun_stdlib_io_literal_overload.txt"));
-      try std.test.expect_system_success(std.io.remove_file("/tmp/sun_stdlib_io_literal_overload.txt"));
+      var back = try std.test.expect_system(
+        std.io.read_to_string(alloc, "/tmp/sun_stdlib_io_literal_overload.txt")
+      );
+      try std.test.expect_system_success(
+        std.io.remove_file("/tmp/sun_stdlib_io_literal_overload.txt")
+      );
 
       try std.test.assert(there, "literal path exists after write");
       try std.test.assert_eq(back.length(), 12);
@@ -249,7 +258,10 @@ public module std {
 
       var p = std.io.Poller(alloc);
       p.add_read(pipe.read_fd());
-      try std.test.assert((try std.test.expect_system(p.wait(1000))) >= 1, "hangup should be reported");
+      try std.test.assert(
+        (try std.test.expect_system(p.wait(1000))) >= 1,
+        "hangup should be reported"
+      );
       try std.test.assert(p.is_hup(0), "the reported event is a hangup");
       pipe.close_read();
     }
@@ -345,16 +357,28 @@ public module std {
       var events = try std.test.expect_system(p.wait(std.time.create_duration_millis(1000)));
       try std.test.assert_eq(events.size(), 2);
       try std.test.assert_eq(unsafe { events.get_unchecked(0); }.fd(), second.read_fd());
-      try std.test.assert(unsafe { events.get_unchecked(0); }.is_readable(), "second pipe is readable");
+      try std.test.assert(
+        unsafe { events.get_unchecked(0); }.is_readable(),
+        "second pipe is readable"
+      );
       try std.test.assert(not unsafe { events.get_unchecked(0); }.is_writable(), "not writable");
       try std.test.assert(not unsafe { events.get_unchecked(0); }.is_priority(), "no urgent data");
       try std.test.assert(not unsafe { events.get_unchecked(0); }.is_error(), "no error");
-      try std.test.assert(not unsafe { events.get_unchecked(0); }.is_invalid(), "descriptor is valid");
+      try std.test.assert(
+        not unsafe { events.get_unchecked(0); }.is_invalid(),
+        "descriptor is valid"
+      );
       try std.test.assert(not unsafe { events.get_unchecked(0); }.is_hup(), "no hangup");
-      try std.test.assert((unsafe { events.get_unchecked(0); }.events() & std.io.POLLIN) != 0, "POLLIN bit set");
+      try std.test.assert(
+        (unsafe { events.get_unchecked(0); }.events() & std.io.POLLIN) != 0,
+        "POLLIN bit set"
+      );
 
       try std.test.assert_eq(unsafe { events.get_unchecked(1); }.fd(), third.read_fd());
-      try std.test.assert(unsafe { events.get_unchecked(1); }.is_readable(), "third pipe is readable");
+      try std.test.assert(
+        unsafe { events.get_unchecked(1); }.is_readable(),
+        "third pipe is readable"
+      );
 
       first.close_read();
       first.close_write();
@@ -382,12 +406,18 @@ public module std {
       // here must be a fixed literal. Removed before any assertion can throw.
       var alloc = make_heap_allocator();
       var f = std.io.File();
-      try std.test.expect_system_success(f.open("/tmp/sun_stdlib_io_file_literal.txt", std.io.FileMode.Write));
+      try std.test.expect_system_success(
+        f.open("/tmp/sun_stdlib_io_file_literal.txt", std.io.FileMode.Write)
+      );
       f.write("written by File");
       f.close();
 
-      var text = try std.test.expect_system(std.io.read_to_string(alloc, "/tmp/sun_stdlib_io_file_literal.txt"));
-      try std.test.expect_system_success(std.io.remove_file("/tmp/sun_stdlib_io_file_literal.txt"));
+      var text = try std.test.expect_system(
+        std.io.read_to_string(alloc, "/tmp/sun_stdlib_io_file_literal.txt")
+      );
+      try std.test.expect_system_success(
+        std.io.remove_file("/tmp/sun_stdlib_io_file_literal.txt")
+      );
       try std.test.assert(text.equals_literal("written by File"), "literal-path File round-trips");
     }
 

@@ -1,5 +1,10 @@
 /** Multiplies two matrices on the GPU and prints the result. */
-manifest { libraries: ["stdlib.moon", "cuda.moon"] }
+manifest {
+  libraries: [
+    "stdlib.moon",
+    "cuda.moon"
+  ]
+}
 using std;
 using cuda;
 

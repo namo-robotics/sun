@@ -4,12 +4,20 @@ using std;
 function draw(alloc: ref HeapAllocator, output: ref String) XmlResult<void> {
   var writer = XmlWriter(alloc, output);
   try writer.declaration();
-  var svg = XmlName(String(alloc, "http://www.w3.org/2000/svg"), String(alloc, "svg"), String(alloc, ""));
+  var svg = XmlName(
+    String(alloc, "http://www.w3.org/2000/svg"),
+    String(alloc, "svg"),
+    String(alloc, "")
+  );
   try writer.start_element(svg);
   var view_box = XmlName(String(alloc, ""), String(alloc, "viewBox"), String(alloc, ""));
   var bounds = String(alloc, "0 0 300 60");
   try writer.attribute(view_box, bounds);
-  var text = XmlName(String(alloc, "http://www.w3.org/2000/svg"), String(alloc, "text"), String(alloc, ""));
+  var text = XmlName(
+    String(alloc, "http://www.w3.org/2000/svg"),
+    String(alloc, "text"),
+    String(alloc, "")
+  );
   try writer.start_element(text);
   var y = XmlName(String(alloc, ""), String(alloc, "y"), String(alloc, ""));
   var baseline = String(alloc, "30");
@@ -37,4 +45,8 @@ function main() i32 {
 }
 
 /** Uses only the standard library. */
-manifest { libraries: ["stdlib.moon"] }
+manifest {
+  libraries: [
+    "stdlib.moon"
+  ]
+}

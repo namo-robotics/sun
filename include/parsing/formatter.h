@@ -12,7 +12,8 @@ namespace sun::parsing {
 
 /**
  * Parse source and reprint it in the canonical style (2-space indent,
- * K&R braces, comments preserved). Throws SunError on parse failure;
+ * K&R braces, a soft 100-column limit, one manifest list entry per line,
+ * comments and literal contents preserved). Throws SunError on parse failure;
  * the input is never partially formatted.
  */
 std::string formatSource(const std::string& source,

@@ -89,14 +89,24 @@ public module std {
     /** Updates this floating-point matrix with alpha * op(A) * op(B) + beta * this.
      * All matrices and scalars must have this matrix's f32 or f64 element type.
      * Does not allocate; validation failures leave the destination unchanged. */
-    public method gemm<U: _Float>(alpha: U, a: const ref Matrix<T>, trans_a: std.linalg.Transpose, b: const ref Matrix<T>, trans_b: std.linalg.Transpose, beta: U) std.linalg.LinalgResult<void> {
+    public method gemm<U: _Float>(
+      alpha: U,
+      a: const ref Matrix<T>,
+      trans_a: std.linalg.Transpose,
+      b: const ref Matrix<T>,
+      trans_b: std.linalg.Transpose,
+      beta: U
+    ) std.linalg.LinalgResult<void> {
       return std.linalg.gemm<T>(alpha, a, trans_a, b, trans_b, beta, this);
     }
 
     /** Multiplies two floating-point matrices into separate caller-owned output.
      * Other must be Matrix<T>, with T equal to f32 or f64.
      * Borrows both inputs and performs no allocation. */
-    public const method matmul_into<Other>(other: const ref Other, output: ref Matrix<T>) std.linalg.LinalgResult<void> {
+    public const method matmul_into<Other>(
+      other: const ref Other,
+      output: ref Matrix<T>
+    ) std.linalg.LinalgResult<void> {
       return std.linalg.gemm<T>(
         _convert<T>(1),
         this,
@@ -111,7 +121,9 @@ public module std {
     /** Allocates a floating-point matrix product using the left operand's allocator.
      * Other must be Matrix<T>, with T equal to f32 or f64.
      * Borrows both operands and returns shape errors before allocating output. */
-    public const method __multiply__<Other>(other: const ref Other) std.linalg.LinalgResult<Matrix<T>> {
+    public const method __multiply__<Other>(
+      other: const ref Other
+    ) std.linalg.LinalgResult<Matrix<T>> {
       return std.linalg.matmul<T>(this, other, this.alloc);
     }
 
@@ -228,7 +240,13 @@ public module std {
     /**
      * Constructor from raw components; the shape and strides are copied in
      */
-    init(alloc: const ref HeapAllocator, data_ptr: raw_ptr<u8>, offset: i64, shape: const ref array<i64>, strides_arr: const ref array<i64>) {
+    init(
+      alloc: const ref HeapAllocator,
+      data_ptr: raw_ptr<u8>,
+      offset: i64,
+      shape: const ref array<i64>,
+      strides_arr: const ref array<i64>
+    ) {
       this.data = data_ptr;
       this.base_offset = offset;
       this.ndims_ = shape.dim(0);

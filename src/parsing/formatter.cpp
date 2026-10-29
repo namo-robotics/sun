@@ -34,6 +34,7 @@ namespace sun::parsing {
 namespace {
 
 constexpr int kIndentWidth = 2;
+constexpr size_t kLineWidth = 100;
 
 /** Connects source text and recorded comments to the syntax formatter. */
 class Formatter {
@@ -87,10 +88,93 @@ class Formatter {
   /** Writes indentation for the current formatting depth. */
   void writeIndent() { out_.append(indent_ * kIndentWidth, ' '); }
 
+  /** Tries a compact layout, restoring output and comments if it needs
+   * wrapping. Reserves room for a statement terminator or an opening body
+   * brace. */
+  template <typename Print>
+  bool tryInline(Print print) {
+    const auto start = out_.size();
+    const auto comments = next_;
+    const auto lastLine = lastLine_;
+    const auto indent = indent_;
+    const auto newline = out_.rfind('\n');
+    const auto lineStart = newline == std::string::npos ? 0 : newline + 1;
+    print();
+    if (out_.find('\n', start) == std::string::npos &&
+        out_.size() - lineStart + 2 <= kLineWidth) {
+      return true;
+    }
+    out_.resize(start);
+    next_ = comments;
+    lastLine_ = lastLine;
+    indent_ = indent;
+    return false;
+  }
+
+  /** Expands manifest blocks and lists without changing literals or comments. */
+  static std::string expandManifestLayout(const std::string& source) {
+    std::istringstream input(source);
+    Lexer lexer(input);
+    lexer.setEmitComments(true);
+    std::vector<Token> tokens;
+    for (auto token = lexer.getNextToken(); token.kind != TokenKind::TOK_EOF;
+         token = lexer.getNextToken()) {
+      tokens.push_back(std::move(token));
+    }
+    std::string result;
+    std::vector<TokenKind> delimiters;
+    size_t end = 0;
+    for (size_t i = 0; i < tokens.size(); ++i) {
+      const auto& token = tokens[i];
+      const bool inList =
+          !delimiters.empty() && delimiters.back() == TokenKind::BRACKET_OPEN;
+      bool split = false;
+      if (i > 0) {
+        const auto& previous = tokens[i - 1];
+        const bool comment = token.kind == TokenKind::COMMENT ||
+                             token.kind == TokenKind::BLOCK_COMMENT;
+        split = inList && (previous.kind == TokenKind::BRACKET_OPEN ||
+                           previous.kind == TokenKind::COMMA ||
+                           previous.kind == TokenKind::COMMENT ||
+                           previous.kind == TokenKind::BLOCK_COMMENT ||
+                           token.kind == TokenKind::BRACKET_CLOSE);
+        split = split || previous.kind == TokenKind::BRACE_OPEN ||
+                token.kind == TokenKind::BRACE_CLOSE;
+        if ((previous.kind == TokenKind::BRACKET_OPEN &&
+             token.kind == TokenKind::BRACKET_CLOSE) ||
+            (previous.kind == TokenKind::BRACE_OPEN &&
+             token.kind == TokenKind::BRACE_CLOSE)) {
+          split = false;
+        }
+        // Keep comments attached to the entry they describe.
+        if (comment && previous.kind != TokenKind::BRACKET_OPEN &&
+            previous.kind != TokenKind::BRACE_OPEN &&
+            token.start.line == previous.end.line) {
+          split = false;
+        }
+      }
+      const auto gap = source.substr(end, token.start.offset - end);
+      result += split && gap.find('\n') == std::string::npos ? "\n" : gap;
+      result.append(source, token.start.offset,
+                    token.end.offset - token.start.offset);
+      end = token.end.offset;
+      if (token.kind == TokenKind::BRACKET_OPEN ||
+          token.kind == TokenKind::BRACE_OPEN) {
+        delimiters.push_back(token.kind);
+      } else if (token.kind == TokenKind::BRACKET_CLOSE ||
+                 token.kind == TokenKind::BRACE_CLOSE) {
+        delimiters.pop_back();
+      }
+    }
+    result.append(source, end, source.size() - end);
+    return result;
+  }
+
   /** Reindents manifest lines using delimiters outside strings and comments.
-   * Preserves line breaks and token contents, including multiline literals. */
+   * Expands lists and preserves token contents, including multiline literals.
+   */
   void printManifest(const Position& location) {
-    const std::string source = slice(location);
+    const std::string source = expandManifestLayout(slice(location));
     std::istringstream input(source);
     Lexer lexer(input);
     lexer.setEmitComments(true);
@@ -333,20 +417,21 @@ class Formatter {
   void printBlockAuto(const BlockExprAST& b) {
     const Position& loc = b.getLocation();
     int endOffset = loc.endOffset.value_or(static_cast<int>(src_.size()));
-    if (!isMultiLine(loc) && !hasCommentBefore(endOffset)) {
-      if (b.isEmpty()) {
-        out_ += "{}";
-        return;
-      }
-      out_ += "{ ";
-      for (const auto& stmt : b.getBody()) {
-        if (!stmt) {
-          continue;
-        }
-        printStmt(*stmt);
-        out_ += ' ';
-      }
-      out_ += '}';
+    if (!isMultiLine(loc) && !hasCommentBefore(endOffset) && tryInline([&] {
+          if (b.isEmpty()) {
+            out_ += "{}";
+            return;
+          }
+          out_ += "{ ";
+          for (const auto& stmt : b.getBody()) {
+            if (!stmt) {
+              continue;
+            }
+            printStmt(*stmt);
+            out_ += ' ';
+          }
+          out_ += '}';
+        })) {
       return;
     }
     printBlockML(b);
@@ -436,47 +521,78 @@ class Formatter {
     if (includeParameters) {
       printTypeParams(p.getTypeParameters(), p.getLifetimeParameters());
     }
-    out_ += '(';
-    const auto& args = p.getArgs();
-    bool first = true;
-    for (const auto& [name, type] : args) {
-      if (!first) {
-        out_ += ", ";
+    /** Writes the same parameter tokens in compact or expanded form. */
+    auto printArguments = [&](bool multiline) {
+      out_ += multiline ? "(\n" : "(";
+      if (multiline) {
+        ++indent_;
+        writeIndent();
       }
-      first = false;
-      out_ += name;
-      out_ += ": ";
-      printType(type);
-    }
-    if (p.hasVariadicParam()) {
-      if (!first) {
-        out_ += ", ";
-      }
-      out_ += p.getVariadicParamName();
-      out_ += "...";
-      if (p.hasVariadicTypeAnnotation()) {
+      const auto& args = p.getArgs();
+      bool first = true;
+      for (const auto& [name, type] : args) {
+        if (!first) {
+          out_ += multiline ? ",\n" : ", ";
+          if (multiline) {
+            writeIndent();
+          }
+        }
+        first = false;
+        out_ += name;
         out_ += ": ";
-        printType(p.getVariadicTypeAnnotation());
+        printType(type);
       }
-    }
-    if (p.isCVariadic()) {
-      if (!first) {
-        out_ += ", ";
+      if (p.hasVariadicParam()) {
+        if (!first) {
+          out_ += multiline ? ",\n" : ", ";
+          if (multiline) {
+            writeIndent();
+          }
+        }
+        out_ += p.getVariadicParamName();
+        out_ += "...";
+        if (p.hasVariadicTypeAnnotation()) {
+          out_ += ": ";
+          printType(p.getVariadicTypeAnnotation());
+        }
       }
-      out_ += "...";
-    }
-    out_ += ')';
-    // Span-less return types are parser-synthesized (init and deinit get an
-    // implicit void); only source-spelled types are printed
-    if (includeReturnType && p.getReturnType().has_value() &&
-        p.getReturnType()->span.endOffset.has_value()) {
-      out_ += ' ';
-      printType(*p.getReturnType());
-    } else if (includeReturnType && p.getReturnType().has_value() &&
-               p.getReturnType()->canError) {
-      // A throwing constructor spells only the error part:
-      // init(...) throws IError
-      out_ += " throws IError";
+      if (p.isCVariadic()) {
+        if (!first) {
+          out_ += multiline ? ",\n" : ", ";
+          if (multiline) {
+            writeIndent();
+          }
+        }
+        out_ += "...";
+      }
+      if (multiline) {
+        out_ += '\n';
+        --indent_;
+        writeIndent();
+      }
+      out_ += ')';
+    };
+    /** Appends the source-spelled return and error contract. */
+    auto printResult = [&] {
+      // Span-less return types are parser-synthesized (init and deinit get an
+      // implicit void); only source-spelled types are printed
+      if (includeReturnType && p.getReturnType().has_value() &&
+          p.getReturnType()->span.endOffset.has_value()) {
+        out_ += ' ';
+        printType(*p.getReturnType());
+      } else if (includeReturnType && p.getReturnType().has_value() &&
+                 p.getReturnType()->canError) {
+        // A throwing constructor spells only the error part:
+        // init(...) throws IError
+        out_ += " throws IError";
+      }
+    };
+    if (!tryInline([&] {
+          printArguments(false);
+          printResult();
+        })) {
+      printArguments(true);
+      printResult();
     }
   }
 
@@ -518,23 +634,30 @@ class Formatter {
   // --- expression lists -----------------------------------------------------
 
   /**
-   * Single line: (a, b, c). Multiline (when the construct spanned lines in
-   * the source): one element per line, closing bracket at parent indent.
+   * Keeps short lists compact; long lists and existing multiline lists use
+   * one element per line, with the closing bracket at the parent indent.
    */
   void printExprList(const std::vector<std::unique_ptr<ExprAST>>& items,
-                     char open, char close, const Position& constructSpan) {
-    out_ += open;
-    bool multiline = isMultiLine(constructSpan) && !items.empty();
-    if (!multiline) {
-      for (size_t i = 0; i < items.size(); ++i) {
-        if (i) {
-          out_ += ", ";
-        }
-        printExpr(*items[i]);
-      }
+                     char open, char close, const Position& constructSpan,
+                     bool forceMultiline = false) {
+    if (items.empty()) {
+      out_ += open;
       out_ += close;
       return;
     }
+    if (!forceMultiline && !isMultiLine(constructSpan) && tryInline([&] {
+          out_ += open;
+          for (size_t i = 0; i < items.size(); ++i) {
+            if (i) {
+              out_ += ", ";
+            }
+            printExpr(*items[i]);
+          }
+          out_ += close;
+        })) {
+      return;
+    }
+    out_ += open;
     out_ += '\n';
     ++indent_;
     for (size_t i = 0; i < items.size(); ++i) {
@@ -983,16 +1106,42 @@ class Formatter {
 
       case ASTNodeType::STRUCT_LITERAL: {
         const auto& lit = static_cast<const sun::ast::StructLiteralAST&>(e);
-        out_ += '{';
-        bool first = true;
-        for (const auto& field : lit.getFields()) {
-          out_ += first ? " " : ", ";
-          first = false;
-          out_ += field.name;
-          out_ += ": ";
-          printExpr(*field.value);
+        /** Writes fields with their names in either list layout. */
+        auto printFields = [&](bool multiline) {
+          out_ += multiline ? "{\n" : "{";
+          if (multiline) {
+            ++indent_;
+          }
+          const auto& fields = lit.getFields();
+          for (size_t i = 0; i < fields.size(); ++i) {
+            if (multiline) {
+              flushCommentsBefore(fields[i].value->getLocation().offset);
+              writeIndent();
+            } else {
+              out_ += i == 0 ? " " : ", ";
+            }
+            out_ += fields[i].name + ": ";
+            printExpr(*fields[i].value);
+            if (multiline) {
+              if (i + 1 < fields.size()) {
+                out_ += ',';
+              }
+              emitTrailingComments(endLineOf(fields[i].value->getLocation()));
+              out_ += '\n';
+            }
+          }
+          if (multiline) {
+            flushCommentsBefore(loc.endOffset.value_or(loc.offset) - 1);
+            --indent_;
+            writeIndent();
+          } else if (!fields.empty()) {
+            out_ += ' ';
+          }
+          out_ += '}';
+        };
+        if (!tryInline([&] { printFields(false); })) {
+          printFields(true);
         }
-        out_ += first ? "}" : " }";
         break;
       }
       case ASTNodeType::ARRAY_LITERAL: {
@@ -1062,7 +1211,14 @@ class Formatter {
         out_ += ' ';
         out_ += n.getOp().text;
         out_ += ' ';
-        printExpr(*n.getRHS());
+        if (!tryInline([&] { printExpr(*n.getRHS()); })) {
+          out_.pop_back();
+          out_ += '\n';
+          ++indent_;
+          writeIndent();
+          printExpr(*n.getRHS());
+          --indent_;
+        }
         break;
       }
 
@@ -1132,8 +1288,10 @@ class Formatter {
 
       case ASTNodeType::CALL: {
         const auto& n = static_cast<const sun::ast::CallExprAST&>(e);
+        const auto start = out_.size();
         printExpr(*n.getCallee());
-        printExprList(n.getArgs(), '(', ')', loc);
+        printExprList(n.getArgs(), '(', ')', loc,
+                      out_.find('\n', start) != std::string::npos);
         break;
       }
 

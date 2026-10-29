@@ -76,8 +76,14 @@ public module std {
       var lo: i64 = -128;
       var hi: i64 = 127;
       var over: i64 = 128;
-      try std.test.assert_eq(_convert<i32>(try std.test.expect_conversion(safe_convert<i8>(lo))), -128);
-      try std.test.assert_eq(_convert<i32>(try std.test.expect_conversion(safe_convert<i8>(hi))), 127);
+      try std.test.assert_eq(
+        _convert<i32>(try std.test.expect_conversion(safe_convert<i8>(lo))),
+        -128
+      );
+      try std.test.assert_eq(
+        _convert<i32>(try std.test.expect_conversion(safe_convert<i8>(hi))),
+        127
+      );
       match safe_convert<i8>(over) {
         ConversionResult.Ok(matched_value) => {
           var x: i8 = matched_value;
@@ -99,7 +105,10 @@ public module std {
     /** Checks float to int truncates toward zero. */
     test_function float_to_int_truncates_toward_zero() {
       var g: f64 = -7.9;
-      try std.test.assert_eq(_convert<i32>(try std.test.expect_conversion(safe_convert<i8>(g))), -7);
+      try std.test.assert_eq(
+        _convert<i32>(try std.test.expect_conversion(safe_convert<i8>(g))),
+        -7
+      );
     }
 
     /** Checks float to int out of range throws. */
@@ -135,7 +144,10 @@ public module std {
         }
       };
       var fits: f64 = 255.0;
-      try std.test.assert_eq(_convert<i32>(try std.test.expect_conversion(safe_convert<u8>(fits))), 255);
+      try std.test.assert_eq(
+        _convert<i32>(try std.test.expect_conversion(safe_convert<u8>(fits))),
+        255
+      );
     }
 
     /** Checks nan to int throws. */

@@ -256,7 +256,10 @@ public module std {
     /**
      * Read, parse, dispatch to the handler, and send the response
      */
-    method handle_connection(client: ref TcpStream, handler: (ref HttpRequest, ref HttpResponse) => void) SystemResult<void> {
+    method handle_connection(
+      client: ref TcpStream,
+      handler: (ref HttpRequest, ref HttpResponse) => void
+    ) SystemResult<void> {
       var req = HttpRequest(this.alloc);
       try this.read_request(client, req);
 

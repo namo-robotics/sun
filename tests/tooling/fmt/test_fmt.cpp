@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <sstream>
 
 #include "cli/fmt_command.h"
 #include "parsing/formatter.h"
@@ -51,7 +52,9 @@ TEST(Tooling_Fmt, ManifestIndentation) {
       "  ],\n"
       "  target: {\n"
       "    macos: {\n"
-      "      source_files: [\"darwin.sun\"]\n"
+      "      source_files: [\n"
+      "        \"darwin.sun\"\n"
+      "      ]\n"
       "    }\n"
       "  }\n"
       "}\n";
@@ -1329,4 +1332,109 @@ TEST_F(Tooling_FmtIgnore, BuiltInExclusions) {
   write("template.inja.sun", "not valid Sun!");
   write("main.sun", "function f() void {}\n");
   EXPECT_EQ(check(".", true), 0);
+}
+
+/** Manifest strings receive separate lines while comments stay with entries. */
+TEST(Tooling_Fmt, ManifestListsAlwaysExpand) {
+  const std::string input = R"(manifest {
+  libraries: ["stdlib.moon", "sun_ui.moon", "sun_gobject.moon", "sun_gtk.moon", "sun_ui_gtk.moon"]
+  source_files: ["process.sun", /* keep [,] */ "media.sun", "job.sun"]
+  test_files: []
+}
+)";
+  const std::string expected = R"(manifest {
+  libraries: [
+    "stdlib.moon",
+    "sun_ui.moon",
+    "sun_gobject.moon",
+    "sun_gtk.moon",
+    "sun_ui_gtk.moon"
+  ]
+  source_files: [
+    "process.sun", /* keep [,] */
+    "media.sun",
+    "job.sun"
+  ]
+  test_files: []
+}
+)";
+  EXPECT_EQ(fmt(input), expected);
+  EXPECT_EQ(fmt(expected), expected);
+}
+
+/** Long parameter, argument, array, and field lists wrap and remain stable. */
+TEST(Tooling_Fmt, WrapsLongSyntaxAtOneHundredColumns) {
+  const std::string source = R"(
+function process(first_parameter_name: i32, second_parameter_name: i32, third_parameter_name: i32, fourth_parameter_name: i32) i32 {
+  var values = [first_parameter_name, second_parameter_name, third_parameter_name, fourth_parameter_name];
+  var record = { first_field: first_parameter_name, second_field: second_parameter_name, third_field: third_parameter_name };
+  return process(first_parameter_name, second_parameter_name, third_parameter_name, fourth_parameter_name);
+}
+)";
+  const auto formatted = fmt(source);
+  EXPECT_NE(formatted.find("function process(\n"), std::string::npos);
+  EXPECT_NE(formatted.find("var values = [\n"), std::string::npos);
+  EXPECT_NE(formatted.find("var record = {\n"), std::string::npos);
+  EXPECT_NE(formatted.find("return process(\n"), std::string::npos);
+  std::istringstream lines(formatted);
+  for (std::string line; std::getline(lines, line);) {
+    EXPECT_LE(line.size(), 100u) << line;
+  }
+  EXPECT_EQ(fmt(formatted), formatted);
+}
+
+/** Wrapping leaves indivisible literal contents unchanged. */
+TEST(Tooling_Fmt, PreservesLongLiteralContents) {
+  const std::string literal = "\"" + std::string(150, 'x') + "\"";
+  const auto formatted = fmt("function f() void { var text = " + literal + "; }");
+  EXPECT_NE(formatted.find(literal), std::string::npos);
+  EXPECT_EQ(fmt(formatted), formatted);
+}
+
+/** Nested calls and operator continuations keep their layout on later runs. */
+TEST(Tooling_Fmt, WrappedNestedExpressionsAreIdempotent) {
+  const auto formatted = fmt(R"(
+function f() i32 {
+  var callback = make_callback(first_long_argument_name, second_long_argument_name, third_long_argument_name)(1, 2);
+  return first_long_argument_name + second_long_argument_name + third_long_argument_name + fourth_long_argument_name;
+}
+)");
+  EXPECT_NE(formatted.find(")(\n"), std::string::npos);
+  EXPECT_NE(formatted.find("+\n"), std::string::npos);
+  EXPECT_EQ(fmt(formatted), formatted);
+  std::istringstream lines(formatted);
+  for (std::string line; std::getline(lines, line);) {
+    EXPECT_LE(line.size(), 100u) << line;
+  }
+}
+
+/** Inline manifest blocks expand around their fields and nested target blocks. */
+TEST(Tooling_Fmt, ExpandsInlineManifestBraces) {
+  const std::string expected = R"(manifest {
+  libraries: [
+    "stdlib.moon",
+    "cuda.moon"
+  ]
+}
+)";
+  EXPECT_EQ(fmt(R"(manifest { libraries: ["stdlib.moon", "cuda.moon"] })"),
+            expected);
+  EXPECT_EQ(fmt(R"(manifest { libraries: [
+    "stdlib.moon",
+    "cuda.moon"
+  ] })"), expected);
+  EXPECT_EQ(fmt(expected), expected);
+  const auto nested = fmt(
+      R"(manifest { target: { linux: { libraries: ["stdlib.moon"] } } })");
+  EXPECT_EQ(nested, R"(manifest {
+  target: {
+    linux: {
+      libraries: [
+        "stdlib.moon"
+      ]
+    }
+  }
+}
+)");
+  EXPECT_EQ(fmt(nested), nested);
 }

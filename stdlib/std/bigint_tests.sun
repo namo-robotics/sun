@@ -52,7 +52,9 @@ public module std {
       var sq_text = String(alloc, "");
       square.append_decimal(sq_text);
       try std.test.assert(
-        sq_text.equals_literal("70359079638545882374689246780656119576032161719910400000000000000"),
+        sq_text.equals_literal(
+          "70359079638545882374689246780656119576032161719910400000000000000"
+        ),
         "(30!)^2 renders wrong"
       );
       var bad = String(alloc, "12x");
@@ -69,34 +71,57 @@ public module std {
       var alloc = make_heap_allocator();
       // a = 2^200 + 12345, b = 3^150 + 7
       var a = make_bigint(alloc, "1606938044258990275541962092341162602522202993782792835313721");
-      var b = make_bigint(alloc, "369988485035126972924700782451696644186473100389722973815184405301748256");
+      var b = make_bigint(
+        alloc,
+        "369988485035126972924700782451696644186473100389722973815184405301748256"
+      );
       var sum = a.clone();
       sum.add(b);
       try std.test.assert(
-        renders_as(alloc, sum, "369988485036733910968959772727238606278814262992245176808967198137061977"),
+        renders_as(
+          alloc,
+          sum,
+          "369988485036733910968959772727238606278814262992245176808967198137061977"
+        ),
         "a + b wrong"
       );
       var diff = b.clone();
       try std.test.expect_arithmetic_success(diff.sub(a));
       try std.test.assert(
-        renders_as(alloc, diff, "369988485033520034880441792176154682094131937787200770821401612466434535"),
+        renders_as(
+          alloc,
+          diff,
+          "369988485033520034880441792176154682094131937787200770821401612466434535"
+        ),
         "b - a wrong"
       );
       var prod = a.clone();
       prod.mul(b);
       try std.test.assert(
-        renders_as(alloc, prod, "594548572540693628849860287507659082019984411858745114670193959411490296520390392243035028084963886526203367157948222586215524620576"),
+        renders_as(
+          alloc,
+          prod,
+          "594548572540693628849860287507659082019984411858745114670193959411490296520390392243035028084963886526203367157948222586215524620576"
+        ),
         "a * b wrong"
       );
       prod.shr(77);
       try std.test.assert(
-        renders_as(alloc, prod, "3934392419413913323894585204914305526281585972813365664542781201694709080391154784167284198954246014261865110"),
+        renders_as(
+          alloc,
+          prod,
+          "3934392419413913323894585204914305526281585972813365664542781201694709080391154784167284198954246014261865110"
+        ),
         "(a * b) >> 77 wrong"
       );
       var scaled = a.clone();
       scaled.mul_pow10(40);
       try std.test.assert(
-        renders_as(alloc, scaled, "16069380442589902755419620923411626025222029937827928353137210000000000000000000000000000000000000000"),
+        renders_as(
+          alloc,
+          scaled,
+          "16069380442589902755419620923411626025222029937827928353137210000000000000000000000000000000000000000"
+        ),
         "a * 10^40 wrong"
       );
       try std.test.assert_eq(a.compare(b), -1);
@@ -125,10 +150,16 @@ public module std {
       var d = make_bigint(alloc, "123456789012345678901234567890");
       var rem: u32 = try std.test.expect_arithmetic(d.divmod_small(1000));
       try std.test.assert_eq(rem, 890);
-      try std.test.assert(renders_as(alloc, d, "123456789012345678901234567"), "divmod quotient wrong");
+      try std.test.assert(
+        renders_as(alloc, d, "123456789012345678901234567"),
+        "divmod quotient wrong"
+      );
       d.mul_small(1000);
       d.add_small(890);
-      try std.test.assert(renders_as(alloc, d, "123456789012345678901234567890"), "divmod round trip wrong");
+      try std.test.assert(
+        renders_as(alloc, d, "123456789012345678901234567890"),
+        "divmod round trip wrong"
+      );
       // Carries across a limb boundary
       var c = BigUint(alloc, 0 - _convert<u64>(1));
       c.add_small(1);

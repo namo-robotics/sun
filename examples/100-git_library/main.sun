@@ -1,5 +1,8 @@
 manifest {
-  libraries: ["stdlib.moon", "$SUN_SERVE/sun_serve.moon"]
+  libraries: [
+    "stdlib.moon",
+    "$SUN_SERVE/sun_serve.moon"
+  ]
 }
 
 using std;

@@ -15,7 +15,24 @@ public module std.signal {
 
     /** Zero the entire native signal mask before installation or a libc query. */
     init() {
-      this.mask = [0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64];
+      this.mask = [
+        0i64,
+        0i64,
+        0i64,
+        0i64,
+        0i64,
+        0i64,
+        0i64,
+        0i64,
+        0i64,
+        0i64,
+        0i64,
+        0i64,
+        0i64,
+        0i64,
+        0i64,
+        0i64
+      ];
     }
   }
 }

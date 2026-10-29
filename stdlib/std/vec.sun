@@ -192,7 +192,9 @@ public module std {
       var value = try this.extract_for_removal(index);
       this.size_ = this.size_ - 1;
       if (index < this.size_) {
-        unsafe { this.data.set_unchecked(index, unsafe { this.data.take_unchecked(this.size_); }); };
+        unsafe {
+          this.data.set_unchecked(index, unsafe { this.data.take_unchecked(this.size_); });
+        };
       }
       return AccessResult.Ok(value);
     }

@@ -133,7 +133,11 @@ public module tls {
    * Public like http.sun's request parser, so code driving a TlsStream
    * itself can reuse the framing.
    */
-  public function parse_response(alloc: ref HeapAllocator, raw: const ref String, resp: ref HttpClientResponse) SystemResult<void> {
+  public function parse_response(
+    alloc: ref HeapAllocator,
+    raw: const ref String,
+    resp: ref HttpClientResponse
+  ) SystemResult<void> {
     var n: i64 = raw.length();
     var header_end: i64 = find_header_end(raw);
     if (header_end < 0) {
@@ -214,7 +218,11 @@ public module tls {
     }
 
     /** Sends an HTTPS GET request and returns the parsed response. */
-    public method get(host: ref String, port: i32, path: static_ptr<u8>) ClientResult<HttpClientResponse> {
+    public method get(
+      host: ref String,
+      port: i32,
+      path: static_ptr<u8>
+    ) ClientResult<HttpClientResponse> {
       var req = String(this.alloc, "GET ");
       req.append(path);
       req.append(" HTTP/1.1");
@@ -227,12 +235,23 @@ public module tls {
     /**
      * POST a body to https://host{path} on port 443
      */
-    public method post(host: ref String, path: static_ptr<u8>, content_type: static_ptr<u8>, body: const ref String) ClientResult<HttpClientResponse> {
+    public method post(
+      host: ref String,
+      path: static_ptr<u8>,
+      content_type: static_ptr<u8>,
+      body: const ref String
+    ) ClientResult<HttpClientResponse> {
       return ClientResult.Ok((try this.post(host, 443, path, content_type, body)));
     }
 
     /** Sends an HTTPS POST request with the supplied body and returns the response. */
-    public method post(host: ref String, port: i32, path: static_ptr<u8>, content_type: static_ptr<u8>, body: const ref String) ClientResult<HttpClientResponse> {
+    public method post(
+      host: ref String,
+      port: i32,
+      path: static_ptr<u8>,
+      content_type: static_ptr<u8>,
+      body: const ref String
+    ) ClientResult<HttpClientResponse> {
       var req = String(this.alloc, "POST ");
       req.append(path);
       req.append(" HTTP/1.1");
@@ -263,7 +282,11 @@ public module tls {
     /**
      * Connect, send the request, read to end-of-stream, and parse
      */
-    method exchange(host: ref String, port: i32, request: ref String) ClientResult<HttpClientResponse> {
+    method exchange(
+      host: ref String,
+      port: i32,
+      request: ref String
+    ) ClientResult<HttpClientResponse> {
       var stream = TlsStream();
       try stream.connect(host, port);
       try stream.send_string(request);

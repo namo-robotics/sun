@@ -39,7 +39,9 @@ public module std.io {
     }
     var flags: u16 = enabled ? 1u16 : 2u16;
     var change = Kevent(fd, filter, flags);
-    if (unsafe { c_kevent(queue, _bitcast<raw_ptr<u8>>(_address_of<Kevent>(change)), 1, null, 0, null); } < 0) {
+    if (unsafe {
+      c_kevent(queue, _bitcast<raw_ptr<u8>>(_address_of<Kevent>(change)), 1, null, 0, null);
+    } < 0) {
       return errno();
     }
     return 0;
@@ -57,7 +59,13 @@ public module std.io {
     }
     error = change_filter(queue, fd, -2, (old & POLLOUT) != 0, (events & POLLOUT) != 0);
     if (error != 0) {
-      var rollback: i32 = change_filter(queue, fd, -1, (events & POLLIN) != 0, (old & POLLIN) != 0);
+      var rollback: i32 = change_filter(
+        queue,
+        fd,
+        -1,
+        (events & POLLIN) != 0,
+        (old & POLLIN) != 0
+      );
       if (rollback != 0) {
         return 0 - rollback;
       }
@@ -71,7 +79,16 @@ public module std.io {
       return unsafe { c_kevent(queue, null, 0, events, capacity, null); };
     }
     var duration = Timespec(timeout / 1000, _convert<i64>(timeout % 1000) * 1000000);
-    return unsafe { c_kevent(queue, null, 0, events, capacity, _bitcast<raw_ptr<u8>>(_address_of<Timespec>(duration))); };
+    return unsafe {
+      c_kevent(
+        queue,
+        null,
+        0,
+        events,
+        capacity,
+        _bitcast<raw_ptr<u8>>(_address_of<Timespec>(duration))
+      );
+    };
   }
 
   /** Translate read/write filters and preserve EOF and error indications. */

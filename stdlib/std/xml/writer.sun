@@ -79,7 +79,10 @@ public module std {
     }
 
     /** Finds an effective prefix binding, checking the prospective frame first. */
-    method binding(frame: const ref XmlWriteFrame, prefix: const ref String) Option<const ref String> {
+    method binding(
+      frame: const ref XmlWriteFrame,
+      prefix: const ref String
+    ) Option<const ref String> {
       for (var i = frame.namespaces.size() - 1; i >= 0; i -= 1) {
         if (frame.namespaces[i].prefix.equals(prefix)) {
           return Option.Some(frame.namespaces[i].uri);
@@ -178,7 +181,10 @@ public module std {
     }
 
     /** Opens a parsed element while preserving compatible explicit declarations. */
-    method start_with_namespaces(name: const ref XmlName, declarations: const ref Vec<XmlNamespace>) XmlResult<void> {
+    method start_with_namespaces(
+      name: const ref XmlName,
+      declarations: const ref Vec<XmlNamespace>
+    ) XmlResult<void> {
       try this.begin();
       try name.validate();
       if (this.stack.size() >= 256) {
@@ -193,7 +199,11 @@ public module std {
         if (name.uri_.is_empty() and declarations[i].prefix.is_empty()) {
           continue;
         }
-        this.bind(frame, declarations[i].prefix.clone(this.alloc), declarations[i].uri.clone(this.alloc));
+        this.bind(
+          frame,
+          declarations[i].prefix.clone(this.alloc),
+          declarations[i].uri.clone(this.alloc)
+        );
       }
       var qname = this.qualify(frame, name, false);
       var head = String(this.alloc, "<");

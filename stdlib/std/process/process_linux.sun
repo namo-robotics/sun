@@ -31,7 +31,8 @@ public module std.process {
     }
     var value: u64 = 0;
     var digits: i64 = 0;
-    while (at < text.length() and process_byte(text, at) >= b'0' and process_byte(text, at) <= b'9') {
+    while (at < text.length() and process_byte(text, at) >= b'0' and
+      process_byte(text, at) <= b'9') {
       var digit = _convert<u64>(process_byte(text, at) - b'0');
       if (value > (U64_MAX - digit) / 10) {
         return SystemResult.Error(Error(22, "process stat value overflows"));
@@ -40,14 +41,18 @@ public module std.process {
       digits = digits + 1;
       at = at + 1;
     }
-    if (digits == 0 or (at < text.length() and process_byte(text, at) != b' ' and process_byte(text, at) != b'\n')) {
+    if (digits == 0 or
+      (at < text.length() and process_byte(text, at) != b' ' and process_byte(text, at) != b'\n')) {
       return SystemResult.Error(Error(22, "missing process stat value"));
     }
     return SystemResult.Ok(value);
   }
 
   /** Read the process's opaque start tick count from procfs. */
-  function native_process_identity(alloc: ref HeapAllocator, target: i32) SystemResult<ProcessIdentity> {
+  function native_process_identity(
+    alloc: ref HeapAllocator,
+    target: i32
+  ) SystemResult<ProcessIdentity> {
     var path = process_path(alloc, target, "/stat");
     var text = try std.io.read_to_string(alloc, path);
     return SystemResult.Ok(ProcessIdentity(target, (try process_stat_field(text, 22))));
@@ -124,18 +129,32 @@ public module std.process {
   }
 
   /** Read argv bytes independently so access failures remain field-specific. */
-  function native_process_arguments(alloc: ref HeapAllocator, target: i32) SystemResult<Vec<String>> {
+  function native_process_arguments(
+    alloc: ref HeapAllocator,
+    target: i32
+  ) SystemResult<Vec<String>> {
     var path = process_path(alloc, target, "/cmdline");
     var text = try std.io.read_to_string(alloc, path);
     return process_arguments(alloc, text);
   }
 
   /** Read resource fields from one stat record and collect optional text separately. */
-  function native_process_snapshot(alloc: ref HeapAllocator, target: i32) SystemResult<ProcessSnapshot> {
+  function native_process_snapshot(
+    alloc: ref HeapAllocator,
+    target: i32
+  ) SystemResult<ProcessSnapshot> {
     var path = process_path(alloc, target, "/stat");
     var text = try std.io.read_to_string(alloc, path);
     var identity = ProcessIdentity(target, (try process_stat_field(text, 22)));
-    return SystemResult.Ok(ProcessSnapshot(identity, process_cpu_ns(text), process_rss_bytes(text), process_executable(alloc, target), native_process_arguments(alloc, target)));
+    return SystemResult.Ok(
+      ProcessSnapshot(
+        identity,
+        process_cpu_ns(text),
+        process_rss_bytes(text),
+        process_executable(alloc, target),
+        native_process_arguments(alloc, target)
+      )
+    );
   }
 
   /** Query physical pages and convert to bytes with overflow checking. */
@@ -158,7 +177,10 @@ public module std.process {
   }
 
   /** Open a pidfd, then verify its still-live process matches the requested identity. */
-  function native_process_open(alloc: ref HeapAllocator, identity: const ref ProcessIdentity) SystemResult<i64> {
+  function native_process_open(
+    alloc: ref HeapAllocator,
+    identity: const ref ProcessIdentity
+  ) SystemResult<i64> {
     // pidfd syscall numbers agree on the supported Linux x86_64 and aarch64 ABIs.
     var fd = unsafe { c_syscall(434, _convert<i64>(identity.pid), _convert<i64>(0)); };
     if (fd < 0) {
@@ -189,8 +211,15 @@ public module std.process {
   }
 
   /** Signal only through the owned pidfd; errno includes EPERM, ESRCH and ENOSYS. */
-  function native_process_signal(alloc: ref HeapAllocator, identity: const ref ProcessIdentity, token: i64, signal: i32) SystemResult<void> {
-    if (unsafe { c_syscall(424, token - 1, _convert<i64>(signal), _convert<i64>(0), _convert<i64>(0)); } < 0) {
+  function native_process_signal(
+    alloc: ref HeapAllocator,
+    identity: const ref ProcessIdentity,
+    token: i64,
+    signal: i32
+  ) SystemResult<void> {
+    if (unsafe {
+      c_syscall(424, token - 1, _convert<i64>(signal), _convert<i64>(0), _convert<i64>(0));
+    } < 0) {
       return SystemResult.Error(Error(errno(), "pidfd_send_signal failed"));
     }
     return SystemResult.Ok;

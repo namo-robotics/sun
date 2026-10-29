@@ -166,7 +166,40 @@ public module std {
 
   /** Write a signed integer to standard error. */
   public function eprint(value: i64) void {
-    var buffer: array<u8, 32> = [0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8];
+    var buffer: array<u8, 32> = [
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8
+    ];
     var dst = unsafe { _address_of<u8>(buffer[0]); };
     var written = unsafe { c_snprintf(dst, 32, "%lld", value); };
     if (written > 0 and written < 32) {
@@ -181,7 +214,40 @@ public module std {
 
   /** Write an unsigned integer to standard error. */
   public function eprint(value: u64) void {
-    var buffer: array<u8, 32> = [0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8];
+    var buffer: array<u8, 32> = [
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8
+    ];
     var dst = unsafe { _address_of<u8>(buffer[0]); };
     var written = unsafe { c_snprintf(dst, 32, "%llu", value); };
     if (written > 0 and written < 32) {
@@ -191,7 +257,40 @@ public module std {
 
   /** Write a floating-point number to standard error. */
   public function eprint(value: f64) void {
-    var buffer: array<u8, 32> = [0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8];
+    var buffer: array<u8, 32> = [
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8
+    ];
     var dst = unsafe { _address_of<u8>(buffer[0]); };
     var written = unsafe { c_snprintf(dst, 32, "%.15g", value); };
     var back = unsafe { c_strtod(dst, null); };

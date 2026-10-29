@@ -24,9 +24,18 @@ public module std {
       // conversions reverse the bytes and undo each other.
       try std.test.assert_eq(std.byte_order.to_big_endian_u16(a), 13330);
       try std.test.assert_eq(std.byte_order.to_big_endian_u32(b), 2018915346);
-      try std.test.assert_eq(std.byte_order.from_big_endian_u16(std.byte_order.to_big_endian_u16(a)), a);
-      try std.test.assert_eq(std.byte_order.from_big_endian_u32(std.byte_order.to_big_endian_u32(b)), b);
-      try std.test.assert_eq(std.byte_order.from_big_endian_u64(std.byte_order.to_big_endian_u64(c)), c);
+      try std.test.assert_eq(
+        std.byte_order.from_big_endian_u16(std.byte_order.to_big_endian_u16(a)),
+        a
+      );
+      try std.test.assert_eq(
+        std.byte_order.from_big_endian_u32(std.byte_order.to_big_endian_u32(b)),
+        b
+      );
+      try std.test.assert_eq(
+        std.byte_order.from_big_endian_u64(std.byte_order.to_big_endian_u64(c)),
+        c
+      );
 
       // Little-endian already matches the machine, so nothing moves.
       try std.test.assert_eq(std.byte_order.to_little_endian_u16(a), a);

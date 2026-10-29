@@ -29,18 +29,30 @@ public module tls {
       var resp = HttpClientResponse(alloc);
       try std.test.expect_system_success(parse_response(alloc, raw, resp));
       try std.test.assert_eq(resp.status, 404);
-      try std.test.assert(resp.body.equals_literal("hello"), "body is the bytes after the headers");
-      try std.test.assert(resp.headers.starts_with("Content-Length: 5"), "headers keep the raw header block");
+      try std.test.assert(
+        resp.body.equals_literal("hello"),
+        "body is the bytes after the headers"
+      );
+      try std.test.assert(
+        resp.headers.starts_with("Content-Length: 5"),
+        "headers keep the raw header block"
+      );
     }
 
     /** Checks decodes chunked body. */
     test_function decodes_chunked_body() {
       var alloc = make_heap_allocator();
-      var raw = String(alloc, "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n");
+      var raw = String(
+        alloc,
+        "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n"
+      );
       var resp = HttpClientResponse(alloc);
       try std.test.expect_system_success(parse_response(alloc, raw, resp));
       try std.test.assert_eq(resp.status, 200);
-      try std.test.assert(resp.body.equals_literal("hello world"), "chunks are joined without their sizes");
+      try std.test.assert(
+        resp.body.equals_literal("hello world"),
+        "chunks are joined without their sizes"
+      );
     }
 
     /** Checks rejects response without header terminator. */
@@ -292,13 +304,18 @@ public module tls {
         ClientResult.System(error) => {
           try std.test.assert_eq(error.code(), -1);
           var message = error.message();
-          try std.test.assert(message.equals_literal("malformed HTTP response: missing header terminator"), "HTTP error text is preserved");
+          try std.test.assert(
+            message.equals_literal("malformed HTTP response: missing header terminator"),
+            "HTTP error text is preserved"
+          );
         },
         _ => {
           try std.test.fail("expected a system error");
         }
       };
-      var failure: ClientResult<i32> = ClientResult.Tls(TlsError(7, String(alloc, "test TLS error")));
+      var failure: ClientResult<i32> = ClientResult.Tls(
+        TlsError(7, String(alloc, "test TLS error"))
+      );
       match failure {
         ClientResult.Ok(_) => {
           try std.test.fail("expected a TLS error");
@@ -306,7 +323,10 @@ public module tls {
         (error: const ref IError) => {
           try std.test.assert_eq(error.code(), 7);
           var message = error.message();
-          try std.test.assert(message.equals_literal("test TLS error"), "TLS error text is preserved");
+          try std.test.assert(
+            message.equals_literal("test TLS error"),
+            "TLS error text is preserved"
+          );
         }
       };
     }

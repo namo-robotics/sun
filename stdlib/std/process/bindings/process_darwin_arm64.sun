@@ -30,7 +30,32 @@ public module darwin_process_abi {
     public var pbi_start_tvsec: u64;
     public var pbi_start_tvusec: u64;
   }
-  _assert_c_layout<proc_bsdinfo>(136, 8, 0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 64, 96, 100, 104, 108, 112, 116, 120, 128);
+  _assert_c_layout<proc_bsdinfo>(
+    136,
+    8,
+    0,
+    4,
+    8,
+    12,
+    16,
+    20,
+    24,
+    28,
+    32,
+    36,
+    40,
+    44,
+    48,
+    64,
+    96,
+    100,
+    104,
+    108,
+    112,
+    116,
+    120,
+    128
+  );
 
   /** Mirrors the target C struct proc_taskinfo. */
   public class proc_taskinfo {
@@ -53,5 +78,26 @@ public module darwin_process_abi {
     public var pti_numrunning: i32;
     public var pti_priority: i32;
   }
-  _assert_c_layout<proc_taskinfo>(96, 8, 0, 8, 16, 24, 32, 40, 48, 52, 56, 60, 64, 68, 72, 76, 80, 84, 88, 92);
+  _assert_c_layout<proc_taskinfo>(
+    96,
+    8,
+    0,
+    8,
+    16,
+    24,
+    32,
+    40,
+    48,
+    52,
+    56,
+    60,
+    64,
+    68,
+    72,
+    76,
+    80,
+    84,
+    88,
+    92
+  );
 }

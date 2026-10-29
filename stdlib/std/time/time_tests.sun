@@ -23,7 +23,10 @@ public module std {
       try std.test.assert_eq(d.as_micros(), 1500000);
       try std.test.assert_eq(d.as_nanos(), 1500000000);
       try std.test.assert_eq(d.subsec_nanos(), 500000000);
-      try std.test.assert(d.as_secs_f64() > 1.49 and d.as_secs_f64() < 1.51, "fractional seconds near 1.5");
+      try std.test.assert(
+        d.as_secs_f64() > 1.49 and d.as_secs_f64() < 1.51,
+        "fractional seconds near 1.5"
+      );
 
       try std.test.assert_eq(std.time.create_duration_seconds(2).as_millis(), 2000);
       try std.test.assert_eq(std.time.create_duration_micros(2500).as_nanos(), 2500000);
@@ -37,7 +40,10 @@ public module std {
     test_function monotonic_clock_does_not_go_backwards() {
       var first = std.time.now();
       var second = std.time.now();
-      try std.test.assert(second.since(first).as_nanos() >= 0, "forward difference is non-negative");
+      try std.test.assert(
+        second.since(first).as_nanos() >= 0,
+        "forward difference is non-negative"
+      );
       try std.test.assert_eq(first.since(second).as_nanos(), 0);
     }
 
@@ -48,7 +54,10 @@ public module std {
     test_function sleep_waits_at_least_the_requested_time() {
       var start = std.time.now();
       std.time.sleep(std.time.create_duration_millis(50));
-      try std.test.assert(start.elapsed().as_millis() >= 40, "slept for roughly the requested time");
+      try std.test.assert(
+        start.elapsed().as_millis() >= 40,
+        "slept for roughly the requested time"
+      );
     }
 
     /**

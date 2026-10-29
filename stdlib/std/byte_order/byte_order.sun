@@ -137,7 +137,13 @@ public module std.byte_order {
       return AccessResult.OutOfBounds(IndexOutOfBoundsError(offset));
     }
     var value: u16 = 0;
-    unsafe { _memcpy(_ptr_as_raw<u8>(_address_of<u16>(value)), _ptr_offset(bytes.raw_data(), offset), _sizeof<u16>()); };
+    unsafe {
+      _memcpy(
+        _ptr_as_raw<u8>(_address_of<u16>(value)),
+        _ptr_offset(bytes.raw_data(), offset),
+        _sizeof<u16>()
+      );
+    };
     return AccessResult.Ok(value);
   }
 
@@ -147,7 +153,13 @@ public module std.byte_order {
       return AccessResult.OutOfBounds(IndexOutOfBoundsError(offset));
     }
     var value: u32 = 0;
-    unsafe { _memcpy(_ptr_as_raw<u8>(_address_of<u32>(value)), _ptr_offset(bytes.raw_data(), offset), _sizeof<u32>()); };
+    unsafe {
+      _memcpy(
+        _ptr_as_raw<u8>(_address_of<u32>(value)),
+        _ptr_offset(bytes.raw_data(), offset),
+        _sizeof<u32>()
+      );
+    };
     return AccessResult.Ok(value);
   }
 
@@ -157,7 +169,13 @@ public module std.byte_order {
       return AccessResult.OutOfBounds(IndexOutOfBoundsError(offset));
     }
     var value: u64 = 0;
-    unsafe { _memcpy(_ptr_as_raw<u8>(_address_of<u64>(value)), _ptr_offset(bytes.raw_data(), offset), _sizeof<u64>()); };
+    unsafe {
+      _memcpy(
+        _ptr_as_raw<u8>(_address_of<u64>(value)),
+        _ptr_offset(bytes.raw_data(), offset),
+        _sizeof<u64>()
+      );
+    };
     return AccessResult.Ok(value);
   }
 
@@ -167,7 +185,13 @@ public module std.byte_order {
       return AccessResult.OutOfBounds(IndexOutOfBoundsError(offset));
     }
     var value: i16 = 0;
-    unsafe { _memcpy(_ptr_as_raw<u8>(_address_of<i16>(value)), _ptr_offset(bytes.raw_data(), offset), _sizeof<i16>()); };
+    unsafe {
+      _memcpy(
+        _ptr_as_raw<u8>(_address_of<i16>(value)),
+        _ptr_offset(bytes.raw_data(), offset),
+        _sizeof<i16>()
+      );
+    };
     return AccessResult.Ok(value);
   }
 
@@ -177,7 +201,13 @@ public module std.byte_order {
       return AccessResult.OutOfBounds(IndexOutOfBoundsError(offset));
     }
     var value: i32 = 0;
-    unsafe { _memcpy(_ptr_as_raw<u8>(_address_of<i32>(value)), _ptr_offset(bytes.raw_data(), offset), _sizeof<i32>()); };
+    unsafe {
+      _memcpy(
+        _ptr_as_raw<u8>(_address_of<i32>(value)),
+        _ptr_offset(bytes.raw_data(), offset),
+        _sizeof<i32>()
+      );
+    };
     return AccessResult.Ok(value);
   }
 
@@ -187,7 +217,13 @@ public module std.byte_order {
       return AccessResult.OutOfBounds(IndexOutOfBoundsError(offset));
     }
     var value: i64 = 0;
-    unsafe { _memcpy(_ptr_as_raw<u8>(_address_of<i64>(value)), _ptr_offset(bytes.raw_data(), offset), _sizeof<i64>()); };
+    unsafe {
+      _memcpy(
+        _ptr_as_raw<u8>(_address_of<i64>(value)),
+        _ptr_offset(bytes.raw_data(), offset),
+        _sizeof<i64>()
+      );
+    };
     return AccessResult.Ok(value);
   }
 }
