@@ -3,6 +3,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <utility>
 
 #include "abi/abi_compatibility_checker.h"
 #include "abi/library_abi_snapshot.h"
@@ -150,7 +151,7 @@ TEST_F(ABI_LibraryAbiSnapshot, WarnsForIndependentCompatibleArtifacts) {
             std::string::npos);
   EXPECT_NE(warning.find("└── example/shapes [selected import]"),
             std::string::npos);
-  EXPECT_EQ(warning.find(revised), std::string::npos);
+  EXPECT_NE(warning.find("bundle: revised.moon"), std::string::npos);
   EXPECT_EQ(warning.find("\033["), std::string::npos);
   EXPECT_NE(warning.find("│   └── example/shapes\n"), std::string::npos);
   EXPECT_NE(warning.find(originalReader->getLibrary().content_hash()),
@@ -179,6 +180,46 @@ TEST_F(ABI_LibraryAbiSnapshot, RejectsLayoutChangesAndUnrelatedLibraries) {
                                 "moon exact dependency");
   EXPECT_SUN_ERROR_WITH_MESSAGE(run({reader}, application()),
                                 "moon exact dependency");
+}
+
+/** ABI errors identify both artifacts and the imports retaining requirements. */
+TEST_F(ABI_LibraryAbiSnapshot, ShowsConflictingArtifactsAndDependencyTree) {
+  const auto original = build("original", shapes(42));
+  const auto consumerPath = consumer(original);
+  const auto changed = build("changed", shapes(43, "example/shapes", true));
+  auto originalReader = sun::moon_bundling::MoonReader::open(original);
+  auto consumerReader = sun::moon_bundling::MoonReader::open(consumerPath);
+  auto changedReader = sun::moon_bundling::MoonReader::open(changed);
+  ASSERT_TRUE(originalReader && consumerReader && changedReader);
+  for (const bool reversed : {false, true}) {
+    sun::abi::AbiCompatibilityChecker checker;
+    std::vector<sun::moon_bundling::MoonReader*> imports{
+        consumerReader.get(), changedReader.get()};
+    if (reversed) {
+      std::swap(imports[0], imports[1]);
+    }
+    try {
+      checker.validateImports(imports, "main.sun");
+      FAIL() << "Expected an ABI mismatch";
+    } catch (const sun::support::SunError& error) {
+      const std::string message = error.what();
+      EXPECT_NE(message.find("Library ABI mismatch for 'example/shapes'"),
+                std::string::npos);
+      EXPECT_NE(message.find("\n  main.sun\n"), std::string::npos);
+      EXPECT_NE(message.find("├── reader.moon\n"), std::string::npos);
+      EXPECT_NE(message.find("│   └── example/shapes\n"), std::string::npos);
+      EXPECT_NE(message.find("└── example/shapes [selected import]\n"),
+                std::string::npos);
+      EXPECT_NE(message.find("artifact: " +
+                             originalReader->getLibrary().content_hash()),
+                std::string::npos);
+      EXPECT_NE(message.find("artifact: " +
+                             changedReader->getLibrary().content_hash()),
+                std::string::npos);
+      EXPECT_NE(message.find("bundle: changed.moon"), std::string::npos);
+      EXPECT_EQ(message.find("\033["), std::string::npos);
+    }
+  }
 }
 
 /** Multiple explicitly supplied revisions are ambiguous even with equal ABIs.
