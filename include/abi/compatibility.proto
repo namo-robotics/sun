@@ -83,9 +83,27 @@ message EmissionDefault {
   string version = 2;
 }
 
+/** Stable bitcode payload requirements, independent of compiler releases.
+ * Requirements form a set; their numeric identities must never be reassigned.
+ */
+message BitcodeReaderContract {
+  /** Obligations enforced before a bitcode payload can authorize an import. */
+  enum Requirement {
+    REQUIREMENT_UNSPECIFIED = 0;
+    LLVM_BITCODE_MODULE = 1;
+    CONSUMER_LLVM_READER = 2;
+    MATERIALIZE_ALL_BEFORE_IMPORT = 3;
+    VERIFY_MODULE_BEFORE_IMPORT = 4;
+    REJECT_UNREADABLE_OR_INVALID = 5;
+    VALIDATE_SUN_ABI_SEPARATELY = 6;
+  }
+  repeated Requirement requirements = 1;
+}
+
 /** Build-validated compiler capabilities, separate from bundle requirements. */
 message CompilerAbiSupport {
   uint32 schema = 1;
   repeated SupportedRule rules = 2;
   repeated EmissionDefault emission_defaults = 3;
+  BitcodeReaderContract bitcode_reader_contract = 4;
 }

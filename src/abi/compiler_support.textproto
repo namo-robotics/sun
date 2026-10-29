@@ -2,13 +2,14 @@
 schema: 1
 rules { name: "moon.interface" version: "1" binding: "moon_interface_v1" }
 rules { name: "moon.metadata" version: "1" binding: "moon_metadata_v1" }
-rules { name: "llvm.bitcode" version: "experimental" binding: "llvm_bitcode_experimental" }
+# Bitcode support is established by decoding and verifying each payload.
+rules { name: "llvm.bitcode" version: "reader-contract" binding: "llvm_bitcode_reader" }
 rules { name: "sun.experimental.semantics" version: "experimental" binding: "sun_semantics_experimental" }
 rules { name: "native.elf.x86_64.declared" version: "experimental" binding: "native_elf_declared_experimental" }
 rules { name: "native.runtime.atexit" version: "experimental" binding: "native_atexit_experimental" }
 emission_defaults { name: "moon.interface" version: "1" }
 emission_defaults { name: "moon.metadata" version: "1" }
-emission_defaults { name: "llvm.bitcode" version: "experimental" }
+emission_defaults { name: "llvm.bitcode" version: "reader-contract" }
 emission_defaults { name: "sun.experimental.semantics" version: "experimental" }
 emission_defaults { name: "native.elf.x86_64.declared" version: "experimental" }
 emission_defaults { name: "native.runtime.atexit" version: "experimental" }
@@ -24,3 +25,13 @@ rules { name: "native.macho.x86_64.declared" version: "experimental" binding: "n
 rules { name: "native.macho.aarch64.declared" version: "experimental" binding: "native_macho_declared_experimental" }
 emission_defaults { name: "native.macho.x86_64.declared" version: "experimental" }
 emission_defaults { name: "native.macho.aarch64.declared" version: "experimental" }
+
+# Stable reader obligations; order and formatting do not affect compatibility.
+bitcode_reader_contract {
+  requirements: LLVM_BITCODE_MODULE
+  requirements: CONSUMER_LLVM_READER
+  requirements: MATERIALIZE_ALL_BEFORE_IMPORT
+  requirements: VERIFY_MODULE_BEFORE_IMPORT
+  requirements: REJECT_UNREADABLE_OR_INVALID
+  requirements: VALIDATE_SUN_ABI_SEPARATELY
+}

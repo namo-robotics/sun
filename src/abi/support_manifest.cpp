@@ -14,7 +14,7 @@ void validateCompilerSupport(const proto::CompilerAbiSupport& support) {
   const std::map<std::pair<std::string, std::string>, std::string> bindings{
       {{"moon.interface", "1"}, "moon_interface_v1"},
       {{"moon.metadata", "1"}, "moon_metadata_v1"},
-      {{"llvm.bitcode", "experimental"}, "llvm_bitcode_experimental"},
+      {{"llvm.bitcode", "reader-contract"}, "llvm_bitcode_reader"},
       {{"sun.experimental.semantics", "experimental"},
        "sun_semantics_experimental"},
       {{"native.elf.x86_64.declared", "experimental"},
@@ -35,6 +35,24 @@ void validateCompilerSupport(const proto::CompilerAbiSupport& support) {
   if (support.schema() != 1 ||
       !support.GetReflection()->GetUnknownFields(support).empty()) {
     throw std::runtime_error("Unsupported compiler ABI support schema");
+  }
+  const auto& bitcode = support.bitcode_reader_contract();
+  if (!support.has_bitcode_reader_contract() ||
+      !bitcode.GetReflection()->GetUnknownFields(bitcode).empty()) {
+    throw std::runtime_error("Missing or unknown bitcode reader contract");
+  }
+  const std::set<int> implementedRequirements{
+      proto::BitcodeReaderContract::LLVM_BITCODE_MODULE,
+      proto::BitcodeReaderContract::CONSUMER_LLVM_READER,
+      proto::BitcodeReaderContract::MATERIALIZE_ALL_BEFORE_IMPORT,
+      proto::BitcodeReaderContract::VERIFY_MODULE_BEFORE_IMPORT,
+      proto::BitcodeReaderContract::REJECT_UNREADABLE_OR_INVALID,
+      proto::BitcodeReaderContract::VALIDATE_SUN_ABI_SEPARATELY};
+  const std::set<int> requirements(bitcode.requirements().begin(),
+                                   bitcode.requirements().end());
+  if (requirements != implementedRequirements ||
+      requirements.size() != static_cast<size_t>(bitcode.requirements_size())) {
+    throw std::runtime_error("Unavailable bitcode reader contract");
   }
   std::set<std::pair<std::string, std::string>> versions;
   std::set<std::string> names;

@@ -535,12 +535,13 @@ void AbiCompatibilityChecker::validateContract(
       fail("unknown required capability '" + rule.name() + "'");
     }
     const auto& implementation = found->second;
-    if (rule.implementation() != implementation) {
+    if (!compatibleRuleImplementations(rule.name(), rule.implementation(),
+                                       implementation)) {
       fail("unsupported implementation of '" + rule.name() + "'");
     }
     auto* supported = derived.add_requirements();
     supported->set_name(rule.name());
-    supported->set_implementation(implementation);
+    supported->set_implementation(rule.implementation());
   }
   for (const auto* mandatory :
        {"moon.interface", "llvm.bitcode", "sun.experimental.semantics"}) {
@@ -562,8 +563,8 @@ void AbiCompatibilityChecker::validateContract(
       fail("native object rule does not match the target");
     }
   }
-  // Boundary records are checked against decoded payloads by this checker. The
-  // exact semantics closure supplies interpretation of retained generic ASTs.
+  // Boundary and semantic records are checked against decoded payloads before
+  // import. Experimental compiler fingerprints are advisory provenance.
   BoundaryRequirements boundaries;
   try {
     for (const auto& record : contract.boundary_records()) {
@@ -647,7 +648,9 @@ void AbiCompatibilityChecker::validatePayload(
   }
   for (const auto& rule : actual.requirements()) {
     const auto found = requirements.find(rule.name());
-    if (found == requirements.end() || found->second != rule.implementation()) {
+    if (found == requirements.end() ||
+        !compatibleRuleImplementations(rule.name(), found->second,
+                                       rule.implementation())) {
       fail("emitted requirement '" + rule.name() +
            "' missing or different in contract");
     }
@@ -684,6 +687,19 @@ void AbiCompatibilityChecker::recordValidatedImport(
   importedContracts_.emplace(bytesHash, contract);
   if (!context_.producerWarnings) {
     return;
+  }
+  const auto supported = supportedRules();
+  for (const auto& rule : contract.requirements()) {
+    const auto found = supported.find(rule.name());
+    if (found != supported.end() && rule.implementation() != found->second &&
+        isExperimentalFingerprint(rule.name(), rule.implementation())) {
+      sun::support::messageStream("warning")
+          << "dependency " << bundle << " has a different compiler fingerprint for '"
+          << rule.name() << "'"
+          << "\n  A fingerprint difference does not establish incompatibility."
+          << "\n  Payload and ABI checks passed; continuing with unverified "
+             "experimental behavior\n";
+    }
   }
   const auto current = currentProducerIdentity();
   const auto& producerRuntime = contract.producer().runtime_fingerprint();

@@ -18,7 +18,7 @@ const char* const kUsageBody =
     "--help)\n"
     "\n"
     "Environment:\n"
-    "  SUN_LOG_LEVEL     info, warn (default), or error\n"
+    "  SUN_LOG_LEVEL     info (default), warn, or error\n"
     "\n"
     "Options:\n"
     "  -c, --compile     Compile to executable (default: JIT execute)\n"

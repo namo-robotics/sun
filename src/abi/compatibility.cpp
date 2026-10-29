@@ -87,13 +87,15 @@ std::string encodeTarget(const TargetProfile& target) {
  */
 void require(BundleContract& contract, const std::string& name,
              const std::string& implementation) {
-  for (const auto& rule : contract.requirements()) {
+  for (auto& rule : *contract.mutable_requirements()) {
     if (rule.name() != name) {
       continue;
     }
-    if (rule.implementation() != implementation) {
+    if (!compatibleRuleImplementations(name, rule.implementation(), implementation)) {
       sun::support::logAndThrowError("Conflicting bundle requirement: " + name);
     }
+    // Advisory fingerprints retain a deterministic representative across merges.
+    rule.set_implementation(std::min(rule.implementation(), implementation));
     return;
   }
   auto* rule = contract.add_requirements();
@@ -179,6 +181,23 @@ const std::set<std::string> implementationLibraryDigests = [] {
 }();
 #endif
 }  // namespace
+
+std::string hashBitcodeReaderContract(const proto::BitcodeReaderContract& contract) {
+  if (!contract.GetReflection()->GetUnknownFields(contract).empty()) {
+    sun::support::logAndThrowError("Unknown bitcode reader contract fields");
+  }
+  const std::set<int> requirements(contract.requirements().begin(),
+                                   contract.requirements().end());
+  std::string encoded = field(1, "sun.llvm.bitcode.contract");
+  for (const auto requirement : requirements) {
+    if (!proto::BitcodeReaderContract::Requirement_IsValid(requirement) ||
+        requirement == proto::BitcodeReaderContract::REQUIREMENT_UNSPECIFIED) {
+      sun::support::logAndThrowError("Unknown bitcode reader requirement");
+    }
+    encoded += field(2, integer(requirement));
+  }
+  return computeSha256Hex(encoded);
+}
 
 const std::string& compatibilityImplementation() {
   static const std::string implementation = SUN_COMPATIBILITY_IMPLEMENTATION;

@@ -63,7 +63,7 @@ struct Scratch {
    * Runs build/sun with progress logging so cache decisions can be asserted.
    */
   std::string runSun(const std::string& arguments) const {
-    const std::string cmd = "SUN_LOG_LEVEL=info build/sun " + arguments +
+    const std::string cmd = "env -u SUN_LOG_LEVEL build/sun " + arguments +
                             " > " + path("log") + " 2>&1";
     int rc = std::system(cmd.c_str());
     EXPECT_EQ(WEXITSTATUS(rc), 0) << readFile(path("log"));
@@ -211,12 +211,18 @@ manifest { source_files: ["util.sun"] }
   const std::string build = always;
   const std::string forced = "--force-rebuild " + always;
 
-  EXPECT_TRUE(contains(scratch.runSun(build), "Successfully created"));
+  const auto initialLog = scratch.runSun(build);
+  EXPECT_TRUE(contains(initialLog, "Building library: " + scratch.path("lib.sun")))
+      << initialLog;
+  EXPECT_TRUE(contains(initialLog, "Writing library: " + moon)) << initialLog;
+  EXPECT_TRUE(contains(initialLog, "Successfully created: " + moon)) << initialLog;
   const auto firstHash = sun::driver::readMoonInputHash(moon);
   ASSERT_TRUE(firstHash.has_value());
 
   const auto written = std::filesystem::last_write_time(moon);
-  EXPECT_TRUE(contains(scratch.runSun(build), "Up to date: " + moon));
+  const auto cachedLog = scratch.runSun(build);
+  EXPECT_TRUE(contains(cachedLog, "Up to date: " + moon)) << cachedLog;
+  EXPECT_FALSE(contains(cachedLog, "Writing library:")) << cachedLog;
   EXPECT_EQ(std::filesystem::last_write_time(moon), written);
 
   EXPECT_TRUE(contains(scratch.runSun(forced), "Successfully created"));
@@ -286,6 +292,9 @@ manifest {
       "-c --lib-path build -o " + app + " " + scratch.path("app.sun");
 
   std::string log = scratch.runSun(build);
+  EXPECT_TRUE(contains(log, "Building: " + scratch.path("app.sun"))) << log;
+  EXPECT_TRUE(contains(log, "Linking executable: " + app)) << log;
+  EXPECT_TRUE(contains(log, "Linking tests: " + app + "_test")) << log;
   EXPECT_TRUE(contains(log, "Successfully compiled to: " + app)) << log;
   EXPECT_TRUE(contains(log, "Successfully compiled test binary to")) << log;
 
@@ -301,6 +310,8 @@ manifest {
   EXPECT_TRUE(contains(log, "Up to date: " + app + "\n")) << log;
   EXPECT_TRUE(contains(log, "Up to date: " + app + "_test")) << log;
   EXPECT_FALSE(contains(log, "Successfully compiled")) << log;
+  EXPECT_FALSE(contains(log, "Linking executable:")) << log;
+  EXPECT_FALSE(contains(log, "Linking tests:")) << log;
 
   writeFile(scratch.path("app_tests.sun"), tests + "// edited\n");
   log = scratch.runSun(build);

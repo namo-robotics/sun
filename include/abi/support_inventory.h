@@ -12,6 +12,13 @@ const proto::CompilerAbiSupport& compilerAbiSupport();
 /** Returns supported rule implementations; this inventory never authorizes a
  * payload. */
 std::map<std::string, std::string> supportedRules();
+/** Recognizes well-formed advisory fingerprints for implemented experimental rules. */
+bool isExperimentalFingerprint(const std::string& name,
+                               const std::string& implementation);
+/** Compares rule identities, allowing advisory experimental fingerprint changes. */
+bool compatibleRuleImplementations(const std::string& name,
+                                   const std::string& required,
+                                   const std::string& supported);
 /** Resolves the build-selected emission default to its wire implementation
  * identity. */
 std::string emissionImplementation(const std::string& name);

@@ -21,8 +21,6 @@ int buildMoonBundle(const std::string& entrypoint,
     auto report = sun::moon_bundling::MoonBuilder::build(entrypoint, outputPath,
                                                          buildOptions);
     if (report.upToDate) {
-      sun::support::messageStream("info")
-          << "Up to date: " << outputPath.string() << "\n";
       return 0;
     }
     for (const auto& f : report.sunFiles) {
@@ -35,8 +33,6 @@ int buildMoonBundle(const std::string& entrypoint,
       sun::support::messageStream("info")
           << "  Moon import: " << m.path << "\n";
     }
-    sun::support::messageStream("info")
-        << "Successfully created: " << outputPath.string() << "\n";
     return 0;
   } catch (const sun::support::SunError& e) {
     llvm::errs() << e.what() << "\n";

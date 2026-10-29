@@ -162,8 +162,8 @@ TEST(Tooling_Cli_Terminal, multiline_warnings_are_prefixed) {
             "[sun][warning]: first\n[sun][warning]: second\n");
 }
 
-/** Default logging hides build progress while retaining compiler warnings. */
-TEST(Tooling_Cli_Terminal, default_level_is_warn) {
+/** Default logging shows build progress and compiler diagnostics. */
+TEST(Tooling_Cli_Terminal, default_level_is_info) {
   ScopedEnvironment level("SUN_LOG_LEVEL", nullptr);
   ScopedEnvironment noColor("NO_COLOR", "1");
   testing::internal::CaptureStdout();
@@ -173,7 +173,7 @@ TEST(Tooling_Cli_Terminal, default_level_is_warn) {
   sun::support::logMessage("error", "failure");
   llvm::outs().flush();
   llvm::errs().flush();
-  EXPECT_EQ(testing::internal::GetCapturedStdout(), "");
+  EXPECT_EQ(testing::internal::GetCapturedStdout(), "[sun][info]: progress\n");
   EXPECT_EQ(testing::internal::GetCapturedStderr(),
             "[sun][warning]: warning\n[sun][error]: failure\n");
 }
@@ -188,6 +188,14 @@ TEST(Tooling_Cli_Terminal, info_level_restores_progress) {
   EXPECT_EQ(testing::internal::GetCapturedStdout(), "[sun][info]: progress\n");
 }
 
+/** Explicit warning logging suppresses build progress. */
+TEST(Tooling_Cli_Terminal, warn_level_filters_progress) {
+  ScopedEnvironment level("SUN_LOG_LEVEL", "warn");
+  EXPECT_FALSE(sun::support::messageEnabled("info"));
+  EXPECT_TRUE(sun::support::messageEnabled("warning"));
+  EXPECT_TRUE(sun::support::messageEnabled("error"));
+}
+
 /** Error-only logging suppresses warnings without suppressing errors. */
 TEST(Tooling_Cli_Terminal, error_level_filters_warnings) {
   ScopedEnvironment level("SUN_LOG_LEVEL", "error");
@@ -196,10 +204,10 @@ TEST(Tooling_Cli_Terminal, error_level_filters_warnings) {
   EXPECT_TRUE(sun::support::messageEnabled("error"));
 }
 
-/** Unknown settings fall back to the default warning threshold. */
-TEST(Tooling_Cli_Terminal, unknown_level_uses_warn) {
+/** Unknown settings fall back to the default info threshold. */
+TEST(Tooling_Cli_Terminal, unknown_level_uses_info) {
   ScopedEnvironment level("SUN_LOG_LEVEL", "invalid");
-  EXPECT_FALSE(sun::support::messageEnabled("info"));
+  EXPECT_TRUE(sun::support::messageEnabled("info"));
   EXPECT_TRUE(sun::support::messageEnabled("warning"));
 }
 

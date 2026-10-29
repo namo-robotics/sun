@@ -25,6 +25,10 @@ using ProducerIdentity = proto::ProducerIdentity;
 std::string encodeBundleContract(const BundleContract& contract);
 /** Computes the domain-separated SHA-256 compatibility identifier. */
 std::string hashBundleContract(const BundleContract& contract);
+/** Hashes the sorted bitcode requirement set using canonical tagged integers.
+ * Rejects unknown fields or requirements rather than silently excluding them.
+ */
+std::string hashBitcodeReaderContract(const proto::BitcodeReaderContract& contract);
 /** Returns the build-time compiler and toolchain implementation identity. */
 const std::string& compatibilityImplementation();
 /** Returns diagnostic provenance for the compiler's loaded runtime libraries.

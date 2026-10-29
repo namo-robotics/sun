@@ -79,9 +79,38 @@ linalg tests on an emulated CPU without AVX/FMA to exercise the ordinary fallbac
 
 ## Why compatible-looking builds can be rejected
 
-Unspecified compiler behavior is protected by an **implementation fingerprint**:
+The `llvm.bitcode` requirement is the lowercase SHA-256 hash of a structured
+`BitcodeReaderContract` defined in `include/abi/compatibility.proto`. Its values
+live in `src/abi/compiler_support.textproto` and are validated against the
+implemented reader obligations when the compiler is built.
+
+The canonical encoding starts with a tagged `sun.llvm.bitcode.contract` domain,
+followed by the distinct requirement enum values in ascending numeric order.
+Each field has an unsigned 64-bit little-endian tag and byte length, followed by
+its bytes: the domain uses tag 1 and UTF-8 bytes, and each requirement uses tag 2
+and an unsigned 64-bit little-endian value. Protobuf serialization, comments,
+whitespace, and declaration order are not hash inputs. Enum identities must not
+be reassigned. Only changes to the requirement set change this identity; there
+is no manually incremented bitcode version or compiler release number.
+
+The consumer must decode, materialize, and verify every bitcode payload before
+import; unreadable or invalid payloads are still rejected. Separate Sun semantics,
+target, layout, and declaration checks remain required. Bundles using the old
+compiler fingerprint, numbered rule, or prose-based contract hash must be rebuilt
+from their original inputs.
+
+Experimental compiler behavior carries an advisory **implementation fingerprint**:
 a hash of compiler sources, build settings, tools, and relevant libraries.
-A changed fingerprint can require rebuilding dependencies, even after a harmless change.
+A different fingerprint warns after payload and ABI validation, once per rule
+and exact bundle in a compilation. It does not by itself prove incompatibility.
+The warning acknowledges that experimental behavior remains unverified.
+Dependency merging allows these differences and retains the lexicographically
+smallest fingerprint as a deterministic representative.
+
+This exception applies only to well-formed compiler fingerprints for implemented
+experimental rules. Stable contract identities (including `llvm.bitcode`), unknown
+required capabilities, unreadable or invalid payloads, and verified target,
+layout, or declaration mismatches still cause rejection.
 
 Coverage must include indirect dependencies. For example:
 

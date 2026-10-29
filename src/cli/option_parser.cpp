@@ -185,7 +185,7 @@ std::optional<EarlyExit> parseBuildRunArguments(
     } else if (arg == "-h" || arg == "--help") {
       return EarlyExit{0, EarlyExit::Stream::Err, renderUsage(programName)};
     } else if (arg == "--abi-info") {
-      return EarlyExit{0, EarlyExit::Stream::RawOut,
+      return EarlyExit{0, EarlyExit::Stream::Out,
                        sun::abi::compatibilitySupportJson()};
     } else if (arg == "--version") {
       return EarlyExit{0, EarlyExit::Stream::Out, renderVersionLine()};
