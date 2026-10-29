@@ -87,13 +87,15 @@ std::string encodeTarget(const TargetProfile& target) {
  */
 void require(BundleContract& contract, const std::string& name,
              const std::string& implementation) {
-  for (const auto& rule : contract.requirements()) {
+  for (auto& rule : *contract.mutable_requirements()) {
     if (rule.name() != name) {
       continue;
     }
-    if (rule.implementation() != implementation) {
+    if (!compatibleRuleImplementations(name, rule.implementation(), implementation)) {
       sun::support::logAndThrowError("Conflicting bundle requirement: " + name);
     }
+    // Advisory fingerprints retain a deterministic representative across merges.
+    rule.set_implementation(std::min(rule.implementation(), implementation));
     return;
   }
   auto* rule = contract.add_requirements();

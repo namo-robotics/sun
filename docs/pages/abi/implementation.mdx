@@ -99,9 +99,18 @@ target, layout, and declaration checks remain required. Bundles using the old
 compiler fingerprint, numbered rule, or prose-based contract hash must be rebuilt
 from their original inputs.
 
-Unspecified compiler behavior is protected by an **implementation fingerprint**:
+Experimental compiler behavior carries an advisory **implementation fingerprint**:
 a hash of compiler sources, build settings, tools, and relevant libraries.
-A changed fingerprint can require rebuilding dependencies, even after a harmless change.
+A different fingerprint warns after payload and ABI validation, once per rule
+and exact bundle in a compilation. It does not by itself prove incompatibility.
+The warning acknowledges that experimental behavior remains unverified.
+Dependency merging allows these differences and retains the lexicographically
+smallest fingerprint as a deterministic representative.
+
+This exception applies only to well-formed compiler fingerprints for implemented
+experimental rules. Stable contract identities (including `llvm.bitcode`), unknown
+required capabilities, unreadable or invalid payloads, and verified target,
+layout, or declaration mismatches still cause rejection.
 
 Coverage must include indirect dependencies. For example:
 

@@ -160,18 +160,88 @@ TEST(ABI_Compatibility, UnknownRequiredRuleIsRejected) {
                sun::support::SunError);
 }
 
-/** A supplied implementation fingerprint must be independently supported. */
-TEST(ABI_Compatibility, ChangedFingerprintIsRejected) {
-  auto unsupported = contract();
-  for (auto& rule : *unsupported.mutable_requirements()) {
+/** Compiler fingerprint differences alone do not prove incompatible behavior. */
+TEST(ABI_Compatibility, ChangedFingerprintDoesNotProveIncompatibility) {
+  auto changed = contract();
+  for (auto& rule : *changed.mutable_requirements()) {
     if (rule.name() == "sun.experimental.semantics") {
       rule.set_implementation(std::string(64, '0'));
     }
   }
-  unsupported.set_compatibility_hash(sun::abi::hashBundleContract(unsupported));
-  EXPECT_THROW(sun::abi::AbiCompatibilityChecker::current().validateContract(
-                   unsupported, "changed.moon", "x86_64-linux-gnu"),
-               sun::support::SunError);
+  changed.set_compatibility_hash(sun::abi::hashBundleContract(changed));
+  EXPECT_NO_THROW(sun::abi::AbiCompatibilityChecker::current().validateContract(
+      changed, "changed.moon", "x86_64-linux-gnu"));
+}
+
+/** Fingerprint differences survive payload checks and warn once after validation. */
+TEST(ABI_Compatibility, ChangedFingerprintWarnsAfterPayloadValidation) {
+  llvm::LLVMContext context;
+  llvm::Module module("fingerprint_warning", context);
+  module.setTargetTriple("x86_64-linux-gnu");
+  module.setDataLayout(
+      sun::abi::compatibilityTarget(module.getTargetTriple()).data_layout());
+  auto inherited = sun::abi::describeContract(module);
+  for (auto& rule : *inherited.mutable_requirements()) {
+    if (rule.name() == "sun.experimental.semantics") {
+      rule.set_implementation(std::string(64, '0'));
+    }
+  }
+  inherited.set_compatibility_hash(sun::abi::hashBundleContract(inherited));
+  sun::moon_bundling::MoonWriter writer(std::string(64, 'a'));
+  sun::moon::ModuleMetadata metadata;
+  metadata.set_source_hash("fingerprint_warning");
+  writer.addModule(module, metadata);
+  ASSERT_NO_THROW(writer.inheritContract(inherited));
+  const auto path = bundlePath();
+  ASSERT_TRUE(writer.write(path));
+  auto reader = sun::moon_bundling::MoonReader::open(path);
+  ASSERT_NE(reader, nullptr);
+  sun::abi::AbiCompatibilityChecker checker("x86_64-linux-musl");
+  testing::internal::CaptureStderr();
+  EXPECT_THROW(checker.validate(*reader), sun::support::SunError);
+  auto output = testing::internal::GetCapturedStderr();
+  EXPECT_EQ(output.find("[sun][warning]"), std::string::npos);
+  checker.beginCompilation("x86_64-linux-gnu");
+  testing::internal::CaptureStderr();
+  EXPECT_NO_THROW(checker.validate(*reader));
+  EXPECT_NO_THROW(checker.validate(*reader));
+  output = testing::internal::GetCapturedStderr();
+  const auto warning = output.find("different compiler fingerprint");
+  ASSERT_NE(warning, std::string::npos) << output;
+  EXPECT_EQ(output.find("different compiler fingerprint", warning + 1),
+            std::string::npos);
+  EXPECT_NE(output.find("sun.experimental.semantics"), std::string::npos);
+  EXPECT_NE(output.find("Payload and ABI checks passed"), std::string::npos);
+  EXPECT_EQ(checker.importedContracts().size(), 1u);
+  std::filesystem::remove(path);
+}
+
+/** Advisory merging is deterministic, while malformed fingerprints stay invalid. */
+TEST(ABI_Compatibility, ExperimentalFingerprintMergesAreDeterministic) {
+  auto first = contract();
+  auto second = contract();
+  for (auto& rule : *second.mutable_requirements()) {
+    if (rule.name() == "sun.experimental.semantics") {
+      rule.set_implementation(std::string(64, '0'));
+    }
+  }
+  auto left = first;
+  auto right = second;
+  EXPECT_NO_THROW(sun::abi::mergeContractRequirements(left, second));
+  EXPECT_NO_THROW(sun::abi::mergeContractRequirements(right, first));
+  EXPECT_EQ(sun::abi::hashBundleContract(left), sun::abi::hashBundleContract(right));
+  for (const auto& rule : sun::abi::compilerAbiSupport().rules()) {
+    if (rule.version() == "experimental") {
+      EXPECT_TRUE(sun::abi::compatibleRuleImplementations(
+          rule.name(), std::string(64, '0'), sun::abi::compatibilityImplementation()));
+      EXPECT_FALSE(sun::abi::compatibleRuleImplementations(
+          rule.name(), "unknown", sun::abi::compatibilityImplementation()));
+    }
+  }
+  EXPECT_FALSE(sun::abi::compatibleRuleImplementations(
+      "llvm.bitcode", std::string(64, '0'), std::string(64, '1')));
+  EXPECT_FALSE(sun::abi::compatibleRuleImplementations(
+      "unknown", std::string(64, '0'), std::string(64, '1')));
 }
 
 /** Bitcode uses a reader contract independently of experimental Sun semantics. */

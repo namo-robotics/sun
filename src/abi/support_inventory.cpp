@@ -52,6 +52,28 @@ std::map<std::string, std::string> supportedRules() {
   return rules;
 }
 
+bool isExperimentalFingerprint(const std::string& name,
+                               const std::string& implementation) {
+  if (implementation.size() != 64 ||
+      implementation.find_first_not_of("0123456789abcdef") != std::string::npos) {
+    return false;
+  }
+  for (const auto& rule : compilerAbiSupport().rules()) {
+    if (rule.name() == name && rule.version() == "experimental") {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool compatibleRuleImplementations(const std::string& name,
+                                   const std::string& required,
+                                   const std::string& supported) {
+  return required == supported ||
+         (isExperimentalFingerprint(name, required) &&
+          isExperimentalFingerprint(name, supported));
+}
+
 std::string emissionImplementation(const std::string& name) {
   for (const auto& rule : compilerAbiSupport().emission_defaults()) {
     if (rule.name() == name) {
