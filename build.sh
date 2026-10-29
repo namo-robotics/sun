@@ -1,23 +1,48 @@
 #!/bin/bash
 
+# Build Sun, optionally installing or removing its host binaries and bundles.
+
 set -euo pipefail
 DIR=$(dirname "$0")
 cd "$DIR"
 
 SKIP_STDLIB=OFF
 RECONFIGURE=false
-for arg in "$@"; do
-    case $arg in
-        --skip-stdlib)
-            SKIP_STDLIB=ON
+INSTALL=false
+UNINSTALL=false
+INSTALL_PREFIX=/usr/local
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --skip-stdlib) SKIP_STDLIB=ON ;;
+        --reconfigure|-r) RECONFIGURE=true ;;
+        --install) INSTALL=true ;;
+        --uninstall) UNINSTALL=true ;;
+        --prefix)
+            if [[ $# -lt 2 || "$2" != /* ]]; then
+                echo "--prefix requires an absolute installation path." >&2
+                exit 2
+            fi
+            INSTALL_PREFIX="$2"
             shift
             ;;
-        --reconfigure|-r)
-            RECONFIGURE=true
-            shift
+        --help|-h)
+            echo "Usage: $0 [--reconfigure] [--skip-stdlib] [--install | --uninstall] [--prefix /path]"
+            echo "Build by default. --install copies binaries and Moon bundles after building."
+            echo "--uninstall removes them without building. Default prefix: /usr/local."
+            exit 0
             ;;
+        *) echo "Unknown option: $1" >&2; exit 2 ;;
     esac
+    shift
 done
+
+if [[ "$INSTALL" == true && ( "$UNINSTALL" == true || "$SKIP_STDLIB" == ON ) ]]; then
+    echo "--install cannot be combined with --uninstall or --skip-stdlib." >&2
+    exit 2
+fi
+if [[ "$UNINSTALL" == true ]]; then
+    exec bash scripts/install-build.sh uninstall "$INSTALL_PREFIX"
+fi
 
 mkdir -p build
 cd build
@@ -61,8 +86,11 @@ if [[ ! -f CMakeCache.txt ]] || [[ "$RECONFIGURE" == "true" ]] || [[ "$CACHED_SK
           ..
 fi
 
-cmake --build . -j8
+BUILD_CORES=$(getconf _NPROCESSORS_ONLN)
+BUILD_JOBS=$((BUILD_CORES / 2))
+((BUILD_JOBS > 0)) || BUILD_JOBS=1
+cmake --build . -j"$BUILD_JOBS"
 
-# Add sun to PATH by creating symlink
-sudo ln -sf "$(pwd)/sun" /usr/local/bin/sun
-echo "sun installed to /usr/local/bin/sun"
+if [[ "$INSTALL" == true ]]; then
+    bash ../scripts/install-build.sh install "$INSTALL_PREFIX"
+fi

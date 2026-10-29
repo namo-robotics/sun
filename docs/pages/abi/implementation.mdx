@@ -5,6 +5,14 @@ may require rebuilding `.moon` libraries. There is no stable compatibility promi
 
 ## How it works
 
+```text
+app → imports geometry.moon → calls area(Rectangle)
+```
+
+Sun must check both the recorded rectangle declaration and the code that reads
+its fields. If the metadata says a precompiled `area` exists but the function
+body is missing, a valid-looking contract hash does not make the import usable.
+
 Each `.moon` library carries one **contract** describing its target, required
 compiler behavior, compiled layouts and calls, and retained generic code.
 Sun checks this contract before importing the library.
@@ -79,6 +87,31 @@ linalg tests on an emulated CPU without AVX/FMA to exercise the ordinary fallbac
 
 ## Why compatible-looking builds can be rejected
 
+Compare two changes to the same geometry library:
+
+| Change | Current result |
+| --- | --- |
+| A supported experimental rule has a different compiler fingerprint; payload and ABI checks pass. | Warn and continue. |
+| The `llvm.bitcode` hash differs; payload and ABI checks pass. | Warn and continue. |
+| The reader contract matches, but LLVM cannot decode or verify the actual payload. | Reject the payload. |
+| A field in metadata disagrees with its compiled storage. | Reject the concrete mismatch. |
+
+Hash differences alone do not establish incompatibility. Decode, verification,
+and ABI failures identify concrete incompatibilities and remain errors.
+
+### The reader contract hash
+
+```text
+requirements [read, materialize, verify, ...]
+reordered requirements [verify, read, materialize, ...] → same canonical hash
+comments or whitespace change                        → same canonical hash
+requirement set changes                              → different canonical hash
+```
+
+These are abbreviated labels, not the actual protobuf enum names. A changed set
+must also pass the build-time check against the implemented obligations; editing
+the manifest cannot invent a reader implementation.
+
 The `llvm.bitcode` requirement is the lowercase SHA-256 hash of a structured
 `BitcodeReaderContract` defined in `include/abi/compatibility.proto`. Its values
 live in `src/abi/compiler_support.textproto` and are validated against the
@@ -95,9 +128,22 @@ is no manually incremented bitcode version or compiler release number.
 
 The consumer must decode, materialize, and verify every bitcode payload before
 import; unreadable or invalid payloads are still rejected. Separate Sun semantics,
-target, layout, and declaration checks remain required. Bundles using the old
-compiler fingerprint, numbered rule, or prose-based contract hash must be rebuilt
-from their original inputs.
+target, layout, and declaration checks remain required. Bundles using a different
+well-formed bitcode hash, including an old compiler fingerprint or prose-based contract hash, warn after these checks pass. The hash
+alone cannot establish whether the consumer can use the payload. Malformed or
+numbered bitcode identities remain unsupported.
+
+### Compiler fingerprints
+
+Suppose a compiler helper moves to another source file without changing the
+library's layouts or calls. The implementation fingerprint can change, but that
+fact alone does not show that the library is incompatible.
+
+### Compiler fingerprints
+
+Suppose a compiler helper moves to another source file without changing the
+library's layouts or calls. The implementation fingerprint can change, but that
+fact alone does not show that the library is incompatible.
 
 Experimental compiler behavior carries an advisory **implementation fingerprint**:
 a hash of compiler sources, build settings, tools, and relevant libraries.
@@ -108,9 +154,10 @@ Dependency merging allows these differences and retains the lexicographically
 smallest fingerprint as a deterministic representative.
 
 This exception applies only to well-formed compiler fingerprints for implemented
-experimental rules. Stable contract identities (including `llvm.bitcode`), unknown
-required capabilities, unreadable or invalid payloads, and verified target,
-layout, or declaration mismatches still cause rejection.
+experimental rules. Bitcode hashes are separately advisory after payload and ABI
+validation. Other stable contract identities, unknown required capabilities,
+unreadable or invalid payloads, and verified target, layout, or declaration
+mismatches still cause rejection.
 
 Coverage must include indirect dependencies. For example:
 
@@ -125,6 +172,12 @@ and macOS without library-loader overrides. macOS system libraries use the OS
 build identity at build time and loaded image UUIDs at startup, because they may
 exist only in Apple’s shared cache. Dynamically
 loaded build-tool plugins and other undeclared build inputs still need coverage.
+
+### Reusing validation
+
+If a bundle passes validation for an x86-64 native build, switching the same
+process to an AArch64 build must check it again. A cached “accepted” result is
+not portable to a different target or execution mode.
 
 Preflight and actual imports share a compilation context, including the target,
 JIT or native execution, optimization settings, and ordered link options. Changing

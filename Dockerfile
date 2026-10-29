@@ -3,33 +3,26 @@ FROM ubuntu:26.04
 
 LABEL devcontainer.feature="LLVM 20 Dev Environment (Ubuntu 26.04 LTS)"
 
-# Install trusted certificates
-RUN apt-get update --error-on=any \
-    && apt-get install -y --no-install-recommends ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Etc/UTC
 
+# Use the same native build and test dependencies as host development.
+COPY scripts/install-dependencies.sh /opt/sun/scripts/install-dependencies.sh
+RUN bash /opt/sun/scripts/install-dependencies.sh --yes \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 RUN apt-get update --error-on=any && apt-get install -y --no-install-recommends \
-    # Core build tools
-    build-essential cmake ninja-build git python3 python3-pip \
-    # LLVM 20 full development suite (native since 25.10)
-    clang-20 lldb-20 lld-20 \
-    llvm-20 llvm-20-dev llvm-20-tools libclang-20-dev \
-    libllvm-20-ocaml-dev \
+    # Additional development tools for the container
+    python3-pip lldb-20 libllvm-20-ocaml-dev \
     clangd-20 clang-format-20 clang-tidy-20 clang-tools-20 \
     # NVIDIA CUDA compiler, headers, and libraries; GPU drivers belong on the host.
     nvidia-cuda-toolkit \
-    # Common LLVM dev dependencies
-    libarchive-dev libzstd-dev zlib1g-dev libxml2-dev libedit-dev libncurses-dev \
-    libcurl4-openssl-dev libpfm4-dev libdw-dev libcapstone-dev \
-    # TLS tests generate certificates and run a local OpenSSL server.
-    openssl ca-certificates \
+    # Profiling and disassembly development libraries
+    libpfm4-dev libdw-dev libcapstone-dev \
     # Compiler API reference generation
     doxygen \
     # Quality-of-life tools
-    gdb ccache vim less htop wget curl unzip \
+    gdb vim less htop wget unzip \
     # Profilers. valgrind (with callgrind_annotate) works unprivileged and
     # gives exact per-function instruction counts -- run it under
     # `ulimit -n 4096`, since Docker's default fd limit makes valgrind abort.
@@ -49,7 +42,6 @@ RUN update-alternatives --install /usr/bin/clang     clang     /usr/bin/clang-20
 RUN apt-get update && apt-get install -y --no-install-recommends \
     # Debian packaging tools (scripts/build-deb.sh)
     debhelper devscripts \
-    libgtest-dev \
     protobuf-compiler \
     libprotobuf-dev \
     libprotoc-dev \
@@ -67,16 +59,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ENV LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8
-
-# musl cross toolchains (musl.cc): the default link mode is static, and
-# static links prefer musl — designed for static linking (no NSS dlopen),
-# MIT-licensed, and roughly half the binary size of static glibc. These
-# bundles include a musl-built libstdc++ for Sun's exception runtime, which
-# Ubuntu's glibc-built libstdc++.a cannot provide.
-RUN mkdir -p /opt/cross \
-    && curl -sL https://musl.cc/aarch64-linux-musl-cross.tgz | tar xz -C /opt/cross \
-    && curl -sL https://musl.cc/x86_64-linux-musl-cross.tgz | tar xz -C /opt/cross
-ENV PATH="/opt/cross/aarch64-linux-musl-cross/bin:/opt/cross/x86_64-linux-musl-cross/bin:${PATH}"
 
 # Supply the Git-library example's musl OpenSSL and zlib archives in fresh containers.
 COPY scripts/fetch-openssl.sh /opt/sun/scripts/fetch-openssl.sh

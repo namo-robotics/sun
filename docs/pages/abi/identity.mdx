@@ -5,23 +5,35 @@ of current releases. Open decisions must be resolved before stabilization.
 
 ## Declaration and symbol identity
 
+Consider two independent libraries:
+
+```text
+geometry.Point: x and y are integers
+screen.Point:   x and y are integers
+```
+
+Equal fields do not make these the same type. Renaming a local import also does
+not change either type. For a revision of the *same explicitly named library*,
+Sun can check whether its `Point` declaration satisfies a recorded dependency.
+It must still retain the exact identities of already compiled function bodies.
+
 A bundle retains exact implementation dependencies. An explicitly named library
 may provide a compatible nominal type from another revision after the importer
 checks its dependency ABI requirements. Rebuilding a dependency or reusing its
 library ID alone does not authorize replacement.
 
-| Subject | Level | Requirement |
+| Minimal example | Level | Requirement |
 | --- | --- | --- |
-| Implementation identity | MUST | Include the defining artifact and portable declaration identity; preserve embedded code and exact symbols across nominal correspondence. |
-| Nominal identity | MUST | Use an explicit persistent library ID, declaration kind, and declaration path, independent of artifact hashes and source order. |
-| Revision correspondence | MUST | Validate the required semantic ABI, layouts, call and ownership contracts, retained generic code, target, and compiler/runtime requirements before semantic import. Reject missing or ambiguous correspondence. |
-| Local naming | MUST NOT | Let aliases, import order, or local names change a declaration's identity. |
-| Nominal types | MUST NOT | Treat types from unrelated library identities as interchangeable just because their names or layouts match. |
-| Exported symbols | MUST | Read or reproduce the producer's symbol names, including when current naming defaults differ. |
-| Specialization identity | MUST | Include the generic declaration, enclosing specialization if present, and concrete arguments in order. |
-| Duplicate specializations | MUST | Check ABI and generic semantics compatibility before merging definitions. |
-| Private declarations | MUST | Keep declarations used by exported generic bodies in the import contract, even when source code cannot name them. |
-| Global storage | MUST | Preserve one identity when several dependency paths reach the same global. |
+| Two revisions provide different compiled bodies for `make_point`. | MUST | Include the defining artifact and portable declaration identity; preserve embedded code and exact symbols across nominal correspondence. |
+| The same named library keeps its `geometry.Point` declaration across revisions. | MUST | Use an explicit persistent library ID, declaration kind, and declaration path, independent of artifact hashes and source order. |
+| A new revision keeps `Point` fields but changes its ownership rules. | MUST | Validate the required semantic ABI, layouts, call and ownership contracts, retained generic code, target, and compiler/runtime requirements before semantic import. Reject missing or ambiguous correspondence. |
+| Importing `geometry` as `g` must not create a new `Point` type. | MUST NOT | Let aliases, import order, or local names change a declaration's identity. |
+| `geometry.Point` and `screen.Point` both contain two integers. | MUST NOT | Treat types from unrelated library identities as interchangeable just because their names or layouts match. |
+| A new compiler changes its default spelling for `make_point`. | MUST | Read or reproduce the producer's symbol names, including when current naming defaults differ. |
+| A generic instantiated with `(A, B)` differs from `(B, A)`. | MUST | Include the generic declaration, enclosing specialization if present, and concrete arguments in order. |
+| Two dependencies carry the same generic specialization. | MUST | Check ABI and generic semantics compatibility before merging definitions. |
+| An exported generic calls a private helper. | MUST | Keep declarations used by exported generic bodies in the import contract, even when source code cannot name them. |
+| Two imports reach the same library counter. | MUST | Preserve one identity when several dependency paths reach the same global. |
 
 ## Experimental implementation
 
@@ -32,6 +44,12 @@ metadata and lowered payload boundaries are independently validated. Function
 implementations and precompiled specialization symbols retain exact identities;
 ordinary compiled body changes do not affect nominal correspondence. Retained
 generic body changes do affect the semantic contract.
+
+The shipped libraries use persistent IDs `sun/stdlib`, `sun/tls`, and `sun/cuda`.
+Their target variants share the same ID; target compatibility is checked
+separately. These IDs do not change when rebuilding or releasing.
+Existing bundles must be rebuilt to record the IDs and dependency ABI metadata;
+adding an ID to source does not update an already compiled bundle.
 
 Libraries without this metadata keep exact dependency behavior. The
 [identity example](/abi/examples) exercises a compatible constructor revision

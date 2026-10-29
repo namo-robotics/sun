@@ -5,16 +5,30 @@ of current releases. Open decisions must be resolved before stabilization.
 
 ## Interfaces and closures
 
+Suppose an interface call selects a method by table position:
+
+```text
+old table: slot 0 = draw,  slot 1 = close
+new table: slot 0 = close, slot 1 = draw
+old caller invokes slot 0 → calls close instead of draw
+```
+
+This is why a method's name alone cannot establish dispatch compatibility.
+
+A closure has a similar hidden agreement. If it captures `count`, its callback
+must receive the pointer it expects in order to find `count`. Passing a pointer
+to the outer closure record instead of its captured data can read the wrong bytes.
+
 Adding or reordering interface methods can break compatibility. A fixed method
 table cannot contain every future specialization of a generic method.
 
-| Subject | Level | Requirement |
+| Minimal example | Level | Requirement |
 | --- | --- | --- |
-| Interface dispatch | MUST | Define method-slot identity, order, signatures, receiver adjustment, and metadata or destruction entries. |
-| Generic methods | MUST | Define how interface methods are specialized. |
-| Closure calls | MUST | Define whether the hidden argument points to the environment or to a closure record. |
-| Private environments | MUST | Keep an environment layout private only when consumers never inspect it and invocation and cleanup use compatible interfaces. |
-| Borrowed captures | MUST NOT | Let a capture outlive the value it borrows. |
+| Slot 0 means `draw` to the caller but `close` to the callee. | MUST | Define method-slot identity, order, signatures, receiver adjustment, and metadata or destruction entries. |
+| An interface method is first specialized for a new type in the consumer. | MUST | Define how interface methods are specialized. |
+| A callback expects captured data, but receives the outer closure record. | MUST | Define whether the hidden argument points to the environment or to a closure record. |
+| Only the library callback and destructor inspect captured fields. | MUST | Keep an environment layout private only when consumers never inspect it and invocation and cleanup use compatible interfaces. |
+| A returned callback refers to a local value that has already been destroyed. | MUST NOT | Let a capture outlive the value it borrows. |
 
 ## Open decisions
 

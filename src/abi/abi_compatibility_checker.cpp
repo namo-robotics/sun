@@ -691,6 +691,14 @@ void AbiCompatibilityChecker::recordValidatedImport(
   const auto supported = supportedRules();
   for (const auto& rule : contract.requirements()) {
     const auto found = supported.find(rule.name());
+    if (found != supported.end() && rule.name() == "llvm.bitcode" &&
+        rule.implementation() != found->second) {
+      sun::support::messageStream("warning")
+          << "dependency " << bundle << " has a different bitcode contract hash for '"
+          << rule.name() << "'"
+          << "\n  A hash difference does not establish incompatibility."
+          << "\n  Payload and ABI checks passed; continuing\n";
+    }
     if (found != supported.end() && rule.implementation() != found->second &&
         isExperimentalFingerprint(rule.name(), rule.implementation())) {
       sun::support::messageStream("warning")
