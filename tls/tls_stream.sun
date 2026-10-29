@@ -147,7 +147,14 @@ public module tls {
         var err_host: String = take_openssl_error("SSL_set1_host failed");
         return ClientResult.Tls(TlsError(-1, err_host));
       }
-      unsafe { c_ssl_ctrl(this.ssl, SSL_CTRL_SET_TLSEXT_HOSTNAME, TLSEXT_NAMETYPE_HOST_NAME, host.c_str()); };
+      unsafe {
+        c_ssl_ctrl(
+          this.ssl,
+          SSL_CTRL_SET_TLSEXT_HOSTNAME,
+          TLSEXT_NAMETYPE_HOST_NAME,
+          host.c_str()
+        );
+      };
 
       if (unsafe { c_ssl_set_fd(this.ssl, this.tcp.get_fd()); } != 1) {
         this.close();
@@ -161,7 +168,10 @@ public module tls {
         if (verify != X509_V_OK) {
           var alloc: HeapAllocator = HeapAllocator();
           var msg = String(alloc, "certificate verification failed: ");
-          var reason: String = from_c_str(alloc, unsafe { c_x509_verify_cert_error_string(verify); });
+          var reason: String = from_c_str(
+            alloc,
+            unsafe { c_x509_verify_cert_error_string(verify); }
+          );
           msg.append(reason);
           this.close();
           return ClientResult.Tls(TlsError(-1, msg));
@@ -206,7 +216,9 @@ public module tls {
      * the peer has closed the connection.
      */
     public method recv(buf: ref ContiguousBuffer<u8>) ClientResult<i64> {
-      var result: i32 = unsafe { c_ssl_read(this.ssl, buf.raw_data(), _convert<i32>(buf.size())); };
+      var result: i32 = unsafe {
+        c_ssl_read(this.ssl, buf.raw_data(), _convert<i32>(buf.size()));
+      };
       if (result > 0) {
         return ClientResult.Ok(_convert<i64>(result));
       }

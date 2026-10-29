@@ -47,7 +47,10 @@ public module std.io.stream_tests {
       var bytes = try std.test.expect_access(ByteSlice(input, 2, 1));
       try expect_write(writer.write_all(bytes), 1);
     }
-    try std.test.assert(unsafe { c_fcntl(pipe.write_fd(), 3); } >= 0, "borrowed writer leaves descriptor open");
+    try std.test.assert(
+      unsafe { c_fcntl(pipe.write_fd(), 3); } >= 0,
+      "borrowed writer leaves descriptor open"
+    );
     var output = ContiguousBuffer<u8>(alloc, 8);
     output.fill(99);
     if (true) {
@@ -59,7 +62,10 @@ public module std.io.stream_tests {
     try std.test.assert_eq(try std.test.expect_access_value(output.get(2)), 99);
     try std.test.assert_eq(try std.test.expect_access_value(output.get(3)), 42);
     try std.test.assert_eq(try std.test.expect_access_value(output.get(4)), 99);
-    try std.test.assert(unsafe { c_fcntl(pipe.read_fd(), 3); } >= 0, "borrowed reader leaves descriptor open");
+    try std.test.assert(
+      unsafe { c_fcntl(pipe.read_fd(), 3); } >= 0,
+      "borrowed reader leaves descriptor open"
+    );
     pipe.close_write();
     var reader = std.io.BorrowedStream(pipe.read_fd());
     var bytes = MutableByteSlice(output);
@@ -139,7 +145,10 @@ public module std.io.stream_tests {
           try std.test.fail("large write should fill pipe");
         }
       };
-      try std.test.assert(written > 0 and written < bytes.size(), "short write reports its prefix");
+      try std.test.assert(
+        written > 0 and written < bytes.size(),
+        "short write reports its prefix"
+      );
       match writer.write_all(bytes) {
         std.io.WriteResult.WouldBlock(n) => {
           try std.test.assert_eq(n, 0);

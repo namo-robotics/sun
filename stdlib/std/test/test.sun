@@ -88,23 +88,32 @@ public module std.test {
     if (expected == actual) {
       return std.test.AssertionResult.Ok;
     }
-    return std.test.AssertionResult.Error(AssertionError(`assertion failed: expected ${expected}, got ${actual}`));
+    return std.test.AssertionResult.Error(
+      AssertionError(`assertion failed: expected ${expected}, got ${actual}`)
+    );
   }
 
   /**
    * Compare two strings by content.
    */
-  public function assert_eq(expected: const ref String, actual: const ref String) std.test.AssertionResult<void> {
+  public function assert_eq(
+    expected: const ref String,
+    actual: const ref String
+  ) std.test.AssertionResult<void> {
     if (expected.equals(actual)) {
       return std.test.AssertionResult.Ok;
     }
-    return std.test.AssertionResult.Error(AssertionError(`assertion failed: expected ${expected}, got ${actual}`));
+    return std.test.AssertionResult.Error(
+      AssertionError(`assertion failed: expected ${expected}, got ${actual}`)
+    );
   }
 
   /** Returns AssertionError when primitive values are equal, showing the value in the failure text. */
   public function assert_ne<T: _Primitive>(a: T, b: T) std.test.AssertionResult<void> {
     if (a == b) {
-      return std.test.AssertionResult.Error(AssertionError(`assertion failed: both values are ${a}`));
+      return std.test.AssertionResult.Error(
+        AssertionError(`assertion failed: both values are ${a}`)
+      );
     }
     return std.test.AssertionResult.Ok;
   }
@@ -127,7 +136,9 @@ public module std.test {
   }
 
   /** Reads a primitive success through a borrow, or reports its error as an assertion failure. */
-  public function expect_value<T: _Primitive, E>(result: _Result<ref T, E>) std.test.AssertionResult<T> {
+  public function expect_value<T: _Primitive, E>(
+    result: _Result<ref T, E>
+  ) std.test.AssertionResult<T> {
     return match result {
       _Result.Ok(value) => std.test.AssertionResult.Ok(value),
       _Result.Err(error) => match error {
@@ -150,15 +161,21 @@ public module std.test {
   public function expect_access<T>(result: AccessResult<T>) std.test.AssertionResult<T> {
     return match result {
       AccessResult.Ok(value) => std.test.AssertionResult.Ok(value),
-      AccessResult.OutOfBounds(error) => std.test.AssertionResult.Error(AssertionError(error.message()))
+      AccessResult.OutOfBounds(error) => std.test.AssertionResult.Error(
+        AssertionError(error.message())
+      )
     };
   }
 
   /** Reads a checked scalar borrow before returning its value to the test. */
-  public function expect_access_value<T: _Primitive>(result: AccessResult<ref T>) std.test.AssertionResult<T> {
+  public function expect_access_value<T: _Primitive>(
+    result: AccessResult<ref T>
+  ) std.test.AssertionResult<T> {
     return match result {
       AccessResult.Ok(value) => std.test.AssertionResult.Ok(value),
-      AccessResult.OutOfBounds(error) => std.test.AssertionResult.Error(AssertionError(error.message()))
+      AccessResult.OutOfBounds(error) => std.test.AssertionResult.Error(
+        AssertionError(error.message())
+      )
     };
   }
 
@@ -166,7 +183,9 @@ public module std.test {
   public function expect_access_success(result: AccessResult<void>) std.test.AssertionResult<void> {
     return match result {
       AccessResult.Ok => std.test.AssertionResult.Ok,
-      AccessResult.OutOfBounds(error) => std.test.AssertionResult.Error(AssertionError(error.message()))
+      AccessResult.OutOfBounds(error) => std.test.AssertionResult.Error(
+        AssertionError(error.message())
+      )
     };
   }
 
@@ -174,15 +193,21 @@ public module std.test {
   public function expect_lookup<T>(result: LookupResult<T>) std.test.AssertionResult<T> {
     return match result {
       LookupResult.Ok(value) => std.test.AssertionResult.Ok(value),
-      LookupResult.NotFound(error) => std.test.AssertionResult.Error(AssertionError(error.message()))
+      LookupResult.NotFound(error) => std.test.AssertionResult.Error(
+        AssertionError(error.message())
+      )
     };
   }
 
   /** Reads a found scalar borrow or reports its lookup error as a test failure. */
-  public function expect_lookup_value<T: _Primitive>(result: LookupResult<ref T>) std.test.AssertionResult<T> {
+  public function expect_lookup_value<T: _Primitive>(
+    result: LookupResult<ref T>
+  ) std.test.AssertionResult<T> {
     return match result {
       LookupResult.Ok(value) => std.test.AssertionResult.Ok(value),
-      LookupResult.NotFound(error) => std.test.AssertionResult.Error(AssertionError(error.message()))
+      LookupResult.NotFound(error) => std.test.AssertionResult.Error(
+        AssertionError(error.message())
+      )
     };
   }
 
@@ -190,7 +215,9 @@ public module std.test {
   public function expect_lookup_success(result: LookupResult<void>) std.test.AssertionResult<void> {
     return match result {
       LookupResult.Ok => std.test.AssertionResult.Ok,
-      LookupResult.NotFound(error) => std.test.AssertionResult.Error(AssertionError(error.message()))
+      LookupResult.NotFound(error) => std.test.AssertionResult.Error(
+        AssertionError(error.message())
+      )
     };
   }
 
@@ -222,12 +249,16 @@ public module std.test {
   public function expect_conversion<T>(result: ConversionResult<T>) std.test.AssertionResult<T> {
     return match result {
       ConversionResult.Ok(value) => std.test.AssertionResult.Ok(value),
-      ConversionResult.Error(error) => std.test.AssertionResult.Error(AssertionError(error.message()))
+      ConversionResult.Error(error) => std.test.AssertionResult.Error(
+        AssertionError(error.message())
+      )
     };
   }
 
   /** Checks that an arithmetic update succeeded. */
-  public function expect_arithmetic_success(result: ArithmeticResult<void>) std.test.AssertionResult<void> {
+  public function expect_arithmetic_success(
+    result: ArithmeticResult<void>
+  ) std.test.AssertionResult<void> {
     return match result {
       ArithmeticResult.Ok => std.test.AssertionResult.Ok,
       (error: const ref IError) => std.test.AssertionResult.Error(AssertionError(error.message()))
@@ -359,7 +390,8 @@ public module std.test {
       }
       return true;
     }
-    return name.length() > plen and name.starts_with(pattern) and unsafe { name.unsafe_at(plen); } == b'.';
+    return name.length() > plen and name.starts_with(pattern) and
+      unsafe { name.unsafe_at(plen); } == b'.';
   }
 
   /**

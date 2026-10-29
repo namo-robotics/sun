@@ -301,7 +301,8 @@ public module std {
       ll.push_back(100);
       ll.push_back(200);
       ll.push_back(300);
-      var sum: i64 = (try std.test.expect_pop(ll.pop_front())) + (try std.test.expect_pop(ll.pop_back()));
+      var sum: i64 = (try std.test.expect_pop(ll.pop_front())) +
+        (try std.test.expect_pop(ll.pop_back()));
       try std.test.assert_eq(sum, 400);
     }
 

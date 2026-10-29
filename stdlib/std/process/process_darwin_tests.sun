@@ -14,7 +14,10 @@ public module std.process {
       try std.test.assert_eq(got, info_size);
       try std.test.assert_eq(info[0].pbi_pid, _convert<u32>(target));
       var identity = try std.test.expect_system(process_identity(alloc, target));
-      try std.test.assert_eq(identity.start_marker, info[0].pbi_start_tvsec * 1000000 + info[0].pbi_start_tvusec);
+      try std.test.assert_eq(
+        identity.start_marker,
+        info[0].pbi_start_tvsec * 1000000 + info[0].pbi_start_tvusec
+      );
 
       var task = ContiguousBuffer<darwin_process_abi.proc_taskinfo>(alloc, 1);
       var task_size = _convert<i32>(_sizeof<darwin_process_abi.proc_taskinfo>());
@@ -45,7 +48,10 @@ public module std.process {
       }
       var args = try std.test.expect_system(darwin_process_arguments(alloc, data, data.size()));
       try std.test.assert_eq(args.size(), 3);
-      try std.test.assert(args[0].equals_literal("program"), "argv excludes the executable prefix");
+      try std.test.assert(
+        args[0].equals_literal("program"),
+        "argv excludes the executable prefix"
+      );
       try std.test.assert(args[1].is_empty(), "empty argument preserved");
       try std.test.assert(args[2].equals_literal("two words"), "argument spaces preserved");
       try std.test.assert_eq(try error_code(darwin_process_arguments(alloc, data, 3)), 22);

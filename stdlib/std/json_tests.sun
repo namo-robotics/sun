@@ -17,16 +17,50 @@ public module std {
     /** Checks parse scalars. */
     test_function parse_scalars() std.json_tests.TestResult {
       var alloc = make_heap_allocator();
-      try std.test.assert((try std.test.expect_json(parse_json(alloc, "null"))).is_null(), "null parses");
-      try std.test.assert(try std.test.expect_json((try std.test.expect_json(parse_json(alloc, "true"))).as_bool()), "true parses");
-      try std.test.assert((try std.test.expect_json((try std.test.expect_json(parse_json(alloc, "false"))).as_bool())) == false, "false parses");
-      try std.test.assert_eq(try std.test.expect_json((try std.test.expect_json(parse_json(alloc, "42"))).as_i64()), 42);
-      try std.test.assert_eq(try std.test.expect_json((try std.test.expect_json(parse_json(alloc, "-7"))).as_i64()), -7);
-      try std.test.assert_eq(try std.test.expect_json((try std.test.expect_json(parse_json(alloc, "2.5"))).as_f64()), 2.5);
-      try std.test.assert_eq(try std.test.expect_json((try std.test.expect_json(parse_json(alloc, "-1e2"))).as_f64()), -100.0);
-      try std.test.assert_eq(try std.test.expect_json((try std.test.expect_json(parse_json(alloc, "1E-2"))).as_f64()), 0.01);
-      try std.test.assert_eq(try std.test.expect_json((try std.test.expect_json(parse_json(alloc, "0"))).as_i64()), 0);
-      try std.test.assert_eq(try std.test.expect_json((try std.test.expect_json(parse_json(alloc, "  \n\t 5 \r\n"))).as_i64()), 5);
+      try std.test.assert(
+        (try std.test.expect_json(parse_json(alloc, "null"))).is_null(),
+        "null parses"
+      );
+      try std.test.assert(
+        try std.test.expect_json((try std.test.expect_json(parse_json(alloc, "true"))).as_bool()),
+        "true parses"
+      );
+      try std.test.assert(
+        (try std.test.expect_json(
+          (try std.test.expect_json(parse_json(alloc, "false"))).as_bool()
+        )) == false,
+        "false parses"
+      );
+      try std.test.assert_eq(
+        try std.test.expect_json((try std.test.expect_json(parse_json(alloc, "42"))).as_i64()),
+        42
+      );
+      try std.test.assert_eq(
+        try std.test.expect_json((try std.test.expect_json(parse_json(alloc, "-7"))).as_i64()),
+        -7
+      );
+      try std.test.assert_eq(
+        try std.test.expect_json((try std.test.expect_json(parse_json(alloc, "2.5"))).as_f64()),
+        2.5
+      );
+      try std.test.assert_eq(
+        try std.test.expect_json((try std.test.expect_json(parse_json(alloc, "-1e2"))).as_f64()),
+        -100.0
+      );
+      try std.test.assert_eq(
+        try std.test.expect_json((try std.test.expect_json(parse_json(alloc, "1E-2"))).as_f64()),
+        0.01
+      );
+      try std.test.assert_eq(
+        try std.test.expect_json((try std.test.expect_json(parse_json(alloc, "0"))).as_i64()),
+        0
+      );
+      try std.test.assert_eq(
+        try std.test.expect_json(
+          (try std.test.expect_json(parse_json(alloc, "  \n\t 5 \r\n"))).as_i64()
+        ),
+        5
+      );
       var n = try std.test.expect_json(parse_json(alloc, "42"));
       try std.test.assert(
         n.is_int() and n.is_float() == false and n.is_number(),
@@ -35,7 +69,12 @@ public module std {
       var f = try std.test.expect_json(parse_json(alloc, "4.0"));
       try std.test.assert(f.is_float() and f.is_int() == false, "4.0 is a float");
       try std.test.assert_eq(try std.test.expect_json(f.as_i64()), 4);
-      try std.test.assert_eq(try std.test.expect_json((try std.test.expect_json(parse_json(alloc, "9223372036854775807"))).as_i64()), 9223372036854775807);
+      try std.test.assert_eq(
+        try std.test.expect_json(
+          (try std.test.expect_json(parse_json(alloc, "9223372036854775807"))).as_i64()
+        ),
+        9223372036854775807
+      );
       var huge = try std.test.expect_json(parse_json(alloc, "9223372036854775808"));
       try std.test.assert(huge.is_float(), "past i64 max becomes a float");
       var s = try std.test.expect_json(parse_json(alloc, "\"hi\""));
@@ -63,9 +102,13 @@ public module std {
       var ut: ref String = try u.as_string();
       try std.test.assert_eq(ut.length(), 9);
       try std.test.assert((try ut.at(0)) == 195 and (try ut.at(1)) == 169, "e-acute bytes");
-      try std.test.assert((try ut.at(2)) == 226 and (try ut.at(3)) == 130 and (try ut.at(4)) == 172, "euro bytes");
       try std.test.assert(
-        (try ut.at(5)) == 240 and (try ut.at(6)) == 159 and (try ut.at(7)) == 152 and (try ut.at(8)) == 128,
+        (try ut.at(2)) == 226 and (try ut.at(3)) == 130 and (try ut.at(4)) == 172,
+        "euro bytes"
+      );
+      try std.test.assert(
+        (try ut.at(5)) == 240 and (try ut.at(6)) == 159 and (try ut.at(7)) == 152 and
+          (try ut.at(8)) == 128,
         "emoji bytes"
       );
       // A lone surrogate becomes U+FFFD (3 bytes)
@@ -82,7 +125,10 @@ public module std {
       try std.test.assert_eq(tags.len(), 5);
       try std.test.assert_eq(try std.test.expect_json((try tags.at(0)).as_i64()), 1);
       try std.test.assert_eq(try std.test.expect_json((try tags.at(1)).as_f64()), 2.5);
-      try std.test.assert(try std.test.expect_json((try tags.at(2)).as_bool()), "third tag is true");
+      try std.test.assert(
+        try std.test.expect_json((try tags.at(2)).as_bool()),
+        "third tag is true"
+      );
       try std.test.assert((try tags.at(3)).is_null(), "fourth tag is null");
       try std.test.assert_eq((try (try (try tags.at(4)).get("deep")).at(0)).len(), 0);
       return std.json_tests.TestResult.Ok;
@@ -91,10 +137,18 @@ public module std {
     /** Checks parse nested and access. */
     test_function parse_nested_and_access() std.json_tests.TestResult {
       var alloc = make_heap_allocator();
-      var doc = try std.test.expect_json(parse_json(alloc, "{\"name\": \"sun\", \"tags\": [1, 2.5, true, null, {\"deep\": [[]]}], \"empty\": {}}"));
+      var doc = try std.test.expect_json(
+        parse_json(
+          alloc,
+          "{\"name\": \"sun\", \"tags\": [1, 2.5, true, null, {\"deep\": [[]]}], \"empty\": {}}"
+        )
+      );
       try std.test.assert(doc.is_object(), "top level is an object");
       try std.test.assert_eq(doc.len(), 3);
-      try std.test.assert((try (try doc.get("name")).as_string()).equals_literal("sun"), "name member");
+      try std.test.assert(
+        (try (try doc.get("name")).as_string()).equals_literal("sun"),
+        "name member"
+      );
       try check_tags(try doc.get("tags"));
       try std.test.assert_eq((try doc.get("empty")).len(), 0);
       try std.test.assert(doc.has("name") and doc.has("nope") == false, "has() finds members");
@@ -111,7 +165,9 @@ public module std {
     test_function reader_kind_mismatch_throws() std.json_tests.TestResult {
       var alloc = make_heap_allocator();
       var codes: i32 = 0;
-      var doc = try std.test.expect_json(parse_json(alloc, "{\"a\": [1], \"s\": \"x\", \"f\": 1.5}"));
+      var doc = try std.test.expect_json(
+        parse_json(alloc, "{\"a\": [1], \"s\": \"x\", \"f\": 1.5}")
+      );
       match (try doc.get("s")).as_i64() {
         JsonResult.Ok(_) => {},
         JsonResult.Error(e) => {
@@ -305,12 +361,16 @@ public module std {
       try std.test.expect_json_success(arr.push(create_json_array(alloc)));
       try std.test.expect_json_success(arr.push(create_json_object(alloc)));
       try std.test.expect_json_success(obj.set(String(alloc, "list"), arr));
-      try std.test.expect_json_success(obj.set(String(alloc, "s"), Json(String(alloc, "q\"\\\n"))));
+      try std.test.expect_json_success(
+        obj.set(String(alloc, "s"), Json(String(alloc, "q\"\\\n")))
+      );
       // Overwrite keeps the member position and drops the old value
       try std.test.expect_json_success(obj.set(String(alloc, "n"), Json(43)));
       var out = obj.to_string(alloc);
       try std.test.assert(
-        out.equals_literal("{\"ok\":true,\"n\":43,\"x\":0.1,\"none\":null,\"list\":[1,\"two\",-3.5,[],{}],\"s\":\"q\\\"\\\\\\n\"}"),
+        out.equals_literal(
+          "{\"ok\":true,\"n\":43,\"x\":0.1,\"none\":null,\"list\":[1,\"two\",-3.5,[],{}],\"s\":\"q\\\"\\\\\\n\"}"
+        ),
         "compact output wrong"
       );
       try std.test.assert_eq(obj.len(), 6);
@@ -336,8 +396,12 @@ public module std {
       var alloc = make_heap_allocator();
       var cfg = Config(String(alloc, "sun-1"));
       var req = create_json_object(alloc);
-      try std.test.expect_json_success(req.set(String(alloc, "model"), create_json_string(alloc, cfg.model)));
-      try std.test.expect_json_success(req.set(String(alloc, "again"), create_json_string(alloc, cfg.model)));
+      try std.test.expect_json_success(
+        req.set(String(alloc, "model"), create_json_string(alloc, cfg.model))
+      );
+      try std.test.expect_json_success(
+        req.set(String(alloc, "again"), create_json_string(alloc, cfg.model))
+      );
       // The original is intact after both calls
       try std.test.assert(cfg.model.equals_literal("sun-1"), "original survives both copies");
       var out = req.to_string(alloc);
@@ -357,9 +421,14 @@ public module std {
     /** Checks write pretty. */
     test_function write_pretty() std.json_tests.TestResult {
       var alloc = make_heap_allocator();
-      var doc = try std.test.expect_json(parse_json(alloc, "{\"a\":[1,{\"b\":null}],\"c\":{},\"d\":[]}"));
+      var doc = try std.test.expect_json(
+        parse_json(alloc, "{\"a\":[1,{\"b\":null}],\"c\":{},\"d\":[]}")
+      );
       var out = doc.to_pretty_string(alloc, 2);
-      var expected = String(alloc, "{\n  \"a\": [\n    1,\n    {\n      \"b\": null\n    }\n  ],\n  \"c\": {},\n  \"d\": []\n}");
+      var expected = String(
+        alloc,
+        "{\n  \"a\": [\n    1,\n    {\n      \"b\": null\n    }\n  ],\n  \"c\": {},\n  \"d\": []\n}"
+      );
       try std.test.assert(out.equals(expected), "pretty output wrong");
       var scalar = try std.test.expect_json(parse_json(alloc, "5"));
       try std.test.assert(
@@ -383,7 +452,10 @@ public module std {
       try std.test.assert(writes_as(alloc, Json(5.0), "5.0"), "5.0");
       try std.test.assert(writes_as(alloc, Json(1e21), "1e+21"), "1e+21");
       try std.test.assert(writes_as(alloc, Json(-0.0), "-0.0"), "-0.0");
-      try std.test.assert(writes_as(alloc, Json(9223372036854775807), "9223372036854775807"), "i64 max");
+      try std.test.assert(
+        writes_as(alloc, Json(9223372036854775807), "9223372036854775807"),
+        "i64 max"
+      );
       var min: i64 = -9223372036854775807 - 1;
       try std.test.assert(writes_as(alloc, Json(min), "-9223372036854775808"), "i64 min");
       var inf: f64 = 1.0 / 0.0;
@@ -401,14 +473,19 @@ public module std {
     /** Checks round trip. */
     test_function round_trip() std.json_tests.TestResult {
       var alloc = make_heap_allocator();
-      var text = String(alloc, "{\"name\":\"s\\u00fcn\",\"list\":[1,2.5,-3,true,false,null,\"\\\"\"],\"nested\":{\"a\":{\"b\":[[],{}]}},\"e\":\"\"}");
+      var text = String(
+        alloc,
+        "{\"name\":\"s\\u00fcn\",\"list\":[1,2.5,-3,true,false,null,\"\\\"\"],\"nested\":{\"a\":{\"b\":[[],{}]}},\"e\":\"\"}"
+      );
       var doc = try std.test.expect_json(parse_json(alloc, text));
       var once = doc.to_string(alloc);
       var again = (try std.test.expect_json(parse_json(alloc, once))).to_string(alloc);
       try std.test.assert(once.equals(again), "second round trip is stable");
       // \u00fc is written as raw UTF-8, everything else is stable
       try std.test.assert(
-        once.equals_literal("{\"name\":\"sün\",\"list\":[1,2.5,-3,true,false,null,\"\\\"\"],\"nested\":{\"a\":{\"b\":[[],{}]}},\"e\":\"\"}"),
+        once.equals_literal(
+          "{\"name\":\"sün\",\"list\":[1,2.5,-3,true,false,null,\"\\\"\"],\"nested\":{\"a\":{\"b\":[[],{}]}},\"e\":\"\"}"
+        ),
         "written text wrong"
       );
     }
@@ -430,7 +507,9 @@ public module std {
     /** Checks iterate object members and array items. */
     test_function iterate_object_members_and_array_items() std.json_tests.TestResult {
       var alloc = make_heap_allocator();
-      var doc = try std.test.expect_json(parse_json(alloc, "{\"a\": 1, \"b\": 2, \"c\": [10, 20, 30]}"));
+      var doc = try std.test.expect_json(
+        parse_json(alloc, "{\"a\": 1, \"b\": 2, \"c\": [10, 20, 30]}")
+      );
       var total: i64 = 0;
       for (var i: i64 = 0; i < doc.len(); i = i + 1) {
         var v: ref Json = try doc.value_at(i);
@@ -462,7 +541,9 @@ public module std {
         for (var i: i64 = 0; i < 200; i = i + 1) {
           var item = create_json_object(alloc);
           try std.test.expect_json_success(item.set(String(alloc, "id"), Json(i)));
-          try std.test.expect_json_success(item.set(String(alloc, "name"), create_json_string(alloc, "item")));
+          try std.test.expect_json_success(
+            item.set(String(alloc, "name"), create_json_string(alloc, "item"))
+          );
           var nums = create_json_array(alloc);
           for (var k: i64 = 0; k < 5; k = k + 1) {
             try std.test.expect_json_success(nums.push(Json(_convert<f64>(k) * 0.5)));

@@ -424,7 +424,11 @@ public module std {
      * Copies length bytes into a new owned string. Returns IndexOutOfBoundsError
      * when length is negative or exceeds the source buffer size.
      */
-    init(allocator: const ref HeapAllocator, buffer: ref ContiguousBuffer<u8>, length: i64) AccessResult<void> {
+    init(
+      allocator: const ref HeapAllocator,
+      buffer: ref ContiguousBuffer<u8>,
+      length: i64
+    ) AccessResult<void> {
       if (length < 0 or length > buffer.size()) {
         return AccessResult.OutOfBounds(IndexOutOfBoundsError(length));
       }
@@ -1184,7 +1188,11 @@ public module std {
      * Copy `count` bytes starting at `start` into a new string
      * Returns IndexOutOfBoundsError if the range falls outside the string
      */
-    public const method substr(alloc: const ref HeapAllocator, start: i64, count: i64) AccessResult<String> {
+    public const method substr(
+      alloc: const ref HeapAllocator,
+      start: i64,
+      count: i64
+    ) AccessResult<String> {
       if (start < 0 or count < 0) {
         return AccessResult.OutOfBounds(IndexOutOfBoundsError(start));
       }
@@ -1223,7 +1231,10 @@ public module std {
      * Split on a separator string, keeping only non-empty pieces.
      * An empty separator yields the whole string, or nothing if it is empty.
      */
-    public const method split_nonempty(alloc: const ref HeapAllocator, sep: static_ptr<u8>) Vec<String> {
+    public const method split_nonempty(
+      alloc: const ref HeapAllocator,
+      sep: static_ptr<u8>
+    ) Vec<String> {
       return this.split_on_bytes(alloc, sep.raw(), sep.length(), false);
     }
 
@@ -1248,7 +1259,13 @@ public module std {
      * The three split families differ only in how they find a separator and
      * whether empty pieces are kept, so the piece-cutting lives here.
      */
-    const method push_piece(alloc: const ref HeapAllocator, parts: ref Vec<String>, start: i64, end: i64, keep_empty: bool) void {
+    const method push_piece(
+      alloc: const ref HeapAllocator,
+      parts: ref Vec<String>,
+      start: i64,
+      end: i64,
+      keep_empty: bool
+    ) void {
       if (keep_empty or end > start) {
         parts.push(this.copy_range(alloc, start, end - start));
       }
@@ -1258,7 +1275,11 @@ public module std {
      * Cut the string at every occurrence of one byte. keep_empty decides whether
      * zero-length pieces survive.
      */
-    const method split_on_byte(alloc: const ref HeapAllocator, sep: u8, keep_empty: bool) Vec<String> {
+    const method split_on_byte(
+      alloc: const ref HeapAllocator,
+      sep: u8,
+      keep_empty: bool
+    ) Vec<String> {
       var parts: Vec<String> = Vec<String>(alloc, 4);
       var start: i64 = 0;
       for (var i: i64 = 0; i < this.len; i = i + 1) {
@@ -1275,7 +1296,12 @@ public module std {
      * Cut the string at every occurrence of a multi-byte separator. An empty
      * separator cuts nothing and yields the whole string as one piece.
      */
-    const method split_on_bytes(alloc: const ref HeapAllocator, sep_data: raw_ptr<u8>, sep_len: i64, keep_empty: bool) Vec<String> {
+    const method split_on_bytes(
+      alloc: const ref HeapAllocator,
+      sep_data: raw_ptr<u8>,
+      sep_len: i64,
+      keep_empty: bool
+    ) Vec<String> {
       var parts: Vec<String> = Vec<String>(alloc, 4);
       // An empty separator cuts nothing, so the whole string is the one piece.
       if (sep_len == 0) {
@@ -1506,7 +1532,8 @@ public module std {
         }
       }
       var int_digits: i64 = 0;
-      while (i < this.len and unsafe { this.unsafe_at(i); } >= b'0' and unsafe { this.unsafe_at(i); } <= b'9') {
+      while (i < this.len and unsafe { this.unsafe_at(i); } >= b'0' and
+        unsafe { this.unsafe_at(i); } <= b'9') {
         i = i + 1;
         int_digits = int_digits + 1;
       }
@@ -1514,7 +1541,8 @@ public module std {
       if (i < this.len and unsafe { this.unsafe_at(i); } == b'.') {
         // '.'
         i = i + 1;
-        while (i < this.len and unsafe { this.unsafe_at(i); } >= b'0' and unsafe { this.unsafe_at(i); } <= b'9') {
+        while (i < this.len and unsafe { this.unsafe_at(i); } >= b'0' and
+          unsafe { this.unsafe_at(i); } <= b'9') {
           i = i + 1;
           frac_digits = frac_digits + 1;
         }
@@ -1522,14 +1550,17 @@ public module std {
       if (int_digits + frac_digits == 0) {
         return false;
       }
-      if (i < this.len and (unsafe { this.unsafe_at(i); } == b'e' or unsafe { this.unsafe_at(i); } == b'E')) {
+      if (i < this.len and
+        (unsafe { this.unsafe_at(i); } == b'e' or unsafe { this.unsafe_at(i); } == b'E')) {
         // 'e' 'E'
         i = i + 1;
-        if (i < this.len and (unsafe { this.unsafe_at(i); } == b'-' or unsafe { this.unsafe_at(i); } == b'+')) {
+        if (i < this.len and
+          (unsafe { this.unsafe_at(i); } == b'-' or unsafe { this.unsafe_at(i); } == b'+')) {
           i = i + 1;
         }
         var exp_digits: i64 = 0;
-        while (i < this.len and unsafe { this.unsafe_at(i); } >= b'0' and unsafe { this.unsafe_at(i); } <= b'9') {
+        while (i < this.len and unsafe { this.unsafe_at(i); } >= b'0' and
+          unsafe { this.unsafe_at(i); } <= b'9') {
           i = i + 1;
           exp_digits = exp_digits + 1;
         }
@@ -1597,7 +1628,11 @@ public module std {
   /**
    * Concatenate strings with a separator between them
    */
-  public function join(alloc: const ref HeapAllocator, parts: const ref Vec<String>, sep: static_ptr<u8>) String {
+  public function join(
+    alloc: const ref HeapAllocator,
+    parts: const ref Vec<String>,
+    sep: static_ptr<u8>
+  ) String {
     var out: String = String(alloc, "");
     for (var i: i64 = 0; i < parts.size(); i = i + 1) {
       if (i > 0) {

@@ -28,21 +28,39 @@ public module std.simd {
     /** Adds corresponding lanes while borrowing both operands. */
     public const method add(other: const ref F32x4) F32x4 {
       var result = F32x4();
-      unsafe { _simd_f32x4_add(_address_of<f32>(result.x), _address_of<f32>(this.x), _address_of<f32>(other.x)); };
+      unsafe {
+        _simd_f32x4_add(
+          _address_of<f32>(result.x),
+          _address_of<f32>(this.x),
+          _address_of<f32>(other.x)
+        );
+      };
       return result;
     }
 
     /** Subtracts the other operand lane by lane. */
     public const method sub(other: const ref F32x4) F32x4 {
       var result = F32x4();
-      unsafe { _simd_f32x4_sub(_address_of<f32>(result.x), _address_of<f32>(this.x), _address_of<f32>(other.x)); };
+      unsafe {
+        _simd_f32x4_sub(
+          _address_of<f32>(result.x),
+          _address_of<f32>(this.x),
+          _address_of<f32>(other.x)
+        );
+      };
       return result;
     }
 
     /** Multiplies corresponding lanes without fused arithmetic. */
     public const method mul(other: const ref F32x4) F32x4 {
       var result = F32x4();
-      unsafe { _simd_f32x4_mul(_address_of<f32>(result.x), _address_of<f32>(this.x), _address_of<f32>(other.x)); };
+      unsafe {
+        _simd_f32x4_mul(
+          _address_of<f32>(result.x),
+          _address_of<f32>(this.x),
+          _address_of<f32>(other.x)
+        );
+      };
       return result;
     }
 
@@ -50,7 +68,14 @@ public module std.simd {
      * Targets without hardware FMA use a fused software fallback. */
     public const method fma(multiplier: const ref F32x4, addend: const ref F32x4) F32x4 {
       var result = F32x4();
-      unsafe { _simd_f32x4_fma(_address_of<f32>(result.x), _address_of<f32>(this.x), _address_of<f32>(multiplier.x), _address_of<f32>(addend.x)); };
+      unsafe {
+        _simd_f32x4_fma(
+          _address_of<f32>(result.x),
+          _address_of<f32>(this.x),
+          _address_of<f32>(multiplier.x),
+          _address_of<f32>(addend.x)
+        );
+      };
       return result;
     }
 
@@ -59,7 +84,14 @@ public module std.simd {
      * Unlike fma, this never requires a fused software fallback. */
     public const method mul_add(multiplier: const ref F32x4, addend: const ref F32x4) F32x4 {
       var result = F32x4();
-      unsafe { _simd_f32x4_mul_add(_address_of<f32>(result.x), _address_of<f32>(this.x), _address_of<f32>(multiplier.x), _address_of<f32>(addend.x)); };
+      unsafe {
+        _simd_f32x4_mul_add(
+          _address_of<f32>(result.x),
+          _address_of<f32>(this.x),
+          _address_of<f32>(multiplier.x),
+          _address_of<f32>(addend.x)
+        );
+      };
       return result;
     }
 
@@ -74,7 +106,10 @@ public module std.simd {
     }
 
     /** Stores four lanes after checking the destination range, without allocation. */
-    public const method store(buffer: ref std.ContiguousBuffer<f32>, offset: i64) std.AccessResult<void> {
+    public const method store(
+      buffer: ref std.ContiguousBuffer<f32>,
+      offset: i64
+    ) std.AccessResult<void> {
       if (offset < 0 or buffer.size() < 4 or offset > buffer.size() - 4) {
         return std.AccessResult.OutOfBounds(std.IndexOutOfBoundsError(offset));
       }
@@ -86,7 +121,10 @@ public module std.simd {
      * The address must have f32 alignment and all four lanes must be in bounds. */
     public unsafe method load_unchecked(data: raw_ptr<u8>, offset: i64) void {
       unsafe {
-        _simd_f32x4_copy(_address_of<f32>(this.x), _bitcast<raw_ptr<f32>>(_ptr_offset(data, offset * _sizeof<f32>())));
+        _simd_f32x4_copy(
+          _address_of<f32>(this.x),
+          _bitcast<raw_ptr<f32>>(_ptr_offset(data, offset * _sizeof<f32>()))
+        );
       };
     }
 
@@ -94,7 +132,10 @@ public module std.simd {
      * The address must have f32 alignment; the range must fit the allocation. */
     public const unsafe method store_unchecked(data: raw_ptr<u8>, offset: i64) void {
       unsafe {
-        _simd_f32x4_copy(_bitcast<raw_ptr<f32>>(_ptr_offset(data, offset * _sizeof<f32>())), _address_of<f32>(this.x));
+        _simd_f32x4_copy(
+          _bitcast<raw_ptr<f32>>(_ptr_offset(data, offset * _sizeof<f32>())),
+          _address_of<f32>(this.x)
+        );
       };
     }
   }
@@ -138,21 +179,39 @@ public module std.simd {
     /** Adds corresponding lanes with ordinary floating-point rounding. */
     public const method add(other: const ref F32x8) F32x8 {
       var result = F32x8();
-      unsafe { _simd_f32x8_add(_address_of<f32>(result.x0), _address_of<f32>(this.x0), _address_of<f32>(other.x0)); };
+      unsafe {
+        _simd_f32x8_add(
+          _address_of<f32>(result.x0),
+          _address_of<f32>(this.x0),
+          _address_of<f32>(other.x0)
+        );
+      };
       return result;
     }
 
     /** Subtracts corresponding lanes with ordinary floating-point rounding. */
     public const method sub(other: const ref F32x8) F32x8 {
       var result = F32x8();
-      unsafe { _simd_f32x8_sub(_address_of<f32>(result.x0), _address_of<f32>(this.x0), _address_of<f32>(other.x0)); };
+      unsafe {
+        _simd_f32x8_sub(
+          _address_of<f32>(result.x0),
+          _address_of<f32>(this.x0),
+          _address_of<f32>(other.x0)
+        );
+      };
       return result;
     }
 
     /** Multiplies corresponding lanes with ordinary floating-point rounding. */
     public const method mul(other: const ref F32x8) F32x8 {
       var result = F32x8();
-      unsafe { _simd_f32x8_mul(_address_of<f32>(result.x0), _address_of<f32>(this.x0), _address_of<f32>(other.x0)); };
+      unsafe {
+        _simd_f32x8_mul(
+          _address_of<f32>(result.x0),
+          _address_of<f32>(this.x0),
+          _address_of<f32>(other.x0)
+        );
+      };
       return result;
     }
 
@@ -160,7 +219,14 @@ public module std.simd {
      * Targets without hardware FMA use a fused software fallback. */
     public const method fma(multiplier: const ref F32x8, addend: const ref F32x8) F32x8 {
       var result = F32x8();
-      unsafe { _simd_f32x8_fma(_address_of<f32>(result.x0), _address_of<f32>(this.x0), _address_of<f32>(multiplier.x0), _address_of<f32>(addend.x0)); };
+      unsafe {
+        _simd_f32x8_fma(
+          _address_of<f32>(result.x0),
+          _address_of<f32>(this.x0),
+          _address_of<f32>(multiplier.x0),
+          _address_of<f32>(addend.x0)
+        );
+      };
       return result;
     }
 
@@ -169,7 +235,14 @@ public module std.simd {
      * Unlike fma, this never requires a fused software fallback. */
     public const method mul_add(multiplier: const ref F32x8, addend: const ref F32x8) F32x8 {
       var result = F32x8();
-      unsafe { _simd_f32x8_mul_add(_address_of<f32>(result.x0), _address_of<f32>(this.x0), _address_of<f32>(multiplier.x0), _address_of<f32>(addend.x0)); };
+      unsafe {
+        _simd_f32x8_mul_add(
+          _address_of<f32>(result.x0),
+          _address_of<f32>(this.x0),
+          _address_of<f32>(multiplier.x0),
+          _address_of<f32>(addend.x0)
+        );
+      };
       return result;
     }
 
@@ -184,7 +257,10 @@ public module std.simd {
     }
 
     /** Stores eight lanes after checking bounds; failure leaves the buffer unchanged. */
-    public const method store(buffer: ref std.ContiguousBuffer<f32>, offset: i64) std.AccessResult<void> {
+    public const method store(
+      buffer: ref std.ContiguousBuffer<f32>,
+      offset: i64
+    ) std.AccessResult<void> {
       if (offset < 0 or buffer.size() < 8 or offset > buffer.size() - 8) {
         return std.AccessResult.OutOfBounds(std.IndexOutOfBoundsError(offset));
       }
@@ -194,17 +270,30 @@ public module std.simd {
 
     /** Loads eight initialized floats at a validated element offset, with f32 alignment. */
     public unsafe method load_unchecked(data: raw_ptr<u8>, offset: i64) void {
-      unsafe { _simd_f32x8_copy(_address_of<f32>(this.x0), _bitcast<raw_ptr<f32>>(_ptr_offset(data, offset * _sizeof<f32>()))); };
+      unsafe {
+        _simd_f32x8_copy(
+          _address_of<f32>(this.x0),
+          _bitcast<raw_ptr<f32>>(_ptr_offset(data, offset * _sizeof<f32>()))
+        );
+      };
     }
 
     /** Stores eight floats at a validated element offset, with f32 alignment. */
     public const unsafe method store_unchecked(data: raw_ptr<u8>, offset: i64) void {
-      unsafe { _simd_f32x8_copy(_bitcast<raw_ptr<f32>>(_ptr_offset(data, offset * _sizeof<f32>())), _address_of<f32>(this.x0)); };
+      unsafe {
+        _simd_f32x8_copy(
+          _bitcast<raw_ptr<f32>>(_ptr_offset(data, offset * _sizeof<f32>())),
+          _address_of<f32>(this.x0)
+        );
+      };
     }
   }
 
   /** Loads eight initialized lanes after checking the buffer range. */
-  public function load8(buffer: const ref std.ContiguousBuffer<f32>, offset: i64) std.AccessResult<F32x8> {
+  public function load8(
+    buffer: const ref std.ContiguousBuffer<f32>,
+    offset: i64
+  ) std.AccessResult<F32x8> {
     if (offset < 0 or buffer.size() < 8 or offset > buffer.size() - 8) {
       return std.AccessResult.OutOfBounds(std.IndexOutOfBoundsError(offset));
     }
@@ -222,7 +311,10 @@ public module std.simd {
 
   /** Loads four initialized floats after checking the buffer range.
    * Only ordinary f32 alignment is required, including at nonzero offsets. */
-  public function load(buffer: const ref std.ContiguousBuffer<f32>, offset: i64) std.AccessResult<F32x4> {
+  public function load(
+    buffer: const ref std.ContiguousBuffer<f32>,
+    offset: i64
+  ) std.AccessResult<F32x4> {
     if (offset < 0 or buffer.size() < 4 or offset > buffer.size() - 4) {
       return std.AccessResult.OutOfBounds(std.IndexOutOfBoundsError(offset));
     }

@@ -4,5 +4,7 @@ function main() i32 {
 }
 
 manifest {
-  libraries: ["life.moon"]
+  libraries: [
+    "life.moon"
+  ]
 }

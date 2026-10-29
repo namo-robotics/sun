@@ -59,9 +59,13 @@ public module std {
       for (var mode: i32 = 0; mode < 2; mode = mode + 1) {
         var stream = TcpStream();
         if (mode == 0) {
-          try std.test.expect_system_success(stream.connect_local(try std.test.expect_system(listener.local_port())));
+          try std.test.expect_system_success(
+            stream.connect_local(try std.test.expect_system(listener.local_port()))
+          );
         } else {
-          try std.test.expect_system_success(stream.connect_ip(INADDR_LOOPBACK, try std.test.expect_system(listener.local_port())));
+          try std.test.expect_system_success(
+            stream.connect_ip(INADDR_LOOPBACK, try std.test.expect_system(listener.local_port()))
+          );
         }
         try std.test.assert_eq(stream.get_fd(), 0);
         try std.test.assert(stream.is_open(), "a connected stream can own descriptor zero");
@@ -75,7 +79,9 @@ public module std {
 
       try std.test.expect_system_success(reserve.bind(ipv4_loopback(), 0));
       var client = TcpStream();
-      try std.test.expect_system_success(client.connect_local(try std.test.expect_system(listener.local_port())));
+      try std.test.expect_system_success(
+        client.connect_local(try std.test.expect_system(listener.local_port()))
+      );
       reserve.close();
       if (true) {
         var accepted = try std.test.expect_system(listener.accept());
@@ -90,7 +96,10 @@ public module std {
         try std.test.expect_system_success(socket.bind(ipv4_loopback(), 0));
         try std.test.assert_eq(socket.get_fd(), 0);
         try std.test.assert(socket.is_open(), "a UDP socket can own descriptor zero");
-        try std.test.assert((try std.test.expect_system(socket.local_port())) > 0, "the UDP socket is bound");
+        try std.test.assert(
+          (try std.test.expect_system(socket.local_port())) > 0,
+          "the UDP socket is bound"
+        );
         socket.close();
         socket.close();
         try std.test.assert(not socket.is_open(), "the UDP socket is closed");
@@ -113,7 +122,9 @@ public module std {
         try std.test.expect_system_success(listener.bind_loopback(0));
         try std.test.expect_system_success(listener.listen(1));
         var socket = TcpStream();
-        try std.test.expect_system_success(socket.connect_local(try std.test.expect_system(listener.local_port())));
+        try std.test.expect_system_success(
+          socket.connect_local(try std.test.expect_system(listener.local_port()))
+        );
         var peer = try std.test.expect_system(listener.accept());
         sockets.push(socket);
         var taken = try std.test.expect_access(sockets.remove(0));
@@ -122,7 +133,10 @@ public module std {
         try std.test.assert(taken.is_open(), "the taken stream is open");
         try std.test.assert_eq(try std.test.expect_system(taken.send_str("ping")), 4);
         var buf = ContiguousBuffer<u8>(alloc, 4);
-        try std.test.assert((try std.test.expect_system(peer.recv(buf))) > 0, "the taken stream can send data");
+        try std.test.assert(
+          (try std.test.expect_system(peer.recv(buf))) > 0,
+          "the taken stream can send data"
+        );
         taken.close();
         taken.close();
         try std.test.assert(not taken.is_open(), "the socket is closed");
@@ -144,7 +158,10 @@ public module std {
         try std.test.assert_eq(sockets.size(), 0);
         sockets.clear();
         try std.test.assert(taken.is_open(), "the taken socket is open");
-        try std.test.assert((try std.test.expect_system(taken.local_port())) > 0, "the taken socket remains bound");
+        try std.test.assert(
+          (try std.test.expect_system(taken.local_port())) > 0,
+          "the taken socket remains bound"
+        );
         taken.close();
         taken.close();
         try std.test.assert(not taken.is_open(), "the socket is closed");
@@ -166,7 +183,10 @@ public module std {
         try std.test.assert_eq(sockets.size(), 0);
         sockets.clear();
         try std.test.assert(taken.is_open(), "the taken socket is open");
-        try std.test.assert((try std.test.expect_system(taken.local_port())) > 0, "the taken socket remains bound");
+        try std.test.assert(
+          (try std.test.expect_system(taken.local_port())) > 0,
+          "the taken socket remains bound"
+        );
         taken.close();
         taken.close();
         try std.test.assert(not taken.is_open(), "the socket is closed");
@@ -184,7 +204,9 @@ public module std {
       try std.test.expect_system_success(listener.bind_loopback(0));
       try std.test.expect_system_success(listener.listen(1));
       var stream = TcpStream();
-      try std.test.expect_system_success(stream.connect_local(try std.test.expect_system(listener.local_port())));
+      try std.test.expect_system_success(
+        stream.connect_local(try std.test.expect_system(listener.local_port()))
+      );
       try std.test.expect_system_success(stream.set_nonblocking(true));
       var buf = ContiguousBuffer<u8>(alloc, 16);
       var would_block: bool = false;

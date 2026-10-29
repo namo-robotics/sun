@@ -8,5 +8,7 @@ public module shapes_user {
 }
 
 manifest {
-  libraries: ["shapes_v1.moon"]
+  libraries: [
+    "shapes_v1.moon"
+  ]
 }

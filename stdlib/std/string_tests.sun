@@ -35,7 +35,11 @@ public module std {
     /**
      * Parse text as an f64, or hand back the fallback when parsing fails.
      */
-    function parse_float_or(alloc: const ref HeapAllocator, text: static_ptr<u8>, fallback: f64) f64 {
+    function parse_float_or(
+      alloc: const ref HeapAllocator,
+      text: static_ptr<u8>,
+      fallback: f64
+    ) f64 {
       var s = String(alloc, text);
       return match s.parse_f64() {
         Option.Some(v) => v,
@@ -76,7 +80,10 @@ public module std {
     }
 
     /** Clones the first string before releasing the borrow of its container. */
-    function clone_first(values: ref Vec<String>, alloc: const ref HeapAllocator) AccessResult<String> {
+    function clone_first(
+      values: ref Vec<String>,
+      alloc: const ref HeapAllocator
+    ) AccessResult<String> {
       var value: ref String = try values.get(0);
       return AccessResult.Ok(value.clone(alloc));
     }
@@ -87,10 +94,14 @@ public module std {
       var values = Vec<String>(alloc, 1);
       values.push(returned_short_string());
       for (var i: i64 = 0; i < 100; i = i + 1) {
-        try std.test.expect_access_success(values.set(0, String("a long string that must use independently owned heap storage")));
+        try std.test.expect_access_success(
+          values.set(0, String("a long string that must use independently owned heap storage"))
+        );
         var copied = try clone_first(values, alloc);
         try std.test.expect_access_success(values.set(0, returned_short_string()));
-        try std.test.assert(copied.equals_literal("a long string that must use independently owned heap storage"));
+        try std.test.assert(
+          copied.equals_literal("a long string that must use independently owned heap storage")
+        );
         try std.test.assert((try values.get(0)).equals_literal("short text"));
       }
       var short_copy = try clone_first(values, alloc);
@@ -146,7 +157,11 @@ public module std {
       var prefixed = String("a prefix near the inline storage boundary: ");
       prefixed.append_u64(18446744073709551615u64);
       prefixed.append_i64(-9223372036854775808i64);
-      try std.test.assert(prefixed.equals_literal("a prefix near the inline storage boundary: 18446744073709551615-9223372036854775808"));
+      try std.test.assert(
+        prefixed.equals_literal(
+          "a prefix near the inline storage boundary: 18446744073709551615-9223372036854775808"
+        )
+      );
     }
 
     /** Checks construct from literal. */
@@ -588,7 +603,10 @@ public module std {
       try std.test.assert_eq(parse_int_or(alloc, "42", -1), 42);
       try std.test.assert_eq(parse_int_or(alloc, "-42", -1), -42);
       try std.test.assert_eq(parse_int_or(alloc, "9223372036854775807", -1), 9223372036854775807);
-      try std.test.assert_eq(parse_int_or(alloc, "-9223372036854775808", -1), -9223372036854775807 - 1);
+      try std.test.assert_eq(
+        parse_int_or(alloc, "-9223372036854775808", -1),
+        -9223372036854775807 - 1
+      );
       try std.test.assert_eq(parse_int_or(alloc, "9223372036854775808", -1), -1);
       try std.test.assert_eq(parse_int_or(alloc, "12a", -1), -1);
       try std.test.assert_eq(parse_int_or(alloc, "", -1), -1);
@@ -705,13 +723,22 @@ public module std {
       var text = String(alloc, "k1=v1;;k2=v2;");
       var fields = text.split(alloc, ";;");
       try std.test.assert_eq(fields.size(), 2);
-      try std.test.assert(unsafe { fields.get_unchecked(0); }.equals_literal("k1=v1"), "first field");
-      try std.test.assert(unsafe { fields.get_unchecked(1); }.equals_literal("k2=v2;"), "second field");
+      try std.test.assert(
+        unsafe { fields.get_unchecked(0); }.equals_literal("k1=v1"),
+        "first field"
+      );
+      try std.test.assert(
+        unsafe { fields.get_unchecked(1); }.equals_literal("k2=v2;"),
+        "second field"
+      );
 
       var untouched = String(alloc, "abc");
       var one = untouched.split(alloc, "");
       try std.test.assert_eq(one.size(), 1);
-      try std.test.assert(unsafe { one.get_unchecked(0); }.equals_literal("abc"), "empty separator");
+      try std.test.assert(
+        unsafe { one.get_unchecked(0); }.equals_literal("abc"),
+        "empty separator"
+      );
     }
 
     /** Checks split nonempty skips empty pieces. */
@@ -730,13 +757,22 @@ public module std {
       var text = String(alloc, ";;k1=v1;;;;k2=v2;;");
       var fields = text.split_nonempty(alloc, ";;");
       try std.test.assert_eq(fields.size(), 2);
-      try std.test.assert(unsafe { fields.get_unchecked(0); }.equals_literal("k1=v1"), "first field");
-      try std.test.assert(unsafe { fields.get_unchecked(1); }.equals_literal("k2=v2"), "second field");
+      try std.test.assert(
+        unsafe { fields.get_unchecked(0); }.equals_literal("k1=v1"),
+        "first field"
+      );
+      try std.test.assert(
+        unsafe { fields.get_unchecked(1); }.equals_literal("k2=v2"),
+        "second field"
+      );
 
       var abc = String(alloc, "abc");
       var one = abc.split_nonempty(alloc, "");
       try std.test.assert_eq(one.size(), 1);
-      try std.test.assert(unsafe { one.get_unchecked(0); }.equals_literal("abc"), "empty separator");
+      try std.test.assert(
+        unsafe { one.get_unchecked(0); }.equals_literal("abc"),
+        "empty separator"
+      );
 
       var blank = String(alloc, "");
       var nothing = blank.split_nonempty(alloc, "");
@@ -755,7 +791,10 @@ public module std {
       // An empty separator cuts nothing: the whole string is one piece
       var whole = s.split(alloc, "");
       try std.test.assert_eq(whole.size(), 1);
-      try std.test.assert(unsafe { whole.get_unchecked(0); }.equals_literal("abc"), "one whole piece");
+      try std.test.assert(
+        unsafe { whole.get_unchecked(0); }.equals_literal("abc"),
+        "one whole piece"
+      );
       try std.test.assert_eq(s.split_nonempty(alloc, "").size(), 1);
 
       // An empty subject yields one empty piece, or none when empty pieces
@@ -775,7 +814,10 @@ public module std {
       try std.test.assert_eq(words.size(), 3);
       try std.test.assert(unsafe { words.get_unchecked(0); }.equals_literal("one"), "first word");
       try std.test.assert(unsafe { words.get_unchecked(1); }.equals_literal("two"), "second word");
-      try std.test.assert(unsafe { words.get_unchecked(2); }.equals_literal("three"), "third word");
+      try std.test.assert(
+        unsafe { words.get_unchecked(2); }.equals_literal("three"),
+        "third word"
+      );
 
       var solid = String(alloc, "word");
       var solo = solid.split_whitespace(alloc);
@@ -904,7 +946,11 @@ public module std {
       s.push('😀');  // 4 bytes
       try std.test.assert_eq(s.length(), 10);
       // é is C3 A9
-      try std.test.assert((try std.test.expect_access(s.at(1))) == b'\xC3' and (try std.test.expect_access(s.at(2))) == b'\xA9', "é bytes");
+      try std.test.assert(
+        (try std.test.expect_access(s.at(1))) == b'\xC3' and
+          (try std.test.expect_access(s.at(2))) == b'\xA9',
+        "é bytes"
+      );
     }
 
     /** Checks char count counts scalars not bytes. */
@@ -1020,7 +1066,11 @@ public module std {
       var c: char = '😀';
       var s = `[${c}]`;
       try std.test.assert_eq(s.length(), 6);  // '[' + 4 bytes + ']'
-      try std.test.assert((try std.test.expect_access(s.at(0))) == b'[' and (try std.test.expect_access(s.at(5))) == b']', "brackets preserved");
+      try std.test.assert(
+        (try std.test.expect_access(s.at(0))) == b'[' and
+          (try std.test.expect_access(s.at(5))) == b']',
+        "brackets preserved"
+      );
     }
 
     /** Checks that popping moves the final byte and reports an empty string. */

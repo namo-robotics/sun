@@ -404,13 +404,22 @@ public module std {
           }
         }
         if (key.equals_literal("xmlns") or key.starts_with("xmlns:")) {
-          var prefix = xml_slice(this.alloc, key, key.equals_literal("xmlns") ? key.length() : 6, key.length());
+          var prefix = xml_slice(
+            this.alloc,
+            key,
+            key.equals_literal("xmlns") ? key.length() : 6,
+            key.length()
+          );
           if (not prefix.is_empty()) {
             try xml_validate_ncname(prefix);
           } else if (not key.equals_literal("xmlns")) {
             return XmlResult.Error(this.error("empty namespace prefix"));
           }
-          if (prefix.equals_literal("xmlns") or value.equals_literal("http://www.w3.org/2000/xmlns/") or (prefix.equals_literal("xml") != value.equals_literal("http://www.w3.org/XML/1998/namespace")) or (not prefix.is_empty() and value.is_empty())) {
+          if (prefix.equals_literal("xmlns") or
+            value.equals_literal("http://www.w3.org/2000/xmlns/") or
+            (prefix.equals_literal("xml") !=
+              value.equals_literal("http://www.w3.org/XML/1998/namespace")) or
+            (not prefix.is_empty() and value.is_empty())) {
             return XmlResult.Error(this.error("invalid reserved namespace binding"));
           }
           namespaces.push(XmlNamespace(prefix, value.clone(this.alloc)));
@@ -422,7 +431,13 @@ public module std {
         this.pos += 1;
       }
       try this.expect(62);
-      this.stack.push(XmlFrame(raw.clone(this.alloc), XmlName(String(this.alloc, ""), String(this.alloc, ""), String(this.alloc, "")), namespaces));
+      this.stack.push(
+        XmlFrame(
+          raw.clone(this.alloc),
+          XmlName(String(this.alloc, ""), String(this.alloc, ""), String(this.alloc, "")),
+          namespaces
+        )
+      );
       var name = try this.resolve(raw, false);
       this.stack[this.stack.size() - 1].name = name.clone(this.alloc);
       var element = XmlElement(this.alloc, name);
@@ -455,7 +470,16 @@ public module std {
     /** Advances the parser, retaining the first failure on subsequent calls. */
     public method next() XmlResult<Option<XmlEvent>> {
       if (this.failed) {
-        return XmlResult.Error(this.named_error(XmlError(this.failure_message, this.failure_offset, this.failure_line, this.failure_column)));
+        return XmlResult.Error(
+          this.named_error(
+            XmlError(
+              this.failure_message,
+              this.failure_offset,
+              this.failure_line,
+              this.failure_column
+            )
+          )
+        );
       }
       match this.next_impl() {
         XmlResult.Ok(event) => {
@@ -609,7 +633,10 @@ public module std {
   }
 
   /** Parses complete input into an independent editable document. */
-  public function parse_xml(alloc: ref HeapAllocator, input: const ref String) XmlResult<XmlDocument> {
+  public function parse_xml(
+    alloc: ref HeapAllocator,
+    input: const ref String
+  ) XmlResult<XmlDocument> {
     var reader = XmlReader(alloc, input);
     var before = Vec<XmlNode>(alloc, 4);
     while (true) {
@@ -664,13 +691,20 @@ public module std {
   }
 
   /** Parses literal input, releasing the temporary input after the tree is built. */
-  public function parse_xml(alloc: ref HeapAllocator, input: static_ptr<u8>) XmlResult<XmlDocument> {
+  public function parse_xml(
+    alloc: ref HeapAllocator,
+    input: static_ptr<u8>
+  ) XmlResult<XmlDocument> {
     var text = String(alloc, input);
     return parse_xml(alloc, text);
   }
 
   /** Parses borrowed input and moves the diagnostic filename into any returned error. */
-  public function parse_xml(alloc: ref HeapAllocator, input: const ref String, filename: String) XmlResult<XmlDocument> {
+  public function parse_xml(
+    alloc: ref HeapAllocator,
+    input: const ref String,
+    filename: String
+  ) XmlResult<XmlDocument> {
     return match parse_xml(alloc, input) {
       XmlResult.Ok(document) => XmlResult.Ok(document),
       XmlResult.Error(error) => {
@@ -681,7 +715,11 @@ public module std {
   }
 
   /** Parses literal input with an owned diagnostic filename; performs no file I/O. */
-  public function parse_xml(alloc: ref HeapAllocator, input: static_ptr<u8>, filename: String) XmlResult<XmlDocument> {
+  public function parse_xml(
+    alloc: ref HeapAllocator,
+    input: static_ptr<u8>,
+    filename: String
+  ) XmlResult<XmlDocument> {
     var text = String(alloc, input);
     return parse_xml(alloc, text, filename);
   }

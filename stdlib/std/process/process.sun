@@ -371,7 +371,10 @@ public module std.process {
      */
     public method build_argv_array() ContiguousBuffer<raw_ptr<u8>> {
       var count: i64 = this.offsets.size();
-      var argv: ContiguousBuffer<raw_ptr<u8>> = ContiguousBuffer<raw_ptr<u8>>(this.alloc, count + 1);
+      var argv: ContiguousBuffer<raw_ptr<u8>> = ContiguousBuffer<raw_ptr<u8>>(
+        this.alloc,
+        count + 1
+      );
       var base: raw_ptr<u8> = this.blob.c_str();
       for (var i: i64 = 0; i < count; i = i + 1) {
         var at: i64 = unsafe { this.offsets.get_unchecked(i); };
@@ -414,7 +417,8 @@ public module std.process {
         err_read = p.read_fd();
         err_write = p.write_fd();
       }
-      if (this.stdin_mode == Stdio.Null or this.stdout_mode == Stdio.Null or this.stderr_mode == Stdio.Null) {
+      if (this.stdin_mode == Stdio.Null or this.stdout_mode == Stdio.Null or
+        this.stderr_mode == Stdio.Null) {
         devnull = unsafe { c_open("/dev/null", 2, 0); };
       }
 

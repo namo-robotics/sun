@@ -34,7 +34,9 @@ public module tls {
     );
     try std.test.assert(
       match ctx.load(path, path, "\x02h\x00") {
-        ClientResult.Tls(error) => error.message().equals_literal("ALPN protocol names cannot contain NUL"),
+        ClientResult.Tls(error) => error.message().equals_literal(
+          "ALPN protocol names cannot contain NUL"
+        ),
         _ => false
       }
     );
@@ -159,7 +161,10 @@ public module tls {
 
       /** Offers an ALPN list before the client handshake begins. */
       public method offer(protocols: static_ptr<u8>) std.test.AssertionResult<void> {
-        try std.test.assert_eq(unsafe { test_set_alpn(this.ssl, protocols.raw(), _convert<u32>(protocols.length())); }, 0);
+        try std.test.assert_eq(
+          unsafe { test_set_alpn(this.ssl, protocols.raw(), _convert<u32>(protocols.length())); },
+          0
+        );
         return std.test.AssertionResult.Ok;
       }
 
@@ -176,7 +181,10 @@ public module tls {
               client_ready = true;
             } else {
               var reason: i32 = unsafe { c_ssl_get_error(this.ssl, result); };
-              try std.test.assert(reason == SSL_ERROR_WANT_READ or reason == SSL_ERROR_WANT_WRITE, "client handshake must succeed or need readiness");
+              try std.test.assert(
+                reason == SSL_ERROR_WANT_READ or reason == SSL_ERROR_WANT_WRITE,
+                "client handshake must succeed or need readiness"
+              );
             }
           }
           if (not server_ready) {
@@ -187,33 +195,47 @@ public module tls {
               ServerResult.WantRead => {},
               ServerResult.WantWrite => {},
               _ => {
-                return std.test.AssertionResult.Error(std.test.AssertionError("server handshake failed"));
+                return std.test.AssertionResult.Error(
+                  std.test.AssertionError("server handshake failed")
+                );
               }
             };
           }
           std.time.sleep(std.time.create_duration_millis(1));
           attempts = attempts + 1;
         }
-        try std.test.assert(client_ready and server_ready, "handshake must finish within the deadline");
+        try std.test.assert(
+          client_ready and server_ready,
+          "handshake must finish within the deadline"
+        );
         return std.test.AssertionResult.Ok;
       }
 
       /** Writes a small application record from the test client. */
       public method send(data: static_ptr<u8>) std.test.AssertionResult<void> {
         unsafe { c_err_clear_error(); };
-        try std.test.assert_eq(unsafe { c_ssl_write(this.ssl, data.raw(), _convert<i32>(data.length())); }, _convert<i32>(data.length()));
+        try std.test.assert_eq(
+          unsafe { c_ssl_write(this.ssl, data.raw(), _convert<i32>(data.length())); },
+          _convert<i32>(data.length())
+        );
         return std.test.AssertionResult.Ok;
       }
 
       /** Drains client-side records, returning application bytes received so far. */
       public method receive(buf: ref ContiguousBuffer<u8>) std.test.AssertionResult<i32> {
         unsafe { c_err_clear_error(); };
-        var result: i32 = unsafe { c_ssl_read(this.ssl, buf.raw_data(), _convert<i32>(buf.size())); };
+        var result: i32 = unsafe {
+          c_ssl_read(this.ssl, buf.raw_data(), _convert<i32>(buf.size()));
+        };
         if (result > 0) {
           return std.test.AssertionResult.Ok(result);
         }
         var reason: i32 = unsafe { c_ssl_get_error(this.ssl, result); };
-        try std.test.assert(reason == SSL_ERROR_WANT_READ or reason == SSL_ERROR_WANT_WRITE or reason == SSL_ERROR_ZERO_RETURN, "client read must not fail");
+        try std.test.assert(
+          reason == SSL_ERROR_WANT_READ or reason == SSL_ERROR_WANT_WRITE or
+            reason == SSL_ERROR_ZERO_RETURN,
+          "client read must not fail"
+        );
         return std.test.AssertionResult.Ok(0);
       }
 
@@ -257,7 +279,9 @@ public module tls {
     function expect_client<T>(result: ClientResult<T>) std.test.AssertionResult<T> {
       return match result {
         ClientResult.Ok(value) => std.test.AssertionResult.Ok(value),
-        (error: const ref IError) => std.test.AssertionResult.Error(std.test.AssertionError(error.message()))
+        (error: const ref IError) => std.test.AssertionResult.Error(
+          std.test.AssertionError(error.message())
+        )
       };
     }
 
@@ -265,13 +289,20 @@ public module tls {
     function expect_ok(result: ServerResult<i64>) std.test.AssertionResult<i64> {
       return match result {
         ServerResult.Ok(n) => std.test.AssertionResult.Ok(n),
-        ServerResult.Tls(error) => std.test.AssertionResult.Error(std.test.AssertionError(error.message())),
-        _ => std.test.AssertionResult.Error(std.test.AssertionError("expected completed TLS operation"))
+        ServerResult.Tls(error) => std.test.AssertionResult.Error(
+          std.test.AssertionError(error.message())
+        ),
+        _ => std.test.AssertionResult.Error(
+          std.test.AssertionError("expected completed TLS operation")
+        )
       };
     }
 
     /** Retries a nonblocking read until data arrives, failing on errors or timeout. */
-    function read_when_ready(stream: ref TlsServerStream, buf: ref ContiguousBuffer<u8>) std.test.AssertionResult<i64> {
+    function read_when_ready(
+      stream: ref TlsServerStream,
+      buf: ref ContiguousBuffer<u8>
+    ) std.test.AssertionResult<i64> {
       var attempts: i32 = 0;
       while (attempts < 1000) {
         match stream.read(buf) {
@@ -284,13 +315,17 @@ public module tls {
             return std.test.AssertionResult.Error(std.test.AssertionError(error.message()));
           },
           ServerResult.Closed => {
-            return std.test.AssertionResult.Error(std.test.AssertionError("TLS stream closed before data arrived"));
+            return std.test.AssertionResult.Error(
+              std.test.AssertionError("TLS stream closed before data arrived")
+            );
           }
         };
         std.time.sleep(std.time.create_duration_millis(1));
         attempts = attempts + 1;
       }
-      return std.test.AssertionResult.Error(std.test.AssertionError("TLS read did not finish within the deadline"));
+      return std.test.AssertionResult.Error(
+        std.test.AssertionError("TLS read did not finish within the deadline")
+      );
     }
 
     /** Exercises readiness, ALPN preference, bidirectional I/O, and context lifetime. */
@@ -445,7 +480,10 @@ public module tls {
       );
       var stream = try expect_client(peer.accept());
       try peer.handshake(stream);
-      try std.test.assert(stream.alpn().equals_literal("h2"), "failed reloads preserve ALPN configuration");
+      try std.test.assert(
+        stream.alpn().equals_literal("h2"),
+        "failed reloads preserve ALPN configuration"
+      );
     }
 
     /** Fills the transport to exercise partial writes and retry after WantWrite. */
@@ -461,7 +499,10 @@ public module tls {
         data.append_char(b'x');
       }
       var first: i64 = try expect_ok(stream.write(data));
-      try std.test.assert(first > 0 and first < data.length(), "large writes complete one record at a time");
+      try std.test.assert(
+        first > 0 and first < data.length(),
+        "large writes complete one record at a time"
+      );
       var blocked: bool = false;
       var attempts: i32 = 0;
       while (not blocked and attempts < 10000) {
@@ -552,7 +593,10 @@ public module tls {
         }
         attempts = attempts + 1;
       }
-      try std.test.assert(failed and not stream.is_open(), "plaintext must be rejected within the deadline");
+      try std.test.assert(
+        failed and not stream.is_open(),
+        "plaintext must be rejected within the deadline"
+      );
       try std.test.assert(
         match stream.handshake() {
           ServerResult.Tls(error) => true,

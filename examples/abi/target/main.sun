@@ -4,5 +4,7 @@ function main() i32 {
 }
 
 manifest {
-  libraries: ["compatible.moon"]
+  libraries: [
+    "compatible.moon"
+  ]
 }

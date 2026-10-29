@@ -116,7 +116,10 @@ public module std {
       cmd.add_arg("-c");
       cmd.add_arg(script);
       var res = try std.test.expect_system(cmd.output());
-      try std.test.assert(res.stdout().equals_literal("built-at-runtime"), "runtime-built argument ran");
+      try std.test.assert(
+        res.stdout().equals_literal("built-at-runtime"),
+        "runtime-built argument ran"
+      );
       try std.test.assert_eq(script.length(), 23);
     }
 
@@ -217,7 +220,10 @@ public module std {
      */
     test_function parent_pid_and_uids_are_plausible() {
       try std.test.assert(std.process.parent_pid() > 0, "parent pid is positive");
-      try std.test.assert(std.process.pid() != std.process.parent_pid(), "pid differs from parent pid");
+      try std.test.assert(
+        std.process.pid() != std.process.parent_pid(),
+        "pid differs from parent pid"
+      );
       try std.test.assert_eq(std.process.uid(), std.process.euid());
     }
 

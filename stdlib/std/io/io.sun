@@ -229,7 +229,12 @@ public module std.io {
      * Allocates reusable storage. Rejects negative line limits and nonpositive
      * buffer sizes. The byte limit excludes LF; zero permits only empty lines.
      */
-    init(alloc: ref HeapAllocator, file: ref File, max_line_length: i64, buffer_size: i64) SystemResult<void> {
+    init(
+      alloc: ref HeapAllocator,
+      file: ref File,
+      max_line_length: i64,
+      buffer_size: i64
+    ) SystemResult<void> {
       if (max_line_length < 0 or buffer_size <= 0) {
         return SystemResult.Error(Error(22, "invalid line reader bounds"));
       }
@@ -261,7 +266,10 @@ public module std.io {
   }
 
   /** Supplies a native read operation so short reads and interruptions can be tested. */
-  function next_line_using<Operation: ByteReader>(reader: ref LineReader, operation: ref Operation) LineReadResult {
+  function next_line_using<Operation: ByteReader>(
+    reader: ref LineReader,
+    operation: ref Operation
+  ) LineReadResult {
     if (reader.delivered) {
       reader.text.clear();
       reader.overlong = false;
@@ -355,7 +363,11 @@ public module std.io {
   }
 
   /** Runs the read retry loop with a native operation supplied by the caller. */
-  function read_slice_using<Operation: ByteReader>(fd: i32, buffer: ref MutableByteSlice, read_op: ref Operation) ReadResult {
+  function read_slice_using<Operation: ByteReader>(
+    fd: i32,
+    buffer: ref MutableByteSlice,
+    read_op: ref Operation
+  ) ReadResult {
     if (buffer.size() == 0) {
       return ReadResult.Data(0);
     }
@@ -385,10 +397,16 @@ public module std.io {
   }
 
   /** Runs the complete-write loop with a native operation supplied by the caller. */
-  function write_slice_using<Operation: ByteWriter>(fd: i32, buffer: const ref ByteSlice, write_op: ref Operation) WriteResult {
+  function write_slice_using<Operation: ByteWriter>(
+    fd: i32,
+    buffer: const ref ByteSlice,
+    write_op: ref Operation
+  ) WriteResult {
     var written: i64 = 0;
     while (written < buffer.size()) {
-      var n: i64 = unsafe { write_op.write(fd, _ptr_offset(buffer.raw_data(), written), buffer.size() - written); };
+      var n: i64 = unsafe {
+        write_op.write(fd, _ptr_offset(buffer.raw_data(), written), buffer.size() - written);
+      };
       if (n > 0) {
         written = written + n;
       } else {
@@ -644,7 +662,10 @@ public module std.io {
   // -------------------------------------------------------------------
 
   /** Reads an entire file into an owned string and returns Error on an I/O failure. */
-  public function read_to_string(alloc: ref HeapAllocator, path: static_ptr<u8>) SystemResult<String> {
+  public function read_to_string(
+    alloc: ref HeapAllocator,
+    path: static_ptr<u8>
+  ) SystemResult<String> {
     var f: File = File();
     try f.open(path, FileMode.Read);
     var text: String = try f.read_all(alloc);
@@ -733,7 +754,10 @@ public module std.io {
   /**
    * Rename or move a file
    */
-  public function rename_file(old_path: static_ptr<u8>, new_path: static_ptr<u8>) SystemResult<void> {
+  public function rename_file(
+    old_path: static_ptr<u8>,
+    new_path: static_ptr<u8>
+  ) SystemResult<void> {
     try rename_file_cstr(old_path.raw(), new_path.raw());
     return SystemResult.Ok;
   }
@@ -1024,7 +1048,10 @@ public module std.io {
    * List the entries of a directory at a literal path. '.' and '..' are left
    * out.
    */
-  public function read_dir(alloc: ref HeapAllocator, path: static_ptr<u8>) SystemResult<Vec<DirEntry>> {
+  public function read_dir(
+    alloc: ref HeapAllocator,
+    path: static_ptr<u8>
+  ) SystemResult<Vec<DirEntry>> {
     return SystemResult.Ok((try read_dir_cstr(alloc, path.raw())));
   }
 

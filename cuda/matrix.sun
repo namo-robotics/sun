@@ -91,12 +91,26 @@ public module cuda {
   }
 
   /** Allocates checked, initialized storage for a supported floating-point type. */
-  function allocate_matrix<T: _Float>(context: raw_ptr<u8>, rank: i64, rows: i64, columns: i64) GpuResult<DeviceMatrix<T>> {
+  function allocate_matrix<T: _Float>(
+    context: raw_ptr<u8>,
+    rank: i64,
+    rows: i64,
+    columns: i64
+  ) GpuResult<DeviceMatrix<T>> {
     if (rank != 1 and rank != 2) {
       return GpuResult.Error(GpuError(-1, "allocate"));
     }
     var handle: raw_ptr<u8> = null;
-    var status = unsafe { c_allocate(context, _convert<i32>(rank), rows, columns, _convert<i32>(_sizeof<T>()), _address_of<raw_ptr<u8>>(handle)); };
+    var status = unsafe {
+      c_allocate(
+        context,
+        _convert<i32>(rank),
+        rows,
+        columns,
+        _convert<i32>(_sizeof<T>()),
+        _address_of<raw_ptr<u8>>(handle)
+      );
+    };
     if (status != 0) {
       unsafe { c_matrix_release(handle); };
       return GpuResult.Error(GpuError(status, "allocate"));
@@ -159,7 +173,19 @@ public module cuda {
       if (host.ndims() == 2) {
         columns = host.dim(1);
       }
-      return checked(unsafe { c_transfer(this.handle, host.raw_data(), _convert<i32>(host.ndims()), host.dim(0), columns, 1); }, "upload");
+      return checked(
+        unsafe {
+          c_transfer(
+            this.handle,
+            host.raw_data(),
+            _convert<i32>(host.ndims()),
+            host.dim(0),
+            columns,
+            1
+          );
+        },
+        "upload"
+      );
     }
 
     /** Copies into equal-shaped host storage and waits for completion. */
@@ -171,7 +197,19 @@ public module cuda {
       if (host.ndims() == 2) {
         columns = host.dim(1);
       }
-      return checked(unsafe { c_transfer(this.handle, host.raw_data(), _convert<i32>(host.ndims()), host.dim(0), columns, 0); }, "download");
+      return checked(
+        unsafe {
+          c_transfer(
+            this.handle,
+            host.raw_data(),
+            _convert<i32>(host.ndims()),
+            host.dim(0),
+            columns,
+            0
+          );
+        },
+        "download"
+      );
     }
 
     /** Allocates a new result for matmul; inputs remain borrowed and unchanged. */
@@ -188,13 +226,17 @@ public module cuda {
     }
 
     /** Computes matmul into existing, non-aliasing output storage. */
-    public const method matmul_into(other: const ref DeviceMatrix<T>, output: ref DeviceMatrix<T>) GpuResult<void> {
+    public const method matmul_into(
+      other: const ref DeviceMatrix<T>,
+      output: ref DeviceMatrix<T>
+    ) GpuResult<void> {
       return checked(unsafe { c_binary(0, this.handle, other.handle, output.handle); }, "matmul");
     }
 
     /** Allocates a new result for add; inputs remain borrowed and unchanged. */
     public const method add(other: const ref DeviceMatrix<T>) GpuResult<DeviceMatrix<T>> {
-      if (this.ndims() != other.ndims() or this.dim(0) != other.dim(0) or this.columns() != other.columns()) {
+      if (this.ndims() != other.ndims() or this.dim(0) != other.dim(0) or
+        this.columns() != other.columns()) {
         return GpuResult.Error(GpuError(-1, "add"));
       }
       if (unsafe { c_matrix_context(this.handle) != c_matrix_context(other.handle); }) {
@@ -206,7 +248,10 @@ public module cuda {
     }
 
     /** Computes add into existing, non-aliasing output storage. */
-    public const method add_into(other: const ref DeviceMatrix<T>, output: ref DeviceMatrix<T>) GpuResult<void> {
+    public const method add_into(
+      other: const ref DeviceMatrix<T>,
+      output: ref DeviceMatrix<T>
+    ) GpuResult<void> {
       return checked(unsafe { c_binary(1, this.handle, other.handle, output.handle); }, "add");
     }
 
@@ -224,7 +269,10 @@ public module cuda {
     }
 
     /** Computes matvec into existing, non-aliasing output storage. */
-    public const method matvec_into(other: const ref DeviceMatrix<T>, output: ref DeviceMatrix<T>) GpuResult<void> {
+    public const method matvec_into(
+      other: const ref DeviceMatrix<T>,
+      output: ref DeviceMatrix<T>
+    ) GpuResult<void> {
       return checked(unsafe { c_binary(2, this.handle, other.handle, output.handle); }, "matvec");
     }
 
@@ -237,18 +285,29 @@ public module cuda {
 
     /** Writes a scaled copy into existing, non-aliasing storage. */
     public const method scale_into(alpha: T, output: ref DeviceMatrix<T>) GpuResult<void> {
-      return checked(unsafe { c_scale(this.handle, _convert<f64>(alpha), output.handle, 0); }, "scale");
+      return checked(
+        unsafe { c_scale(this.handle, _convert<f64>(alpha), output.handle, 0); },
+        "scale"
+      );
     }
 
     /** Scales this allocation without creating another matrix. */
     public method scale_in_place(alpha: T) GpuResult<void> {
-      return checked(unsafe { c_scale(this.handle, _convert<f64>(alpha), this.handle, 1); }, "scale_in_place");
+      return checked(
+        unsafe { c_scale(this.handle, _convert<f64>(alpha), this.handle, 1); },
+        "scale_in_place"
+      );
     }
 
     /** Returns a vector dot product as a host scalar after synchronization. */
     public const method dot(other: const ref DeviceMatrix<T>) GpuResult<T> {
       var output: T = _convert<T>(0);
-      try checked(unsafe { c_dot(this.handle, other.handle, _bitcast<raw_ptr<u8>>(_address_of<T>(output))); }, "dot");
+      try checked(
+        unsafe {
+          c_dot(this.handle, other.handle, _bitcast<raw_ptr<u8>>(_address_of<T>(output)));
+        },
+        "dot"
+      );
       return GpuResult.Ok(output);
     }
 
@@ -283,7 +342,9 @@ public module cuda {
     }
 
     /** Explicitly allocates zero-initialized GPU storage of the supplied shape. */
-    public const method allocate<T: _Float>(shape: const ref array<i64>) GpuResult<DeviceMatrix<T>> {
+    public const method allocate<T: _Float>(
+      shape: const ref array<i64>
+    ) GpuResult<DeviceMatrix<T>> {
       var rank = shape.dim(0);
       if (rank != 1 and rank != 2) {
         return GpuResult.Error(GpuError(-1, "allocate"));

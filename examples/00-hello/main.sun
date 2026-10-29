@@ -6,5 +6,7 @@ function main() void {
 }
 
 manifest {
-  libraries: ["stdlib.moon"]
+  libraries: [
+    "stdlib.moon"
+  ]
 }

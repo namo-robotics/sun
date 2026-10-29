@@ -30,7 +30,13 @@ public module std.process {
     public var arguments: SystemResult<Vec<String>>;
 
     /** Move observations into a snapshot. CPU time excludes waited-for children. */
-    init(identity: ProcessIdentity, cpu_time_ns: SystemResult<u64>, rss_bytes: SystemResult<u64>, executable: SystemResult<String>, arguments: SystemResult<Vec<String>>) {
+    init(
+      identity: ProcessIdentity,
+      cpu_time_ns: SystemResult<u64>,
+      rss_bytes: SystemResult<u64>,
+      executable: SystemResult<String>,
+      arguments: SystemResult<Vec<String>>
+    ) {
       this.identity = identity;
       this.cpu_time_ns = cpu_time_ns;
       this.rss_bytes = rss_bytes;
@@ -51,7 +57,10 @@ public module std.process {
   }
 
   /** Read identity without requesting access beyond the caller's credentials. */
-  public function process_identity(alloc: ref HeapAllocator, target: i32) SystemResult<ProcessIdentity> {
+  public function process_identity(
+    alloc: ref HeapAllocator,
+    target: i32
+  ) SystemResult<ProcessIdentity> {
     if (target <= 0) {
       return SystemResult.Error(Error(22, "process id must be positive"));
     }
@@ -59,7 +68,10 @@ public module std.process {
   }
 
   /** Collect fields and recheck identity; observations are not an atomic snapshot. */
-  public function inspect_process(alloc: ref HeapAllocator, target: i32) SystemResult<ProcessSnapshot> {
+  public function inspect_process(
+    alloc: ref HeapAllocator,
+    target: i32
+  ) SystemResult<ProcessSnapshot> {
     if (target <= 0) {
       return SystemResult.Error(Error(22, "process id must be positive"));
     }
@@ -159,7 +171,12 @@ public module std.process {
   }
 
   /** Copy a bounded native byte range into allocator-owned text. */
-  function process_text(alloc: ref HeapAllocator, data: ref ContiguousBuffer<u8>, start: i64, end: i64) String {
+  function process_text(
+    alloc: ref HeapAllocator,
+    data: ref ContiguousBuffer<u8>,
+    start: i64,
+    end: i64
+  ) String {
     var text = String(alloc, "");
     for (var i = start; i < end; i = i + 1) {
       text.append_char(data[i]);
@@ -168,7 +185,10 @@ public module std.process {
   }
 
   /** Decode NUL-terminated argument bytes, preserving empty arguments. */
-  function process_arguments(alloc: ref HeapAllocator, text: const ref String) SystemResult<Vec<String>> {
+  function process_arguments(
+    alloc: ref HeapAllocator,
+    text: const ref String
+  ) SystemResult<Vec<String>> {
     var args = Vec<String>(alloc, 8);
     var argument = String(alloc, "");
     for (var i: i64 = 0; i < text.length(); i = i + 1) {

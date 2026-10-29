@@ -30,7 +30,9 @@ public module std.io {
   /** Return zero on success, or the saved errno on failure. */
   function native_loop_change(queue: i32, fd: i32, old: i16, events: i16, operation: i32) i32 {
     var change = EpollChange(fd, events);
-    if (unsafe { c_epoll_ctl(queue, operation, fd, _bitcast<raw_ptr<u8>>(_address_of<EpollChange>(change))); } < 0) {
+    if (unsafe {
+      c_epoll_ctl(queue, operation, fd, _bitcast<raw_ptr<u8>>(_address_of<EpollChange>(change)));
+    } < 0) {
       return errno();
     }
     return 0;

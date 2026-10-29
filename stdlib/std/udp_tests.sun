@@ -17,7 +17,9 @@ public module std {
       var receiver = UdpSocket();
       try std.test.expect_system_success(sender.bind(here, 0));
       try std.test.expect_system_success(receiver.bind(here, 0));
-      var sent: i64 = try std.test.expect_system(sender.send_str_to("ping", here, try std.test.expect_system(receiver.local_port())));
+      var sent: i64 = try std.test.expect_system(
+        sender.send_str_to("ping", here, try std.test.expect_system(receiver.local_port()))
+      );
       try std.test.assert_eq(sent, 4);
       var buf = ContiguousBuffer<u8>(alloc, 64);
       var datagram = try std.test.expect_system(receiver.recv_from(buf));
@@ -50,7 +52,10 @@ public module std {
       try std.test.assert(rejected, "default bind should reject an occupied port");
       try std.test.assert(not contender.is_open(), "failed bind should close the socket");
       try std.test.expect_system_success(contender.bind(here, 0));
-      try std.test.assert((try std.test.expect_system(contender.local_port())) != port, "retry should get a different port");
+      try std.test.assert(
+        (try std.test.expect_system(contender.local_port())) != port,
+        "retry should get a different port"
+      );
       owner.close();
       try std.test.expect_system_success(contender.bind(here, port, false));
       try std.test.assert_eq(try std.test.expect_system(contender.local_port()), port);

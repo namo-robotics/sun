@@ -29,7 +29,7 @@ namespace sun::abi {
 
 /** Formats diagnostic branches from validated bundle requirements. */
 namespace {
-/** Shows every import retaining an artifact and the selected compatible import.
+/** Shows every import retaining an artifact and the selected import.
  * Embedded requirements include transitive dependencies; intermediate edges are
  * not retained in the bundle contract.
  */
@@ -37,7 +37,7 @@ std::string artifactDependencyTree(
     const proto::LibraryAbiSnapshot& required,
     const proto::LibraryAbiSnapshot& selected,
     const std::vector<moon_bundling::MoonReader*>& readers,
-    const std::string& entrypoint) {
+    const std::string& entrypoint, const std::string& level) {
   std::set<std::string> embeddedPaths;
   for (const auto* reader : readers) {
     for (const auto& dependency :
@@ -61,11 +61,23 @@ std::string artifactDependencyTree(
                                {"artifact: " + required.artifact_hash()},
                                {}}}});
   }
-  root.children.push_back({selected.library_id() + " [selected import]",
-                           {"artifact: " + selected.artifact_hash()},
-                           {}});
+  sun::support::TerminalTreeNode selectedNode{
+      selected.library_id() + " [selected import]",
+      {"artifact: " + selected.artifact_hash()},
+      {}};
+  std::set<std::string> selectedPaths;
+  for (const auto* reader : readers) {
+    if (reader->getLibrary().content_hash() == selected.artifact_hash()) {
+      selectedPaths.insert(reader->getPath().string());
+    }
+  }
+  for (const auto& path : selectedPaths) {
+    selectedNode.details.push_back(
+        "bundle: " + sun::support::terminalFileLabel(path, stream));
+  }
+  root.children.push_back(std::move(selectedNode));
   const auto tree =
-      "\n" + sun::support::terminalTree(root, stream, "warning", "  ");
+      "\n" + sun::support::terminalTree(root, stream, level, "  ");
   return tree;
 }
 }  // namespace
@@ -210,13 +222,17 @@ void AbiCompatibilityChecker::validateImports(
                                        required.library_id() +
                                        "': selected artifact changes the "
                                        "required declarations, target, or "
-                                       "runtime contract");
+                                       "runtime contract" +
+                                       artifactDependencyTree(required, candidate,
+                                                              readers, entrypoint,
+                                                              "error"));
       }
       artifactWarnings.emplace(
           std::minmax(required.artifact_hash(), candidate.artifact_hash()),
           "Library '" + required.library_id() +
               "' is used through different artifacts." +
-              artifactDependencyTree(required, candidate, readers, entrypoint));
+              artifactDependencyTree(required, candidate, readers, entrypoint,
+                                     "warning"));
       std::map<std::string, std::string> keys;
       for (const auto& item : candidate.declarations()) {
         if (!keys.emplace(item.identity(), item.key()).second) {

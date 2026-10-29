@@ -66,6 +66,10 @@ function main() i32 {
 }
 
 manifest {
-  test_files: ["more_tests.sun"]
-  libraries: ["stdlib.moon"]
+  test_files: [
+    "more_tests.sun"
+  ]
+  libraries: [
+    "stdlib.moon"
+  ]
 }

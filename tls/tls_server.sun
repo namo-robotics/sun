@@ -30,9 +30,18 @@ public module tls {
   }
 
   /** Selects ALPN from a validated static list, whose lifetime exceeds every session. */
-  function select_server_alpn(ssl: raw_ptr<u8>, out: raw_ptr<raw_ptr<u8>>, outlen: raw_ptr<u8>, client: raw_ptr<u8>, client_len: u32, arg: raw_ptr<u8>) i32 {
+  function select_server_alpn(
+    ssl: raw_ptr<u8>,
+    out: raw_ptr<raw_ptr<u8>>,
+    outlen: raw_ptr<u8>,
+    client: raw_ptr<u8>,
+    client_len: u32,
+    arg: raw_ptr<u8>
+  ) i32 {
     var length: i64 = unsafe { c_tls_strlen(arg); };
-    var selected: i32 = unsafe { c_ssl_select_next_proto(out, outlen, arg, _convert<u32>(length), client, client_len); };
+    var selected: i32 = unsafe {
+      c_ssl_select_next_proto(out, outlen, arg, _convert<u32>(length), client, client_len);
+    };
     if (selected == OPENSSL_NPN_NEGOTIATED) {
       return SSL_TLSEXT_ERR_OK;
     }
@@ -61,7 +70,11 @@ public module tls {
      * length-prefixed list in server preference order, e.g. "\x02h2\x08http/1.1".
      * Protocol names must not contain NUL. Failure preserves the old context.
      */
-    public method load(cert_path: ref String, key_path: ref String, alpn: static_ptr<u8>) ClientResult<void> {
+    public method load(
+      cert_path: ref String,
+      key_path: ref String,
+      alpn: static_ptr<u8>
+    ) ClientResult<void> {
       var pos: i64 = 0;
       while (pos < alpn.length()) {
         var length: i64 = _convert<i64>(unsafe { _load<u8>(alpn.raw(), pos); });
@@ -83,19 +96,28 @@ public module tls {
       if (next == null) {
         return ClientResult.Tls(TlsError(-1, take_openssl_error("SSL_CTX_new failed")));
       }
-      if (unsafe { c_ssl_ctx_ctrl(next, SSL_CTRL_SET_MIN_PROTO_VERSION, TLS1_2_VERSION, null); } != 1) {
+      if (unsafe { c_ssl_ctx_ctrl(next, SSL_CTRL_SET_MIN_PROTO_VERSION, TLS1_2_VERSION, null); } !=
+        1) {
         var error = TlsError(-1, take_openssl_error("failed to set minimum TLS version"));
         unsafe { c_ssl_ctx_free(next); };
         return ClientResult.Tls(error);
       }
-      unsafe { c_ssl_ctx_ctrl(next, SSL_CTRL_MODE, SSL_MODE_ENABLE_PARTIAL_WRITE | SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER, null); };
+      unsafe {
+        c_ssl_ctx_ctrl(
+          next,
+          SSL_CTRL_MODE,
+          SSL_MODE_ENABLE_PARTIAL_WRITE | SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER,
+          null
+        );
+      };
       if (unsafe { c_ssl_ctx_use_certificate_chain_file(next, cert_path.c_str()); } != 1) {
         var error = TlsError(-1, take_openssl_error("failed to load certificate chain"));
         unsafe { c_ssl_ctx_free(next); };
         return ClientResult.Tls(error);
       }
       unsafe { c_ssl_ctx_set_default_passwd_cb(next, reject_key_password); };
-      if (unsafe { c_ssl_ctx_use_private_key_file(next, key_path.c_str(), SSL_FILETYPE_PEM); } != 1) {
+      if (unsafe { c_ssl_ctx_use_private_key_file(next, key_path.c_str(), SSL_FILETYPE_PEM); } !=
+        1) {
         var error = TlsError(-1, take_openssl_error("failed to load private key"));
         unsafe { c_ssl_ctx_free(next); };
         return ClientResult.Tls(error);
@@ -166,7 +188,9 @@ public module tls {
       if (this.bio_method == null) {
         return ClientResult.Tls(TlsError(-1, take_openssl_error("BIO_meth_new failed")));
       }
-      if (unsafe { c_bio_meth_set_write(this.bio_method, tls_socket_write); } != 1 or unsafe { c_bio_meth_set_read(this.bio_method, tls_socket_read); } != 1 or unsafe { c_bio_meth_set_ctrl(this.bio_method, tls_socket_ctrl); } != 1) {
+      if (unsafe { c_bio_meth_set_write(this.bio_method, tls_socket_write); } != 1 or
+        unsafe { c_bio_meth_set_read(this.bio_method, tls_socket_read); } != 1 or
+        unsafe { c_bio_meth_set_ctrl(this.bio_method, tls_socket_ctrl); } != 1) {
         return ClientResult.Tls(TlsError(-1, take_openssl_error("BIO callback setup failed")));
       }
       var bio: raw_ptr<u8> = unsafe { c_bio_new(this.bio_method); };
@@ -254,7 +278,9 @@ public module tls {
         return ServerResult.Tls(TlsError(-1, "TLS write exceeds OpenSSL's length limit"));
       }
       unsafe { c_err_clear_error(); };
-      var result: i32 = unsafe { c_ssl_write(this.ssl, data.bytes(), _convert<i32>(data.length())); };
+      var result: i32 = unsafe {
+        c_ssl_write(this.ssl, data.bytes(), _convert<i32>(data.length()));
+      };
       if (result > 0) {
         return ServerResult.Ok(_convert<i64>(result));
       }
@@ -298,7 +324,13 @@ public module tls {
       }
       var data: raw_ptr<u8> = null;
       var length: u32 = 0;
-      unsafe { c_ssl_get0_alpn_selected(this.ssl, _address_of<raw_ptr<u8>>(data), _address_of<u32>(length)); };
+      unsafe {
+        c_ssl_get0_alpn_selected(
+          this.ssl,
+          _address_of<raw_ptr<u8>>(data),
+          _address_of<u32>(length)
+        );
+      };
       var index: i64 = 0;
       while (index < _convert<i64>(length)) {
         out.append_char(unsafe { _load<u8>(data, index); });

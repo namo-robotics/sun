@@ -8,12 +8,30 @@ public module std.bytes_tests {
     buffer.fill(255);
     var bytes = try std.test.expect_access(ByteSlice(buffer, 1, 8));
     try std.test.assert_eq(bytes.size(), 8);
-    try std.test.assert_eq(try std.test.expect_access(std.byte_order.read_native_i16(bytes, 1)), -1);
-    try std.test.assert_eq(try std.test.expect_access(std.byte_order.read_native_i32(bytes, 1)), -1);
-    try std.test.assert_eq(try std.test.expect_access(std.byte_order.read_native_i64(bytes, 0)), -1);
-    try std.test.assert_eq(try std.test.expect_access(std.byte_order.read_native_u16(bytes, 6)), 65535);
-    try std.test.assert_eq(try std.test.expect_access(std.byte_order.read_native_u32(bytes, 4)), 4294967295);
-    try std.test.assert_eq(try std.test.expect_access(std.byte_order.read_native_u64(bytes, 0)), 18446744073709551615);
+    try std.test.assert_eq(
+      try std.test.expect_access(std.byte_order.read_native_i16(bytes, 1)),
+      -1
+    );
+    try std.test.assert_eq(
+      try std.test.expect_access(std.byte_order.read_native_i32(bytes, 1)),
+      -1
+    );
+    try std.test.assert_eq(
+      try std.test.expect_access(std.byte_order.read_native_i64(bytes, 0)),
+      -1
+    );
+    try std.test.assert_eq(
+      try std.test.expect_access(std.byte_order.read_native_u16(bytes, 6)),
+      65535
+    );
+    try std.test.assert_eq(
+      try std.test.expect_access(std.byte_order.read_native_u32(bytes, 4)),
+      4294967295
+    );
+    try std.test.assert_eq(
+      try std.test.expect_access(std.byte_order.read_native_u64(bytes, 0)),
+      18446744073709551615
+    );
     var offsets: array<i64, 4> = [-1, 1, 8, 9223372036854775807];
     for (var i: i64 = 0; i < 4; i = i + 1) {
       var offset = offsets[i];
@@ -71,10 +89,17 @@ public module std.bytes_tests {
     buffer.fill(0);
     var expected: i64 = -72623859790382856;
     unsafe {
-      _memcpy(_ptr_offset(buffer.raw_data(), 1), _ptr_as_raw<u8>(_address_of<i64>(expected)), _sizeof<i64>());
+      _memcpy(
+        _ptr_offset(buffer.raw_data(), 1),
+        _ptr_as_raw<u8>(_address_of<i64>(expected)),
+        _sizeof<i64>()
+      );
     };
     var bytes = try std.test.expect_access(ByteSlice(buffer, 1, 8));
-    try std.test.assert_eq(try std.test.expect_access(std.byte_order.read_native_i64(bytes, 0)), expected);
+    try std.test.assert_eq(
+      try std.test.expect_access(std.byte_order.read_native_i64(bytes, 0)),
+      expected
+    );
     match bytes.get(8) {
       AccessResult.OutOfBounds(_) => {},
       _ => {

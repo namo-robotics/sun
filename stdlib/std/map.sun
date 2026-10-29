@@ -395,21 +395,27 @@ public module std {
      * Borrow the key stored in bucket i (must be occupied)
      */
     public const method get_bucket_key(i: i64) ref K {
-      return unsafe { _to_ref<K>(_ptr_as_raw<K>(_ptr_offset(this.keys.raw_data(), i * _sizeof<K>()))); };
+      return unsafe {
+        _to_ref<K>(_ptr_as_raw<K>(_ptr_offset(this.keys.raw_data(), i * _sizeof<K>())));
+      };
     }
 
     /**
      * Borrow the value stored in bucket i (must be occupied)
      */
     public const method get_bucket_value(i: i64) ref V {
-      return unsafe { _to_ref<V>(_ptr_as_raw<V>(_ptr_offset(this.values.raw_data(), i * _sizeof<V>()))); };
+      return unsafe {
+        _to_ref<V>(_ptr_as_raw<V>(_ptr_offset(this.values.raw_data(), i * _sizeof<V>())));
+      };
     }
 
     /**
      * Compare the key stored in bucket probe against `key` in place
      */
     const method key_at_equals(probe: i64, key: const ref K) bool {
-      var slot: raw_ptr<K> = unsafe { _ptr_as_raw<K>(_ptr_offset(this.keys.raw_data(), probe * _sizeof<K>())); };
+      var slot: raw_ptr<K> = unsafe {
+        _ptr_as_raw<K>(_ptr_offset(this.keys.raw_data(), probe * _sizeof<K>()));
+      };
       return unsafe { compare_map_keys(_to_ref<K>(slot), key); };
     }
 

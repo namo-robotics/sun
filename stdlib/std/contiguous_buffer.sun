@@ -76,7 +76,9 @@ public module std {
 
     /** Borrow an element. The caller must provide an initialized, in-bounds index. */
     public const unsafe method get_unchecked(index: i64) ref T {
-      return unsafe { _to_ref<T>(_ptr_as_raw<T>(_ptr_offset(this.data.get_raw(), index * _sizeof<T>()))); };
+      return unsafe {
+        _to_ref<T>(_ptr_as_raw<T>(_ptr_offset(this.data.get_raw(), index * _sizeof<T>())));
+      };
     }
 
     /** Extract raw storage that a container must exclude from future drops. */
@@ -139,7 +141,12 @@ public module std {
     /**
      * Write elements from another buffer into this buffer (bounds-checked)
      */
-    public method write_from(source: const ref ContiguousBuffer<T>, src_offset: i64, dst_offset: i64, count: i64) AccessResult<void> {
+    public method write_from(
+      source: const ref ContiguousBuffer<T>,
+      src_offset: i64,
+      dst_offset: i64,
+      count: i64
+    ) AccessResult<void> {
       // Validate source bounds
       if (src_offset < 0) {
         return AccessResult.OutOfBounds(IndexOutOfBoundsError(src_offset));

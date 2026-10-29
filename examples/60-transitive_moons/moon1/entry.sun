@@ -9,5 +9,9 @@ public module moon1 {
 
 manifest {
   source_files: []
-  libraries: [{ path: "moon2.moon"}]
+  libraries: [
+    {
+      path: "moon2.moon"
+    }
+  ]
 }

@@ -42,7 +42,26 @@ public module std.io {
    * Aligned storage covers all native fields; only kind, size and mtime escape.
    */
   function descriptor_metadata(fd: i32) SystemResult<FileMetadata> {
-    var record: array<u64, 18> = [0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64];
+    var record: array<u64, 18> = [
+      0u64,
+      0u64,
+      0u64,
+      0u64,
+      0u64,
+      0u64,
+      0u64,
+      0u64,
+      0u64,
+      0u64,
+      0u64,
+      0u64,
+      0u64,
+      0u64,
+      0u64,
+      0u64,
+      0u64,
+      0u64
+    ];
     var data = unsafe { _bitcast<raw_ptr<u8>>(_address_of<u64>(record[0])); };
     var result = native_file_stat(fd, data);
     if (result < 0) {

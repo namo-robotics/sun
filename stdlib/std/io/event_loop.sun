@@ -198,7 +198,13 @@ public module std.io {
 
     /** Apply a native change; close the queue if a partial change cannot be undone. */
     method change(fd: i32, old: i16, events: i16, operation: i32) SystemResult<void> {
-      var error: i32 = native_loop_change(_convert<i32>(this.handle - 1), fd, old, events, operation);
+      var error: i32 = native_loop_change(
+        _convert<i32>(this.handle - 1),
+        fd,
+        old,
+        events,
+        operation
+      );
       if (error < 0) {
         this.close();
         return SystemResult.Error(Error(0 - error, "event loop rollback failed; queue closed"));
@@ -222,7 +228,12 @@ public module std.io {
       if (timeout_ms < -1) {
         return SystemResult.Error(Error(22, "invalid event loop timeout"));
       }
-      var count: i32 = native_loop_wait(_convert<i32>(this.handle - 1), this.native_events.raw_data(), this.capacity, timeout_ms);
+      var count: i32 = native_loop_wait(
+        _convert<i32>(this.handle - 1),
+        this.native_events.raw_data(),
+        this.capacity,
+        timeout_ms
+      );
       if (count < 0) {
         return SystemResult.Error(Error(errno(), "event loop wait failed"));
       }
@@ -256,7 +267,9 @@ public module std.io {
           match this.registrations.get(event.fd()) {
             LookupResult.Ok(entry) => {
               if (entry.generation == event.generation) {
-                return AccessResult.Ok(ReadyEvent(Event(event.fd(), event.events()), event.token()));
+                return AccessResult.Ok(
+                  ReadyEvent(Event(event.fd(), event.events()), event.token())
+                );
               }
             },
             LookupResult.NotFound(error) => {}

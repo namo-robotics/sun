@@ -28,7 +28,10 @@ public module std.event_loop_tests {
     try std.test.assert_eq(loop.count(), 0);
     try std.test.assert_eq(try std.test.expect_system(loop.wait(0)), 0);
     var start = std.time.now();
-    try std.test.assert_eq(try std.test.expect_system(loop.wait(std.time.create_duration_millis(20))), 0);
+    try std.test.assert_eq(
+      try std.test.expect_system(loop.wait(std.time.create_duration_millis(20))),
+      0
+    );
     try std.test.assert(start.elapsed().as_millis() >= 10, "empty wait honors timeout");
     match loop.event_at(0) {
       AccessResult.Ok(event) => {
@@ -59,7 +62,9 @@ public module std.event_loop_tests {
     writer.adopt(pipe.write_fd());
     var loop = std.io.EventLoop(alloc, 4);
     try std.test.expect_system_success(loop.open());
-    try std.test.expect_system_success(loop.add(pipe.read_fd(), std.io.POLLIN, 18446744073709551615u64));
+    try std.test.expect_system_success(
+      loop.add(pipe.read_fd(), std.io.POLLIN, 18446744073709551615u64)
+    );
     try std.test.assert_eq(try std.test.expect_system(loop.wait(0)), 0);
     writer.write("ready");
     try std.test.assert_eq(try std.test.expect_system(loop.wait(1000)), 1);
@@ -74,8 +79,14 @@ public module std.event_loop_tests {
     try std.test.expect_system_success(loop.modify(pipe.read_fd(), std.io.POLLIN, 4294967297u64));
     try std.test.assert_eq(try std.test.expect_system(loop.wait(0)), 1);
     var changed = try std.test.expect_access(loop.event_at(0));
-    try std.test.assert(changed.token() == 4294967297u64, "updated token reaches subsequent waits");
-    try std.test.assert(event.token() == 18446744073709551615u64, "earlier snapshot remains independent");
+    try std.test.assert(
+      changed.token() == 4294967297u64,
+      "updated token reaches subsequent waits"
+    );
+    try std.test.assert(
+      event.token() == 18446744073709551615u64,
+      "earlier snapshot remains independent"
+    );
     try std.test.expect_system_success(loop.remove(pipe.read_fd()));
     try std.test.assert_eq(loop.count(), 0);
     try std.test.assert_eq(try std.test.expect_system(loop.wait(0)), 0);
@@ -130,8 +141,14 @@ public module std.event_loop_tests {
     var first_event = try std.test.expect_access(loop.event_at(0));
     var second_event = try std.test.expect_access(loop.event_at(1));
     try std.test.assert(first_event.is_hup() and second_event.is_hup(), "both peers closed");
-    try std.test.assert(first_event.fd() != second_event.fd(), "separate records retain descriptors");
-    try std.test.assert(first_event.token() + second_event.token() == 3u64, "both tokens survive native decoding");
+    try std.test.assert(
+      first_event.fd() != second_event.fd(),
+      "separate records retain descriptors"
+    );
+    try std.test.assert(
+      first_event.token() + second_event.token() == 3u64,
+      "both tokens survive native decoding"
+    );
     try std.test.expect_system_success(loop.remove(first.read_fd()));
     try std.test.expect_system_success(loop.remove(second.read_fd()));
   }
@@ -174,7 +191,9 @@ public module std.event_loop_tests {
       var reader = std.io.File();
       reader.adopt(pipe.read_fd());
       pipe.close_write();
-      try std.test.expect_system_success(loop.add(pipe.read_fd(), std.io.POLLIN, _convert<u64>(pipe.read_fd())));
+      try std.test.expect_system_success(
+        loop.add(pipe.read_fd(), std.io.POLLIN, _convert<u64>(pipe.read_fd()))
+      );
       readers.push(reader);
     }
     for (var pass: i32 = 0; pass < 2; pass = pass + 1) {
@@ -183,13 +202,18 @@ public module std.event_loop_tests {
         try std.test.assert(count > 0 and count <= 5, "bounded batch makes progress");
         for (var i: i64 = 0; i < count; i = i + 1) {
           var event = try std.test.expect_access(loop.event_at(i));
-          try std.test.assert(event.token() == _convert<u64>(event.fd()), "token follows descriptor after growth");
+          try std.test.assert(
+            event.token() == _convert<u64>(event.fd()),
+            "token follows descriptor after growth"
+          );
           try std.test.expect_system_success(loop.remove(event.fd()));
         }
       }
       if (pass == 0) {
         for (var retained: ref std.io.File in readers) {
-          try std.test.expect_system_success(loop.add(retained.get_fd(), std.io.POLLIN, _convert<u64>(retained.get_fd())));
+          try std.test.expect_system_success(
+            loop.add(retained.get_fd(), std.io.POLLIN, _convert<u64>(retained.get_fd()))
+          );
         }
       }
     }
@@ -202,7 +226,9 @@ public module std.event_loop_tests {
     try std.test.expect_system_success(listener.bind_loopback(0));
     try std.test.expect_system_success(listener.listen(1));
     var client = TcpStream();
-    try std.test.expect_system_success(client.connect_local(try std.test.expect_system(listener.local_port())));
+    try std.test.expect_system_success(
+      client.connect_local(try std.test.expect_system(listener.local_port()))
+    );
     var peer = try std.test.expect_system(listener.accept());
     var loop = std.io.EventLoop(alloc, 4);
     try std.test.expect_system_success(loop.open());
@@ -211,14 +237,22 @@ public module std.event_loop_tests {
     try std.test.expect_system_success(loop.modify(peer.get_fd(), std.io.POLLOUT, 20u64));
     try std.test.assert_eq(try std.test.expect_system(loop.wait(1000)), 1);
     var writable = try std.test.expect_access(loop.event_at(0));
-    try std.test.assert(writable.is_writable() and not writable.is_readable(), "write interest replaced read interest");
-    try std.test.expect_system_success(loop.modify(peer.get_fd(), std.io.POLLIN | std.io.POLLOUT, 30u64));
+    try std.test.assert(
+      writable.is_writable() and not writable.is_readable(),
+      "write interest replaced read interest"
+    );
+    try std.test.expect_system_success(
+      loop.modify(peer.get_fd(), std.io.POLLIN | std.io.POLLOUT, 30u64)
+    );
     try std.test.expect_system(client.send_str("ready"));
     // Write readiness can wake the loop before the sent data reaches the peer.
     var readable = std.io.Poller(alloc);
     readable.add_read(peer.get_fd());
     try std.test.assert_eq(try std.test.expect_system(readable.wait(1000)), 1);
-    try std.test.assert(readable.is_readable(0), "peer has received input before checking both interests");
+    try std.test.assert(
+      readable.is_readable(0),
+      "peer has received input before checking both interests"
+    );
     var count = try std.test.expect_system(loop.wait(1000));
     var bits: i16 = 0;
     for (var i: i64 = 0; i < count; i = i + 1) {
@@ -226,7 +260,10 @@ public module std.event_loop_tests {
       bits = bits | event.events();
       try std.test.assert(event.token() == 30u64, "both filters report updated token");
     }
-    try std.test.assert((bits & std.io.POLLIN) != 0 and (bits & std.io.POLLOUT) != 0, "both interests report readiness");
+    try std.test.assert(
+      (bits & std.io.POLLIN) != 0 and (bits & std.io.POLLOUT) != 0,
+      "both interests report readiness"
+    );
     try std.test.expect_system_success(loop.remove(peer.get_fd()));
   }
 

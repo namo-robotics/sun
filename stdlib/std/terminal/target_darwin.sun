@@ -22,7 +22,28 @@ public module std.terminal {
 
     /** Start from all-zero settings, ready for tcgetattr to fill in. */
     init() {
-      var zeros: array<u8, 20> = [0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8];
+      var zeros: array<u8, 20> = [
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8,
+        0u8
+      ];
       this.cc = zeros;
     }
 

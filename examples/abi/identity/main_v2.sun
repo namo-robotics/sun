@@ -5,5 +5,8 @@ function main() i32 {
 }
 
 manifest {
-  libraries: ["shapes_v2.moon", "shapes_user.moon"]
+  libraries: [
+    "shapes_v2.moon",
+    "shapes_user.moon"
+  ]
 }

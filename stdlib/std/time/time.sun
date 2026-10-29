@@ -294,7 +294,11 @@ public module std.time {
    * Render with a strftime format, e.g. "%Y-%m-%d %H:%M:%S". Output longer
    * than 256 bytes comes back empty.
    */
-  public function format(alloc: const ref HeapAllocator, dt: const ref DateTime, fmt: raw_ptr<u8>) String {
+  public function format(
+    alloc: const ref HeapAllocator,
+    dt: const ref DateTime,
+    fmt: raw_ptr<u8>
+  ) String {
     var tm: CTm = to_ctm(dt);
     tm.wday = dt.weekday;
     tm.yday = dt.yearday;

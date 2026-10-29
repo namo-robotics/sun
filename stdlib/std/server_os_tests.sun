@@ -5,7 +5,10 @@ public module std.server_os_tests {
 
   /** Online CPUs must be a positive host count. */
   test_function online_cpus() {
-    try std.test.assert((try std.test.expect_system(std.thread.online_cpu_count())) > 0, "online CPU count is positive");
+    try std.test.assert(
+      (try std.test.expect_system(std.thread.online_cpu_count())) > 0,
+      "online CPU count is positive"
+    );
   }
 
   /** Notifications coalesce, drain clears readiness, and clones retain ownership. */
@@ -120,7 +123,9 @@ public module std.server_os_tests {
       }
     };
     var client = TcpStream();
-    try std.test.expect_system_success(client.connect_local(try std.test.expect_system(listener.local_port())));
+    try std.test.expect_system_success(
+      client.connect_local(try std.test.expect_system(listener.local_port()))
+    );
     // Client connect can finish before the listener has a pending connection.
     var accept_poll = std.io.Poller(alloc);
     accept_poll.add_read(listener.get_fd());
@@ -211,7 +216,9 @@ public module std.server_os_tests {
     try std.test.expect_system_success(listener.listen(8));
     try std.test.expect_system_success(listener.set_nonblocking(true));
     var client = TcpStream();
-    try std.test.expect_system_success(client.connect_local(try std.test.expect_system(listener.local_port())));
+    try std.test.expect_system_success(
+      client.connect_local(try std.test.expect_system(listener.local_port()))
+    );
     // Client connect can finish before the listener has a pending connection.
     var accept_poll = std.io.Poller(alloc);
     accept_poll.add_read(listener.get_fd());
@@ -225,7 +232,10 @@ public module std.server_os_tests {
     };
     var size: i32 = 4096;
     var option: i32 = _target_is("macos") ? 4097 : 7;
-    try std.test.assert_eq(unsafe { __setsockopt(server.get_fd(), SOL_SOCKET, option, _address_of<i32>(size), 4); }, 0);
+    try std.test.assert_eq(
+      unsafe { __setsockopt(server.get_fd(), SOL_SOCKET, option, _address_of<i32>(size), 4); },
+      0
+    );
     var buffer = ContiguousBuffer<u8>(alloc, 1048576);
     buffer.fill(42);
     var bytes = ByteSlice(buffer);

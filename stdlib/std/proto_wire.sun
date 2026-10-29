@@ -465,7 +465,9 @@ public module std {
       this.pos = this.pos + n;
       return match String(alloc, tmp, n) {
         AccessResult.Ok(value) => ProtoResult.Ok(value),
-        AccessResult.OutOfBounds(_) => ProtoResult.Error(ProtoDecodeError("invalid string length"))
+        AccessResult.OutOfBounds(_) => ProtoResult.Error(
+          ProtoDecodeError("invalid string length")
+        )
       };
     }
 

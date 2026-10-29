@@ -11,7 +11,12 @@ public module std {
     /**
      * Check both successful and failing assertions for one primitive type.
      */
-    function check_primitive<T: _Primitive>(a: T, b: T, equal_message: static_ptr<u8>, unequal_message: static_ptr<u8>) std.test.AssertionResult<void> {
+    function check_primitive<T: _Primitive>(
+      a: T,
+      b: T,
+      equal_message: static_ptr<u8>,
+      unequal_message: static_ptr<u8>
+    ) std.test.AssertionResult<void> {
       try std.test.assert_eq<T>(a, a);
       try std.test.assert_ne<T>(a, b);
       var caught_equal = false;
@@ -39,18 +44,78 @@ public module std {
 
     /** Checks primitive assertions. */
     test_function primitive_assertions() {
-      try check_primitive<i8>(1, 2, "assertion failed: expected 1, got 2", "assertion failed: both values are 1");
-      try check_primitive<i16>(1, 2, "assertion failed: expected 1, got 2", "assertion failed: both values are 1");
-      try check_primitive<i32>(1, 2, "assertion failed: expected 1, got 2", "assertion failed: both values are 1");
-      try check_primitive<i64>(1, 2, "assertion failed: expected 1, got 2", "assertion failed: both values are 1");
-      try check_primitive<u8>(1, 2, "assertion failed: expected 1, got 2", "assertion failed: both values are 1");
-      try check_primitive<u16>(1, 2, "assertion failed: expected 1, got 2", "assertion failed: both values are 1");
-      try check_primitive<u32>(1, 2, "assertion failed: expected 1, got 2", "assertion failed: both values are 1");
-      try check_primitive<u64>(1, 2, "assertion failed: expected 1, got 2", "assertion failed: both values are 1");
-      try check_primitive<f32>(_convert<f32>(1.5), _convert<f32>(2.5), "assertion failed: expected 1.5, got 2.5", "assertion failed: both values are 1.5");
-      try check_primitive<f64>(1.5, 2.5, "assertion failed: expected 1.5, got 2.5", "assertion failed: both values are 1.5");
-      try check_primitive<bool>(true, false, "assertion failed: expected true, got false", "assertion failed: both values are true");
-      try check_primitive<char>('a', 'b', "assertion failed: expected a, got b", "assertion failed: both values are a");
+      try check_primitive<i8>(
+        1,
+        2,
+        "assertion failed: expected 1, got 2",
+        "assertion failed: both values are 1"
+      );
+      try check_primitive<i16>(
+        1,
+        2,
+        "assertion failed: expected 1, got 2",
+        "assertion failed: both values are 1"
+      );
+      try check_primitive<i32>(
+        1,
+        2,
+        "assertion failed: expected 1, got 2",
+        "assertion failed: both values are 1"
+      );
+      try check_primitive<i64>(
+        1,
+        2,
+        "assertion failed: expected 1, got 2",
+        "assertion failed: both values are 1"
+      );
+      try check_primitive<u8>(
+        1,
+        2,
+        "assertion failed: expected 1, got 2",
+        "assertion failed: both values are 1"
+      );
+      try check_primitive<u16>(
+        1,
+        2,
+        "assertion failed: expected 1, got 2",
+        "assertion failed: both values are 1"
+      );
+      try check_primitive<u32>(
+        1,
+        2,
+        "assertion failed: expected 1, got 2",
+        "assertion failed: both values are 1"
+      );
+      try check_primitive<u64>(
+        1,
+        2,
+        "assertion failed: expected 1, got 2",
+        "assertion failed: both values are 1"
+      );
+      try check_primitive<f32>(
+        _convert<f32>(1.5),
+        _convert<f32>(2.5),
+        "assertion failed: expected 1.5, got 2.5",
+        "assertion failed: both values are 1.5"
+      );
+      try check_primitive<f64>(
+        1.5,
+        2.5,
+        "assertion failed: expected 1.5, got 2.5",
+        "assertion failed: both values are 1.5"
+      );
+      try check_primitive<bool>(
+        true,
+        false,
+        "assertion failed: expected true, got false",
+        "assertion failed: both values are true"
+      );
+      try check_primitive<char>(
+        'a',
+        'b',
+        "assertion failed: expected a, got b",
+        "assertion failed: both values are a"
+      );
     }
 
     /** Checks inferred primitive assertions. */
@@ -74,7 +139,9 @@ public module std {
         std.test.AssertionResult.Error(e) => {
           caught = true;
           try std.test.assert(e.code() == 10);
-          try std.test.assert(e.message().equals_literal("assertion failed: expected same, got other"));
+          try std.test.assert(
+            e.message().equals_literal("assertion failed: expected same, got other")
+          );
         }
       };
       try std.test.assert(caught);

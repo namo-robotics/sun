@@ -15,13 +15,21 @@ manifest {
     "https_client_tests.sun",
     "tls_server_tests.sun"
   ]
-  libraries: ["stdlib.moon"]
+  libraries: [
+    "stdlib.moon"
+  ]
   target: {
     linux: {
-      archives: ["$OPENSSL_LIBS_LINUX/libssl.a", "$OPENSSL_LIBS_LINUX/libcrypto.a"]
+      archives: [
+        "$OPENSSL_LIBS_LINUX/libssl.a",
+        "$OPENSSL_LIBS_LINUX/libcrypto.a"
+      ]
     }
     macos: {
-      archives: ["$OPENSSL_LIBS_MACOS/libssl.a", "$OPENSSL_LIBS_MACOS/libcrypto.a"]
+      archives: [
+        "$OPENSSL_LIBS_MACOS/libssl.a",
+        "$OPENSSL_LIBS_MACOS/libcrypto.a"
+      ]
     }
   }
 }

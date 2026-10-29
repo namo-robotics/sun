@@ -94,7 +94,8 @@ public module std {
 
   /** Recognizes legal XML 1.0 characters. */
   function xml_character(c: i64) bool {
-    return c == 9 or c == 10 or c == 13 or (c >= 32 and c <= 55295) or (c >= 57344 and c <= 65533) or (c >= 65536 and c <= 1114111);
+    return c == 9 or c == 10 or c == 13 or (c >= 32 and c <= 55295) or (c >= 57344 and c <= 65533) or
+      (c >= 65536 and c <= 1114111);
   }
 
   /** Holds a decoded Unicode scalar and its UTF-8 width. */
@@ -157,12 +158,17 @@ public module std {
 
   /** Recognizes an XML name's first character, excluding namespace separators. */
   function xml_name_start(c: i64) bool {
-    return (c >= 65 and c <= 90) or c == 95 or (c >= 97 and c <= 122) or (c >= 192 and c <= 214) or (c >= 216 and c <= 246) or (c >= 248 and c <= 767) or (c >= 880 and c <= 893) or (c >= 895 and c <= 8191) or (c >= 8204 and c <= 8205) or (c >= 8304 and c <= 8591) or (c >= 11264 and c <= 12271) or (c >= 12289 and c <= 55295) or (c >= 63744 and c <= 64975) or (c >= 65008 and c <= 65533) or (c >= 65536 and c <= 983039);
+    return (c >= 65 and c <= 90) or c == 95 or (c >= 97 and c <= 122) or (c >= 192 and c <= 214) or
+      (c >= 216 and c <= 246) or (c >= 248 and c <= 767) or (c >= 880 and c <= 893) or
+      (c >= 895 and c <= 8191) or (c >= 8204 and c <= 8205) or (c >= 8304 and c <= 8591) or
+      (c >= 11264 and c <= 12271) or (c >= 12289 and c <= 55295) or (c >= 63744 and c <= 64975) or
+      (c >= 65008 and c <= 65533) or (c >= 65536 and c <= 983039);
   }
 
   /** Recognizes subsequent XML name characters, excluding colons. */
   function xml_name_char(c: i64) bool {
-    return xml_name_start(c) or c == 45 or c == 46 or (c >= 48 and c <= 57) or c == 183 or (c >= 768 and c <= 879) or (c >= 8255 and c <= 8256);
+    return xml_name_start(c) or c == 45 or c == 46 or (c >= 48 and c <= 57) or c == 183 or
+      (c >= 768 and c <= 879) or (c >= 8255 and c <= 8256);
   }
 
   /** Validates a local name or prefix. */
@@ -182,7 +188,12 @@ public module std {
   }
 
   /** Copies a byte range using the caller's allocator. */
-  function xml_slice(alloc: ref HeapAllocator, text: const ref String, start: i64, end: i64) String {
+  function xml_slice(
+    alloc: ref HeapAllocator,
+    text: const ref String,
+    start: i64,
+    end: i64
+  ) String {
     var result = String(alloc, "");
     for (var i = start; i < end; i += 1) {
       result.append_char(_convert<u8>(xml_byte(text, i)));
@@ -235,10 +246,12 @@ public module std {
       if (not this.prefix_.is_empty()) {
         try xml_validate_ncname(this.prefix_);
       }
-      if (this.prefix_.equals_literal("xmlns") or this.uri_.equals_literal("http://www.w3.org/2000/xmlns/")) {
+      if (this.prefix_.equals_literal("xmlns") or
+        this.uri_.equals_literal("http://www.w3.org/2000/xmlns/")) {
         return XmlResult.Error(xml_error("reserved xmlns name"));
       }
-      if (this.prefix_.equals_literal("xml") and not this.uri_.equals_literal("http://www.w3.org/XML/1998/namespace")) {
+      if (this.prefix_.equals_literal("xml") and
+        not this.uri_.equals_literal("http://www.w3.org/XML/1998/namespace")) {
         return XmlResult.Error(xml_error("xml prefix requires its reserved namespace"));
       }
       if (not this.prefix_.is_empty() and this.uri_.is_empty()) {
@@ -311,7 +324,10 @@ public module std {
   }
 
   /** Validates processing instructions without interpreting their content. */
-  function xml_validate_instruction(target: const ref String, data: const ref String) XmlResult<void> {
+  function xml_validate_instruction(
+    target: const ref String,
+    data: const ref String
+  ) XmlResult<void> {
     // XML permits colons in processing instruction targets.
     if (target.is_empty()) {
       return XmlResult.Error(xml_error("empty processing instruction target"));
@@ -319,12 +335,14 @@ public module std {
     var pos: i64 = 0;
     while (pos < target.length()) {
       var scalar = try xml_scalar(target, pos);
-      if (scalar.value != 58 and ((pos == 0 and not xml_name_start(scalar.value)) or not xml_name_char(scalar.value))) {
+      if (scalar.value != 58 and
+        ((pos == 0 and not xml_name_start(scalar.value)) or not xml_name_char(scalar.value))) {
         return XmlResult.Error(xml_error("invalid processing instruction target"));
       }
       pos += scalar.width;
     }
-    if (target.length() == 3 and (xml_byte(target, 0) | 32) == 120 and (xml_byte(target, 1) | 32) == 109 and (xml_byte(target, 2) | 32) == 108) {
+    if (target.length() == 3 and (xml_byte(target, 0) | 32) == 120 and
+      (xml_byte(target, 1) | 32) == 109 and (xml_byte(target, 2) | 32) == 108) {
       return XmlResult.Error(xml_error("reserved processing instruction target"));
     }
     try xml_validate_text(data);

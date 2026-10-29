@@ -586,7 +586,8 @@ jobs:
               --target "$arch-apple-darwin" \
               --path-var "SUN_DARWIN_PROCESS_BINDINGS=$PWD/tmp/process_darwin_$arch.sun" \
               -o "tmp/process-bindings-$arch.o"
-            build/sun fmt "tmp/process_darwin_$arch.sun"
+            # Generated bindings are under tmp, which sun_fmt.ignore excludes.
+            build/sun fmt --no-ignore "tmp/process_darwin_$arch.sun"
             diff -u "stdlib/std/process/bindings/process_darwin_$arch.sun" "tmp/process_darwin_$arch.sun"
           done
 

@@ -48,9 +48,15 @@ public module std {
       var outside = std.env.Env(alloc);
       try std.test.assert(not snapshot.has("SUN_TEST_ENV_REFRESH"), "variable absent at start");
       try std.test.expect_system_success(outside.set("SUN_TEST_ENV_REFRESH", "outside"));
-      try std.test.assert(not snapshot.has("SUN_TEST_ENV_REFRESH"), "snapshot does not see the outside write");
+      try std.test.assert(
+        not snapshot.has("SUN_TEST_ENV_REFRESH"),
+        "snapshot does not see the outside write"
+      );
       snapshot.refresh();
-      try std.test.assert(snapshot.has("SUN_TEST_ENV_REFRESH"), "refresh picks up the outside write");
+      try std.test.assert(
+        snapshot.has("SUN_TEST_ENV_REFRESH"),
+        "refresh picks up the outside write"
+      );
       var value_matches: bool = match snapshot.get("SUN_TEST_ENV_REFRESH") {
         Option.Some(found) => found.equals_literal("outside"),
         Option.None => false
@@ -80,7 +86,10 @@ public module std {
       try std.test.assert(not environment.has("SUN_TEST_ENV_SYNC"), "remove makes has() false");
       // The native environment must agree: a brand new snapshot has no trace.
       var fresh = std.env.Env(alloc);
-      try std.test.assert(not fresh.has("SUN_TEST_ENV_SYNC"), "removal reached the native environment");
+      try std.test.assert(
+        not fresh.has("SUN_TEST_ENV_SYNC"),
+        "removal reached the native environment"
+      );
     }
 
     /**
@@ -140,9 +149,18 @@ public module std {
       var raw_argv: raw_ptr<raw_ptr<i8>> = unsafe { _ptr_as_raw<raw_ptr<i8>>(argv.raw_data()); };
       var cli = environment.args(3, raw_argv);
       try std.test.assert_eq(cli.size(), 3);
-      try std.test.assert(unsafe { cli.get_unchecked(0); }.equals_literal("prog"), "argv[0] copied");
-      try std.test.assert(unsafe { cli.get_unchecked(1); }.equals_literal("alpha"), "argv[1] copied");
-      try std.test.assert(unsafe { cli.get_unchecked(2); }.equals_literal("beta"), "argv[2] copied");
+      try std.test.assert(
+        unsafe { cli.get_unchecked(0); }.equals_literal("prog"),
+        "argv[0] copied"
+      );
+      try std.test.assert(
+        unsafe { cli.get_unchecked(1); }.equals_literal("alpha"),
+        "argv[1] copied"
+      );
+      try std.test.assert(
+        unsafe { cli.get_unchecked(2); }.equals_literal("beta"),
+        "argv[2] copied"
+      );
     }
 
     /** A rejected name returns the system error without adding an entry. */
@@ -159,7 +177,10 @@ public module std {
           try std.test.fail("invalid environment name must fail");
         }
       };
-      try std.test.assert(environment.has("SUN_TEST_INVALID=NAME") == false, "failed update leaves no entry");
+      try std.test.assert(
+        environment.has("SUN_TEST_INVALID=NAME") == false,
+        "failed update leaves no entry"
+      );
     }
   }  // module env_tests
 }  // module std

@@ -24,7 +24,11 @@ public module tls {
   extern "C" function c_ssl_ctx_free(ctx: raw_ptr<u8>) void as "SSL_CTX_free";
 
   /** Configures certificate verification for a TLS context. */
-  extern "C" function c_ssl_ctx_set_verify(ctx: raw_ptr<u8>, mode: i32, callback: raw_ptr<u8>) void as "SSL_CTX_set_verify";
+  extern "C" function c_ssl_ctx_set_verify(
+    ctx: raw_ptr<u8>,
+    mode: i32,
+    callback: raw_ptr<u8>
+  ) void as "SSL_CTX_set_verify";
 
   /** Loads the system certificate trust paths into a TLS context. */
   extern "C" function c_ssl_ctx_set_default_verify_paths(ctx: raw_ptr<u8>) i32 as "SSL_CTX_set_default_verify_paths";
@@ -84,22 +88,45 @@ public module tls {
   extern "C" function c_tls_server_method() raw_ptr<u8> as "TLS_server_method";
 
   /** Loads a PEM certificate and its intermediate chain. */
-  extern "C" function c_ssl_ctx_use_certificate_chain_file(ctx: raw_ptr<u8>, path: raw_ptr<u8>) i32 as "SSL_CTX_use_certificate_chain_file";
+  extern "C" function c_ssl_ctx_use_certificate_chain_file(
+    ctx: raw_ptr<u8>,
+    path: raw_ptr<u8>
+  ) i32 as "SSL_CTX_use_certificate_chain_file";
 
   /** Loads an unencrypted PEM private key. */
-  extern "C" function c_ssl_ctx_use_private_key_file(ctx: raw_ptr<u8>, path: raw_ptr<u8>, kind: i32) i32 as "SSL_CTX_use_PrivateKey_file";
+  extern "C" function c_ssl_ctx_use_private_key_file(
+    ctx: raw_ptr<u8>,
+    path: raw_ptr<u8>,
+    kind: i32
+  ) i32 as "SSL_CTX_use_PrivateKey_file";
 
   /** Checks that the loaded key matches the certificate. */
   extern "C" function c_ssl_ctx_check_private_key(ctx: raw_ptr<u8>) i32 as "SSL_CTX_check_private_key";
 
   /** Applies protocol limits and I/O modes to a context. */
-  extern "C" function c_ssl_ctx_ctrl(ctx: raw_ptr<u8>, cmd: i32, value: i64, data: raw_ptr<u8>) i64 as "SSL_CTX_ctrl";
+  extern "C" function c_ssl_ctx_ctrl(
+    ctx: raw_ptr<u8>,
+    cmd: i32,
+    value: i64,
+    data: raw_ptr<u8>
+  ) i64 as "SSL_CTX_ctrl";
 
   /** Installs an application-protocol selection callback. */
-  extern "C" function c_ssl_ctx_set_alpn_select_cb(ctx: raw_ptr<u8>, cb: function (raw_ptr<u8>, raw_ptr<raw_ptr<u8>>, raw_ptr<u8>, raw_ptr<u8>, u32, raw_ptr<u8>) i32, arg: raw_ptr<u8>) void as "SSL_CTX_set_alpn_select_cb";
+  extern "C" function c_ssl_ctx_set_alpn_select_cb(
+    ctx: raw_ptr<u8>,
+    cb: function (raw_ptr<u8>, raw_ptr<raw_ptr<u8>>, raw_ptr<u8>, raw_ptr<u8>, u32, raw_ptr<u8>) i32,
+    arg: raw_ptr<u8>
+  ) void as "SSL_CTX_set_alpn_select_cb";
 
   /** Selects the first server-preferred protocol also offered by the client. */
-  extern "C" function c_ssl_select_next_proto(out: raw_ptr<raw_ptr<u8>>, outlen: raw_ptr<u8>, server: raw_ptr<u8>, server_len: u32, client: raw_ptr<u8>, client_len: u32) i32 as "SSL_select_next_proto";
+  extern "C" function c_ssl_select_next_proto(
+    out: raw_ptr<raw_ptr<u8>>,
+    outlen: raw_ptr<u8>,
+    server: raw_ptr<u8>,
+    server_len: u32,
+    client: raw_ptr<u8>,
+    client_len: u32
+  ) i32 as "SSL_select_next_proto";
 
   /** Measures a validated, zero-terminated static ALPN list. */
   extern "C" function c_tls_strlen(data: raw_ptr<u8>) i64 as "strlen";
@@ -114,13 +141,20 @@ public module tls {
   extern "C" function c_ssl_pending(ssl: raw_ptr<u8>) i32 as "SSL_pending";
 
   /** Borrows the negotiated application protocol from a session. */
-  extern "C" function c_ssl_get0_alpn_selected(ssl: raw_ptr<u8>, data: raw_ptr<raw_ptr<u8>>, len: raw_ptr<u32>) void as "SSL_get0_alpn_selected";
+  extern "C" function c_ssl_get0_alpn_selected(
+    ssl: raw_ptr<u8>,
+    data: raw_ptr<raw_ptr<u8>>,
+    len: raw_ptr<u32>
+  ) void as "SSL_get0_alpn_selected";
 
   /** Clears stale errors before an operation classified by SSL_get_error. */
   extern "C" function c_err_clear_error() void as "ERR_clear_error";
 
   /** Prevents interactive password prompts while loading server keys. */
-  extern "C" function c_ssl_ctx_set_default_passwd_cb(ctx: raw_ptr<u8>, cb: function (raw_ptr<u8>, i32, i32, raw_ptr<u8>) i32) void as "SSL_CTX_set_default_passwd_cb";
+  extern "C" function c_ssl_ctx_set_default_passwd_cb(
+    ctx: raw_ptr<u8>,
+    cb: function (raw_ptr<u8>, i32, i32, raw_ptr<u8>) i32
+  ) void as "SSL_CTX_set_default_passwd_cb";
 
   // --- nonblocking socket adapter -----------------------------------------
 
@@ -131,13 +165,22 @@ public module tls {
   extern "C" function c_bio_meth_free(method: raw_ptr<u8>) void as "BIO_meth_free";
 
   /** Installs the adapter's send callback. */
-  extern "C" function c_bio_meth_set_write(method: raw_ptr<u8>, cb: function (raw_ptr<u8>, raw_ptr<u8>, i32) i32) i32 as "BIO_meth_set_write";
+  extern "C" function c_bio_meth_set_write(
+    method: raw_ptr<u8>,
+    cb: function (raw_ptr<u8>, raw_ptr<u8>, i32) i32
+  ) i32 as "BIO_meth_set_write";
 
   /** Installs the adapter's receive callback. */
-  extern "C" function c_bio_meth_set_read(method: raw_ptr<u8>, cb: function (raw_ptr<u8>, raw_ptr<u8>, i32) i32) i32 as "BIO_meth_set_read";
+  extern "C" function c_bio_meth_set_read(
+    method: raw_ptr<u8>,
+    cb: function (raw_ptr<u8>, raw_ptr<u8>, i32) i32
+  ) i32 as "BIO_meth_set_read";
 
   /** Installs the adapter's control callback. */
-  extern "C" function c_bio_meth_set_ctrl(method: raw_ptr<u8>, cb: function (raw_ptr<u8>, i32, i64, raw_ptr<u8>) i64) i32 as "BIO_meth_set_ctrl";
+  extern "C" function c_bio_meth_set_ctrl(
+    method: raw_ptr<u8>,
+    cb: function (raw_ptr<u8>, i32, i64, raw_ptr<u8>) i64
+  ) i32 as "BIO_meth_set_ctrl";
 
   /** Creates an I/O adapter using the supplied implementation. */
   extern "C" function c_bio_new(method: raw_ptr<u8>) raw_ptr<u8> as "BIO_new";
@@ -158,7 +201,11 @@ public module tls {
   extern "C" function c_bio_clear_flags(bio: raw_ptr<u8>, flags: i32) void as "BIO_clear_flags";
 
   /** Transfers ownership of the input and output adapters to a session. */
-  extern "C" function c_ssl_set_bio(ssl: raw_ptr<u8>, read_bio: raw_ptr<u8>, write_bio: raw_ptr<u8>) void as "SSL_set_bio";
+  extern "C" function c_ssl_set_bio(
+    ssl: raw_ptr<u8>,
+    read_bio: raw_ptr<u8>,
+    write_bio: raw_ptr<u8>
+  ) void as "SSL_set_bio";
 
   /** Sends socket bytes with the platform's no-signal flag. */
   extern "C" function c_tls_send(fd: i32, data: raw_ptr<u8>, size: i64, flags: i32) i64 as "send";
