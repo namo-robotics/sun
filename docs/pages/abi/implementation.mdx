@@ -139,6 +139,12 @@ Suppose a compiler helper moves to another source file without changing the
 library's layouts or calls. The implementation fingerprint can change, but that
 fact alone does not show that the library is incompatible.
 
+### Compiler fingerprints
+
+Suppose a compiler helper moves to another source file without changing the
+library's layouts or calls. The implementation fingerprint can change, but that
+fact alone does not show that the library is incompatible.
+
 Experimental compiler behavior carries an advisory **implementation fingerprint**:
 a hash of compiler sources, build settings, tools, and relevant libraries.
 A different fingerprint warns after payload and ABI validation, once per rule
