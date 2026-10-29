@@ -5,24 +5,39 @@ of current releases. Open decisions must be resolved before stabilization.
 
 ## Runtime, errors, and global state
 
+Suppose two libraries share a registry:
+
+```text
+app → left  → registry
+app → right → the same registry
+```
+
+The registry must initialize once, before either consumer uses it. Linking two
+copies of runtime code must not accidentally create two instances of state whose
+contract says it is process-wide.
+
+For errors, imagine a library throwing while the caller owns a file. Both sides
+must agree how the error crosses the call and how the file is cleaned up. An
+unwinding mechanism that skips that cleanup is not compatible.
+
 Runtime requirements are part of the single bundle contract. Adding a runtime
 service does not affect bundles that do not call it. A runtime implementation
 can be refactored or optimized while preserving its existing interface and
 behavior. An incompatible change needs a distinct service identity or an adapter
 that implements the old behavior during its supported lifetime.
 
-| Subject | Level | Requirement |
+| Minimal example | Level | Requirement |
 | --- | --- | --- |
-| Runtime entry points | MUST | Include the runtime interfaces actually required by compiled code in the bundle contract, covering argument and result representations, ownership, and failure behavior. |
-| Runtime evolution | MUST NOT | Change the calling rules or specified behavior of an existing runtime service identity. Use a distinct identity for incompatible behavior. |
-| Shared implementations | SHOULD | Reuse the current runtime implementation or a small adapter when it can satisfy an older supported interface. |
-| Symbol resolution | MUST NOT | Silently select an incompatible implementation when bundles use the same runtime symbol. |
-| Error propagation | MUST | Define exception objects, type identification, matching, cleanup, and unwinding. |
-| Unwinding | MUST | Allow unwinding across a boundary only when both sides support its contract. |
-| Cross-bundle errors | MUST | Specify throwing and catching across bundles, or explicitly reject unsupported throwing boundaries. |
-| Global initialization | MUST | Initialize dependencies before consumers and each deduplicated global instance exactly once. |
-| State lifecycle | MUST | Define shutdown order, initialization failure, thread-local state, and state shared among bundles. |
-| Process-wide state | MUST NOT | Duplicate state defined as process-wide when bundling several runtime implementations. |
+| A compiled function calls an allocation service. | MUST | Include the runtime interfaces actually required by compiled code in the bundle contract, covering argument and result representations, ownership, and failure behavior. |
+| That service changes the meaning of its size argument. | MUST NOT | Change the calling rules or specified behavior of an existing runtime service identity. Use a distinct identity for incompatible behavior. |
+| An adapter translates an old call into the current allocator call. | SHOULD | Reuse the current runtime implementation or a small adapter when it can satisfy an older supported interface. |
+| Two incompatible services export the same linker symbol. | MUST NOT | Silently select an incompatible implementation when bundles use the same runtime symbol. |
+| A library throws an error that the caller catches. | MUST | Define exception objects, type identification, matching, cleanup, and unwinding. |
+| An error crosses a frame holding an owned file. | MUST | Allow unwinding across a boundary only when both sides support its contract. |
+| The caller does not understand the library error representation. | MUST | Specify throwing and catching across bundles, or explicitly reject unsupported throwing boundaries. |
+| Both left and right imports reach one shared counter. | MUST | Initialize dependencies before consumers and each deduplicated global instance exactly once. |
+| A thread exits while it owns library thread-local values. | MUST | Define shutdown order, initialization failure, thread-local state, and state shared among bundles. |
+| Two embedded runtimes must not create two supposedly global registries. | MUST NOT | Duplicate state defined as process-wide when bundling several runtime implementations. |
 
 ## Open decisions
 
