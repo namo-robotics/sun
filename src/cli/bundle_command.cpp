@@ -66,6 +66,7 @@ int runBundleCommand(const BuildRunOptions& options) {
   buildOptions.dumpProtoSun = options.dumpProtoSun;
   buildOptions.extraMoons = options.shared.moonImports;
   buildOptions.forceRebuild = options.forceRebuild;
+  buildOptions.versionName = options.versionName;
 
   return buildMoonBundle(entrypoint, outputPath, buildOptions);
 }

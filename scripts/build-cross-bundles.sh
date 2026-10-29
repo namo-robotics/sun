@@ -13,7 +13,9 @@ SUN_COMPILER="$1"
 shift
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+VERSION_NAME="$(bash "$SOURCE_ROOT/scripts/release-version-name.sh")"
+
 for target in aarch64-linux-gnu aarch64-linux-musl; do
-    "$SUN_COMPILER" -c --target "$target" --no-test \
+    "$SUN_COMPILER" -c --version-name "$VERSION_NAME" --target "$target" --no-test \
         "$@" "$SOURCE_ROOT/sun-config.json"
 done

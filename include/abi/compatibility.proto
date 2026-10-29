@@ -28,6 +28,8 @@ message ProducerIdentity {
   string release_series = 3;
   // Relevant loaded runtime bytes are diagnostic, not a compatibility gate.
   string runtime_fingerprint = 4;
+  // Human-readable name, never used for ordering or compatibility.
+  optional string version_name = 5;
 }
 
 /** Maps one exact declaration to its revision-independent nominal origin. */

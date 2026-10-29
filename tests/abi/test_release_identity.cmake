@@ -58,7 +58,7 @@ file(WRITE "${fixture}/build/generated/sun_abi_support.h" "embedded support fixt
 # Run the real fingerprint script with a small complete fixture input closure.
 function(fingerprint order series implementation output)
     file(WRITE "${fixture}/build/CMakeCache.txt"
-        "SUN_RELEASE_ORDER:STRING=${order}\nSUN_RELEASE_SERIES:STRING=${series}\nIMPLEMENTATION:STRING=${implementation}\nSOURCE:PATH=${fixture}/source\nBUILD:PATH=${fixture}/build\n")
+        "SUN_VERSION_NAME:STRING=display-${order}\nSUN_RELEASE_ORDER:STRING=${order}\nSUN_RELEASE_SERIES:STRING=${series}\nIMPLEMENTATION:STRING=${implementation}\nSOURCE:PATH=${fixture}/source\nBUILD:PATH=${fixture}/build\n")
     execute_process(COMMAND "${CMAKE_COMMAND}" "-DSOURCE_DIR=${fixture}/source"
         "-DBINARY_DIR=${fixture}/build" "-DCOMPILER=${fixture}/compiler"
         "-DTOOLS=${fixture}/linker"

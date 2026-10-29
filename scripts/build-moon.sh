@@ -18,6 +18,7 @@ shift 3
 BUNDLE_DIR="$(dirname "$OUTPUT")"
 mkdir -p "$BUNDLE_DIR"
 
-exec "$SUN_COMPILER" --emit-moon \
+VERSION_NAME="$(bash "$(dirname "${BASH_SOURCE[0]}")/release-version-name.sh")"
+exec "$SUN_COMPILER" --emit-moon --version-name "$VERSION_NAME" \
     --lib-path "$BUNDLE_DIR" \
     -o "$OUTPUT" "$@" "$ENTRYPOINT"

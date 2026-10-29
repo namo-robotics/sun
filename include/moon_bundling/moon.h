@@ -91,6 +91,9 @@ class MoonWriter {
   /** Sets the producing library identity after adding emitted code. */
   void setLibraryId(const std::string& libraryId);
 
+  /** Sets an optional human-readable name without changing compatibility. */
+  void setVersionName(const std::string& name) { versionName_ = name; }
+
   /** Retains all requirements of code embedded from a validated dependency. */
   void inheritContract(const abi::BundleContract& contract);
   /** Records additional producer-declared requirements for packaged archives.
@@ -143,6 +146,7 @@ class MoonWriter {
   std::vector<PendingArchive> nativeArchives_;
   abi::BundleContract contract_;
   std::string bundleHash_;
+  std::string versionName_;
   std::string error_;
 };
 

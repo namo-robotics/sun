@@ -467,8 +467,8 @@ void AbiCompatibilityChecker::validateContract(
       llvm::Triple::getArchTypeName(
           llvm::Triple(llvm::sys::getDefaultTargetTriple()).getArch())
           .str();
-  const bool hostExecution = nativeArchitecture &&
-                             context_.execution == NativeExecution::JIT;
+  const bool hostExecution =
+      nativeArchitecture && context_.execution == NativeExecution::JIT;
   if (hostExecution) {
     availableFeatures = llvm::sys::getHostCPUFeatures();
   }
@@ -486,8 +486,8 @@ void AbiCompatibilityChecker::validateContract(
     }
     std::unique_ptr<llvm::MCSubtargetInfo> subtarget(
         target->createMCSubtargetInfo(
-            triple,
-            hostExecution ? llvm::sys::getHostCPUName() : "generic", ""));
+            triple, hostExecution ? llvm::sys::getHostCPUName() : "generic",
+            ""));
     if (!subtarget) {
       fail("cannot determine target CPU capabilities");
     }

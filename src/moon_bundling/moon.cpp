@@ -234,6 +234,9 @@ bool MoonWriter::write(const std::filesystem::path& outputPath) {
   moon::MoonLibrary bundleMetadata;
   *bundleMetadata.mutable_bundle_contract() = contract_;
   bundleMetadata.set_content_hash(bundleHash_);
+  if (!versionName_.empty()) {
+    bundleMetadata.set_version_name(versionName_);
+  }
   std::ofstream out(outputPath, std::ios::binary);
   if (!out) {
     error_ = "Failed to open output file: " + outputPath.string();

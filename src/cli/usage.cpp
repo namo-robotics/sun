@@ -54,6 +54,7 @@ const char* const kUsageBody =
     "alone; use with\n"
     "                    -c or --emit-moon)\n"
     "  --emit-moon       Compile to .moon precompiled library\n"
+    "  --version-name <name>  Human-readable name for built Moon bundles\n"
     "                    Use manifest { source_files: [...] } to specify files "
     "to include\n"
     "  --lib-path <dir>  Add directory to .moon library search path\n"
@@ -129,7 +130,9 @@ std::string renderUsage(const std::string& programName) {
 
 /** Returns the compiler version text displayed by the command line. */
 std::string renderVersionLine() {
-  return std::string("sun ") + SUN_VERSION + " (" + SUN_GIT_HASH + ")\n";
+  const std::string name = SUN_VERSION_NAME;
+  return std::string("sun") + (name.empty() ? "" : " " + name) + " (" +
+         SUN_GIT_HASH + ")\n";
 }
 
 }  // namespace sun::cli

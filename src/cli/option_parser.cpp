@@ -165,6 +165,11 @@ std::optional<EarlyExit> parseBuildRunArguments(
       options.noTest = true;
     } else if (arg == "--refresh-sources") {
       options.refreshSources = true;
+    } else if (arg == "--version-name") {
+      if (!cursor.takeValueOf("--version-name", value)) {
+        return makeFailure("Error: --version-name requires a value\n");
+      }
+      options.versionName = value;
     } else if (arg == "--force-rebuild") {
       options.forceRebuild = true;
     } else if (cursor.takeValueOf("-l", value)) {

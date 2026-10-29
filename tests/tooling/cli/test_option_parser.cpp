@@ -484,3 +484,26 @@ TEST(Tooling_Cli_OptionParser, refresh_sources_requires_config_build) {
   expectRejected(parseBuildRun({"-c", "--refresh-sources", "a.sun"}).early,
                  "Error: --refresh-sources requires -c sun-config.json\n");
 }
+
+/** Bundle names are opaque CLI values for direct and config builds. */
+TEST(VersionNameOptions, AcceptsOpaqueAndEmptyNames) {
+  for (const auto& name : {"v1.0.0", "nightly candidate", ""}) {
+    auto direct =
+        parseBuildRun({"--emit-moon", "lib.sun", "--version-name", name});
+    ASSERT_FALSE(direct.early);
+    EXPECT_EQ(direct.options.versionName, name);
+    auto config =
+        parseBuildRun({"-c", "sun-config.json", "--version-name", name});
+    ASSERT_FALSE(config.early);
+    EXPECT_EQ(config.options.versionName, name);
+  }
+  EXPECT_TRUE(
+      parseBuildRun({"--emit-moon", "lib.sun"}).options.versionName.empty());
+}
+
+/** A missing version-name argument produces a useful diagnostic. */
+TEST(VersionNameOptions, RejectsMissingName) {
+  auto parsed = parseBuildRun({"--emit-moon", "lib.sun", "--version-name"});
+  ASSERT_TRUE(parsed.early);
+  EXPECT_NE(parsed.early->text.find("requires a value"), std::string::npos);
+}

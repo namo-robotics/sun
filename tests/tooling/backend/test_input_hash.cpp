@@ -15,8 +15,10 @@
 #include <sstream>
 #include <string>
 
+#include "abi/abi_compatibility_checker.h"
 #include "driver/build_record.h"
 #include "driver/input_hash.h"
+#include "moon_bundling/moon.h"
 
 /** Keeps test fixtures and helpers local to this source file. */
 namespace {
@@ -380,4 +382,83 @@ TEST(Tooling_Backend_InputHash, flag_is_rejected_without_a_build_mode) {
   int rc = std::system(cmd.c_str());
   EXPECT_NE(WEXITSTATUS(rc), 0);
   EXPECT_TRUE(contains(readFile(scratch.path("log")), "--force-rebuild"));
+}
+
+/** Names change artifact identity while preserving ABI and import
+ * compatibility. */
+TEST(Tooling_Backend_InputHash, bundle_version_names_are_only_artifact_inputs) {
+  if (!haveSunBinary()) {
+    GTEST_SKIP();
+  }
+  Scratch scratch("version_names");
+  writeFile(scratch.path("lib.sun"),
+            "public module version_names { public function answer() i32 { "
+            "return 42; } }"
+            " manifest { library_id: \"test/version-names\" }");
+  const auto output = scratch.path("lib.moon");
+  const auto command =
+      "--emit-moon -o " + output + " " + scratch.path("lib.sun");
+  scratch.runSun(command);
+  auto unnamed = sun::moon_bundling::MoonReader::open(output);
+  ASSERT_TRUE(unnamed);
+  EXPECT_FALSE(unnamed->getLibrary().has_version_name());
+  const auto hash = unnamed->getLibrary().content_hash();
+  const auto abiHash =
+      unnamed->getLibrary().bundle_contract().library_abi().abi_hash();
+  ASSERT_FALSE(abiHash.empty());
+  scratch.runSun(command + " --version-name 'release candidate'");
+  auto named = sun::moon_bundling::MoonReader::open(output);
+  ASSERT_TRUE(named);
+  EXPECT_EQ(named->getLibrary().version_name(), "release candidate");
+  EXPECT_NE(named->getLibrary().content_hash(), hash);
+  EXPECT_EQ(named->getLibrary().bundle_contract().library_abi().abi_hash(),
+            abiHash);
+  auto& checker = sun::abi::AbiCompatibilityChecker::current();
+  EXPECT_NO_THROW(checker.validate(*unnamed, unnamed->getTargetTriple()));
+  EXPECT_NO_THROW(checker.validate(*named, named->getTargetTriple()));
+  EXPECT_TRUE(
+      contains(scratch.runSun(command + " --version-name 'release candidate'"),
+               "Up to date:"));
+  ASSERT_TRUE(named->writeDebugJson(scratch.path("moon.json")));
+  EXPECT_TRUE(
+      contains(readFile(scratch.path("moon.json")), "release candidate"));
+  scratch.runSun(command + " --version-name ''");
+  auto empty = sun::moon_bundling::MoonReader::open(output);
+  ASSERT_TRUE(empty);
+  EXPECT_FALSE(empty->getLibrary().has_version_name());
+  EXPECT_EQ(empty->getLibrary().content_hash(), hash);
+}
+
+/** A config invocation gives each built library the requested name. */
+TEST(Tooling_Backend_InputHash, config_version_name_reaches_each_library) {
+  if (!haveSunBinary()) {
+    GTEST_SKIP();
+  }
+  Scratch scratch("config_version_names");
+  writeFile(scratch.path("dep.sun"),
+            "public module dep { public function value() i32 { return 3; } }");
+  scratch.runSun("--emit-moon " + scratch.path("dep.sun") + " -o " +
+                 scratch.path("dep.moon") + " --version-name dependency");
+  const auto dependencyBytes = readFile(scratch.path("dep.moon"));
+  writeFile(scratch.path("one.sun"),
+            "public module one { public function value() i32 { return "
+            "dep.value(); } }"
+            " manifest { libraries: [\"dep.moon\"] }");
+  writeFile(scratch.path("two.sun"),
+            "public module two { public function value() i32 { return 2; } }");
+  writeFile(scratch.path("sun-config.json"), R"({
+    "root": true,
+    "entrypoints": [
+      {"path": "one.sun", "type": "library", "output_name": "one"},
+      {"path": "two.sun", "type": "library", "output_name": "two"}
+    ]
+  })");
+  scratch.runSun("-c --no-test " + scratch.path("sun-config.json") +
+                 " --version-name v1.0.0");
+  EXPECT_EQ(readFile(scratch.path("dep.moon")), dependencyBytes);
+  for (const auto* file : {"one.moon", "two.moon"}) {
+    auto reader = sun::moon_bundling::MoonReader::open(scratch.path(file));
+    ASSERT_TRUE(reader);
+    EXPECT_EQ(reader->getLibrary().version_name(), "v1.0.0");
+  }
 }
