@@ -8,7 +8,6 @@
 #include "driver/driver.h"
 #include "driver/git_source.h"
 #include "llvm/Support/raw_ostream.h"
-#include "support/terminal.h"
 
 /** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
@@ -47,8 +46,7 @@ int runTestEntrypoint(const std::string& inputFile, const TestOptions& options,
     }
   } catch (const sun::support::SunError& e) {
     if (skipWhenNoTests && isNoTestsError(e)) {
-      llvm::outs() << sun::support::messagePrefix("info", llvm::outs())
-                   << "no tests\n";
+      llvm::outs() << "no tests\n";
       return 0;
     }
     return reportSunError(e);
@@ -70,7 +68,7 @@ int runConfigTests(const TestOptions& options) {
       DependencyPathVariables dependencyVariables(config, entry);
       if (config.entrypoints.size() > 1) {
         // Flushed so the header lands before the runner's own stdout.
-        sun::support::messageStream("info") << "== " << entry.path << " ==\n";
+        llvm::outs() << "== " << entry.path << " ==\n";
         llvm::outs().flush();
       }
       if (runTestEntrypoint(entry.path, options,

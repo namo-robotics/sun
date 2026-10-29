@@ -64,7 +64,7 @@ void applySharedSettings(const SharedOptions& shared);
 void applyBuildRunSettings(const BuildRunOptions& options);
 
 /**
- * Print an early exit's text on its stream and return its exit code.
+ * Print an early exit's text verbatim on its stream and return its exit code.
  */
 int reportEarlyExit(const EarlyExit& earlyExit);
 

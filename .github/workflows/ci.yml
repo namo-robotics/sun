@@ -730,9 +730,9 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  # Publish regular packages without waiting for GPU tests.
+  # Publish Debian packages after Linux checks, independently of macOS and GPU tests.
   publish-deb:
-    needs: [build-deb, build-and-test, build-and-test-macos, test-install]
+    needs: [build-deb, build-and-test, test-install]
     permissions:
       contents: write
     runs-on: ubuntu-24.04

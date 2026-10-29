@@ -12,7 +12,6 @@
 #include "moon_bundling/library_cache.h"
 #include "moon_bundling/moon_cache.h"
 #include "support/sun_path.h"
-#include "support/terminal.h"
 
 using sun::driver::SunConfig;
 using sun::moon_bundling::LibraryCache;
@@ -97,25 +96,11 @@ void applyBuildRunSettings(const BuildRunOptions& options) {
   applySharedSettings(options.shared);
 }
 
-/** Prints an early-exit message to its selected output stream. */
+/** Prints CLI text without logging prefixes and returns its exit code. */
 int reportEarlyExit(const EarlyExit& earlyExit) {
-  if (earlyExit.stream == EarlyExit::Stream::RawOut) {
-    llvm::outs() << earlyExit.text;
-    return earlyExit.exitCode;
-  }
   auto& stream =
-      earlyExit.stream == EarlyExit::Stream::Out ? llvm::outs() : llvm::errs();
-  const std::string prefix = sun::support::messagePrefix(
-      earlyExit.exitCode == 0 ? "info" : "error", stream);
-  size_t start = 0;
-  while (start < earlyExit.text.size()) {
-    size_t end = earlyExit.text.find('\n', start);
-    stream << prefix << earlyExit.text.substr(start, end - start) << "\n";
-    if (end == std::string::npos) {
-      break;
-    }
-    start = end + 1;
-  }
+      earlyExit.stream == EarlyExit::Stream::Err ? llvm::errs() : llvm::outs();
+  stream << earlyExit.text;
   return earlyExit.exitCode;
 }
 

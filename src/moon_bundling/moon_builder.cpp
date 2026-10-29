@@ -464,6 +464,9 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   llvm::outs().flush();
   auto inputs = loadInputs(entrypoint, options);
   if (isUpToDate(inputs.inputHash, outputPath, options)) {
+    sun::support::messageStream("info")
+        << "Up to date: " << outputPath.string() << "\n";
+    llvm::outs().flush();
     return readExistingReport(outputPath, inputs.archiveSetHash,
                               std::move(inputs.report));
   }
@@ -473,6 +476,9 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   }
   const auto symbols = prepareNativeSymbols(inputs);
   auto compiled = compile(inputs, symbols, entrypoint, options);
+  sun::support::messageStream("info")
+      << "Writing library: " << outputPath.string() << "\n";
+  llvm::outs().flush();
   auto inheritedArchives =
       writeBundle(inputs, symbols, compiled, outputPath, options);
   // Release the compiler before invalidating bundles or transferring its
@@ -483,6 +489,9 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   auto report = std::move(inputs.report);
   report.modules = std::move(compiled.metadata.modules);
   report.inheritedArchives = std::move(inheritedArchives);
+  sun::support::messageStream("info")
+      << "Successfully created: " << outputPath.string() << "\n";
+  llvm::outs().flush();
   return report;
 }
 

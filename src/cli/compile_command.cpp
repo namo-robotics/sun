@@ -232,6 +232,8 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
   sun::driver::embedBuildRecord(testDriver->getModule(),
                                 {inputHash, /*hasTests=*/true, hasExecutable});
   std::string errorMsg;
+  sun::support::messageStream("info") << "Linking tests: " << testOutput << "\n";
+  llvm::outs().flush();
   if (!sun::driver::compileToExecutable(
           testDriver->getModule(), testOutput, errorMsg,
           /*keepObjectFile=*/false, makeLinkOptions(job, *testDriver),
@@ -326,6 +328,9 @@ int compileEntrypoint(const CompileJob& job) {
       sun::support::messageStream("info")
           << "No main() found; emitting only the test binary\n";
     } else if (job.emitLLVMOnly) {
+      sun::support::messageStream("info")
+          << "Writing LLVM IR: " << job.outputFile << "\n";
+      llvm::outs().flush();
       std::error_code ec;
       llvm::raw_fd_ostream output(job.outputFile, ec);
       if (ec) {
@@ -340,9 +345,15 @@ int compileEntrypoint(const CompileJob& job) {
         }
       }
     } else if (job.emitObjOnly) {
+      sun::support::messageStream("info")
+          << "Writing object: " << job.outputFile << "\n";
+      llvm::outs().flush();
       success = sun::driver::emitObjectFile(driver->getModule(), job.outputFile,
                                             errorMsg, job.optimize);
     } else {
+      sun::support::messageStream("info")
+          << "Linking executable: " << job.outputFile << "\n";
+      llvm::outs().flush();
       success = sun::driver::compileToExecutable(
           driver->getModule(), job.outputFile, errorMsg,
           /*keepObjectFile=*/false, makeLinkOptions(job, *driver),

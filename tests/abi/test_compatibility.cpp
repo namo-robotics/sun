@@ -1,6 +1,7 @@
 /** Exercises ABI contract encoding, support decisions, and Moon integration. */
 #include <dlfcn.h>
 #include <google/protobuf/unknown_field_set.h>
+#include <google/protobuf/text_format.h>
 #include <gtest/gtest.h>
 #include <llvm/ADT/StringMap.h>
 #include <llvm/IR/DerivedTypes.h>
@@ -162,11 +163,95 @@ TEST(ABI_Compatibility, UnknownRequiredRuleIsRejected) {
 /** A supplied implementation fingerprint must be independently supported. */
 TEST(ABI_Compatibility, ChangedFingerprintIsRejected) {
   auto unsupported = contract();
-  unsupported.mutable_requirements(1)->set_implementation(std::string(64, '0'));
+  for (auto& rule : *unsupported.mutable_requirements()) {
+    if (rule.name() == "sun.experimental.semantics") {
+      rule.set_implementation(std::string(64, '0'));
+    }
+  }
   unsupported.set_compatibility_hash(sun::abi::hashBundleContract(unsupported));
   EXPECT_THROW(sun::abi::AbiCompatibilityChecker::current().validateContract(
                    unsupported, "changed.moon", "x86_64-linux-gnu"),
                sun::support::SunError);
+}
+
+/** Bitcode uses a reader contract independently of experimental Sun semantics. */
+TEST(ABI_Compatibility, BitcodeUsesReaderContract) {
+  const auto expected = sun::abi::hashBitcodeReaderContract(
+      sun::abi::compilerAbiSupport().bitcode_reader_contract());
+  EXPECT_EQ(expected,
+            "f8d866500027675bcc46c8842e6c57f9ae0ea8c7986c97db024fb030cb852820");
+  EXPECT_EQ(sun::abi::emissionImplementation("llvm.bitcode"), expected);
+  EXPECT_EQ(sun::abi::supportedRules().at("llvm.bitcode"), expected);
+  EXPECT_NE(expected, sun::abi::compatibilityImplementation());
+  EXPECT_EQ(sun::abi::emissionImplementation("sun.experimental.semantics"),
+            sun::abi::compatibilityImplementation());
+  auto supported = contract();
+  supported.mutable_producer()->set_build("another LLVM build");
+  supported.mutable_producer()->set_runtime_fingerprint("another runtime");
+  EXPECT_NO_THROW(sun::abi::AbiCompatibilityChecker::current().validateContract(
+      supported, "bitcode.moon", "x86_64-linux-gnu"));
+}
+
+/** Text formatting and requirement order do not affect the contract identity. */
+TEST(ABI_Compatibility, BitcodeContractHashesCanonicalValues) {
+  sun::abi::proto::BitcodeReaderContract parsed;
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(R"(
+    # Formatting and order are not part of the reader contract.
+    requirements: VALIDATE_SUN_ABI_SEPARATELY
+    requirements: REJECT_UNREADABLE_OR_INVALID
+    requirements: VERIFY_MODULE_BEFORE_IMPORT
+    requirements: MATERIALIZE_ALL_BEFORE_IMPORT
+    requirements: CONSUMER_LLVM_READER
+    requirements: LLVM_BITCODE_MODULE
+  )", &parsed));
+  const auto& original = sun::abi::compilerAbiSupport().bitcode_reader_contract();
+  EXPECT_EQ(sun::abi::hashBitcodeReaderContract(original),
+            sun::abi::hashBitcodeReaderContract(parsed));
+  parsed.mutable_requirements()->RemoveLast();
+  EXPECT_NE(sun::abi::hashBitcodeReaderContract(original),
+            sun::abi::hashBitcodeReaderContract(parsed));
+}
+
+/** The build manifest cannot advertise missing, duplicate, or unknown obligations. */
+TEST(ABI_Compatibility, BitcodeContractRequiresImplementedObligations) {
+  auto support = sun::abi::compilerAbiSupport();
+  support.clear_bitcode_reader_contract();
+  EXPECT_THROW(sun::abi::validateCompilerSupport(support), std::exception);
+  support = sun::abi::compilerAbiSupport();
+  support.mutable_bitcode_reader_contract()->mutable_requirements()->RemoveLast();
+  EXPECT_THROW(sun::abi::validateCompilerSupport(support), std::exception);
+  support = sun::abi::compilerAbiSupport();
+  support.mutable_bitcode_reader_contract()->add_requirements(
+      sun::abi::proto::BitcodeReaderContract::LLVM_BITCODE_MODULE);
+  EXPECT_THROW(sun::abi::validateCompilerSupport(support), std::exception);
+  support = sun::abi::compilerAbiSupport();
+  auto* reader = support.mutable_bitcode_reader_contract();
+  reader->mutable_requirements()->Set(0, 999);
+  EXPECT_THROW(sun::abi::validateCompilerSupport(support), std::exception);
+  EXPECT_THROW(sun::abi::hashBitcodeReaderContract(*reader), sun::support::SunError);
+  support = sun::abi::compilerAbiSupport();
+  reader = support.mutable_bitcode_reader_contract();
+  reader->GetReflection()->MutableUnknownFields(reader)->AddVarint(999, 1);
+  EXPECT_THROW(sun::abi::validateCompilerSupport(support), std::exception);
+  EXPECT_THROW(sun::abi::hashBitcodeReaderContract(*reader), sun::support::SunError);
+}
+
+/** Unknown reader contracts and legacy compiler hashes require a rebuild. */
+TEST(ABI_Compatibility, UnsupportedBitcodeReaderContractIsRejected) {
+  for (const auto& implementation :
+       {std::string("unknown-reader"), std::string("1"),
+        std::string(64, '0'), sun::abi::compatibilityImplementation()}) {
+    auto unsupported = contract();
+    for (auto& rule : *unsupported.mutable_requirements()) {
+      if (rule.name() == "llvm.bitcode") {
+        rule.set_implementation(implementation);
+      }
+    }
+    unsupported.set_compatibility_hash(sun::abi::hashBundleContract(unsupported));
+    EXPECT_THROW(sun::abi::AbiCompatibilityChecker::current().validateContract(
+                     unsupported, "bitcode.moon", "x86_64-linux-gnu"),
+                 sun::support::SunError);
+  }
 }
 
 /** Required rules cannot disappear merely because the supplied hash is

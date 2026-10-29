@@ -11,6 +11,25 @@
 
 /** Publishes implemented compatibility rules independently of producer age. */
 namespace sun::abi {
+/** Resolves manifest selectors to the identities recorded in bundle contracts. */
+namespace {
+/** Hashes the stable reader contract independently of compiler implementation. */
+const std::string& bitcodeContractHash() {
+  static const std::string identity =
+      hashBitcodeReaderContract(compilerAbiSupport().bitcode_reader_contract());
+  return identity;
+}
+
+/** Uses the same identity for supported rules and emitted requirements. */
+std::string implementationIdentity(const std::string& name,
+                                   const std::string& version) {
+  if (name == "llvm.bitcode" && version == "reader-contract") {
+    return bitcodeContractHash();
+  }
+  return version == "experimental" ? compatibilityImplementation() : version;
+}
+}  // namespace
+
 const proto::CompilerAbiSupport& compilerAbiSupport() {
   static const auto support = [] {
     proto::CompilerAbiSupport result;
@@ -27,9 +46,8 @@ const proto::CompilerAbiSupport& compilerAbiSupport() {
 std::map<std::string, std::string> supportedRules() {
   std::map<std::string, std::string> rules;
   for (const auto& rule : compilerAbiSupport().rules()) {
-    rules.emplace(rule.name(), rule.version() == "experimental"
-                                   ? compatibilityImplementation()
-                                   : rule.version());
+    rules.emplace(rule.name(),
+                  implementationIdentity(rule.name(), rule.version()));
   }
   return rules;
 }
@@ -37,8 +55,7 @@ std::map<std::string, std::string> supportedRules() {
 std::string emissionImplementation(const std::string& name) {
   for (const auto& rule : compilerAbiSupport().emission_defaults()) {
     if (rule.name() == name) {
-      return rule.version() == "experimental" ? compatibilityImplementation()
-                                              : rule.version();
+      return implementationIdentity(rule.name(), rule.version());
     }
   }
   sun::support::logAndThrowError("No compiler ABI emission default for " +
