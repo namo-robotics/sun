@@ -1,5 +1,6 @@
 /** Builds the optional NVIDIA library; CUDA shared libraries are linked by its users. */
 manifest {
+  library_id: "sun/cuda"
   source_files: [
     "native.sun",
     "matrix.sun"
