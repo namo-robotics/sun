@@ -100,19 +100,47 @@ brew uninstall sun
 
 ### Build from Source
 
+Clone the repository:
+
 ```bash
-# Clone the repository
 git clone https://github.com/namo-robotics/sun.git
 cd sun
+```
+
+On **Ubuntu/Debian**, install dependencies and build:
+
+```bash
+./scripts/install-dependencies.sh
+./build.sh --reconfigure
+```
+
+APT repositories must provide LLVM 20 and matching libclang development packages.
+The installer uses `sudo` as needed; add `--yes` to accept prompts or `--dry-run`
+to preview changes. Its musl toolchains require an x86_64 host and support the
+default static Linux linking. Keep `/usr/local/bin` on your `PATH`.
+
+On **macOS**, install dependencies with Homebrew and build:
+
+```bash
+brew install llvm@20 ninja ccache
 ./build.sh
 ```
 
-On Linux this expects clang, LLVM 20 dev packages, Ninja and lld. On a Mac,
-install the dependencies with Homebrew first — `brew install llvm@20 ninja
-ccache` — and `./build.sh` picks up Homebrew's LLVM by itself. Protobuf is
-built into the compiler from a pinned source release (so every platform
-compiles the same version); building offline instead needs `libprotoc-dev`
-and `-DSUN_BUNDLED_PROTOBUF=OFF`.
+CMake downloads and builds pinned Protobuf sources. Offline builds need
+`libprotoc-dev` and `-DSUN_BUNDLED_PROTOBUF=OFF`. CUDA, GNU cross-compilers,
+and release packaging tools require separate installation.
+
+To build and install the compiler, language server, and standard Moon bundles:
+
+```bash
+./build.sh --install
+```
+
+Binaries go to `/usr/local/bin` and bundles to `/usr/local/lib/sun`.
+Use `--prefix /absolute/path` to choose another location.
+Plain `./build.sh` only builds; `./build.sh --uninstall` removes the installed
+Sun files without building or removing dependencies. Use the same prefix when
+uninstalling.
 
 ## Quick Start
 
