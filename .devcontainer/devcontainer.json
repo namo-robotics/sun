@@ -1,7 +1,7 @@
 // For format details, see https://aka.ms/devcontainer.json. For config options, see the
 // README at: https://github.com/devcontainers/templates/tree/main/src/docker-existing-dockerfile
 {
-	"name": "Existing Dockerfile",
+	"name": "Sun Compiler",
 	"build": {
 		// Sets the run context to one level up instead of the .devcontainer folder.
 		"context": "..",
@@ -16,7 +16,7 @@
 		"--cap-add=PERFMON"
 	],
 	"mounts": [
-		"source=vscode-user-data,target=/home/vscode/.vscode-server/data/User,type=volume",
+		"source=vscode-user-data,target=/home/ubuntu/.vscode-server/data/User,type=volume",
 		"source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/home/ubuntu/.ssh,type=bind,readonly",
 		"source=sun-ccache,target=/home/ubuntu/.cache/ccache,type=volume",
 		// Claude Code state: session transcripts (projects/), plans/, memory,
@@ -35,15 +35,14 @@
 		// own. Requires ~/.config/gh to exist on the host.
 		"source=${localEnv:HOME}${localEnv:USERPROFILE}/.config/gh,target=/home/ubuntu/.config/gh,type=bind"
 	],
-	"remoteUser": "ubuntu",
 	"updateRemoteUserUID": true,
 	"containerEnv": {
+		"CCACHE_DIR": "/home/ubuntu/.cache/ccache",
 		"CCACHE_MAXSIZE": "20G",
-		"CCACHE_SLOPPINESS": "pch_defines,time_macros",
-		"CTEST_PARALLEL_LEVEL": "8"
+		"CCACHE_SLOPPINESS": "pch_defines,time_macros"
 	},
 	// Fix volume ownership and fetch TLS archives into the mounted workspace.
-	"postCreateCommand": "sudo chown -R ubuntu:ubuntu /home/ubuntu/.cache/ccache && if [ ! -f third_party/openssl/x86_64-linux-musl/libssl.a ] || [ ! -f third_party/openssl/x86_64-linux-musl/libcrypto.a ]; then ./scripts/fetch-openssl.sh; fi",
+	"postCreateCommand": "bash .devcontainer/post-create.sh && if [ ! -f third_party/openssl/x86_64-linux-musl/libssl.a ] || [ ! -f third_party/openssl/x86_64-linux-musl/libcrypto.a ]; then ./scripts/fetch-openssl.sh; fi",
 	"postAttachCommand": "bash",
 	"features": {
 		"ghcr.io/devcontainers/features/node:1": {
@@ -52,6 +51,16 @@
 	},
 	"customizations": {
 		"vscode": {
+			"settings": {
+				"cmake.configureOnOpen": false,
+				"[sun]": {
+					"editor.defaultFormatter": "namo-robotics.sun-language",
+					"editor.formatOnSave": true
+				},
+				"[cpp]": {
+					"editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"
+				}
+			},
 			"extensions": [
 				"ms-vscode.cpptools-extension-pack",
 				"vadimcn.vscode-lldb",

@@ -56,3 +56,8 @@ installation location.
 
 Uninstall skips the build and removes the Sun binaries and standard bundles at
 that prefix. It leaves system dependencies and unrelated files in place.
+
+## Shared development container
+
+See [.devcontainer/README.md](.devcontainer/README.md) for the applied Sun template
+version, project-specific settings, and rebuild instructions.

@@ -81,4 +81,5 @@ RUN echo "ubuntu ALL=(root) NOPASSWD:ALL" > /etc/sudoers.d/ubuntu \
 # Eager-load git completion (needed for alias completion)
 RUN echo '[ -f /usr/share/bash-completion/completions/git ] && . /usr/share/bash-completion/completions/git' > /etc/profile.d/git-completion.sh
 
+USER ubuntu
 CMD ["/bin/bash"]
