@@ -55,6 +55,19 @@ manifest {
 }
 ```
 
+### Self-contained library bundles
+
+```text
+ui.moon embeds gtk v1
+app lists ui.moon and gtk v1.1
+```
+
+UI keeps using its embedded GTK v1. The app uses GTK v1.1. The app can pass a
+v1.1 object to a UI function expecting a v1 borrow if their ABI contracts match.
+
+If the app only uses UI, it only needs `ui.moon`: dependency code and metadata
+are bundled inside it, but dependency names stay hidden.
+
 ### Library identity
 
 A library's entrypoint manifest can declare a persistent identity:
@@ -186,9 +199,12 @@ manifest {
 Exported nominal types identify their defining bundle by its exact content hash,
 original declaration path, and name in a canonical `QualifiedName`. The compiler
 checks the referenced declaration’s kind where an interface is required.
-If `a.moon` exports a function that accepts a type from `b-v1.moon`, the application must explicitly import both
-bundles. Import order does not matter. Supplying `b-v2.moon` produces an exact
-dependency error, even when its type has the same name and layout.
+If `a.moon` exports a function accepting a type from `b-v1.moon`, it carries that
+type's metadata internally. Application source that names the type must list
+`b-v1.moon` explicitly. Listing `b-v2.moon` instead is allowed for independent
+use. Passing a borrowed value to the v1 API also requires matching nominal
+identity and a compatible recorded ABI contract; a matching name or layout alone
+is insufficient.
 
 Aliases change source lookup names only. For example,
 `--moon b-v1.moon:b=old_b --moon b-v2.moon:b=new_b` allows both versions to
@@ -201,9 +217,8 @@ Module references in exported generic bodies carry their original qualified
 names, including the defining bundle hash. Retained `using` targets are also
 canonicalized when the library is built, while preserving their file-local scope.
 These imports do not become imports in the caller's file.
-Dependencies used only by compiled implementations can run from the embedded
-bitcode without a separate declaration import. Dependency declarations are not
-loaded automatically.
+Embedded dependency declarations are loaded for internal resolution, but their
+module names do not become available to application source.
 
 Moon format changes require rebuilding libraries with the current compiler,
 including the standard library and TLS bundles for every target.

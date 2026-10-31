@@ -19,6 +19,7 @@ void forEachImportedBody(const std::vector<sun::ast::MoonScopeAST*>& imports,
     SemanticContext::ScopeSwitchGuard scope(context, context.scope());
     if (!moon->getContentHash().empty()) {
       context.enterModuleScope(moon->getContentHash());
+      context.currentScope().isEmbeddedDependency = moon->isEmbeddedDependency();
     }
     visitor(const_cast<sun::ast::BlockExprAST&>(moon->getBody()));
   }

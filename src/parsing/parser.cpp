@@ -3767,11 +3767,9 @@ std::unique_ptr<sun::moon_bundling::MoonReader> Parser::openMoonImport(
 
 std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
     const sun::moon_bundling::MoonImport& moonImport,
-    std::unique_ptr<sun::moon_bundling::MoonReader> reader) {
-  if (!reader) {
-    reader = openMoonImport(moonImport);
-  }
-  sun::abi::AbiCompatibilityChecker::current().validate(*reader);
+    sun::moon_bundling::MoonReader& snapshot,
+    const std::string& declarationBundle) {
+  auto* reader = &snapshot;
   const auto resolved = reader->getPath();
   const auto resolvedStr = resolved.string();
   std::string contentHash;
@@ -3820,7 +3818,7 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
 
     // Get metadata for this module
     const auto* metadata = reader->getMetadata(moduleKey);
-    if (!metadata) {
+    if (!metadata || metadata->content_hash() != declarationBundle) {
       continue;
     }
 
@@ -4008,8 +4006,6 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
   }
   PARSER_TIMER_END(process_modules);
 
-  // Store the moon reader in the cache for later linking
-  sun::moon_bundling::LibraryCache::instance().addBundle(std::move(reader));
 
   // Determine the alias if provided (from moduleRemap)
   std::optional<std::string> alias;

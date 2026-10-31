@@ -721,3 +721,116 @@ TEST_F(Modules_GenericRegressions, GlobalAllocatorWithGenericVector) {
   )");
   ASSERT_NO_FATAL_FAILURE(checkProgram("consumer.sun"));
 }
+
+/** Carries implementation metadata recursively without exporting dependency names. */
+TEST_F(Modules_GenericRegressions, EmbeddedDependencyMetadata) {
+  write("backend.sun", R"(
+    /** Supplies an internal value type. */
+    public module backend {
+      /** Stores the value used by the high-level wrapper. */
+      public class Value {
+        var number: i32;
+        /** Initializes owned storage. */
+        init(number: i32) { this.number = number; }
+        /** Reads the stored number. */
+        public const method read() i32 { return this.number; }
+      }
+    }
+  )");
+  ASSERT_TRUE(run("build/sun --emit-moon -o " + (dir / "backend.moon").string() +
+                  " " + (dir / "backend.sun").string()));
+  write("middle.sun", R"(
+    /** Wraps backend storage without exposing its field. */
+    public module middle {
+      /** Owns a backend value. */
+      public class Wrapper {
+        var value: backend.Value;
+        /** Creates an internal value. */
+        init() { this.value = backend.Value(42); }
+        /** Returns the internal value's number. */
+        public const method read() i32 { return this.value.read(); }
+      }
+    }
+    manifest { libraries: ["backend.moon"] }
+  )");
+  ASSERT_TRUE(run("build/sun --emit-moon -o " + (dir / "middle.moon").string() +
+                  " " + (dir / "middle.sun").string()));
+  ASSERT_NO_FATAL_FAILURE(buildLibrary(R"(
+    /** Exposes only a high-level operation. */
+    public module lib {
+      /** Exercises a recursively embedded implementation type. */
+      public function read() i32 {
+        var wrapper = middle.Wrapper();
+        return wrapper.read();
+      }
+    }
+    manifest { libraries: ["middle.moon"] }
+  )"));
+  write("consumer.sun", R"(
+    /** Checks the high-level result. */
+    function main() i32 { return lib.read() - 42; }
+    manifest { libraries: ["lib.moon"] }
+  )");
+  // Prove that no search-path fallback can supply the implementation bundles.
+  std::filesystem::rename(dir / "backend.moon", dir / "backend.saved");
+  std::filesystem::remove(dir / "middle.moon");
+  ASSERT_NO_FATAL_FAILURE(checkProgram("consumer.sun"));
+  write("hidden.sun", R"(
+    /** Attempts to use a dependency without listing its bundle. */
+    function main() i32 {
+      var value = backend.Value(42);
+      return value.read() - 42;
+    }
+    manifest { libraries: ["lib.moon"] }
+  )");
+  ASSERT_TRUE(run("build/sun " + (dir / "hidden.sun").string(), false));
+  std::filesystem::rename(dir / "backend.saved", dir / "backend.moon");
+  write("explicit.sun", R"(
+    /** Uses the same dependency explicitly alongside the wrapper. */
+    function main() i32 {
+      var value = backend.Value(42);
+      return value.read() + lib.read() - 84;
+    }
+    manifest { libraries: ["lib.moon", "backend.moon"] }
+  )");
+  ASSERT_NO_FATAL_FAILURE(checkProgram("explicit.sun"));
+}
+
+/** Specializes carried generic bodies without locating their dependency bundle. */
+TEST_F(Modules_GenericRegressions, EmbeddedGenericDependencyMetadata) {
+  write("backend.sun", R"(
+    /** Supplies a generic implementation type. */
+    public module backend {
+      /** Supplies compiled code reached only by a future specialization. */
+      public function number() i32 { return 42; }
+      /** Owns an arbitrary caller-provided value. */
+      public class Box<T> {
+        public var value: T;
+        /** Takes ownership of the value. */
+        init(value: T) { this.value = value; }
+      }
+    }
+  )");
+  ASSERT_TRUE(run("build/sun --emit-moon -o " + (dir / "backend.moon").string() +
+                  " " + (dir / "backend.sun").string()));
+  ASSERT_NO_FATAL_FAILURE(buildLibrary(R"(
+    /** Exposes an operation with a hidden generic implementation. */
+    public module lib {
+      /** Calls a retained implementation when specialized by a consumer. */
+      public function number<T>() i32 { return backend.number(); }
+      /** Moves a value through an implementation container. */
+      public function roundtrip<T>(value: T) T {
+        var box = backend.Box<T>(value);
+        return box.value;
+      }
+    }
+    manifest { libraries: ["backend.moon"] }
+  )"));
+  std::filesystem::remove(dir / "backend.moon");
+  write("consumer.sun", R"(
+    /** Specializes the public operation using only its containing bundle. */
+    function main() i32 { return lib.roundtrip<i32>(lib.number<i32>()) - 42; }
+    manifest { libraries: ["lib.moon"] }
+  )");
+  ASSERT_NO_FATAL_FAILURE(checkProgram("consumer.sun"));
+}

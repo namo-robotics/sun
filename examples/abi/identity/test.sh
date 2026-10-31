@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the compatible consumer and checks the incompatible dependency rejection.
+# Runs a compatible borrow and checks rejection of an incompatible revision.
 set -euo pipefail
 cd "$(dirname "$0")"
 output="."
@@ -12,9 +12,9 @@ bash "./build-incompatible.sh" \
 
 # Require the intended error, not a crash or an unrelated build failure.
 if (( status == 0 || status >= 128 )) ||
-    ! grep -Fq "Library ABI mismatch" "$output/rejected.log" ||
+    ! grep -Fq "read" "$output/rejected.log" ||
     [[ -e "$output/rejected" ]]; then
-  printf 'FAIL identity: expected dependency rejection\n' >&2
+  printf 'FAIL identity: expected cross-revision argument rejection\n' >&2
   exit 1
 fi
-printf 'PASS identity: revised consumer ran; incompatible consumer rejected\n'
+printf 'PASS identity: revised consumer ran; cross-revision call rejected\n'

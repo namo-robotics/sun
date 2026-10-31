@@ -97,6 +97,9 @@ proto::LibraryAbiSnapshot describeLibraryAbiSnapshot(
   validateLibraryId(contract.library_id());
   std::map<std::string, const moon::DeclarationRecord*> records;
   for (const auto* module : modules) {
+    if (!module->content_hash().empty() && module->content_hash() != artifact) {
+      continue;
+    }
     for (const auto& record : module->declarations()) {
       records.emplace(record.key(), &record);
     }
@@ -185,6 +188,9 @@ proto::LibraryAbiSnapshot describeLibraryAbiSnapshot(
                         frame(encodeBundleContract(requirements));
   std::set<std::string> semantics;
   for (const auto* module : modules) {
+    if (!module->content_hash().empty() && module->content_hash() != artifact) {
+      continue;
+    }
     auto normalized = *module;
     // Implementation-local declarations have no place in the exported ABI.
     normalized.clear_declarations();

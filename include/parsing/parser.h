@@ -593,13 +593,13 @@ class Parser {
       const sun::moon_bundling::MoonImport& moonImport);
 
   /**
-   * Collect AST stubs from a precompiled .moon file
-   * Returns a MoonScopeAST wrapping all module stubs with content hash
-   * Returns nullptr if the moon was already imported
+   * Collect one original bundle scope from a validated container snapshot.
+   * The caller retains the reader and caches it for subsequent linking.
    */
   std::unique_ptr<sun::ast::MoonScopeAST> collectMoonImport(
       const sun::moon_bundling::MoonImport& moonImport,
-      std::unique_ptr<sun::moon_bundling::MoonReader> reader = nullptr);
+      sun::moon_bundling::MoonReader& reader,
+      const std::string& declarationBundle);
 
   /**
    * Create AST stubs from module metadata and append to collectedAST

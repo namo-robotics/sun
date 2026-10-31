@@ -880,17 +880,21 @@ TEST(ABI_Compatibility, LibraryRecordsAreValidatedBeforeImport) {
   ASSERT_NE(reader, nullptr);
   sun::moon_bundling::MoonHeader header;
   std::memcpy(&header, reader->getBytes()->data(), sizeof(header));
-  for (int invalidCase : {0, 1, 2, 3}) {
+  for (int invalidCase : {0, 1, 2, 3, 4}) {
     auto library = reader->getLibrary();
     if (invalidCase == 0) {
       *library.add_modules() = library.modules(0);
     } else if (invalidCase == 1) {
-      library.set_content_hash(std::string(64, 'b'));
+      library.set_content_hash(std::string(64, 'z'));
     } else if (invalidCase == 2) {
       library.mutable_modules(0)->set_bitcode_offset(
           header.bundleMetadataOffset);
-    } else {
+    } else if (invalidCase == 3) {
       library.clear_bundle_contract();
+    } else {
+      // A declaration must belong to its module's original artifact.
+      library.mutable_modules(0)->mutable_metadata()->add_module_declarations(
+          "$" + std::string(64, 'b') + "$_records");
     }
     const auto record = library.SerializeAsString();
     auto changed = header;
