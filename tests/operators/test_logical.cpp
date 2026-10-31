@@ -410,3 +410,34 @@ TEST(Operators_Logical, not_on_integer_is_error) {
     )"),
                                 "'not' requires a bool operand");
 }
+
+/** Drops logical RHS temporaries only when their construction was evaluated. */
+TEST(Operators_Logical, conditional_temporary_cleanup) {
+  testing::internal::CaptureStdout();
+  auto value = executeString(R"(
+    /** Emits a visible destructor marker without reading object storage. */
+    extern "C" function putchar(value: i32) i32;
+    /** Owns an observable cleanup action. */
+    class Probe {
+      var value: bool = true;
+      /** Constructs a temporary boolean probe. */
+      init() {}
+      /** Records one completed lifetime. */
+      deinit() { unsafe { putchar(100); }; }
+      /** Borrows the probe for a logical operand. */
+      public const method truth() bool { return this.value; }
+    }
+    /** Exercises both skipped and evaluated RHS operands. */
+    function main() i32 {
+      var skip_or = true or Probe().truth();
+      var skip_and = false and Probe().truth();
+      var evaluate_or = false or Probe().truth();
+      var evaluate_and = true and Probe().truth();
+      var nested = false or (true and Probe().truth());
+      return skip_or and not skip_and and evaluate_or and evaluate_and and nested ? 1 : 0;
+    }
+  )");
+  auto output = testing::internal::GetCapturedStdout();
+  EXPECT_EQ(value, 1);
+  EXPECT_EQ(output, "ddd");
+}

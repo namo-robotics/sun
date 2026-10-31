@@ -593,8 +593,12 @@ Value* CodegenVisitor::codegenLogicalOp(const BinaryExprAST& expr) {
   // Evaluate RHS. Short-circuiting makes this one arm of a branch: a move in
   // here happens only when the left side let control through.
   ctx.builder->SetInsertPoint(EvalRhsBB);
+  // RHS temporaries only exist on this branch. Drop them before merging so
+  // short-circuiting never runs destructors on uninitialized storage.
+  scopes.push();
   Value* R = codegen(*expr.getRHS());
   if (!R) {
+    scopes.pop();
     return nullptr;
   }
 
@@ -611,6 +615,8 @@ Value* CodegenVisitor::codegenLogicalOp(const BinaryExprAST& expr) {
                        expr.getLocation());
     }
   }
+
+  scopes.pop();
 
   // Branch to merge block after evaluating RHS
   ctx.builder->CreateBr(MergeBB);
