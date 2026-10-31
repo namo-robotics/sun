@@ -198,7 +198,7 @@ TEST_F(ABI_LibraryAbiSnapshot, CompatibleBorrowPreservesMutabilityAndGenericCode
       /** Reads a point through its original identity when specialized. */
       public function read<T>(point: const ref shapes.Point) i32 { return point.x; }
       /** Mutates a compatible caller-owned point. */
-      public function update(point: ref shapes.Point) { point.x = 44; }
+      public function update(point: ref shapes.Point) void { point.x = 44; }
     }
   )", {original});
   const auto newer = build("newer", shapes(43));
@@ -212,7 +212,7 @@ TEST_F(ABI_LibraryAbiSnapshot, CompatibleBorrowPreservesMutabilityAndGenericCode
   )"), 44);
   EXPECT_SUN_ERROR_WITH_MESSAGE(run({api, newer}, R"(
     /** A const borrow must not gain mutation rights across revisions. */
-    function modify(point: const ref shapes.Point) { api.update(point); }
+    function modify(point: const ref shapes.Point) void { api.update(point); }
     /** Supplies a point to the checked boundary. */
     function main() i32 { var p = shapes.Point(); modify(p); return 0; }
   )"), "update");
