@@ -115,20 +115,24 @@ On **Ubuntu/Debian**, install dependencies and build:
 ```
 
 APT repositories must provide LLVM 20 and matching libclang development packages.
-The installer uses `sudo` as needed; add `--yes` to accept prompts or `--dry-run`
-to preview changes. Its musl toolchains require an x86_64 host and support the
-default static Linux linking. Keep `/usr/local/bin` on your `PATH`.
+Requires an x86_64 host and `/usr/local/bin` on `PATH` for static musl linking.
+The installer uses `sudo` as needed; `--yes` accepts prompts and `--dry-run`
+previews changes.
 
-On **macOS**, install dependencies with Homebrew and build:
+On **Apple Silicon macOS**, install Homebrew and Xcode Command Line Tools,
+then install dependencies and build:
 
 ```bash
-brew install llvm@20 ninja ccache
+./scripts/install-macos-dependencies.sh
 ./build.sh
 ```
 
-CMake downloads and builds pinned Protobuf sources. Offline builds need
-`libprotoc-dev` and `-DSUN_BUNDLED_PROTOBUF=OFF`. CUDA, GNU cross-compilers,
-and release packaging tools require separate installation.
+Use `--dry-run` to preview installation. `build.sh` finds Homebrew dependencies
+and prepares or reuses static OpenSSL for TLS, unless `--skip-stdlib` is set.
+
+CMake builds pinned Protobuf sources; offline builds need `libprotoc-dev` and
+`-DSUN_BUNDLED_PROTOBUF=OFF`. Install CUDA, GNU cross-compilers, and release
+packaging tools separately if needed.
 
 To build and install the compiler, language server, and standard Moon bundles:
 

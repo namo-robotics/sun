@@ -132,10 +132,10 @@ TEST_F(ABI_LibraryAbiSnapshot, WarnsForIndependentCompatibleArtifacts) {
   testing::internal::CaptureStderr();
   EXPECT_NO_THROW(checker.validateImports(
       {revisedReader.get(), consumerReader.get(), otherConsumerReader.get()},
-      "main.sun"));
+      (directory / "main.sun").string()));
   EXPECT_NO_THROW(checker.validateImports(
       {otherConsumerReader.get(), consumerReader.get(), revisedReader.get()},
-      "main.sun"));
+      (directory / "main.sun").string()));
   const auto warning = testing::internal::GetCapturedStderr();
   const std::string marker =
       "Library 'example/shapes' is used through different artifacts";
@@ -149,11 +149,13 @@ TEST_F(ABI_LibraryAbiSnapshot, WarnsForIndependentCompatibleArtifacts) {
   EXPECT_NE(warning.find(
                 std::filesystem::path(otherConsumerPath).filename().string()),
             std::string::npos);
-  EXPECT_NE(warning.find("└── example/shapes [selected import]"),
+  EXPECT_NE(warning.find("└── library: example/shapes [selected]"),
             std::string::npos);
   EXPECT_NE(warning.find("bundle: revised.moon"), std::string::npos);
+  EXPECT_EQ(warning.find(directory.string()), std::string::npos);
   EXPECT_EQ(warning.find("\033["), std::string::npos);
-  EXPECT_NE(warning.find("│   └── example/shapes\n"), std::string::npos);
+  EXPECT_NE(warning.find("│   └── library: example/shapes [built against]\n"),
+            std::string::npos);
   EXPECT_NE(warning.find(originalReader->getLibrary().content_hash()),
             std::string::npos);
   EXPECT_NE(warning.find(revisedReader->getLibrary().content_hash()),
@@ -162,7 +164,7 @@ TEST_F(ABI_LibraryAbiSnapshot, WarnsForIndependentCompatibleArtifacts) {
   testing::internal::CaptureStderr();
   EXPECT_NO_THROW(checker.validateImports(
       {revisedReader.get(), consumerReader.get(), otherConsumerReader.get()},
-      "main.sun"));
+      (directory / "main.sun").string()));
   EXPECT_NE(testing::internal::GetCapturedStderr().find(marker),
             std::string::npos);
 }
@@ -199,16 +201,19 @@ TEST_F(ABI_LibraryAbiSnapshot, ShowsConflictingArtifactsAndDependencyTree) {
       std::swap(imports[0], imports[1]);
     }
     try {
-      checker.validateImports(imports, "main.sun");
+      checker.validateImports(imports, (directory / "main.sun").string());
       FAIL() << "Expected an ABI mismatch";
     } catch (const sun::support::SunError& error) {
       const std::string message = error.what();
       EXPECT_NE(message.find("Library ABI mismatch for 'example/shapes'"),
                 std::string::npos);
       EXPECT_NE(message.find("\n  main.sun\n"), std::string::npos);
-      EXPECT_NE(message.find("├── reader.moon\n"), std::string::npos);
-      EXPECT_NE(message.find("│   └── example/shapes\n"), std::string::npos);
-      EXPECT_NE(message.find("└── example/shapes [selected import]\n"),
+      EXPECT_NE(message.find("├── reader.moon [imported bundle]\n"),
+                std::string::npos);
+      EXPECT_NE(
+          message.find("│   └── library: example/shapes [built against]\n"),
+          std::string::npos);
+      EXPECT_NE(message.find("└── library: example/shapes [selected]\n"),
                 std::string::npos);
       EXPECT_NE(message.find("artifact: " +
                              originalReader->getLibrary().content_hash()),
@@ -217,6 +222,7 @@ TEST_F(ABI_LibraryAbiSnapshot, ShowsConflictingArtifactsAndDependencyTree) {
                              changedReader->getLibrary().content_hash()),
                 std::string::npos);
       EXPECT_NE(message.find("bundle: changed.moon"), std::string::npos);
+      EXPECT_EQ(message.find(directory.string()), std::string::npos);
       EXPECT_EQ(message.find("\033["), std::string::npos);
     }
   }

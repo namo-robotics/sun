@@ -20,9 +20,9 @@ struct TerminalTreeNode {
 };
 
 /** Links an existing file with a solid yellow underline and unchanged text
- * color. VS Code receives a visible absolute path; other terminals receive an
- * OSC link. Missing files, filesystem errors, and disabled formatting use a
- * plain basename.
+ * color. The visible label is always a basename; an OSC link retains the full
+ * path. Missing files, filesystem errors, and disabled formatting use a plain
+ * basename.
  */
 std::string terminalFileLabel(const std::filesystem::path& path,
                               llvm::raw_ostream& stream);

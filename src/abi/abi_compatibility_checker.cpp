@@ -55,14 +55,16 @@ std::string artifactDependencyTree(
       {},
       {}};
   for (const auto& path : embeddedPaths) {
-    root.children.push_back({sun::support::terminalFileLabel(path, stream),
+    root.children.push_back({sun::support::terminalFileLabel(path, stream) +
+                                 " [imported bundle]",
                              {},
-                             {{required.library_id(),
+                             {{"library: " + required.library_id() +
+                                   " [built against]",
                                {"artifact: " + required.artifact_hash()},
                                {}}}});
   }
   sun::support::TerminalTreeNode selectedNode{
-      selected.library_id() + " [selected import]",
+      "library: " + selected.library_id() + " [selected]",
       {"artifact: " + selected.artifact_hash()},
       {}};
   std::set<std::string> selectedPaths;

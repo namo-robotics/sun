@@ -113,8 +113,7 @@ TEST(Tooling_Cli_Terminal, tree_colors_only_connectors) {
   EXPECT_EQ(sun::support::terminalTree(root, stream), "root\n└── leaf");
 }
 
-/** File links encode special bytes and retain plain fallbacks and VS Code
- * paths. */
+/** File links keep short labels in every terminal and encode target paths. */
 TEST_F(TerminalFileFixture, links_preserve_paths_and_terminal_preferences) {
   ScopedEnvironment term("TERM", "xterm");
   ScopedEnvironment noColor("NO_COLOR", nullptr);
@@ -137,8 +136,7 @@ TEST_F(TerminalFileFixture, links_preserve_paths_and_terminal_preferences) {
             "terminal_format");
   {
     ScopedEnvironment vscode("TERM_PROGRAM", "vscode");
-    EXPECT_EQ(sun::support::terminalFileLabel(file, stream),
-              "\033[4:1;58;5;3m" + file.string() + "\033[24;59m");
+    EXPECT_EQ(sun::support::terminalFileLabel(file, stream), link);
   }
   {
     ScopedEnvironment disabled("NO_COLOR", "1");
