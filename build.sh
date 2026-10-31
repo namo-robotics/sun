@@ -3,6 +3,8 @@
 # Build Sun, optionally installing or removing its host binaries and bundles.
 
 set -euo pipefail
+# Match CI's ccache support for precompiled headers, preserving user overrides.
+export CCACHE_SLOPPINESS="${CCACHE_SLOPPINESS:-pch_defines,time_macros}"
 DIR=$(dirname "$0")
 cd "$DIR"
 
