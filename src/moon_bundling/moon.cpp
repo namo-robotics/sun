@@ -415,11 +415,8 @@ std::unique_ptr<MoonReader> MoonReader::open(
         malformed();
       }
     }
-    for (const auto& record : metadata.declarations()) {
-      if (!record.key().starts_with(ownerPrefix)) {
-        malformed();
-      }
-    }
+    // Derived declarations use generated keys. Their ownership is checked by
+    // declaration-graph validation, rather than the module-root prefix rule.
     ModuleIndexEntry entry{metadata.source_hash(), module.bitcode_offset(),
                            module.bitcode_size()};
     region(entry.bitcodeOffset, entry.bitcodeSize, true);
