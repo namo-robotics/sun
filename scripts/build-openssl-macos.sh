@@ -64,7 +64,10 @@ log "configuring for darwin64-arm64-cc"
     no-shared no-tests no-comp no-zlib no-zstd no-brotli \
     no-module no-dso no-engine no-legacy \
     --prefix=/usr/local --openssldir=/etc/ssl
-make -j"$(sysctl -n hw.ncpu)" build_libs
+BUILD_CORES=$(sysctl -n hw.ncpu)
+BUILD_JOBS=$((BUILD_CORES / 2))
+((BUILD_JOBS > 0)) || BUILD_JOBS=1
+make -j"$BUILD_JOBS" build_libs
 
 # A reference to a library we do not ship would make every link fail with
 # undefined symbols, so check before installing rather than at link time.

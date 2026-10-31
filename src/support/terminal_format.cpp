@@ -17,13 +17,6 @@ std::string terminalFileLabel(const std::filesystem::path& path,
   if (error) {
     return label;
   }
-  // VS Code resolves visible file paths in its editor, including remote
-  // workspaces.
-  const char* terminal = std::getenv("TERM_PROGRAM");
-  if (terminal && std::string_view(terminal) == "vscode") {
-    return "\033[4:1;58;5;3m" + absolute.lexically_normal().string() +
-           "\033[24;59m";
-  }
   std::string uri = "file://";
   constexpr char hex[] = "0123456789ABCDEF";
   for (const unsigned char byte :

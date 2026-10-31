@@ -424,6 +424,39 @@ TEST(ABI_Compatibility, TargetProfilesDistinguishPlatformABI) {
                sun::support::SunError);
 }
 
+/** macOS version spellings share an ABI without rewriting stored contracts. */
+TEST(ABI_Compatibility, MacOSTargetVersionsValidateAndMerge) {
+  llvm::LLVMContext context;
+  llvm::Module module("macos", context);
+  module.setTargetTriple("arm64-apple-darwin");
+  module.setDataLayout(
+      sun::abi::compatibilityTarget(module.getTargetTriple()).data_layout());
+  const auto original = sun::abi::describeContract(module);
+  sun::abi::AbiCompatibilityChecker checker;
+  for (const auto* triple : {"arm64-apple-darwin23.6.0",
+                             "aarch64-apple-macosx14.0.0"}) {
+    EXPECT_NO_THROW(checker.validateContract(original, "macos.moon", triple));
+    module.setTargetTriple(triple);
+    auto versioned = sun::abi::describeContract(module);
+    EXPECT_NO_THROW(checker.validateContract(versioned, "macos.moon",
+                                            "arm64-apple-darwin"));
+    auto merged = original;
+    EXPECT_NO_THROW(sun::abi::mergeContractRequirements(merged, versioned));
+    EXPECT_EQ(merged.target().platform_abi(), original.target().platform_abi());
+  }
+  for (const auto* triple : {"x86_64-apple-darwin", "aarch64-apple-ios14.0",
+                             "aarch64-linux-gnu"}) {
+    EXPECT_THROW(checker.validateContract(original, "macos.moon", triple),
+                 sun::support::SunError);
+  }
+  auto different = original.target();
+  different.set_platform_abi("darwin:simulator");
+  EXPECT_FALSE(sun::abi::compatibleTargetProfiles(original.target(), different));
+  different = original.target();
+  different.set_data_layout("different");
+  EXPECT_FALSE(sun::abi::compatibleTargetProfiles(original.target(), different));
+}
+
 /** Bundle metadata owns the contract and shared code regions validate once. */
 TEST(ABI_Compatibility, MultiModuleRoundTripHasOneContract) {
   sun::abi::AbiCompatibilityChecker::current().beginCompilation(

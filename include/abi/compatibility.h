@@ -36,6 +36,11 @@ const std::string& compatibilityImplementation();
 const std::string& runtimeFingerprint();
 /** Constructs effective target properties from the target machine. */
 TargetProfile compatibilityTarget(const std::string& triple);
+/** Compares machine ABIs, accepting macOS OS-version spellings and ignoring
+ * CPU features, which are checked separately. Serialized profiles stay intact.
+ */
+bool compatibleTargetProfiles(const TargetProfile& left,
+                              const TargetProfile& right);
 /** Describes emitted layouts, signatures and call sites without function
  * bodies. */
 std::vector<std::string> describeBoundaries(const llvm::Module& module);

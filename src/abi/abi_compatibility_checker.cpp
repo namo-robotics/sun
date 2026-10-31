@@ -55,14 +55,16 @@ std::string artifactDependencyTree(
       {},
       {}};
   for (const auto& path : embeddedPaths) {
-    root.children.push_back({sun::support::terminalFileLabel(path, stream),
+    root.children.push_back({sun::support::terminalFileLabel(path, stream) +
+                                 " [imported bundle]",
                              {},
-                             {{required.library_id(),
+                             {{"library: " + required.library_id() +
+                                   " [built against]",
                                {"artifact: " + required.artifact_hash()},
                                {}}}});
   }
   sun::support::TerminalTreeNode selectedNode{
-      selected.library_id() + " [selected import]",
+      "library: " + selected.library_id() + " [selected]",
       {"artifact: " + selected.artifact_hash()},
       {}};
   std::set<std::string> selectedPaths;
@@ -186,12 +188,12 @@ void AbiCompatibilityChecker::validateImports(
       metadata.push_back(reader->getMetadata(key));
     }
   }
-  std::map<std::string, std::map<std::string, const proto::LibraryAbiSnapshot*>>
+  std::map<std::string, std::map<std::string, moon_bundling::MoonReader*>>
       candidates;
   std::set<std::string> exactArtifacts;
   std::map<std::string, std::string> aliases;
   std::map<std::pair<std::string, std::string>, std::string> artifactWarnings;
-  for (const auto* reader : readers) {
+  for (auto* reader : readers) {
     const auto& library = reader->getLibrary();
     exactArtifacts.insert(library.content_hash());
     const auto& contract = library.bundle_contract();
@@ -200,7 +202,7 @@ void AbiCompatibilityChecker::validateImports(
     }
     const auto& revision = contract.library_abi();
     candidates[revision.library_id()].emplace(revision.artifact_hash(),
-                                              &revision);
+                                              reader);
   }
   for (const auto* reader : readers) {
     for (const auto& required :
@@ -216,8 +218,20 @@ void AbiCompatibilityChecker::validateImports(
         sun::support::logAndThrowError("Ambiguous library revisions for '" +
                                        required.library_id() + "'");
       }
-      const auto& candidate = *found->second.begin()->second;
-      if (required.abi_hash() != candidate.abi_hash()) {
+      auto* candidateReader = found->second.begin()->second;
+      const auto& selectedContract = candidateReader->getLibrary().bundle_contract();
+      const auto& candidate = selectedContract.library_abi();
+      bool matches = required.abi_hash() == candidate.abi_hash();
+      if (!matches) {
+        std::vector<const moon::ModuleMetadata*> selectedModules;
+        for (const auto& key : candidateReader->listModules()) {
+          selectedModules.push_back(candidateReader->getMetadata(key));
+        }
+        matches = matchesLibraryAbiSnapshot(
+            required, selectedContract, candidate.artifact_hash(), selectedModules,
+            reader->getLibrary().bundle_contract());
+      }
+      if (!matches) {
         sun::support::logAndThrowError("Library ABI mismatch for '" +
                                        required.library_id() +
                                        "': selected artifact changes the "
@@ -464,15 +478,12 @@ void AbiCompatibilityChecker::validateContract(
   if (hashBundleContract(contract) != contract.compatibility_hash()) {
     fail("contract description does not match its hash");
   }
-  auto expected = compatibilityTarget(targetTriple);
-  auto actual = contract.target();
-  actual.clear_cpu_features();
-  if (expected.architecture() != actual.architecture() ||
-      expected.platform_abi() != actual.platform_abi() ||
-      expected.data_layout() != actual.data_layout() ||
-      expected.pointer_bits() != actual.pointer_bits() ||
-      expected.little_endian() != actual.little_endian()) {
-    fail("incompatible target profile for current target '" + targetTriple +
+  const auto resolvedTarget = targetTriple.empty()
+                                  ? llvm::sys::getDefaultTargetTriple()
+                                  : targetTriple;
+  auto expected = compatibilityTarget(resolvedTarget);
+  if (!compatibleTargetProfiles(expected, contract.target())) {
+    fail("incompatible target profile for current target '" + resolvedTarget +
          "'");
   }
   // Native code is emitted for the generic destination CPU. Only JIT
@@ -515,7 +526,6 @@ void AbiCompatibilityChecker::validateContract(
     if (!availableFeatures.lookup(feature)) {
       fail("unsupported CPU feature '" + feature + "' for selected target");
     }
-    expected.add_cpu_features(feature);
   }
   BundleContract derived;
   derived.set_encoding_schema(1);
@@ -523,7 +533,8 @@ void AbiCompatibilityChecker::validateContract(
     derived.set_library_id(contract.library_id());
   }
   derived.set_experimental(true);
-  *derived.mutable_target() = expected;
+  // Preserve the validated producer spelling when checking its contract hash.
+  *derived.mutable_target() = contract.target();
   const auto supportedImplementations = supportedRules();
   std::set<std::string> seen;
   for (const auto& rule : contract.requirements()) {

@@ -3,6 +3,8 @@
 # Build Sun, optionally installing or removing its host binaries and bundles.
 
 set -euo pipefail
+# Match CI's ccache support for precompiled headers, preserving user overrides.
+export CCACHE_SLOPPINESS="${CCACHE_SLOPPINESS:-pch_defines,time_macros}"
 DIR=$(dirname "$0")
 cd "$DIR"
 
@@ -44,6 +46,11 @@ if [[ "$UNINSTALL" == true ]]; then
     exec bash scripts/install-build.sh uninstall "$INSTALL_PREFIX"
 fi
 
+# TLS bundles and tests require the pinned static archives before compilation.
+if [[ "$SKIP_STDLIB" == OFF && "$(uname -s)" == Darwin ]]; then
+    bash scripts/build-openssl-macos.sh
+fi
+
 mkdir -p build
 cd build
 
@@ -63,12 +70,16 @@ if [[ -f CMakeCache.txt ]]; then
     CACHED_SKIP_STDLIB=$(grep "^SKIP_STDLIB:" CMakeCache.txt 2>/dev/null | cut -d= -f2 || echo "")
 fi
 
-# On a Mac, point CMake at Homebrew's LLVM (Apple ships no LLVMConfig.cmake)
+# Locate Homebrew dependencies that macOS does not expose to CMake by default.
 EXTRA_CMAKE_ARGS=()
 if [[ "$(uname -s)" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
     LLVM_PREFIX=$(brew --prefix llvm@20 2>/dev/null || brew --prefix llvm 2>/dev/null || true)
     if [[ -n "$LLVM_PREFIX" ]]; then
         EXTRA_CMAKE_ARGS+=("-DLLVM_DIR=$LLVM_PREFIX/lib/cmake/llvm")
+    fi
+    LIBARCHIVE_PREFIX=$(brew --prefix libarchive 2>/dev/null || true)
+    if [[ -n "$LIBARCHIVE_PREFIX" ]]; then
+        EXTRA_CMAKE_ARGS+=("-DLibArchive_ROOT=$LIBARCHIVE_PREFIX")
     fi
 fi
 
