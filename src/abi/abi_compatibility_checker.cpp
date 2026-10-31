@@ -171,7 +171,7 @@ void AbiCompatibilityChecker::collectCompatibleRevisions(
   for (const auto* retaining : readers) {
     for (const auto& required :
          retaining->getLibrary().bundle_contract().dependency_abis()) {
-      for (const auto* candidate : readers) {
+      for (auto* candidate : readers) {
         const auto& contract = candidate->getLibrary().bundle_contract();
         if (!contract.has_library_abi() ||
             contract.library_id() != required.library_id()) {
