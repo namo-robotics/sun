@@ -8,6 +8,7 @@
 
 #include "abi/nominal_identity.h"
 #include "abi/semantic_requirements.h"
+#include "abi/support_inventory.h"
 #include "moon_bundling/moon.h"
 #include "support/error.h"
 
@@ -198,5 +199,28 @@ proto::LibraryAbiSnapshot describeLibraryAbiSnapshot(
   }
   revision.set_abi_hash(moon_bundling::computeSha256Hex(encoded));
   return revision;
+}
+bool matchesLibraryAbiSnapshot(
+    const proto::LibraryAbiSnapshot& required, const BundleContract& selected,
+    const std::string& artifact,
+    const std::vector<const moon::ModuleMetadata*>& modules,
+    const BundleContract& retaining) {
+  if (required.library_id() != selected.library_id() ||
+      !compatibleTargetProfiles(selected.target(), retaining.target())) {
+    return false;
+  }
+  auto comparable = selected;
+  comparable.mutable_target()->set_platform_abi(retaining.target().platform_abi());
+  for (auto& rule : *comparable.mutable_requirements()) {
+    for (const auto& inherited : retaining.requirements()) {
+      if (rule.name() == inherited.name() &&
+          compatibleRuleImplementations(rule.name(), rule.implementation(),
+                                        inherited.implementation())) {
+        rule.set_implementation(inherited.implementation());
+      }
+    }
+  }
+  return describeLibraryAbiSnapshot(comparable, artifact, modules).abi_hash() ==
+         required.abi_hash();
 }
 }  // namespace sun::abi

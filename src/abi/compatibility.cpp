@@ -288,6 +288,24 @@ TargetProfile compatibilityTarget(const std::string& requested) {
   return profile;
 }
 
+bool compatibleTargetProfiles(const TargetProfile& left,
+                              const TargetProfile& right) {
+  /** Normalizes only macOS OS names, preserving the explicit environment. */
+  const auto platform = [](const std::string& abi) {
+    const auto separator = abi.find(':');
+    if (separator == std::string::npos) {
+      return abi;
+    }
+    const llvm::Triple triple("aarch64-apple-" + abi.substr(0, separator));
+    return triple.isMacOSX() ? "macos" + abi.substr(separator) : abi;
+  };
+  return left.architecture() == right.architecture() &&
+         platform(left.platform_abi()) == platform(right.platform_abi()) &&
+         left.data_layout() == right.data_layout() &&
+         left.pointer_bits() == right.pointer_bits() &&
+         left.little_endian() == right.little_endian();
+}
+
 std::vector<std::string> describeBoundaries(const llvm::Module& module) {
   std::set<std::string> records;
   const auto& layout = module.getDataLayout();
@@ -391,11 +409,7 @@ BundleContract describeContract(const llvm::Module& module) {
 
 void mergeContractRequirements(BundleContract& destination,
                                const BundleContract& inherited) {
-  auto left = destination.target();
-  auto right = inherited.target();
-  left.clear_cpu_features();
-  right.clear_cpu_features();
-  if (encodeTarget(left) != encodeTarget(right)) {
+  if (!compatibleTargetProfiles(destination.target(), inherited.target())) {
     sun::support::logAndThrowError(
         "Conflicting embedded bundle target requirements");
   }

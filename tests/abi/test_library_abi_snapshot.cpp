@@ -100,6 +100,55 @@ TEST_F(ABI_LibraryAbiSnapshot, AcceptsImplementationChangeInBothImportOrders) {
   EXPECT_NE(a.declarations(0).key(), b.declarations(0).key());
 }
 
+/** Legacy hashes tolerate advisory differences but retain semantic requirements. */
+TEST_F(ABI_LibraryAbiSnapshot, MatchesLegacyHashesWithoutWeakeningDeclarations) {
+  const auto original = build("original", shapes(42));
+  const auto changed = build("changed", shapes(43, "example/shapes", true));
+  auto originalReader = sun::moon_bundling::MoonReader::open(original);
+  auto changedReader = sun::moon_bundling::MoonReader::open(changed);
+  ASSERT_TRUE(originalReader && changedReader);
+  std::vector<const sun::moon::ModuleMetadata*> modules;
+  for (const auto& key : originalReader->listModules()) {
+    modules.push_back(originalReader->getMetadata(key));
+  }
+  auto selected = originalReader->getLibrary().bundle_contract();
+  *selected.mutable_target() = sun::abi::compatibilityTarget("arm64-apple-darwin");
+  auto retaining = selected;
+  retaining.mutable_target()->set_platform_abi("darwin25.6.0:");
+  for (auto& rule : *retaining.mutable_requirements()) {
+    if (rule.name() == "sun.experimental.semantics") {
+      rule.set_implementation(std::string(64, 'a'));
+    }
+  }
+  const auto artifact = originalReader->getLibrary().content_hash();
+  const auto required = sun::abi::describeLibraryAbiSnapshot(
+      retaining, artifact, modules);
+  EXPECT_NE(required.abi_hash(), sun::abi::describeLibraryAbiSnapshot(
+                                     selected, artifact, modules).abi_hash());
+  EXPECT_TRUE(sun::abi::matchesLibraryAbiSnapshot(
+      required, selected, artifact, modules, retaining));
+
+  std::vector<const sun::moon::ModuleMetadata*> changedModules;
+  for (const auto& key : changedReader->listModules()) {
+    changedModules.push_back(changedReader->getMetadata(key));
+  }
+  EXPECT_FALSE(sun::abi::matchesLibraryAbiSnapshot(
+      required, selected, changedReader->getLibrary().content_hash(),
+      changedModules, retaining));
+  auto incompatible = selected;
+  incompatible.mutable_target()->add_cpu_features("neon");
+  EXPECT_FALSE(sun::abi::matchesLibraryAbiSnapshot(
+      required, incompatible, artifact, modules, retaining));
+  incompatible = selected;
+  for (auto& rule : *incompatible.mutable_requirements()) {
+    if (rule.name() == "moon.interface") {
+      rule.set_implementation("unsupported-interface");
+    }
+  }
+  EXPECT_FALSE(sun::abi::matchesLibraryAbiSnapshot(
+      required, incompatible, artifact, modules, retaining));
+}
+
 /** Compatible artifacts warn once per compilation and exact imports stay quiet.
  */
 TEST_F(ABI_LibraryAbiSnapshot, WarnsForIndependentCompatibleArtifacts) {

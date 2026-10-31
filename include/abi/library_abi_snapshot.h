@@ -16,6 +16,15 @@ namespace sun::abi {
 proto::LibraryAbiSnapshot describeLibraryAbiSnapshot(
     const BundleContract& contract, const std::string& artifact,
     const std::vector<const moon::ModuleMetadata*>& modules);
+/** Checks a legacy ABI hash using a retaining bundle's compatible target spelling
+ * and advisory rule identities. Selected metadata and both contracts must have
+ * passed validation. Declarations, CPU features, and strict rules stay unchanged.
+ */
+bool matchesLibraryAbiSnapshot(
+    const proto::LibraryAbiSnapshot& required, const BundleContract& selected,
+    const std::string& artifact,
+    const std::vector<const moon::ModuleMetadata*>& modules,
+    const BundleContract& retaining);
 /** Canonically encodes a dependency requirement, including its exact keys. */
 std::string encodeLibraryAbiSnapshot(const proto::LibraryAbiSnapshot& revision);
 /** Rewrites only declaration references in a temporary validation copy.
