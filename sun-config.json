@@ -1,17 +1,11 @@
 {
   "root": true,
   "sun_fmt": {
-    "ignore": ["/build/", "/third_party/", "/tmp/"]
-  },
-  "sun_path": {
-    "target": {
-      "x86_64-linux-gnu": ["build"],
-      "x86_64-linux-musl": ["build/x86_64-linux-musl"],
-      "arm64-apple-darwin": ["build"],
-      "x86_64-apple-darwin": ["build/x86_64-apple-darwin"],
-      "aarch64-linux-gnu": ["build/aarch64-linux-gnu"],
-      "aarch64-linux-musl": ["build/aarch64-linux-musl"]
-    }
+    "ignore": [
+      "/build/",
+      "/third_party/",
+      "/tmp/"
+    ]
   },
   "path_variables": {
     "SUN_DARWIN_PROCESS_BINDINGS": {
@@ -51,26 +45,27 @@
     {
       "path": "stdlib/stdlib.sun",
       "type": "library",
-      "output_name": "$SUN_BUILD_DIR/stdlib",
-      "test_binary_name": "$SUN_BUILD_DIR/stdlib_tests_test"
+      "name": "stdlib",
+      "export": true
     },
     {
       "path": "tls/tls.sun",
       "type": "library",
-      "output_name": "$SUN_BUILD_DIR/tls",
-      "test_binary_name": "$SUN_BUILD_DIR/tls_tests_test"
+      "name": "tls",
+      "export": true
     },
     {
       "path": "cuda/cuda.sun",
       "type": "library",
-      "output_name": "$SUN_BUILD_DIR/cuda",
       "enabled": {
         "default": false,
         "target": {
           "x86_64-linux-gnu": false,
           "aarch64-linux-gnu": false
         }
-      }
+      },
+      "name": "cuda",
+      "export": true
     }
   ],
   "c_bindings": {
@@ -79,18 +74,31 @@
         "arm64-apple-darwin": {
           "header": "$SDKROOT/usr/include/sys/proc_info.h",
           "output": "$SUN_DARWIN_PROCESS_BINDINGS",
-          "allow": ["proc_bsdinfo", "proc_taskinfo"],
-          "clang_args": ["-isysroot", "$SDKROOT"],
+          "allow": [
+            "proc_bsdinfo",
+            "proc_taskinfo"
+          ],
+          "clang_args": [
+            "-isysroot",
+            "$SDKROOT"
+          ],
           "skip_if_unavailable": true
         },
         "x86_64-apple-darwin": {
           "header": "$SDKROOT/usr/include/sys/proc_info.h",
           "output": "$SUN_DARWIN_PROCESS_BINDINGS",
-          "allow": ["proc_bsdinfo", "proc_taskinfo"],
-          "clang_args": ["-isysroot", "$SDKROOT"],
+          "allow": [
+            "proc_bsdinfo",
+            "proc_taskinfo"
+          ],
+          "clang_args": [
+            "-isysroot",
+            "$SDKROOT"
+          ],
           "skip_if_unavailable": true
         }
       }
     }
-  }
+  },
+  "package_id": "namo-robotics/sun"
 }

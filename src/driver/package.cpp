@@ -4,6 +4,7 @@
 #include <archive.h>
 #include <archive_entry.h>
 #include <fcntl.h>
+#include <llvm/Object/ObjectFile.h>
 #include <llvm/Support/JSON.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/raw_ostream.h>
@@ -18,6 +19,7 @@
 #include <memory>
 #include <set>
 
+#include "driver/build_graph.h"
 #include "driver/git_source.h"
 #include "driver/manifest_processor.h"
 #include "moon_bundling/moon.h"
@@ -240,6 +242,7 @@ void extract(const fs::path& input, const fs::path& output) {
 
 /** Validates metadata and every payload against a freshly extracted archive. */
 void validatePackage(const fs::path& root, const std::string& target) {
+  noLinks(root / "package.json");
   auto parsed = llvm::json::parse(read(root / "package.json"));
   if (!parsed) {
     fail("invalid package.json: " + llvm::toString(parsed.takeError()));
@@ -266,6 +269,7 @@ void validatePackage(const fs::path& root, const std::string& target) {
       fail("duplicate or reserved inventory path");
     }
     const auto path = root / name;
+    noLinks(path);
     if (!fs::is_regular_file(path) ||
         packageFileHash(path) != *file->getString("hash") ||
         executable(path) != *file->getBoolean("executable")) {
@@ -380,7 +384,8 @@ void addFile(Inventory& files, const fs::path& source,
 /** Writes a stable JSON document used as both inventory and packaging
  * fingerprint. */
 std::string metadata(const PackagePlan& plan, const std::string& target,
-                     const Inventory& files, llvm::json::Array artifacts) {
+                     const Inventory& files, llvm::json::Array artifacts,
+                     const std::string& packageId) {
   llvm::json::Array inventory;
   for (const auto& [path, file] : files) {
     inventory.push_back(llvm::json::Object{
@@ -389,6 +394,7 @@ std::string metadata(const PackagePlan& plan, const std::string& target,
   llvm::json::Value value(
       llvm::json::Object{{"format_version", 1},
                          {"name", plan.name},
+                         {"package_id", packageId},
                          {"target", configTargetKey(target)},
                          {"artifacts", std::move(artifacts)},
                          {"files", std::move(inventory)}});
@@ -451,8 +457,71 @@ std::string packageFileHash(const fs::path& path) {
 }
 
 fs::path resolveConfigDependency(const SunConfig& config,
-                                 const std::string& name) {
-  const auto& dep = config.dependencies.at(name);
+                                 const std::string& name,
+                                 const std::string& relativePath) {
+  const auto found = config.dependencies.find(name);
+  if (found == config.dependencies.end()) {
+    fail("dependency " + name + " is unavailable for " + config.targetTriple);
+  }
+  const auto& dep = found->second;
+  if (!relativePath.empty() && dep.selections.size() > 1) {
+    std::vector<ConfigDependency> matching;
+    for (const auto& selection : dep.selections) {
+      const auto artifact =
+          std::string(selection.binary.empty() ? "/lib/" : "/bin/") +
+          selection.filename;
+      if (relativePath == artifact) {
+        matching.push_back(selection);
+      }
+    }
+    if (!matching.empty()) {
+      auto selected = config;
+      selected.dependencies[name].selections = std::move(matching);
+      return resolveConfigDependency(selected, name);
+    }
+  }
+  if (!dep.selections.empty()) {
+    if (auto local = resolveLocalDependency(config, name)) {
+      return *local;
+    }
+    std::vector<fs::path> roots;
+    std::string fingerprint;
+    for (const auto& selection : dep.selections) {
+      auto single = config;
+      single.dependencies[name] = selection;
+      auto root = resolveConfigDependency(single, name);
+      roots.push_back(root);
+      fingerprint += root.string() + "\n";
+    }
+    if (dep.selections.size() == 1) {
+      return roots.front();
+    }
+    const auto digest = sun::moon_bundling::computeSha256Hex(fingerprint);
+    const auto parent = roots.front().parent_path() / "views";
+    fs::create_directories(parent);
+    FileLock lock(parent / ".lock");
+    Temporary tmp(parent);
+    auto stage = tmp.path / "contents";
+    fs::create_directory(stage);
+    for (const auto& root : roots) {
+      for (const auto& item : fs::recursive_directory_iterator(root)) {
+        if (!item.is_regular_file()) {
+          continue;
+        }
+        auto destination = stage / item.path().lexically_relative(root);
+        if (fs::exists(destination)) {
+          fail("dependency output collision: " + destination.string());
+        }
+        fs::create_directories(destination.parent_path());
+        fs::copy_file(item.path(), destination);
+      }
+    }
+    auto dest = parent / digest;
+    if (!sameTree(stage, dest)) {
+      publishDirectory(stage, dest, tmp.path / "previous");
+    }
+    return dest;
+  }
   if (!dep.available) {
     fail("dependency " + name + " is unavailable for " + config.targetTriple);
   }
@@ -478,11 +547,23 @@ fs::path resolveConfigDependency(const SunConfig& config,
         dep.url, dep.hash, cache / ".downloads" / dep.hash);
   }
   noLinks(input);
+  if (dep.package && fs::is_directory(input)) {
+    validatePackage(input, config.targetTriple);
+    if (!dep.hash.empty() &&
+        packageFileHash(input / "package.json") != dep.hash) {
+      fail("package inventory hash mismatch: " + name);
+    }
+    return fs::canonical(input);
+  }
   const auto hash = packageFileHash(input);
   if (!dep.hash.empty() && hash != dep.hash) {
     fail("hash mismatch for dependency " + name);
   }
-  const auto dest = parent / hash;
+  const auto selector =
+      dep.package
+          ? std::string("package")
+          : (dep.binary.empty() ? "library-" : "binary-") + dep.filename;
+  const auto dest = parent / (hash + "-" + selector);
   Temporary tmp(parent);
   const auto stage = tmp.path / "contents";
   fs::create_directory(stage);
@@ -490,10 +571,41 @@ fs::path resolveConfigDependency(const SunConfig& config,
     extract(input, stage);
     validatePackage(stage, config.targetTriple);
   } else {
-    fs::copy_file(input, stage / dep.filename);
-    permissions(stage / dep.filename, false);
-    if (packageFileHash(stage / dep.filename) != hash) {
+    const bool binary = !dep.binary.empty();
+    const auto destination = stage / (binary ? "bin" : "lib") / dep.filename;
+    fs::create_directories(destination.parent_path());
+    fs::copy_file(input, destination);
+    permissions(destination, binary);
+    if (packageFileHash(destination) != hash) {
       fail("dependency changed while copying " + name);
+    }
+    if (binary) {
+      auto object =
+          llvm::object::ObjectFile::createObjectFile(destination.string());
+      if (!object) {
+        fail("invalid binary dependency: " +
+             llvm::toString(object.takeError()));
+      }
+      const auto target =
+          sun::support::resolvedTargetTriple(config.targetTriple);
+      const auto* executable = object->getBinary();
+      if (executable->isRelocatableObject() ||
+          executable->getArch() != target.getArch() ||
+          (target.isOSDarwin() && !executable->isMachO()) ||
+          (target.isOSLinux() && !executable->isELF()) ||
+          (target.isOSWindows() && !executable->isCOFF())) {
+        fail("binary dependency does not match target " + config.targetTriple);
+      }
+    } else {
+      auto reader = sun::moon_bundling::MoonReader::open(destination);
+      if (!reader ||
+          reader->getLibrary().bundle_contract().library_id() != dep.library) {
+        fail("library identity does not match " + dep.library);
+      }
+      if (configTargetKey(reader->getTargetTriple()) !=
+          configTargetKey(config.targetTriple)) {
+        fail("library target does not match " + config.targetTriple);
+      }
     }
   }
   if (packageFileHash(input) != hash) {
@@ -509,9 +621,9 @@ std::vector<PackagePlan> planPackages(
     const SunConfig& config, const std::vector<PackageArtifact>& artifacts) {
   std::vector<PackagePlan> result;
   std::map<std::string, size_t> activeEntries;
-  for (size_t i = 0; i < config.entrypoints.size(); ++i) {
-    if (!config.entrypoints[i].name.empty()) {
-      activeEntries.emplace(config.entrypoints[i].name, i);
+  for (size_t i = 0; i < artifacts.size(); ++i) {
+    if (!artifacts[i].name.empty()) {
+      activeEntries.emplace(artifacts[i].name, i);
     }
   }
   for (const auto& pkg : config.packages) {
@@ -581,7 +693,7 @@ std::vector<PackagePlan> planPackages(
 }
 
 void buildPackages(const SunConfig& config,
-                   const std::vector<PackagePlan>& plans) {
+                   const std::vector<PackagePlan>& plans, bool archive) {
   const bool windows =
       sun::support::resolvedTargetTriple(config.targetTriple).isOSWindows();
   for (const auto& plan : plans) {
@@ -621,8 +733,8 @@ void buildPackages(const SunConfig& config,
         addFile(files, source, resource.destination);
       }
     }
-    const auto description =
-        metadata(plan, config.targetTriple, files, std::move(artifacts));
+    const auto description = metadata(plan, config.targetTriple, files,
+                                      std::move(artifacts), config.packageId);
     Temporary tmp(plan.output.parent_path());
     auto stage = tmp.path / "contents";
     fs::create_directory(stage);
@@ -636,6 +748,12 @@ void buildPackages(const SunConfig& config,
     }
     write(stage / "package.json", description);
     permissions(stage / "package.json", false);
+    if (!archive) {
+      if (!sameTree(stage, plan.output)) {
+        publishDirectory(stage, plan.output, tmp.path / "previous");
+      }
+      continue;
+    }
     const auto archivePath = fs::path(plan.output.string() + ".tar.gz");
     bool unchanged = sameTree(stage, plan.output);
     if (unchanged && fs::is_regular_file(archivePath) &&

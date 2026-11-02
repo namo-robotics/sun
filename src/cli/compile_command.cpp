@@ -136,6 +136,9 @@ std::string computeJobInputHash(const CompileJob& job, bool forTests) {
   for (const auto& path : link.searchPaths) {
     inputs.settings.emplace_back("library-path", path);
   }
+  for (const auto& argument : link.arguments) {
+    inputs.settings.emplace_back("link-argument", argument);
+  }
   inputs.settings.emplace_back("sysroot", link.sysroot);
   inputs.settings.emplace_back("static", link.staticLink ? "1" : "0");
   inputs.settings.emplace_back("static-link-policy", "require-musl");
@@ -232,7 +235,8 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
   sun::driver::embedBuildRecord(testDriver->getModule(),
                                 {inputHash, /*hasTests=*/true, hasExecutable});
   std::string errorMsg;
-  sun::support::messageStream("info") << "Linking tests: " << testOutput << "\n";
+  sun::support::messageStream("info")
+      << "Linking tests: " << testOutput << "\n";
   llvm::outs().flush();
   if (!sun::driver::compileToExecutable(
           testDriver->getModule(), testOutput, errorMsg,

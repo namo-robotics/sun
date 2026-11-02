@@ -9,6 +9,7 @@
 #include <map>
 #include <sstream>
 
+#include "driver/build_graph.h"
 #include "driver/c_bindings.h"
 #include "driver/package.h"
 #include "parsing/parser.h"
@@ -87,11 +88,14 @@ static std::optional<std::string> expandVariables(const std::string& input,
       out += input[i++];
       continue;
     }
-    size_t nameStart = i + 1;
+    const bool braced = i + 1 < input.size() && input[i + 1] == '{';
+    size_t nameStart = i + (braced ? 2 : 1);
     size_t nameEnd = nameStart;
     while (nameEnd < input.size() &&
-           (std::isalnum(static_cast<unsigned char>(input[nameEnd])) ||
-            input[nameEnd] == '_')) {
+           (braced
+                ? input[nameEnd] != '}'
+                : (std::isalnum(static_cast<unsigned char>(input[nameEnd])) ||
+                   input[nameEnd] == '_'))) {
       ++nameEnd;
     }
     if (nameEnd == nameStart) {
@@ -99,7 +103,14 @@ static std::optional<std::string> expandVariables(const std::string& input,
           "expected a variable name after '$' in manifest entry '" + input +
           "'");
     }
+    if (braced && nameEnd == input.size()) {
+      sun::support::logAndThrowError("unterminated dependency reference: " +
+                                     input);
+    }
     std::string name = input.substr(nameStart, nameEnd - nameStart);
+    if (braced) {
+      ++nameEnd;
+    }
     if (config && config->dependencies.count(name)) {
       if (pathVariables().count(name) ||
           dependencyPathVariables().count(name) ||
@@ -108,7 +119,8 @@ static std::optional<std::string> expandVariables(const std::string& input,
         sun::support::logAndThrowError("dependency path variable collision: " +
                                        name);
       }
-      out += resolveConfigDependency(*config, name).string();
+      out += resolveConfigDependency(*config, name, input.substr(nameEnd))
+                 .string();
       i = nameEnd;
       continue;
     }
@@ -210,6 +222,18 @@ std::optional<SunConfig> ManifestProcessor::configFor(
   if (sourceConfig) {
     return *sourceConfig;
   }
+  if (std::getenv("SUN_BUILD_CONTEXT")) {
+    auto config = buildContextConfig();
+    if (configTargetKey(config.targetTriple) != configTargetKey(targetTriple)) {
+      sun::support::logAndThrowError(
+          "child compiler target differs from custom build context; use sun "
+          "build-compile");
+    }
+    return config;
+  }
+  if (auto config = configForBuildDirectory(baseDir, targetTriple)) {
+    return config;
+  }
   return SunConfig::findFrom(baseDir, targetTriple);
 }
 
@@ -218,13 +242,13 @@ ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
                                             const std::string& targetTriple) {
   generateCBindings(baseDir, targetTriple);
   ResolvedManifest out;
-  out.libraryId = manifest.getLibraryId();
+  out.libraryId = manifest.getId();
   out.baseDir = baseDir;
 
   // Explicit path variables win, followed by consuming-project overrides
   // during Git builds, then source config, defaults, and the environment.
   auto configOpt = sourceConfig ? std::optional<SunConfig>{}
-                                : SunConfig::findFrom(baseDir, targetTriple);
+                                : configFor(baseDir, targetTriple);
   const SunConfig* config =
       sourceConfig ? sourceConfig : (configOpt ? &*configOpt : nullptr);
 

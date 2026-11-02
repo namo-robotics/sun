@@ -125,7 +125,7 @@ class DiscoveryProtocolTests(unittest.TestCase):
     def write_config(self, entry):
         """Declare a suite and its optional prebuilt test binary."""
         self.config.write_text(json.dumps({"entrypoints": [{
-            "path": entry.name, "test_binary_name": "suite_test",
+            "path": entry.name, "name": "suite",
         }]}))
 
     def test_open_manifest_becomes_entrypoint_until_closed(self):
@@ -225,7 +225,7 @@ class DiscoveryProtocolTests(unittest.TestCase):
         self.assertEqual(self.document_tests(self.source)["entrypoint"], str(self.entry))
         suites = self.workspace_tests()
         self.assertEqual([suite["entrypoint"] for suite in suites], [str(self.entry)])
-        self.assertEqual(suites[0]["test_binary"], str(self.directory / "suite_test"))
+        self.assertTrue(Path(suites[0]["test_binary"]).is_relative_to(self.directory / ".sun" / "build"))
         self.assertEqual(suites[0]["files"][0]["tests"][0]["id"], "suite.first")
         self.write_config(self.other)
         self.assertEqual(self.workspace_tests()[0]["entrypoint"], str(self.other))
@@ -238,20 +238,37 @@ class DiscoveryProtocolTests(unittest.TestCase):
         self.write_config(self.entry)
         self.assertEqual(len(self.workspace_tests()), 1)
 
-    def test_configured_test_binary_expands_path_variables(self):
+    def test_target_name_determines_test_binary(self):
         """Discovery resolves configured paths so the editor can use built tests."""
         self.config.write_text(json.dumps({
             "path_variables": {"TEST_SOURCE": ".", "TEST_BUILD": "build"},
             "entrypoints": [{
                 "path": "$TEST_SOURCE/main.sun",
-                "test_binary_name": "$TEST_BUILD/suite_test",
+                "name": "suite",
             }],
         }))
         suites = self.workspace_tests()
         self.assertEqual(len(suites), 1)
         self.assertEqual(Path(suites[0]["entrypoint"]).resolve(), self.entry)
-        self.assertEqual(suites[0]["test_binary"],
-                         str(self.directory / "build" / "suite_test"))
+        self.assertTrue(Path(suites[0]["test_binary"]).is_relative_to(self.directory / ".sun" / "build"))
+        self.assertEqual(Path(suites[0]["test_binary"]).name, "suite_test")
+        self.assertEqual(suites[0]["files"][0]["tests"][0]["id"], "suite.first")
+
+    def test_composed_config_discovers_included_suites(self):
+        """An ordinary config includes child suites with child-relative paths."""
+        child = self.directory / "child"
+        child.mkdir()
+        (child / "sun-config.json").write_text(json.dumps({
+            "package_id": "example/tests",
+            "entrypoints": [{"path": "../main.sun",
+                             "name": "suite"}],
+        }))
+        self.config.write_text(json.dumps({"projects": ["child/sun-config.json"]}))
+        suites = self.workspace_tests()
+        self.assertEqual(len(suites), 1)
+        self.assertEqual(Path(suites[0]["entrypoint"]).resolve(), self.entry)
+        self.assertTrue(Path(suites[0]["test_binary"]).is_relative_to(
+            self.directory / ".sun" / "build"))
         self.assertEqual(suites[0]["files"][0]["tests"][0]["id"], "suite.first")
 
     def test_explicit_and_configured_suites_share_updated_sources(self):

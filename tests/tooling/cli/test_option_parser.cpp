@@ -379,7 +379,7 @@ TEST(Tooling_Cli_OptionParser, config_input_rejects_moon_obj_and_output_name) {
                  wrongMode);
   expectRejected(parseBuildRun({"-c", "-o", "out", "sun-config.json"}).early,
                  "Error: -o does not combine with a sun-config.json input; "
-                 "the config's output_name fields name the artifacts\n");
+                 "the config's entrypoint names determine the artifacts\n");
 }
 
 // ============================================================================

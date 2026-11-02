@@ -14,6 +14,15 @@ namespace {
 // Everything in the help text below its first line, which names the program.
 const char* const kUsageBody =
     "Commands:\n"
+    "  build            Build the nearest sun-config.json and its projects\n"
+    "                   --config <file> --package <id> --entrypoint <name>\n"
+    "  resolve          Resolve --dependency <package-id> and print its root "
+    "as JSON\n"
+    "  describe         Print resolved project and entrypoint paths as JSON\n"
+    "  dependency-path  Read a resolved dependency from a custom build "
+    "context\n"
+    "  build-compile    Compile the custom build target with inherited "
+    "settings\n"
     "  bindgen          Generate Sun bindings from C headers (see sun bindgen "
     "--help)\n"
     "\n"

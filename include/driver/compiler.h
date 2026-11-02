@@ -39,9 +39,10 @@ struct LinkOptions {
   // Static archives carried inside imported .moon bundles, extracted to
   // disk. Linked together with -l libraries so either can depend on the other.
   std::vector<std::string> archives;
-  std::string targetTriple;  // --target -> cross linker needed
-  std::string sysroot;       // --sysroot -> target's root fs
-  bool staticLink = false;   // --static -> self-contained binary
+  std::vector<std::string> arguments;  // Explicit native linker arguments.
+  std::string targetTriple;            // --target -> cross linker needed
+  std::string sysroot;                 // --sysroot -> target's root fs
+  bool staticLink = false;             // --static -> self-contained binary
 };
 
 /**
@@ -145,6 +146,7 @@ inline std::string linkerCommandFor(const std::string& targetTriple,
 struct NativeLibraries {
   // Static archives (lib<name>.a) found for -l names with no shared library.
   std::vector<std::string> archives;
+  std::vector<std::string> arguments;  // Explicit native linker arguments.
   // Names with nothing loadable at all. Not necessarily an error: libc and
   // libm are already resident in this process (and glibc ships their .so as
   // a linker script, which dlopen cannot open), so their symbols resolve
@@ -396,6 +398,9 @@ inline bool linkExecutable(const std::string& objectPath,
     cmd += " -Wl,--end-group";
   }
 
+  for (const auto& argument : linkOpts.arguments) {
+    cmd += " " + shellQuote(argument);
+  }
   cmd += isDarwin ? " -lc++" : " -lstdc++";
 
   // Capture the driver's diagnostics so every line has a Sun severity label.

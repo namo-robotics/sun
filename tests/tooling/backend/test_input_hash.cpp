@@ -16,6 +16,7 @@
 #include <string>
 
 #include "abi/abi_compatibility_checker.h"
+#include "driver/build_graph.h"
 #include "driver/build_record.h"
 #include "driver/input_hash.h"
 #include "moon_bundling/moon.h"
@@ -212,10 +213,12 @@ manifest { source_files: ["util.sun"] }
   const std::string forced = "--force-rebuild " + always;
 
   const auto initialLog = scratch.runSun(build);
-  EXPECT_TRUE(contains(initialLog, "Building library: " + scratch.path("lib.sun")))
+  EXPECT_TRUE(
+      contains(initialLog, "Building library: " + scratch.path("lib.sun")))
       << initialLog;
   EXPECT_TRUE(contains(initialLog, "Writing library: " + moon)) << initialLog;
-  EXPECT_TRUE(contains(initialLog, "Successfully created: " + moon)) << initialLog;
+  EXPECT_TRUE(contains(initialLog, "Successfully created: " + moon))
+      << initialLog;
   const auto firstHash = sun::driver::readMoonInputHash(moon);
   ASSERT_TRUE(firstHash.has_value());
 
@@ -405,7 +408,7 @@ TEST(Tooling_Backend_InputHash, bundle_version_names_are_only_artifact_inputs) {
   writeFile(scratch.path("lib.sun"),
             "public module version_names { public function answer() i32 { "
             "return 42; } }"
-            " manifest { library_id: \"test/version-names\" }");
+            " manifest { id: \"test/version-names\" }");
   const auto output = scratch.path("lib.moon");
   const auto command =
       "--emit-moon -o " + output + " " + scratch.path("lib.sun");
@@ -460,15 +463,19 @@ TEST(Tooling_Backend_InputHash, config_version_name_reaches_each_library) {
   writeFile(scratch.path("sun-config.json"), R"({
     "root": true,
     "entrypoints": [
-      {"path": "one.sun", "type": "library", "output_name": "one"},
-      {"path": "two.sun", "type": "library", "output_name": "two"}
+      {"path": "one.sun", "type": "library", "name": "one"},
+      {"path": "two.sun", "type": "library", "name": "two"}
     ]
   })");
   scratch.runSun("-c --no-test " + scratch.path("sun-config.json") +
                  " --version-name v1.0.0");
   EXPECT_EQ(readFile(scratch.path("dep.moon")), dependencyBytes);
+  auto graph = sun::driver::loadConfigGraph(scratch.path("sun-config.json"));
+  auto config = sun::driver::configureBuildPaths(
+      graph, sun::driver::SunConfig::loadFile(scratch.path("sun-config.json")));
   for (const auto* file : {"one.moon", "two.moon"}) {
-    auto reader = sun::moon_bundling::MoonReader::open(scratch.path(file));
+    auto reader = sun::moon_bundling::MoonReader::open(
+        std::filesystem::path(config.pathVariables.at("SUN_BUILD")) / file);
     ASSERT_TRUE(reader);
     EXPECT_EQ(reader->getLibrary().version_name(), "v1.0.0");
   }

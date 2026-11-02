@@ -67,7 +67,7 @@ class ManifestAST : public ExprAST {
   std::vector<ManifestProtoDependency> protos;
   std::vector<ManifestArchiveDependency> archives;
   std::vector<ManifestTargetBlock> targets;
-  std::optional<std::string> libraryId;
+  std::optional<std::string> id;
   // `test_files:` entries — test-only sources, loaded only for test builds.
   std::vector<ManifestSunDependency> testSuns;
 
@@ -80,16 +80,16 @@ class ManifestAST : public ExprAST {
               std::vector<ManifestArchiveDependency> archives = {},
               std::vector<ManifestTargetBlock> targets = {},
               std::vector<ManifestSunDependency> testSuns = {},
-              std::optional<std::string> libraryId = std::nullopt)
+              std::optional<std::string> id = std::nullopt)
       : suns(std::move(suns)),
         moons(std::move(moons)),
         protos(std::move(protos)),
         archives(std::move(archives)),
         targets(std::move(targets)),
-        libraryId(std::move(libraryId)),
+        id(std::move(id)),
         testSuns(std::move(testSuns)) {
-    if (this->libraryId) {
-      sun::abi::validateLibraryId(*this->libraryId);
+    if (this->id) {
+      sun::abi::validateLibraryId(*this->id);
     }
   }
 
@@ -98,8 +98,9 @@ class ManifestAST : public ExprAST {
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override { return "manifest"; }
 
-  /** Returns the explicit library identity, absent for exact-only bundles. */
-  const std::optional<std::string>& getLibraryId() const { return libraryId; }
+  /** Returns the product identity shared by library and executable entrypoints.
+   */
+  const std::optional<std::string>& getId() const { return id; }
   /** Returns the source dependencies. */
   const std::vector<ManifestSunDependency>& getSuns() const { return suns; }
   /** Returns the compiled-library dependencies. */

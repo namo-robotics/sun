@@ -1,8 +1,18 @@
 {
   "root": true,
-  "sun_path": ["."],
+  "sun_path": [
+    "."
+  ],
   "entrypoints": [
-    { "path": "life.sun", "type": "library", "output_name": "life.moon" },
-    { "path": "main.sun", "type": "binary", "output_name": "main" }
+    {
+      "path": "life.sun",
+      "type": "library",
+      "name": "life"
+    },
+    {
+      "path": "main.sun",
+      "type": "binary",
+      "name": "main"
+    }
   ]
 }
