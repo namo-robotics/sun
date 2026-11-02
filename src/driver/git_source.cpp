@@ -13,6 +13,7 @@
 #include <fstream>
 #include <set>
 
+#include "driver/build_graph.h"
 #include "driver/manifest_processor.h"
 #include "moon_bundling/moon.h"
 #include "support/error.h"
@@ -294,6 +295,9 @@ std::filesystem::path resolveGitDependency(const SunConfig& consumer,
   const ConfigEntrypoint* selected = direct ? &directEntry : nullptr;
   if (!direct) {
     for (const auto& entry : config.entrypoints) {
+      if (!dep.library.empty() && entrypointIdentity(entry) != dep.library) {
+        continue;
+      }
       if (!dep.entrypoint.empty() && entry.name != dep.entrypoint) {
         continue;
       }
@@ -336,9 +340,8 @@ std::filesystem::path resolveGitDependency(const SunConfig& consumer,
     sun::support::logAndThrowError(
         "dependency library is missing or escapes its checkout");
   }
-  fs::path filename = selected->outputName.empty()
-                          ? entrypoint.stem()
-                          : fs::path(selected->outputName).filename();
+  fs::path filename =
+      selected->name.empty() ? entrypoint.stem() : fs::path(selected->name);
   if (filename.extension() != ".moon") {
     filename += ".moon";
   }
@@ -354,11 +357,11 @@ std::filesystem::path resolveGitDependency(const SunConfig& consumer,
                           selection + "\n" + inputFile.string() + "\n" +
                           consumer.configDir.string()) /
                       configTargetKey(consumer.targetTriple) / settings;
-  fs::create_directories(output);
+  fs::create_directories(output / "lib");
   auto options = dependencyOptions;
   options.targetTriple = consumer.targetTriple;
-  sun::moon_bundling::MoonBuilder::build(entrypoint.string(), output / filename,
-                                         options);
+  sun::moon_bundling::MoonBuilder::build(entrypoint.string(),
+                                         output / "lib" / filename, options);
   return output;
 }
 }  // namespace sun::driver

@@ -32,6 +32,7 @@ static int runDefaultCommand(const std::string& programName,
     return reportEarlyExit(*earlyExit);
   }
   applyBuildRunSettings(options);
+  configureProductCompiler(options);
 
   if (options.emitMoon) {
     return runBundleCommand(options);
@@ -54,6 +55,22 @@ int main(int argc, char* argv[]) {
   std::vector<std::string> args;
   if (argc > 1) {
     args.assign(argv + 1, argv + argc);
+  }
+
+  if (!args.empty() && args[0] == "dependency-path") {
+    return sun::cli::runDependencyPathCommand({args.begin() + 1, args.end()});
+  }
+  if (!args.empty() && args[0] == "build-compile") {
+    return sun::cli::runBuildCompileCommand({args.begin() + 1, args.end()});
+  }
+  if (!args.empty() && args[0] == "describe") {
+    return sun::cli::runDescribeCommand({args.begin() + 1, args.end()});
+  }
+  if (!args.empty() && args[0] == "resolve") {
+    return sun::cli::runResolveCommand({args.begin() + 1, args.end()});
+  }
+  if (!args.empty() && args[0] == "build") {
+    return sun::cli::runBuildCommand({args.begin() + 1, args.end()});
   }
 
   // A subcommand is only recognised as the first argument

@@ -1,6 +1,7 @@
 #include <archive.h>
 #include <archive_entry.h>
 #include <gtest/gtest.h>
+#include <llvm/TargetParser/Host.h>
 
 #include <filesystem>
 #include <fstream>
@@ -8,6 +9,7 @@
 #include "driver/manifest_processor.h"
 #include "driver/package.h"
 #include "driver/sun_config.h"
+#include "moon_bundling/moon_builder.h"
 #include "support/error.h"
 
 /** Keeps package fixtures isolated from other test suites. */
@@ -68,7 +70,7 @@ TEST_F(Packages, PerSettingTargets) {
     "sun_path": {"default":["build"],"target":{"aarch64-linux-gnu":["arm"]}},
     "path_variables":{"LIBS":{"default":"libs","target":{"aarch64-linux-gnu":"arm-libs"}}},
     "entrypoints":[
-      {"name":"app","path":"main.sun","output_name":{"default":"app","target":{"aarch64-linux-gnu":"arm-app"}}},
+      {"name":"app","path":"main.sun"},
       {"name":"helper","enabled":{"default":false,"target":{"aarch64-linux-gnu":true}},"path":{"target":{"aarch64-linux-gnu":"helper.sun"}}}
     ]})");
   ASSERT_EQ(cfg.entrypoints.size(), 1u);
@@ -76,7 +78,7 @@ TEST_F(Packages, PerSettingTargets) {
   auto arm =
       SunConfig::loadFile(dir / "sun-config.json", "arm64-unknown-linux-gnu");
   ASSERT_EQ(arm.entrypoints.size(), 2u);
-  EXPECT_EQ(arm.entrypoints[0].outputName, (dir / "arm-app").string());
+  EXPECT_EQ(arm.entrypoints[0].name, "app");
   EXPECT_EQ(arm.pathVariables.at("LIBS"), (dir / "arm-libs").string());
   EXPECT_EQ(arm.sunPath.size(), 1u);
 }
@@ -102,48 +104,54 @@ TEST_F(Packages, TargetValidation) {
 
 /** Direct Moon inputs use target-separated directories and stable filenames. */
 TEST_F(Packages, MoonCacheAndCollision) {
-  put(dir / "x64.moon", "x64 bytes");
-  put(dir / "arm.moon", "arm bytes");
-  auto cfg = config(R"({"dependencies":{"IMAGE_CORE":{"target":{
-    "x86_64-linux-gnu":{"moon":{"path":"x64.moon","filename":"image_core.moon"}},
-    "aarch64-linux-gnu":{"moon":{"path":"arm.moon","filename":"image_core.moon"}}
-  }}}})");
+  put(dir / "image.sun",
+      "manifest { id: \"image_core\" }\n"
+      "/** Fixture library. */ public module image_core { /** Returns a value. "
+      "*/ public function value() i32 { return 1; } }\n");
+  sun::moon_bundling::MoonBuildOptions options;
+  options.targetTriple = "x86_64-linux-gnu";
+  sun::moon_bundling::MoonBuilder::build((dir / "image.sun").string(),
+                                         dir / "x64.moon", options);
+  options.targetTriple = "aarch64-linux-gnu";
+  sun::moon_bundling::MoonBuilder::build((dir / "image.sun").string(),
+                                         dir / "arm.moon", options);
+  auto cfg = config(
+      R"({"dependencies":[{"target":{"x86_64-linux-gnu":{"package":"IMAGE_CORE","library":"image_core","path":"x64.moon"},"aarch64-linux-gnu":{"package":"IMAGE_CORE","library":"image_core","path":"arm.moon"}}}]})");
   EXPECT_FALSE(fs::exists(dir / "cache"));
   auto x64 = ManifestProcessor::expandPathVariables(
-      "$IMAGE_CORE/image_core.moon", &cfg);
+      "$IMAGE_CORE/lib/image_core.moon", &cfg);
   EXPECT_EQ(sun::driver::packageFileHash(x64),
             sun::driver::packageFileHash(dir / "x64.moon"));
   EXPECT_NE(x64.find(sun::driver::configTargetKey("x86_64-linux-gnu")),
             std::string::npos);
   put(x64, "damaged");
   EXPECT_EQ(ManifestProcessor::expandPathVariables(
-                "$IMAGE_CORE/image_core.moon", &cfg),
+                "$IMAGE_CORE/lib/image_core.moon", &cfg),
             x64);
   EXPECT_EQ(sun::driver::packageFileHash(x64),
             sun::driver::packageFileHash(dir / "x64.moon"));
   auto arm = SunConfig::loadFile(dir / "sun-config.json", "aarch64-linux-gnu");
   EXPECT_NE(ManifestProcessor::expandPathVariables(
-                "$IMAGE_CORE/image_core.moon", &arm),
+                "$IMAGE_CORE/lib/image_core.moon", &arm),
             x64);
   ManifestProcessor::setPathVariable("IMAGE_CORE", "/override");
   EXPECT_THROW(ManifestProcessor::expandPathVariables(
-                   "$IMAGE_CORE/image_core.moon", &cfg),
+                   "$IMAGE_CORE/lib/image_core.moon", &cfg),
                SunError);
 }
 
 /** Unused unavailable targets are allowed, and used ones fail clearly. */
 TEST_F(Packages, LazyDependencyTargetAndHash) {
-  auto cfg = config(R"({"dependencies":{"LIB":{"target":{"aarch64-linux-gnu":{
-    "moon":{"path":"absent.moon","filename":"lib.moon"}
-  }}}}})");
+  auto cfg = config(
+      R"({"dependencies":[{"target":{"aarch64-linux-gnu":{"package":"LIB","library":"lib","path":"absent.moon"}}}]})");
   EXPECT_THROW(sun::driver::resolveConfigDependency(cfg, "LIB"), SunError);
   EXPECT_THROW(
       config(
-          R"({"dependencies":{"LIB":{"moon":{"url":"https://example.com/lib.moon","filename":"lib.moon"}}}})"),
+          R"({"dependencies":[{"package":"LIB","library":"lib","url":"https://example.com/lib.moon"}]})"),
       SunError);
   EXPECT_THROW(
       config(
-          R"({"dependencies":{"LIB":{"moon":{"path":"lib.moon","filename":"../lib.moon"}}}})"),
+          R"({"dependencies":[{"package":"LIB","library":"../lib","path":"lib.moon"}]})"),
       SunError);
 }
 
@@ -213,16 +221,14 @@ TEST_F(Packages, SingleEntrypointAndConflicts) {
   EXPECT_THROW(sun::driver::planPackages(cfg, artifacts), SunError);
 }
 
-/** Resource fields are rejected on both active and disabled entrypoints. */
-TEST_F(Packages, RejectEntrypointResources) {
-  EXPECT_THROW(
-      config(
-          R"({"entrypoints":[{"name":"app","path":"main.sun","resources":[]}]})"),
-      SunError);
-  EXPECT_THROW(
-      config(
-          R"({"entrypoints":[{"name":"app","enabled":false,"resources":[]}]})"),
-      SunError);
+/** Entrypoints can export resources alongside their compiled artifact. */
+TEST_F(Packages, AcceptEntrypointResources) {
+  auto cfg = config(
+      R"({"entrypoints":[{"name":"app","path":"main.sun","resources":[{"path":"asset","destination":"share/asset"}]}]})");
+  ASSERT_EQ(cfg.entrypoints.size(), 1u);
+  ASSERT_EQ(cfg.entrypoints.front().resources.size(), 1u);
+  EXPECT_EQ(cfg.entrypoints.front().resources.front().destination,
+            "share/asset");
 }
 
 /** Naming an entrypoint alone does not request a distribution. */
@@ -259,11 +265,33 @@ void maliciousArchive(const fs::path& path, const std::string& name,
  * root. */
 TEST_F(Packages, UnsafeArchives) {
   auto cfg =
-      config(R"({"dependencies":{"BAD":{"package":{"path":"bad.tar.gz"}}}})");
+      config(R"({"dependencies":[{"package":"BAD","path":"bad.tar.gz"}]})");
   maliciousArchive(dir / "bad.tar.gz", "../escaped", false);
   EXPECT_THROW(sun::driver::resolveConfigDependency(cfg, "BAD"), SunError);
   maliciousArchive(dir / "bad.tar.gz", "link", true);
   EXPECT_THROW(sun::driver::resolveConfigDependency(cfg, "BAD"), SunError);
   EXPECT_FALSE(fs::exists(dir / "escaped"));
 }
+/** Individual executables retain executable permissions and reject a foreign
+ * target. */
+TEST_F(Packages, InstallsSelectedBinaryForItsPlatform) {
+  const auto executable = fs::canonical("build/sun");
+  auto cfg = config(
+      std::string(
+          R"({"dependencies":[{"package":"example/compiler","binary":"example/sun","path":")") +
+          executable.string() + R"("}]})",
+      llvm::sys::getDefaultTargetTriple());
+  auto root = sun::driver::resolveConfigDependency(cfg, "example/compiler");
+  EXPECT_EQ(sun::driver::packageFileHash(root / "bin/sun"),
+            sun::driver::packageFileHash(executable));
+  EXPECT_NE(fs::status(root / "bin/sun").permissions() & fs::perms::owner_exec,
+            fs::perms::none);
+  cfg.targetTriple = sun::driver::configTargetKey(cfg.targetTriple) ==
+                             sun::driver::configTargetKey("x86_64-linux-gnu")
+                         ? "aarch64-linux-gnu"
+                         : "x86_64-linux-gnu";
+  EXPECT_THROW(sun::driver::resolveConfigDependency(cfg, "example/compiler"),
+               SunError);
+}
+
 }  // namespace

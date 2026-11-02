@@ -1,22 +1,32 @@
-// config_build_command.h — `sun -c sun-config.json`, building a project.
-//
-// A sun-config.json lists a project's entrypoints. Building it produces every
-// product the list names, and is the one place where compiling and bundling
-// meet: a binary entrypoint is compiled, a library entrypoint is bundled.
-
 #pragma once
 
 #include "cli/options.h"
 
-/** Parses command-line options and runs the selected compiler command. */
+/** Builds products declared by ordinary or composed Sun configs. */
 namespace sun::cli {
 
-/**
- * sun -c sun-config.json
- * Builds every declared entrypoint, stopping at the first failure. A binary
- * becomes an executable plus its test binary. A library becomes a .moon
- * bundle plus, when it has tests, its test binary.
- */
+/** Builds the selected config graph through the shared product scheduler. */
 int runConfigBuildCommand(const BuildRunOptions& options);
+
+/** Supplies compiler settings to local dependency builds. */
+void configureProductCompiler(const BuildRunOptions& options);
+
+/** Resolves sun build arguments and invokes the ordinary config build path. */
+int runBuildCommand(const std::vector<std::string>& args);
+
+/** Resolves a dependency through the selected graph and prints its root as
+ * JSON. */
+int runResolveCommand(const std::vector<std::string>& args);
+
+/** Prints resolved project paths without compiling or downloading dependencies.
+ */
+int runDescribeCommand(const std::vector<std::string>& args);
+
+/** Prints a pre-resolved dependency root from the inherited script context. */
+int runDependencyPathCommand(const std::vector<std::string>& args);
+
+/** Compiles the current script target with inherited settings and extra flags.
+ */
+int runBuildCompileCommand(const std::vector<std::string>& args);
 
 }  // namespace sun::cli

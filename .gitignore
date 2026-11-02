@@ -10,6 +10,7 @@ manual_tests/test
 # Debian packaging artifacts
 debian/.debhelper/
 debian/sun/
+/.sun/
 debian/files
 debian/changelog
 debian/*.debhelper
@@ -46,3 +47,4 @@ cmake_test_discovery*
 third_party/openssl/
 
 .claude/settings.local.json
+/sun/

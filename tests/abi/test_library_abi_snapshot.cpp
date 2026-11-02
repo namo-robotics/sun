@@ -52,7 +52,7 @@ class ABI_LibraryAbiSnapshot : public testing::Test {
   /** Defines the same nominal Point with a replaceable constructor body. */
   std::string shapes(int value, const std::string& identity = "example/shapes",
                      bool extraField = false) {
-    return "manifest { library_id: \"" + identity + "\" }\n" +
+    return "manifest { id: \"" + identity + "\" }\n" +
            "/** Exports a point. */ public module shapes { "
            "/** Stores coordinates. */ public class Point { public var x: "
            "i32; " +
@@ -84,8 +84,10 @@ class ABI_LibraryAbiSnapshot : public testing::Test {
 };
 }  // namespace
 
-/** Legacy hashes tolerate advisory differences but retain semantic requirements. */
-TEST_F(ABI_LibraryAbiSnapshot, MatchesLegacyHashesWithoutWeakeningDeclarations) {
+/** Legacy hashes tolerate advisory differences but retain semantic
+ * requirements. */
+TEST_F(ABI_LibraryAbiSnapshot,
+       MatchesLegacyHashesWithoutWeakeningDeclarations) {
   const auto original = build("original", shapes(42));
   const auto changed = build("changed", shapes(43, "example/shapes", true));
   auto originalReader = sun::moon_bundling::MoonReader::open(original);
@@ -96,7 +98,8 @@ TEST_F(ABI_LibraryAbiSnapshot, MatchesLegacyHashesWithoutWeakeningDeclarations) 
     modules.push_back(originalReader->getMetadata(key));
   }
   auto selected = originalReader->getLibrary().bundle_contract();
-  *selected.mutable_target() = sun::abi::compatibilityTarget("arm64-apple-darwin");
+  *selected.mutable_target() =
+      sun::abi::compatibilityTarget("arm64-apple-darwin");
   auto retaining = selected;
   retaining.mutable_target()->set_platform_abi("darwin25.6.0:");
   for (auto& rule : *retaining.mutable_requirements()) {
@@ -105,12 +108,13 @@ TEST_F(ABI_LibraryAbiSnapshot, MatchesLegacyHashesWithoutWeakeningDeclarations) 
     }
   }
   const auto artifact = originalReader->getLibrary().content_hash();
-  const auto required = sun::abi::describeLibraryAbiSnapshot(
-      retaining, artifact, modules);
-  EXPECT_NE(required.abi_hash(), sun::abi::describeLibraryAbiSnapshot(
-                                     selected, artifact, modules).abi_hash());
-  EXPECT_TRUE(sun::abi::matchesLibraryAbiSnapshot(
-      required, selected, artifact, modules, retaining));
+  const auto required =
+      sun::abi::describeLibraryAbiSnapshot(retaining, artifact, modules);
+  EXPECT_NE(required.abi_hash(),
+            sun::abi::describeLibraryAbiSnapshot(selected, artifact, modules)
+                .abi_hash());
+  EXPECT_TRUE(sun::abi::matchesLibraryAbiSnapshot(required, selected, artifact,
+                                                  modules, retaining));
 
   std::vector<const sun::moon::ModuleMetadata*> changedModules;
   for (const auto& key : changedReader->listModules()) {
@@ -160,7 +164,8 @@ TEST_F(ABI_LibraryAbiSnapshot, KeepsDifferentVersionsIndependent) {
   }
 }
 
-/** Compatible arguments cross an API without replacing embedded implementations. */
+/** Compatible arguments cross an API without replacing embedded
+ * implementations. */
 TEST_F(ABI_LibraryAbiSnapshot, AcceptsCompatibleArgumentsAtCallSite) {
   const auto original = build("original", shapes(42));
   const auto reader = consumer(original);
@@ -174,7 +179,8 @@ TEST_F(ABI_LibraryAbiSnapshot, AcceptsCompatibleArgumentsAtCallSite) {
         var p = shapes.Point();
         return reader.read(p) + reader.local();
       }
-    )"), 85);
+    )"),
+              85);
   }
 }
 
@@ -186,11 +192,14 @@ TEST_F(ABI_LibraryAbiSnapshot, RejectsIncompatibleArgumentsAtCallSite) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(run({reader, changed}, application()), "read");
   EXPECT_SUN_ERROR_WITH_MESSAGE(run({changed, reader}, application()), "read");
   const auto unrelated = build("unrelated", shapes(43, "other/shapes"));
-  EXPECT_SUN_ERROR_WITH_MESSAGE(run({reader, unrelated}, application()), "read");
+  EXPECT_SUN_ERROR_WITH_MESSAGE(run({reader, unrelated}, application()),
+                                "read");
 }
 
-/** Borrow compatibility preserves constness and applies to retained generics. */
-TEST_F(ABI_LibraryAbiSnapshot, CompatibleBorrowPreservesMutabilityAndGenericCode) {
+/** Borrow compatibility preserves constness and applies to retained generics.
+ */
+TEST_F(ABI_LibraryAbiSnapshot,
+       CompatibleBorrowPreservesMutabilityAndGenericCode) {
   const auto original = build("original", shapes(42));
   const auto api = build("api", R"(
     /** Reads through generic and const borrowed boundaries. */
@@ -200,7 +209,8 @@ TEST_F(ABI_LibraryAbiSnapshot, CompatibleBorrowPreservesMutabilityAndGenericCode
       /** Mutates a compatible caller-owned point. */
       public function update(point: ref shapes.Point) void { point.x = 44; }
     }
-  )", {original});
+  )",
+                         {original});
   const auto newer = build("newer", shapes(43));
   EXPECT_EQ(run({api, newer}, R"(
     /** Borrows the newer value through the original generic API. */
@@ -209,13 +219,15 @@ TEST_F(ABI_LibraryAbiSnapshot, CompatibleBorrowPreservesMutabilityAndGenericCode
       api.update(p);
       return api.read<i32>(p);
     }
-  )"), 44);
+  )"),
+            44);
   EXPECT_SUN_ERROR_WITH_MESSAGE(run({api, newer}, R"(
     /** A const borrow must not gain mutation rights across revisions. */
     function modify(point: const ref shapes.Point) void { api.update(point); }
     /** Supplies a point to the checked boundary. */
     function main() i32 { var p = shapes.Point(); modify(p); return 0; }
-  )"), "update");
+  )"),
+                                "update");
 }
 
 /** Two hidden compatible revisions can borrow without exposing their names. */
@@ -229,13 +241,15 @@ TEST_F(ABI_LibraryAbiSnapshot, CompatibleBorrowBetweenEmbeddedRevisions) {
       /** Constructs with the second revision's implementation. */
       public function make() shapes.Point { return shapes.Point(); }
     }
-  )", {second});
+  )",
+                             {second});
   std::filesystem::remove(first);
   std::filesystem::remove(second);
   EXPECT_EQ(run({reader, factory}, R"(
     /** Passes an inferred value without naming the hidden dependency. */
     function main() i32 { var p = factory.make(); return reader.read(p); }
-  )"), 43);
+  )"),
+            43);
 }
 
 /** Import validation accepts distinct revisions without creating aliases. */
@@ -250,13 +264,17 @@ TEST_F(ABI_LibraryAbiSnapshot, ValidatesCoexistingRevisionsWithoutWarnings) {
   context.producerWarnings = false;
   sun::abi::AbiCompatibilityChecker checker(context);
   testing::internal::CaptureStderr();
-  EXPECT_NO_THROW(checker.validateImports({consumerReader.get(), changedReader.get()}));
-  EXPECT_NO_THROW(checker.validateImports({changedReader.get(), consumerReader.get()}));
+  EXPECT_NO_THROW(
+      checker.validateImports({consumerReader.get(), changedReader.get()}));
+  EXPECT_NO_THROW(
+      checker.validateImports({changedReader.get(), consumerReader.get()}));
   EXPECT_EQ(testing::internal::GetCapturedStderr(), "");
 }
 
-/** Independent wrappers retain different implementations of the same library. */
-TEST_F(ABI_LibraryAbiSnapshot, KeepsTwoEmbeddedVersionsAfterDependenciesAreRemoved) {
+/** Independent wrappers retain different implementations of the same library.
+ */
+TEST_F(ABI_LibraryAbiSnapshot,
+       KeepsTwoEmbeddedVersionsAfterDependenciesAreRemoved) {
   const auto first = build("first", shapes(42));
   const auto second = build("second", shapes(43, "example/shapes", true));
   const auto left = consumer(first);
@@ -266,20 +284,24 @@ TEST_F(ABI_LibraryAbiSnapshot, KeepsTwoEmbeddedVersionsAfterDependenciesAreRemov
       /** Constructs using this wrapper's revision. */
       public function local() i32 { var p = shapes.Point(); return p.x; }
     }
-  )", {second});
+  )",
+                           {second});
   std::filesystem::remove(first);
   std::filesystem::remove(second);
   EXPECT_EQ(run({left, right}, R"(
     /** Calls wrappers whose implementation types have different layouts. */
     function main() i32 { return reader.local() + right.local(); }
-  )"), 85);
+  )"),
+            85);
   EXPECT_SUN_ERROR_WITH_MESSAGE(run({left, right}, R"(
     /** Attempts to name an unlisted implementation module. */
     function main() i32 { var p = shapes.Point(); return p.x; }
-  )"), "shapes");
+  )"),
+                                "shapes");
 }
 
-/** Transitive wrappers preserve original identities instead of selecting a revision. */
+/** Transitive wrappers preserve original identities instead of selecting a
+ * revision. */
 TEST_F(ABI_LibraryAbiSnapshot, PreservesTransitiveDependencyIdentity) {
   const auto original = build("original", shapes(42));
   const auto reader = consumer(original);
@@ -291,19 +313,23 @@ TEST_F(ABI_LibraryAbiSnapshot, PreservesTransitiveDependencyIdentity) {
       /** Executes the original implementation. */
       public function local() i32 { return reader.local(); }
     }
-  )", {reader, original});
+  )",
+                             {reader, original});
   const auto newer = build("newer", shapes(43));
   EXPECT_EQ(run({wrapper, newer}, R"(
     /** Uses the explicit and embedded versions independently. */
     function main() i32 { var p = shapes.Point(); return wrapper.local() + p.x; }
-  )"), 85);
+  )"),
+            85);
   EXPECT_EQ(run({wrapper, newer}, R"(
     /** Passes an ABI-compatible point to the original reader. */
     function main() i32 { var p = shapes.Point(); return wrapper.read(p); }
-  )"), 43);
+  )"),
+            43);
 }
 
-/** Generic bodies use their original dependency despite an explicit newer revision. */
+/** Generic bodies use their original dependency despite an explicit newer
+ * revision. */
 TEST_F(ABI_LibraryAbiSnapshot, SpecializesAgainstTheEmbeddedRevision) {
   const auto original = build("original", shapes(42));
   const auto factory = build("factory", R"(
@@ -314,7 +340,8 @@ TEST_F(ABI_LibraryAbiSnapshot, SpecializesAgainstTheEmbeddedRevision) {
       /** Reads a point with the exact original identity. */
       public function read<T>(point: ref shapes.Point) i32 { return point.x; }
     }
-  )", {original});
+  )",
+                             {original});
   const auto newer = build("newer", shapes(43, "example/shapes", true));
   EXPECT_EQ(run({factory, newer}, R"(
     /** Keeps both instantiated and explicitly constructed points separate. */
@@ -323,22 +350,26 @@ TEST_F(ABI_LibraryAbiSnapshot, SpecializesAgainstTheEmbeddedRevision) {
       var current = shapes.Point();
       return factory.read<i32>(old) + current.x;
     }
-  )"), 85);
+  )"),
+            85);
   EXPECT_SUN_ERROR_WITH_MESSAGE(run({factory, newer}, R"(
     /** Attempts a cross-revision call to a generic function. */
     function main() i32 {
       var current = shapes.Point();
       return factory.read<i32>(current);
     }
-  )"), "read");
+  )"),
+                                "read");
 }
 
-/** Explicit module aliases select names without merging different type identities. */
+/** Explicit module aliases select names without merging different type
+ * identities. */
 TEST_F(ABI_LibraryAbiSnapshot, SupportsExplicitAliasesForDifferentRevisions) {
   const auto first = build("first", shapes(42));
   const auto second = build("second", shapes(43, "example/shapes", true));
   auto driver = sun::driver::Driver::createForJIT("aliased_revisions");
-  driver->setMoonImports({{first, "shapes", "old"}, {second, "shapes", "current"}});
+  driver->setMoonImports(
+      {{first, "shapes", "old"}, {second, "shapes", "current"}});
   EXPECT_EQ(driver->executeString(R"(
     /** Constructs both explicitly named revisions. */
     function main() i32 {
@@ -346,5 +377,6 @@ TEST_F(ABI_LibraryAbiSnapshot, SupportsExplicitAliasesForDifferentRevisions) {
       var b = current.Point();
       return a.x + b.x;
     }
-  )"), 85);
+  )"),
+            85);
 }

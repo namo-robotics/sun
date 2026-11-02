@@ -6,7 +6,7 @@ docs-config: true
 
 `shapes_user.moon` embeds the `Point` type and implementation from `shapes_v1.sun`.
 An application can list another shapes revision without replacing that embedded
-copy. All revisions use `library_id: "sun.examples/shapes"`; this identifies the
+copy. All revisions use `id: "sun.examples/shapes"`; this identifies the
 library but does not make their types interchangeable.
 
 `main_v1.1.sun` constructs a v1.1 point containing `43` and passes it to

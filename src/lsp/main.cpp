@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "ast/manifest_ast.h"
+#include "driver/build_graph.h"
 #include "driver/driver.h"
 #include "driver/manifest_processor.h"
 #include "driver/sun_config.h"
@@ -291,27 +292,33 @@ static std::map<std::string, sun::driver::ConfigEntrypoint>
 static void refreshEntrypoints() {
   std::vector<std::string> combined;
   configEntrypointInfo.clear();
+  std::vector<std::string> validConfigRoots;
   for (const auto& configPath : configuredSunConfigs) {
     try {
-      sun::driver::SunConfig config =
-          sun::driver::SunConfig::loadFile(configPath);
-      for (auto& entry : config.entrypoints) {
-        // Project discovery never fetches remote source repositories.
-        if (!entry.git.empty()) {
-          continue;
+      auto graph = sun::driver::loadConfigGraph(configPath);
+      for (const auto& project : graph.projects) {
+        sun::driver::SunConfig config = sun::driver::configureBuildPaths(
+            graph, sun::driver::SunConfig::loadFile(project));
+        for (auto& entry : config.entrypoints) {
+          // Project discovery never fetches remote source repositories.
+          if (!entry.git.empty()) {
+            continue;
+          }
+          entry.path =
+              ManifestProcessor::expandPathVariables(entry.path, &config);
+          entry.testBinaryName = ManifestProcessor::expandPathVariables(
+              entry.testBinaryName, &config);
+          combined.push_back(entry.path);
+          configEntrypointInfo.emplace(normalizePath(entry.path), entry);
         }
-        entry.path =
-            ManifestProcessor::expandPathVariables(entry.path, &config);
-        entry.testBinaryName = ManifestProcessor::expandPathVariables(
-            entry.testBinaryName, &config);
-        combined.push_back(entry.path);
-        configEntrypointInfo.emplace(normalizePath(entry.path), entry);
       }
+      validConfigRoots.push_back(configPath);
     } catch (const std::exception& e) {
       std::cerr << "sun-lsp: ignoring " << configPath << ": " << e.what()
                 << std::endl;
     }
   }
+  sun::driver::setConfiguredBuildRoots(validConfigRoots);
   combined.insert(combined.end(), explicitEntrypoints.begin(),
                   explicitEntrypoints.end());
   for (const auto& [path, source] : openSourceOverrides) {

@@ -203,6 +203,7 @@ add_library(sun_lib
     src/driver/bindgen/generator.cpp
     src/driver/manifest_processor.cpp
     src/driver/sun_config.cpp
+    src/driver/build_graph.cpp
     src/driver/package.cpp
     src/driver/git_source.cpp
     # Parsing

@@ -74,7 +74,7 @@ A library's entrypoint manifest can declare a persistent identity:
 
 ```sun
 manifest {
-    library_id: "org.example/shapes"
+    id: "org.example/shapes"
 }
 ```
 
@@ -223,132 +223,180 @@ module names do not become available to application source.
 Moon format changes require rebuilding libraries with the current compiler,
 including the standard library and TLS bundles for every target.
 
-### Downloaded dependencies
+### Configured dependencies
 
-Manifests name local `.moon` files. Configure downloads in `sun-config.json`:
+A dependency names its producer package and optionally selects one library or
+binary. Manifests use `id` for both library and executable identity. The config's
+entrypoint `type` distinguishes the two kinds.
 
 ```json
 {
-  "dependencies": {
-    "IMAGE_CORE": {
-      "target": {
-        "x86_64-linux-gnu": {
-          "moon": {
-            "url": "https://example.com/image-core-x64.moon",
-            "hash": "<lowercase SHA-256>",
-            "filename": "image_core.moon"
-          }
-        },
-        "aarch64-linux-gnu": {
-          "moon": {
-            "url": "https://example.com/image-core-arm64.moon",
-            "hash": "<lowercase SHA-256>",
-            "filename": "image_core.moon"
-          }
-        }
-      }
+  "dependencies": [
+    {
+      "package": "example/ui",
+      "library": "example/ui_core",
+      "url": "https://example.com/ui_core.moon",
+      "hash": "<sha256>"
+    },
+    {
+      "package": "example/ui",
+      "binary": "example/viewc",
+      "url": "https://example.com/viewc",
+      "hash": "<sha256>"
     }
-  }
+  ]
 }
 ```
 
-The source remains the same for both targets:
+Omit both selectors to download a complete Sun package archive. `library` and
+`binary` are mutually exclusive. Remote files require a lowercase SHA-256 hash.
+A config-relative `path` can replace `url` for a local artifact. A whole-package
+path can also name an extracted package with a verified `package.json` inventory.
+Use the existing `default`/`target` wrapper around an array entry for
+platform-specific descriptors.
+
+The dependency array replaces the old map and `moon`/`package` wrappers. Package
+identities no longer double as ordinary path-variable aliases. Braces permit
+namespaces and hyphens in references:
 
 ```sun
 manifest {
-    libraries: ["$IMAGE_CORE/image_core.moon"]
+    libraries: ["${example/ui}/lib/ui_core.moon"]
 }
 ```
 
-`--target` selects the dependency; without it, Sun uses the host target.
-Dependency names bind local directories beneath
-`~/.sun/cache/dependencies/<NAME>/<normalized-target>/<sha256>/`. Override the
-cache root with `SUN_DEPENDENCY_CACHE`. Names must not collide with ordinary
-path variables, explicit overrides, editor defaults, or environment variables.
+Individual libraries appear under `lib/`, binaries under `bin/`, using their
+identity's final component as the filename. Multiple selections from one package
+share a resolved root. Their destinations must not collide.
 
-A dependency accepts an ordinary descriptor, or `default` and `target`
-descriptors. A descriptor contains `moon`, `package`, or a Git source selection.
-A `moon` descriptor requires a simple `.moon` `filename`; `package` accepts a
-Sun `.tar.gz` package and exposes its extracted root. Both accept exactly one
-of `url` or config-relative `path`. URLs require a SHA-256 hash; local hashes
-are optional. Supported URL schemes are `http://`, `https://`, and `file://`.
+Git source selections retain `git`, `version`, and an optional `config`,
+`entrypoint`, or direct source `path`. Direct source builds use the consumer's
+configuration; configured source builds use the producer's settings. Git library
+outputs are exposed under `lib/`. Source caching and `--refresh-sources` continue
+to apply.
 
-A Git source selection uses the dependency's own config:
+### Composed config builds
+
+A normal `sun-config.json` can include other configs without merging their
+project settings:
 
 ```json
 {
-  "dependencies": {
-    "MYLIB": {
-      "git": "ssh://git@example.com/team/mylib.git",
-      "version": "v1.2.3",
-      "config": "sun-config.json",
-      "entrypoint": "mylib"
-    }
-  }
+  "root": true,
+  "projects": ["src/*/sun-config.json"]
 }
 ```
 
-Alternatively, select a source entrypoint directly:
+Each producer declares a `package_id`. Dependencies matching an included producer
+use its local products before considering their external source. Duplicate
+package identities, inclusion cycles, missing selected products, and failed local
+builds are errors; a failed local build never falls back to a download.
+
+```sh
+sun build
+sun build --config sun-config.json --package example/ui
+sun build --config sun-config.json --package example/ui --entrypoint viewc
+sun -c sun-config.json
+```
+
+Both build forms use the same config graph. A standalone config is a graph with
+one project. Include paths are relative to the config declaring them. Wildcards
+expand deterministically and do not follow directory symlinks. Discovery never
+scans unrelated descendants automatically.
+
+Build intermediates go under the selected root's `.sun/build/`; staged packages
+live under `.sun/install/`, separated by target, configuration, and project.
+For example, `.sun/build/aarch64-unknown-darwin/release/namo-robotics/sun_ui/`
+stays the same across compiler rebuilds. Cache validation includes the compiler;
+stale artifacts are rebuilt at the same paths.
+`$SUN_BUILD` and `$SUN_INSTALL` expose the current project's paths.
+An entrypoint's `name` selects the build target and determines its filenames:
+`tls` produces `tls.moon` for a library, `tls` for a binary, and `tls_test` for tests.
+All are placed beneath `$SUN_BUILD`. When omitted, `name` defaults to the source
+filename without its extension; names must be unique among enabled entrypoints.
+Entrypoints do not accept `output_name` or `test_binary_name`. Manifest `id` remains
+optional and describes product identity; it never determines a filename.
+Explicit `sun -o <path>` continues to accept a path for individual invocations.
+Export production entrypoints with `"export": true`; internal products remain
+selectable with `--entrypoint`. An entrypoint's `requires` list names local
+entrypoints that must be built first.
+
+For custom builds, set `build` to a nonempty ordered array of executable paths:
 
 ```json
 {
-  "dependencies": {
-    "MYLIB": {
-      "git": "git@example.com:team/mylib.git",
-      "version": "v1.2.3",
-      "path": "src/mylib.sun"
-    }
-  }
+  "name": "sun_video_editor",
+  "path": "src/main.sun",
+  "export": true,
+  "build": ["scripts/generate_view.sh", "scripts/build_editor.sh"]
 }
 ```
 
-`path` is relative to the repository and cannot be combined with `config` or
-`entrypoint`. Direct source builds use the consumer's configuration, including
-`sun_path`, path variables, and named dependencies; the repository's config is
-not loaded. The output filename is the source filename with `.moon` replacing
-`.sun`, so the consumer imports `"$MYLIB/mylib.moon"`. Both forms build libraries
-without running dependency tests and share Git caching and SSH support.
+Paths are relative to the declaring config. Each file must be executable and
+supply its own interpreter through a shebang when needed. Sun invokes each path
+without shell parsing or arguments, from the config directory. Scripts run in
+order; a nonzero exit stops the sequence and leaves the previous installation
+intact. After success, Sun verifies the configured output exists and stages it.
+Existing outputs remain available for incremental compilation; scripts are
+responsible for refreshing their own generated inputs. The sequence runs on every
+requested build. Environment changes in one script do not affect the next.
 
-The `git` field also accepts HTTPS and SCP-style SSH (`git@example.com:team/mylib.git`).
-`version` is required. When `path` is absent, `config` defaults to
-`sun-config.json`; `entrypoint` is
-optional only when exactly one enabled library is available for the selected
-target. Use `default`/`target` descriptors to restrict platform availability.
-The selected library's `output_name` basename (or source stem plus `.moon`)
-is exposed under `$MYLIB`. Its tests, other entrypoints, and packages are not built.
-Transitive dependencies resolve through the library's own config. Source configs
-own their path variables; explicit `--path-var` overrides still apply. The
-consumer's `sun_path` directories are searched before the dependency's configured
-search directories, including for transitive builds. To compile against your
-local stdlib, put the directory containing your built `stdlib.moon` in the
-consumer's `sun_path`.
+Before invoking scripts, Sun resolves all declared target dependencies and the
+host variants of dependencies that supply binaries or whole packages. Scripts
+inherit `SUN_EXECUTABLE`, `SUN_SOURCE`, `SUN_OUTPUT`, `SUN_TEST_OUTPUT`,
+`SUN_TARGET`, `SUN_BUILD`, `SUN_INSTALL`, `SUN_JOBS`, and `SUN_BUILD_CONTEXT`.
+The last variable names a JSON snapshot under the build directory; treat it as
+read-only. `sun dependency-path <package>` reads the target dependency root from
+that snapshot; `--host` reads its host variant. Neither lookup fetches nor builds.
+A missing host variant is recorded and reported if a script requests it; it does
+not prevent using a dependency solely as a target artifact.
 
-Git checkouts and library builds use `SUN_GIT_CACHE` (default `~/.sun/cache/git`).
-Builds are separated by consumer, source selection, target, and compiler settings.
-`--refresh-sources` refreshes each repository revision once per command;
-`--force-rebuild` recompiles dependencies as well. Dependency cycles and missing,
-ambiguous, or non-library selections are compilation errors.
+Use `sun build-compile` to compile the current target with inherited target,
+debug/optimization settings, output and test paths, search paths, and resolved
+dependencies. Additional compiler options can supply native link flags;
+`--link-arg <argument>` passes an individual argument to the native linker.
+For example:
 
-For a package dependency named `IMAGE_TOOLS`, import a library by its path:
-
-```sun
-manifest {
-    libraries: ["$IMAGE_TOOLS/lib/helpers.moon"]
-}
+```sh
+#!/bin/sh
+set -eu
+gobject=$("$SUN_EXECUTABLE" dependency-path namo-robotics/sun_gobject)
+"$SUN_EXECUTABLE" build-compile --dynamic "-L$gobject/lib/native" -lsun_gobject_native
 ```
 
-Downloads occur only when a dependency is used. Sun verifies the bytes and
-package inventory before exposing local files. An unsupported target fails
-when the dependency is used. Importing a library does not redistribute its
-package's other files or resources.
+Omitting `build` uses the built-in compiler pipeline. Custom `build` replaces
+that pipeline and cannot be combined with `steps`, `compile_args`, `pkg_config`,
+`link_args`, or a Git entrypoint. Preparation belongs in earlier scripts in the
+array. Cross-compiling scripts must use target-appropriate native compilers and
+pkg-config settings; `SUN_TARGET` identifies the requested compilation target.
 
-Manifest objects with a `url` are no longer accepted. Move their URL and hash
-into config, set a local filename, and reference `$NAME/file.moon` instead.
-Local library objects can still use `path` and `rename`.
+Config `steps` declare external preparation commands as argument arrays, with
+`name`, `command`, `inputs`, `outputs`, and optional `requires`,
+`working_directory`, and `environment`. Entrypoints list prerequisite step names
+in `steps`. Outputs must be beneath `$SUN_BUILD`. Commands are not interpreted by
+a shell unless a shell is explicitly named. `$SUN_JOBS` supplies a bounded worker
+count. Input and tool content changes invalidate the step record.
 
-For private GitHub assets, pass `--gh-token` or set `GH_TOKEN` or
-`GITHUB_TOKEN`. Authentication is sent only to GitHub hosts. Use a GitHub API
-release-asset URL in the config to download private release assets.
+A step's executable reference resolves for the build host; its other arguments
+and generated outputs remain associated with the target project. This supports a
+host generator while cross-compiling target libraries without a `platform` field
+on dependencies.
+
+`compile_args` and `pkg_config` on an entrypoint supply native linker options and
+pkg-config packages. Config-wide `exports`, and entrypoint `resources`, map files
+into the installed package using `path` and `destination`. Packages are published
+only after their selected products and resources are successfully staged.
+
+To inspect a dependency using the same resolver:
+
+```sh
+sun resolve --config sun-config.json --package example/app --dependency example/ui
+```
+
+The result is JSON containing the selected package root and target. Resolving a
+local source dependency builds its required products. The language server reads
+composed roots from its existing `sun_configs` setting and uses staged local
+products; it does not run project build commands during discovery.
 
 ### Distributions and resources
 
@@ -912,3 +960,9 @@ Multiple matching tags are resolved lexicographically. Local modifications
 produce `dev`, excluding packaging edits to `debian/changelog`.
 The distribution build scripts explicitly name bundles using the same rule;
 the `SUN_VERSION_NAME` environment variable overrides their chosen name.
+
+`sun describe --config sun-config.json --package example/ui` prints resolved
+build, install, and entrypoint paths as JSON without building. Project tools
+should query these paths instead of interpreting the config themselves.
+`sun resolve --config sun-config.json --package example/app --dependency example/ui`
+resolves a declared dependency through the same graph and prints its selected root.

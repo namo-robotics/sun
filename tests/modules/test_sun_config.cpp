@@ -171,8 +171,7 @@ TEST(Modules_SunConfig, entrypoints_parse_with_anchored_paths) {
   writeFile(dir / "sun-config.json",
             "{ \"entrypoints\": ["
             "{ \"path\": \"stdlib/stdlib.sun\", \"type\": \"library\", "
-            "\"output_name\": \"build/stdlib\", "
-            "\"test_binary_name\": \"build/stdlib_test\" },"
+            "\"name\": \"stdlib\" },"
             "{ \"path\": \"app.sun\" }"
             "] }\n");
 
@@ -181,10 +180,8 @@ TEST(Modules_SunConfig, entrypoints_parse_with_anchored_paths) {
   EXPECT_EQ(config.entrypoints[0].path,
             (dir / "stdlib" / "stdlib.sun").lexically_normal().string());
   EXPECT_EQ(config.entrypoints[0].type, ConfigEntrypoint::Type::Library);
-  EXPECT_EQ(config.entrypoints[0].outputName,
-            (dir / "build" / "stdlib").lexically_normal().string());
-  EXPECT_EQ(config.entrypoints[0].testBinaryName,
-            (dir / "build" / "stdlib_test").lexically_normal().string());
+  EXPECT_EQ(config.entrypoints[0].name, "stdlib");
+  EXPECT_TRUE(config.entrypoints[0].testBinaryName.empty());
   // Defaults: binary type, names derived later from the entrypoint
   EXPECT_EQ(config.entrypoints[1].type, ConfigEntrypoint::Type::Binary);
   EXPECT_TRUE(config.entrypoints[1].outputName.empty());
@@ -269,7 +266,7 @@ TEST(Modules_SunConfig, target_paths_and_outputs_use_normalized_triples) {
       "entrypoints": [
         {
           "path": "main.sun",
-          "output_name": "arm/main"
+          "name": "arm-main"
         }
       ]
     }
@@ -277,14 +274,13 @@ TEST(Modules_SunConfig, target_paths_and_outputs_use_normalized_triples) {
   "entrypoints": [
     {
       "path": "main.sun",
-      "output_name": "native/main",
-      "test_binary_name": "native/tests"
+      "name": "native-main"
     }
   ]
 })");
   auto native =
       SunConfig::loadFile(dir / "sun-config.json", "x86_64-linux-gnu");
-  EXPECT_EQ(native.entrypoints[0].outputName, (dir / "native/main").string());
+  EXPECT_EQ(native.entrypoints[0].name, "native-main");
   for (const auto& target :
        {"aarch64-linux-gnu", "aarch64-unknown-linux-gnu"}) {
     auto config = SunConfig::loadFile(dir / "sun-config.json", target);
@@ -292,12 +288,12 @@ TEST(Modules_SunConfig, target_paths_and_outputs_use_normalized_triples) {
     EXPECT_EQ(config.sunPath, std::vector<std::string>{(dir / "arm").string()});
     EXPECT_EQ(config.pathVariables.at("SSL"), (dir / "arm-ssl").string());
     EXPECT_EQ(config.pathVariables.at("SHARED"), (dir / "shared").string());
-    EXPECT_EQ(config.entrypoints[0].outputName, (dir / "arm/main").string());
+    EXPECT_EQ(config.entrypoints[0].name, "arm-main");
     EXPECT_TRUE(config.entrypoints[0].testBinaryName.empty());
   }
   auto other =
       SunConfig::loadFile(dir / "sun-config.json", "aarch64-linux-musl");
-  EXPECT_EQ(other.entrypoints[0].outputName, native.entrypoints[0].outputName);
+  EXPECT_EQ(other.entrypoints[0].name, native.entrypoints[0].name);
 }
 
 TEST(Modules_SunConfig,
@@ -324,13 +320,13 @@ TEST(Modules_SunConfig,
             (dir / "arm-ssl/libssl.a").string());
 }
 
-TEST(Modules_SunConfig, target_can_name_test_binary_independently) {
+TEST(Modules_SunConfig, target_keeps_one_product_name) {
   auto dir = freshDir("target_tests");
   writeFile(dir / "sun-config.json", R"({
   "entrypoints": [
     {
       "path": "main.sun",
-      "output_name": "app"
+      "name": "app"
     }
   ],
   "target": {
@@ -338,8 +334,7 @@ TEST(Modules_SunConfig, target_can_name_test_binary_independently) {
       "entrypoints": [
         {
           "path": "main.sun",
-          "output_name": "app",
-          "test_binary_name": "arm/tests"
+          "name": "app"
         }
       ]
     }
@@ -347,8 +342,8 @@ TEST(Modules_SunConfig, target_can_name_test_binary_independently) {
 })");
   auto config =
       SunConfig::loadFile(dir / "sun-config.json", "aarch64-linux-gnu");
-  EXPECT_EQ(config.entrypoints[0].outputName, (dir / "app").string());
-  EXPECT_EQ(config.entrypoints[0].testBinaryName, (dir / "arm/tests").string());
+  EXPECT_EQ(config.entrypoints[0].name, "app");
+  EXPECT_TRUE(config.entrypoints[0].testBinaryName.empty());
 }
 
 TEST(Modules_SunConfig, invalid_target_settings_are_errors_even_when_inactive) {
@@ -363,7 +358,7 @@ TEST(Modules_SunConfig, invalid_target_settings_are_errors_even_when_inactive) {
        R"({"target": {"aarch64-linux-gnu": {"entrypoints": [{"type": "library"}]}}})",
        R"({"target": {"aarch64-linux-gnu": {"path_variables": {"SSL": 42}}}})",
        R"({"target": {"aarch64-linux-gnu": {}, "aarch64-unknown-linux-gnu": {}}})",
-       R"({"entrypoints": [{"path": "a.sun", "target": {"aarch64-linux-gnu": {"output_name": 42}}}]})",
+       R"({"entrypoints": [{"path": "a.sun", "target": {"aarch64-linux-gnu": {"name": 42}}}]})",
        R"({"entrypoints": [{"path": "a.sun", "target": {"aarch64-linux-gnu": {"path": "b.sun"}}}]})"}) {
     writeFile(dir / "sun-config.json", contents);
     EXPECT_THROW(SunConfig::loadFile(dir / "sun-config.json"), SunError)
@@ -377,8 +372,8 @@ TEST(Modules_SunConfig, target_entrypoint_lists_replace_defaults_in_order) {
     "entrypoints": [{"path": "native.sun"}],
     "target": {
       "aarch64-linux-gnu": {"entrypoints": [
-        {"path": "library.sun", "type": "library", "output_name": "arm/library"},
-        {"path": "app.sun", "output_name": "arm/app"}
+        {"path": "library.sun", "type": "library", "name": "arm-library"},
+        {"path": "app.sun", "name": "arm-app"}
       ]},
       "aarch64-linux-musl": {"entrypoints": []},
       "arm64-apple-darwin": {"sun_path": ["mac"]}
@@ -402,10 +397,10 @@ TEST(Modules_SunConfig, target_only_config_selects_host_without_a_flag) {
   writeFile(dir / "sun-config.json",
             "{ \"root\": true, \"target\": {\"" + host +
                 "\": {\"entrypoints\": [{\"path\": \"main.sun\", "
-                "\"output_name\": \"build/main\"}]}}}");
+                "\"name\": \"main\"}]}}}");
   auto config = SunConfig::loadFile(dir / "sun-config.json");
   ASSERT_EQ(config.entrypoints.size(), 1u);
-  EXPECT_EQ(config.entrypoints[0].outputName, (dir / "build/main").string());
+  EXPECT_EQ(config.entrypoints[0].name, "main");
 }
 
 TEST(Modules_SunConfig, target_selection_accepts_platform_aliases) {
@@ -470,4 +465,16 @@ TEST(Modules_SunConfig, preserves_compilation_target_when_matching_settings) {
   writeFile(dir / "sun-config.json", "{\"root\":true}");
   EXPECT_EQ(SunConfig::loadFile(dir / "sun-config.json").targetTriple,
             sun::support::resolvedTargetTriple("").str());
+}
+
+/** Removed output overrides fail with an actionable unknown-field diagnostic.
+ */
+TEST(Modules_SunConfig, entrypoints_reject_output_overrides) {
+  const auto dir = freshDir("output_overrides");
+  for (const auto* field : {"output_name", "test_binary_name"}) {
+    writeFile(dir / "sun-config.json",
+              std::string("{\"entrypoints\":[{\"path\":\"main.sun\",\"") +
+                  field + "\":\"app\"}]}");
+    EXPECT_THROW(SunConfig::loadFile(dir / "sun-config.json"), SunError);
+  }
 }
