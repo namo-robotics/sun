@@ -1768,15 +1768,18 @@ TEST(Ffi, conflicting_native_calls_preserve_extension_attributes) {
         if (!call || call->getCalledOperand()->stripPointerCasts() != native) {
           continue;
         }
-        if (call->hasRetAttr(llvm::Attribute::SExt)) {
+        // Inspect the emitted call attributes, not attributes inherited from
+        // the shared native declaration.
+        const auto attributes = call->getAttributes();
+        if (attributes.hasRetAttr(llvm::Attribute::SExt)) {
           ++signedCalls;
-          EXPECT_TRUE(call->paramHasAttr(0, llvm::Attribute::SExt));
-          EXPECT_FALSE(call->paramHasAttr(0, llvm::Attribute::ZExt));
+          EXPECT_TRUE(attributes.hasParamAttr(0, llvm::Attribute::SExt));
+          EXPECT_FALSE(attributes.hasParamAttr(0, llvm::Attribute::ZExt));
         } else {
           ++unsignedCalls;
-          EXPECT_TRUE(call->hasRetAttr(llvm::Attribute::ZExt));
-          EXPECT_TRUE(call->paramHasAttr(0, llvm::Attribute::ZExt));
-          EXPECT_FALSE(call->paramHasAttr(0, llvm::Attribute::SExt));
+          EXPECT_TRUE(attributes.hasRetAttr(llvm::Attribute::ZExt));
+          EXPECT_TRUE(attributes.hasParamAttr(0, llvm::Attribute::ZExt));
+          EXPECT_FALSE(attributes.hasParamAttr(0, llvm::Attribute::SExt));
         }
       }
     }
