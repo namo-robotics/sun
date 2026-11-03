@@ -145,9 +145,10 @@ TEST_F(Packages, LazyDependencyTargetAndHash) {
   auto cfg = config(
       R"({"dependencies":[{"target":{"aarch64-linux-gnu":{"package":"LIB","library":"lib","path":"absent.moon"}}}]})");
   EXPECT_THROW(sun::driver::resolveConfigDependency(cfg, "LIB"), SunError);
-  EXPECT_THROW(
-      config(
-          R"({"dependencies":[{"package":"LIB","library":"lib","url":"https://example.com/lib.moon"}]})"),
+  EXPECT_NO_THROW(config(
+      R"({"dependencies":[{"package":"LIB","library":"lib","url":"https://example.com/lib.moon"}]})"));
+  EXPECT_THROW(config(
+      R"({"dependencies":[{"package":"LIB","library":"lib","url":"https://example.com/lib.moon","hash":"invalid"}]})"),
       SunError);
   EXPECT_THROW(
       config(
@@ -198,6 +199,41 @@ TEST_F(Packages, RoundTripAndResourceRebuild) {
   EXPECT_FALSE(fs::exists(plans[0].output / "share/app/message.txt"));
   EXPECT_EQ(sun::driver::packageFileHash(dir / "app"),
             sun::driver::packageFileHash(plans[0].output / "bin/app"));
+}
+
+/** Unpinned URLs follow changed releases while retaining package validation. */
+TEST_F(Packages, UnpinnedUrlRefreshesAndRejectsInvalidReleases) {
+  put(dir / "app", "first release");
+  auto producer = config(R"({"root":true,
+    "entrypoints":[{"name":"app","path":"main.sun"}],
+    "packages":[{"name":"tools","entrypoints":["app"]}]})");
+  auto plans = sun::driver::planPackages(
+      producer, {{"app", (dir / "app").string(), false}});
+  sun::driver::buildPackages(producer, plans);
+  const auto archive = fs::path(plans[0].output.string() + ".tar.gz");
+  const auto originalHash = sun::driver::packageFileHash(archive);
+  const auto url = "file://" + fs::absolute(archive).string();
+  auto consumer = config("{\"dependencies\":[{\"package\":\"TOOLS\",\"url\":\"" +
+                         url + "\"}]}");
+  const auto first = sun::driver::resolveConfigDependency(consumer, "TOOLS");
+  put(dir / "app", "updated release");
+  sun::driver::buildPackages(producer, plans);
+  const auto updated = sun::driver::resolveConfigDependency(consumer, "TOOLS");
+  EXPECT_NE(first, updated);
+  EXPECT_EQ(sun::driver::packageFileHash(updated / "bin/app"),
+            sun::driver::packageFileHash(dir / "app"));
+
+  auto pinned = config("{\"dependencies\":[{\"package\":\"TOOLS\",\"url\":\"" +
+                       url + "\",\"hash\":\"" + originalHash + "\"}]}");
+  EXPECT_THROW(sun::driver::resolveConfigDependency(pinned, "TOOLS"), SunError);
+  consumer.targetTriple = "aarch64-linux-gnu";
+  EXPECT_THROW(sun::driver::resolveConfigDependency(consumer, "TOOLS"), SunError);
+  consumer.targetTriple = "x86_64-linux-gnu";
+  put(archive, "not a package");
+  EXPECT_THROW(sun::driver::resolveConfigDependency(consumer, "TOOLS"), SunError);
+  fs::remove(archive);
+  EXPECT_THROW(sun::driver::resolveConfigDependency(consumer, "TOOLS"), SunError);
+  EXPECT_TRUE(fs::exists(updated / "bin/app"));
 }
 
 /** Explicit single-entrypoint packages detect unsafe resources and conflicts.

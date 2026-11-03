@@ -544,7 +544,7 @@ fs::path resolveConfigDependency(const SunConfig& config,
   fs::path input = dep.path;
   if (!dep.url.empty()) {
     input = sun::moon_bundling::MoonCache::fetch(
-        dep.url, dep.hash, cache / ".downloads" / dep.hash);
+        dep.url, dep.hash, cache / ".downloads" / dep.hash, dep.hash.empty());
   }
   noLinks(input);
   if (dep.package && fs::is_directory(input)) {

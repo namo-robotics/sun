@@ -88,6 +88,21 @@ TEST(Modules_MoonCache, fetch_downloads_file_url_and_caches) {
   EXPECT_EQ(readFile(again), "moon-bytes");
 }
 
+/** Explicit refresh follows mutable URLs and does not serve stale bytes on failure. */
+TEST(Modules_MoonCache, refresh_fetches_changes_and_preserves_cache_on_failure) {
+  CacheFixture fx("refresh");
+  auto url = fx.writeSource("lib.moon", "first");
+  auto cached = MoonCache::fetch(url, std::nullopt, fx.cacheDir, true);
+  fx.writeSource("lib.moon", "second");
+  EXPECT_EQ(MoonCache::fetch(url, std::nullopt, fx.cacheDir, true), cached);
+  EXPECT_EQ(readFile(cached), "second");
+  fs::remove_all(fx.srcDir);
+  EXPECT_THROW(MoonCache::fetch(url, std::nullopt, fx.cacheDir, true), SunError);
+  EXPECT_EQ(readFile(cached), "second");
+  EXPECT_EQ(std::distance(fs::directory_iterator(fx.cacheDir),
+                          fs::directory_iterator()), 1);
+}
+
 TEST(Modules_MoonCache, fetch_preseeded_cache_skips_download_without_hash) {
   CacheFixture fx("preseeded");
   std::string url = "https://invalid.invalid/lib.moon";
