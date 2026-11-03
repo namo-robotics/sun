@@ -1082,7 +1082,10 @@ TEST(Modules, config_moon_url_is_fetched_and_imported) {
   initTestEnvironment();
   namespace fs = std::filesystem;
   auto moonPath = writeMoonLib("urllib", R"(
+    manifest { id: "urllib" }
+    /** Exposes the downloaded fixture's value. */
     public module urllib {
+        /** Returns a value that verifies the dependency was imported. */
         public function seven() i32 { return 7; }
     }
   )");
