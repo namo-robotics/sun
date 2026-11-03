@@ -442,8 +442,8 @@ Build configured distributions with `sun -c sun-config.json`:
 }
 ```
 
-This produces `dist/viewer-tools-<normalized-target>/` and the corresponding
-`.tar.gz`. The directory remains available for inspection. Set package
+This produces `$SUN_BUILD/packages/viewer-tools/` and the corresponding
+`.tar.gz`, alongside the other artifacts for the selected target and build configuration. The directory remains available for inspection. Set package
 `output_name` to change the extensionless output base. Named binaries live
 under `bin/`; named libraries live under `lib/` with `.moon` extensions.
 `package.json` records the target, artifact paths, and payload hashes.

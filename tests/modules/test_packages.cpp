@@ -172,6 +172,12 @@ TEST_F(Packages, RoundTripAndResourceRebuild) {
       {"helpers", (dir / "helpers.moon").string(), true}};
   auto plans = sun::driver::planPackages(cfg, artifacts);
   ASSERT_EQ(plans.size(), 1u);
+  EXPECT_EQ(plans[0].output,
+            dir / ".sun/build/x86_64-unknown-linux-gnu/release" /
+                dir.filename() / "packages/tools");
+  cfg.pathVariables["SUN_BUILD"] = (dir / "custom-build").string();
+  plans = sun::driver::planPackages(cfg, artifacts);
+  EXPECT_EQ(plans[0].output, dir / "custom-build/packages/tools");
   sun::driver::buildPackages(cfg, plans);
   const auto archive = fs::path(plans[0].output.string() + ".tar.gz");
   const auto firstHash = sun::driver::packageFileHash(archive);
