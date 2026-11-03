@@ -187,7 +187,8 @@ MoonBuildReport MoonBuilder::readExistingReport(
   }
   for (const auto& key : reader->listModules()) {
     const auto* metadata = reader->getMetadata(key);
-    if (metadata && !metadata->module_name().empty()) {
+    if (metadata && metadata->content_hash() == reader->getLibrary().content_hash() &&
+        !metadata->module_name().empty()) {
       report.modules.push_back(metadata->module_name());
     }
   }
@@ -416,6 +417,21 @@ std::vector<std::string> MoonBuilder::writeBundle(
     moon::ModuleMetadata metadata;
     metadata.set_source_hash(inputs.inputHash);
     writer.addModule(driver->getModule(), metadata);
+  }
+  // Code is already linked into the output. Carry its original declarations
+  // as well, including the private closure inherited by intermediate bundles.
+  std::set<std::string> retainedModules;
+  for (const auto& dependency : inputs.report.moonImports) {
+    auto reader = MoonReader::open(dependency.path);
+    if (!reader) {
+      sun::support::logAndThrowError("Cannot reopen dependency: " + dependency.path);
+    }
+    for (const auto& key : reader->listModules()) {
+      if (retainedModules.insert(key).second) {
+        auto metadata = *reader->getMetadata(key);
+        writer.addModule(driver->getModule(), metadata);
+      }
+    }
   }
   if (inputs.libraryId) {
     writer.setLibraryId(*inputs.libraryId);

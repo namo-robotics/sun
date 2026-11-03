@@ -3,7 +3,8 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 output="../../../tmp/abi-examples/target"
-"$output/compatible"
+build_dir=$(sun describe --field build_root)
+"$build_dir/compatible-app"
 
 # Capture the standalone build script’s output for CI checks.
 status=0

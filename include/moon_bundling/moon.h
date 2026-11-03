@@ -24,8 +24,8 @@ namespace sun::moon_bundling {
  */
 struct MoonHeader {
   static constexpr uint32_t MAGIC = 0x53554E4C;  // "SUNL"
-  // A complete bundle compatibility contract is mandatory in this revision.
-  static constexpr uint32_t VERSION = 15;
+  // Module identities may refer to dependencies embedded in this container.
+  static constexpr uint32_t VERSION = 16;
 
   uint32_t magic = MAGIC;
   uint32_t version = VERSION;

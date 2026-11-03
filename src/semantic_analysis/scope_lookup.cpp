@@ -241,6 +241,7 @@ std::shared_ptr<SemanticScopeBase> SemanticScopeBase::cloneSymbols(
       // Should never happen - only persistent scopes can clone
       return nullptr;
   }
+  clone->isEmbeddedDependency = isEmbeddedDependency;
   clone->scopeName = scopeName;
   clone->scopePath = scopePath;
   clone->parent = newParent;
@@ -399,7 +400,8 @@ VariableInfo* SemanticScopeBase::lookupVariable(const std::string& name) {
     }
     // Search direct import-scope children
     for (const auto& [childName, child] : s->childModules) {
-      if (child && child->getType() == ScopeType::Import) {
+      if (child && !child->isEmbeddedDependency &&
+          child->getType() == ScopeType::Import) {
         if (auto* v = probe(child.get())) {
           return v;
         }
@@ -462,7 +464,8 @@ UnanalyzedGlobal SemanticScopeBase::findUnanalyzedGlobal(
       return result == Probe::Unanalyzed ? unanalyzed : UnanalyzedGlobal{};
     }
     for (const auto& [childName, child] : scope->childModules) {
-      if (!child || child->getType() != ScopeType::Import) {
+      if (!child || child->isEmbeddedDependency ||
+          child->getType() != ScopeType::Import) {
         continue;
       }
       if (probe(child.get()) == Probe::Unanalyzed) {
@@ -505,7 +508,8 @@ const GenericFunctionInfo* SemanticScopeBase::lookupGenericFunction(
       return result;
     }
     for (const auto& [moduleName, child] : scope->childModules) {
-      if (!child || child->getType() != ScopeType::Import) {
+      if (!child || child->isEmbeddedDependency ||
+          child->getType() != ScopeType::Import) {
         continue;
       }
       if (auto* result = probe(child.get(), name)) {
@@ -558,7 +562,8 @@ std::vector<FunctionInfo> SemanticScopeBase::getAllFunctions(
   auto collectFrom = [&](const SemanticScopeBase* s) {
     s->collectFunctions(name, allResults);
     for (const auto& [childName, child] : s->childModules) {
-      if (child && child->getType() == ScopeType::Import) {
+      if (child && !child->isEmbeddedDependency &&
+          child->getType() == ScopeType::Import) {
         child->collectFunctions(name, allResults);
         for (const auto& [modName, modChild] : child->childModules) {
           if (modChild && modChild->getType() == ScopeType::Module) {
@@ -715,7 +720,8 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunction(
       return result;
     }
     for (const auto& [childName, child] : s->childModules) {
-      if (child && child->getType() == ScopeType::Import) {
+      if (child && !child->isEmbeddedDependency &&
+          child->getType() == ScopeType::Import) {
         result = findInScope(child.get());
         if (result) {
           return result;
@@ -805,7 +811,7 @@ SemanticScopeBase* SemanticScopeBase::lookupModuleScope(
       if (!child) {
         continue;
       }
-      if (!isLibraryScope(modName)) {
+      if (child->isEmbeddedDependency || !isLibraryScope(modName)) {
         continue;
       }
 
@@ -889,7 +895,8 @@ bool SemanticScopeBase::isModuleName(const std::string& name) const {
       if (!child) {
         continue;
       }
-      if (child->getType() == ScopeType::Import || isLibraryScope(modName)) {
+      if (!child->isEmbeddedDependency &&
+          (child->getType() == ScopeType::Import || isLibraryScope(modName))) {
         if (child->childModules.count(name) > 0) {
           return true;
         }
@@ -947,7 +954,8 @@ static std::vector<SemanticScopeBase*> collectAllModuleScopes(
         }
 
         for (const auto& [modName, child] : scope.childModules) {
-          if (!child || !isLibraryScope(modName)) {
+          if (!child || child->isEmbeddedDependency ||
+              !isLibraryScope(modName)) {
             continue;
           }
           auto childIt = child->childModules.find(segment);

@@ -1,9 +1,15 @@
 /** Exposes a signature referring to the v1 library's type. */
 public module shapes_user {
 
-  /** Reads a point satisfying the imported nominal type and ABI contract. */
+  /** Reads a point from the exact embedded revision. */
   public function read(point: ref shapes.Point) i32 {
     return point.x;
+  }
+
+  /** Constructs and reads a point using the embedded implementation. */
+  public function local() i32 {
+    var point = shapes.Point();
+    return read(point);
   }
 }
 

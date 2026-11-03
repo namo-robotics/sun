@@ -361,7 +361,8 @@ static std::vector<SemanticScope*> collectAllModuleScopes(
 
         // Search inside library/import scopes
         for (const auto& [modName, child] : scope.childModules) {
-          if (!child || !isLibraryScope(modName)) {
+          if (!child || child->isEmbeddedDependency ||
+              !isLibraryScope(modName)) {
             continue;
           }
           auto childIt = child->childModules.find(segment);

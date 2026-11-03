@@ -22,67 +22,9 @@
 #include "moon_bundling/moon.h"
 #include "support/error.h"
 #include "support/terminal.h"
-#include "support/terminal_format.h"
 
 /** Owns compatibility policy independently of bundle container decoding. */
 namespace sun::abi {
-
-/** Formats diagnostic branches from validated bundle requirements. */
-namespace {
-/** Shows every import retaining an artifact and the selected import.
- * Embedded requirements include transitive dependencies; intermediate edges are
- * not retained in the bundle contract.
- */
-std::string artifactDependencyTree(
-    const proto::LibraryAbiSnapshot& required,
-    const proto::LibraryAbiSnapshot& selected,
-    const std::vector<moon_bundling::MoonReader*>& readers,
-    const std::string& entrypoint, const std::string& level) {
-  std::set<std::string> embeddedPaths;
-  for (const auto* reader : readers) {
-    for (const auto& dependency :
-         reader->getLibrary().bundle_contract().dependency_abis()) {
-      if (dependency.library_id() == required.library_id() &&
-          dependency.artifact_hash() == required.artifact_hash()) {
-        embeddedPaths.insert(reader->getPath().string());
-      }
-    }
-  }
-  auto& stream = llvm::errs();
-  sun::support::TerminalTreeNode root{
-      entrypoint.empty() ? "Current compilation"
-                         : sun::support::terminalFileLabel(entrypoint, stream),
-      {},
-      {}};
-  for (const auto& path : embeddedPaths) {
-    root.children.push_back({sun::support::terminalFileLabel(path, stream) +
-                                 " [imported bundle]",
-                             {},
-                             {{"library: " + required.library_id() +
-                                   " [built against]",
-                               {"artifact: " + required.artifact_hash()},
-                               {}}}});
-  }
-  sun::support::TerminalTreeNode selectedNode{
-      "library: " + selected.library_id() + " [selected]",
-      {"artifact: " + selected.artifact_hash()},
-      {}};
-  std::set<std::string> selectedPaths;
-  for (const auto* reader : readers) {
-    if (reader->getLibrary().content_hash() == selected.artifact_hash()) {
-      selectedPaths.insert(reader->getPath().string());
-    }
-  }
-  for (const auto& path : selectedPaths) {
-    selectedNode.details.push_back(
-        "bundle: " + sun::support::terminalFileLabel(path, stream));
-  }
-  root.children.push_back(std::move(selectedNode));
-  const auto tree =
-      "\n" + sun::support::terminalTree(root, stream, level, "  ");
-  return tree;
-}
-}  // namespace
 
 AbiCompatibilityChecker::AbiCompatibilityChecker(std::string targetTriple,
                                                  NativeExecution execution)
@@ -131,10 +73,10 @@ void AbiCompatibilityChecker::beginCompilation(const std::string& targetTriple,
   context_ = CompilationContext{targetTriple, execution};
   byteHashes_.clear();
   warnedBundles_.clear();
-  warnedArtifactPairs_.clear();
   importedContracts_.clear();
-  declarationAliases_.clear();
   validatedBundles_.clear();
+  revisions_.clear();
+  compatibleRevisions_.clear();
 }
 
 std::string AbiCompatibilityChecker::bytesHash(
@@ -160,7 +102,7 @@ ValidatedBundle AbiCompatibilityChecker::validate(
 
 void AbiCompatibilityChecker::validateImports(
     const std::vector<moon_bundling::MoonReader*>& readers,
-    const std::string& entrypoint) {
+    const std::string& /*entrypoint*/) {
   std::vector<const moon::ModuleMetadata*> metadata;
   std::set<std::string> snapshots;
   std::string imports;
@@ -188,112 +130,98 @@ void AbiCompatibilityChecker::validateImports(
       metadata.push_back(reader->getMetadata(key));
     }
   }
-  std::map<std::string, std::map<std::string, moon_bundling::MoonReader*>>
-      candidates;
-  std::set<std::string> exactArtifacts;
-  std::map<std::string, std::string> aliases;
-  std::map<std::pair<std::string, std::string>, std::string> artifactWarnings;
-  for (auto* reader : readers) {
-    const auto& library = reader->getLibrary();
-    exactArtifacts.insert(library.content_hash());
-    const auto& contract = library.bundle_contract();
-    if (!contract.has_library_abi()) {
-      continue;
-    }
-    const auto& revision = contract.library_abi();
-    candidates[revision.library_id()].emplace(revision.artifact_hash(),
-                                              reader);
-  }
-  for (const auto* reader : readers) {
-    for (const auto& required :
-         reader->getLibrary().bundle_contract().dependency_abis()) {
-      if (exactArtifacts.count(required.artifact_hash())) {
-        continue;
-      }
-      const auto found = candidates.find(required.library_id());
-      if (found == candidates.end()) {
-        continue;  // Exact-reference validation diagnoses missing imports.
-      }
-      if (found->second.size() != 1) {
-        sun::support::logAndThrowError("Ambiguous library revisions for '" +
-                                       required.library_id() + "'");
-      }
-      auto* candidateReader = found->second.begin()->second;
-      const auto& selectedContract = candidateReader->getLibrary().bundle_contract();
-      const auto& candidate = selectedContract.library_abi();
-      bool matches = required.abi_hash() == candidate.abi_hash();
-      if (!matches) {
-        std::vector<const moon::ModuleMetadata*> selectedModules;
-        for (const auto& key : candidateReader->listModules()) {
-          selectedModules.push_back(candidateReader->getMetadata(key));
-        }
-        matches = matchesLibraryAbiSnapshot(
-            required, selectedContract, candidate.artifact_hash(), selectedModules,
-            reader->getLibrary().bundle_contract());
-      }
-      if (!matches) {
-        sun::support::logAndThrowError("Library ABI mismatch for '" +
-                                       required.library_id() +
-                                       "': selected artifact changes the "
-                                       "required declarations, target, or "
-                                       "runtime contract" +
-                                       artifactDependencyTree(required, candidate,
-                                                              readers, entrypoint,
-                                                              "error"));
-      }
-      artifactWarnings.emplace(
-          std::minmax(required.artifact_hash(), candidate.artifact_hash()),
-          "Library '" + required.library_id() +
-              "' is used through different artifacts." +
-              artifactDependencyTree(required, candidate, readers, entrypoint,
-                                     "warning"));
-      std::map<std::string, std::string> keys;
-      for (const auto& item : candidate.declarations()) {
-        if (!keys.emplace(item.identity(), item.key()).second) {
-          sun::support::logAndThrowError("Ambiguous replacement declaration");
-        }
-      }
-      for (const auto& item : required.declarations()) {
-        const auto replacement = keys.find(item.identity());
-        if (replacement == keys.end()) {
-          sun::support::logAndThrowError(
-              "Missing replacement nominal declaration");
-        }
-        const auto [it, added] =
-            aliases.emplace(item.key(), replacement->second);
-        if (!added && it->second != replacement->second) {
-          sun::support::logAndThrowError(
-              "Conflicting replacement nominal declaration");
-        }
-      }
-    }
-  }
-  std::vector<moon::ModuleMetadata> normalized;
-  normalized.reserve(metadata.size());
-  for (const auto* module : metadata) {
-    normalized.push_back(*module);
-    remapDeclarationReferences(normalized.back(), aliases);
-  }
-  std::vector<const moon::ModuleMetadata*> correspondence;
-  for (const auto& module : normalized) {
-    correspondence.push_back(&module);
-  }
+  // Every declaration keeps its original artifact identity. Distinct embedded
+  // revisions can coexist; source type checking decides whether values match.
   try {
-    validateDeclarationGraph(correspondence, true);
+    validateDeclarationGraph(metadata, true);
   } catch (const sun::support::SunError& error) {
     sun::support::logAndThrowError("Invalid dependency declaration graph for" +
                                    imports + ": " + error.what());
   }
-  declarationAliases_ = std::move(aliases);
+  collectCompatibleRevisions(readers);
   for (auto* reader : readers) {
     recordValidatedImport(reader->getLibrary().bundle_contract(),
                           bytesHash(*reader), reader->getPath().string());
   }
-  for (const auto& [artifacts, warning] : artifactWarnings) {
-    if (warnedArtifactPairs_.insert(artifacts).second) {
-      sun::support::messageStream("warning") << warning << '\n';
+}
+
+void AbiCompatibilityChecker::collectCompatibleRevisions(
+    const std::vector<moon_bundling::MoonReader*>& readers) {
+  // Retained requirements describe the original revision, not its container.
+  for (const auto* reader : readers) {
+    const auto& contract = reader->getLibrary().bundle_contract();
+    if (contract.has_library_abi()) {
+      const auto& revision = contract.library_abi();
+      revisions_.emplace(revision.artifact_hash(), revision);
+    }
+    for (const auto& revision : contract.dependency_abis()) {
+      revisions_.emplace(revision.artifact_hash(), revision);
     }
   }
+  for (const auto& [sourceHash, source] : revisions_) {
+    for (const auto& [targetHash, target] : revisions_) {
+      if (sourceHash != targetHash &&
+          source.library_id() == target.library_id() &&
+          source.abi_hash() == target.abi_hash()) {
+        compatibleRevisions_.emplace(sourceHash, targetHash);
+      }
+    }
+  }
+  // Older snapshots may spell compatible targets or advisory rules differently.
+  for (const auto* retaining : readers) {
+    for (const auto& required :
+         retaining->getLibrary().bundle_contract().dependency_abis()) {
+      for (auto* candidate : readers) {
+        const auto& contract = candidate->getLibrary().bundle_contract();
+        if (!contract.has_library_abi() ||
+            contract.library_id() != required.library_id()) {
+          continue;
+        }
+        const auto& hash = candidate->getLibrary().content_hash();
+        if (hash == required.artifact_hash() ||
+            compatibleRevisions_.count({hash, required.artifact_hash()})) {
+          continue;
+        }
+        std::vector<const moon::ModuleMetadata*> modules;
+        for (const auto& key : candidate->listModules()) {
+          modules.push_back(candidate->getMetadata(key));
+        }
+        if (matchesLibraryAbiSnapshot(required, contract, hash, modules,
+                                      retaining->getLibrary().bundle_contract())) {
+          compatibleRevisions_.emplace(hash, required.artifact_hash());
+        }
+      }
+    }
+  }
+}
+
+bool AbiCompatibilityChecker::acceptsNominalBorrow(
+    const sun::semantic_analysis::QualifiedName& source,
+    const sun::semantic_analysis::QualifiedName& target, NominalKind kind) const {
+  const auto sourceHash = source.bundleHash();
+  const auto targetHash = target.bundleHash();
+  if (!compatibleRevisions_.count({sourceHash, targetHash})) {
+    return false;
+  }
+  const auto& from = revisions_.at(sourceHash);
+  const auto& to = revisions_.at(targetHash);
+  auto sourcePath = source.scopePath;
+  auto targetPath = target.scopePath;
+  sourcePath.erase(sourcePath.begin());
+  targetPath.erase(targetPath.begin());
+  sourcePath.push_back(source.baseName);
+  targetPath.push_back(target.baseName);
+  const auto identity = NominalIdentity(from.library_id(), kind, sourcePath);
+  if (!(identity == NominalIdentity(to.library_id(), kind, targetPath))) {
+    return false;
+  }
+  const auto declared = [&](const proto::LibraryAbiSnapshot& revision) {
+    return std::any_of(revision.declarations().begin(),
+                       revision.declarations().end(), [&](const auto& item) {
+      return item.identity() == identity.encoding();
+    });
+  };
+  return declared(from) && declared(to);
 }
 
 ValidatedBundle AbiCompatibilityChecker::validateImpl(

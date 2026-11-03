@@ -7,6 +7,8 @@
 #include <sstream>
 #include <string>
 
+#include "driver/build_graph.h"
+
 /** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
@@ -74,7 +76,7 @@ public module library {
     std::ofstream(dir / "project/sun-config.json") << R"({
   "root": true,
   "entrypoints": [
-    {"path": "lib.sun", "type": "library", "output_name": "library"}
+    {"path": "lib.sun", "type": "library", "name": "library"}
   ]
 })";
   }
@@ -90,11 +92,27 @@ public module library {
                            .c_str());
   }
 
+  /** Returns the compiler-owned directory for configured fixture artifacts. */
+  fs::path configuredOutput(const std::string& target = "") {
+    auto file = dir / "project/sun-config.json";
+    auto graph = sun::driver::loadConfigGraph(file, target);
+    return sun::driver::configureBuildPaths(
+               graph, sun::driver::SunConfig::loadFile(file, target))
+        .pathVariables.at("SUN_BUILD");
+  }
+
   /** Builds the fixture and checks that the expected library was selected. */
   void checkBuild(const std::string& arguments) {
     ASSERT_EQ(run(quote(dir / "bin/sun") + " " + arguments), 0)
         << readFile(dir / "log");
-    EXPECT_TRUE(fs::exists(dir / "project/library.moon"));
+    std::string target;
+    if (const auto flag = arguments.find("--target ");
+        flag != std::string::npos) {
+      std::istringstream(arguments.substr(flag + 9)) >> target;
+    }
+    EXPECT_TRUE(fs::exists(arguments.find("--emit-moon") != std::string::npos
+                               ? dir / "project/library.moon"
+                               : configuredOutput(target) / "library.moon"));
     // The build names each bundle it imported
     EXPECT_NE(readFile(dir / "log").find(dependencyPath.string()),
               std::string::npos);
@@ -105,7 +123,8 @@ public module library {
  * predecessor. */
 TEST_P(MoonSearchPath, config_rebuild_reloads_replaced_library) {
   const auto config = dir / "project/sun-config.json";
-  const auto library = dir / "project/library.moon";
+  const auto library = configuredOutput() / "library.moon";
+  fs::create_directories(library.parent_path());
   ASSERT_EQ(run(quote(dir / "bin/sun") + " --emit-moon -o " + quote(library) +
                 " " + quote(dir / "project/lib.sun")),
             0)
@@ -127,15 +146,16 @@ function main() i32 { if library.answer() == 43 { return 0; } return 1; }
     "root": true,
     "sun_path": ["."],
     "entrypoints": [
-      {"path": "lib.sun", "type": "library", "output_name": "library"},
-      {"path": "main.sun", "type": "binary", "output_name": "main"}
+      {"path": "lib.sun", "type": "library", "name": "library"},
+      {"path": "main.sun", "type": "binary", "name": "main"}
     ]
   })";
   ASSERT_EQ(run(quote(dir / "bin/sun") + " -c --no-test --force-rebuild " +
                 quote(config)),
             0)
       << readFile(dir / "log");
-  EXPECT_EQ(run(quote(dir / "project/main")), 0) << readFile(dir / "log");
+  EXPECT_EQ(run(quote(configuredOutput() / "main")), 0)
+      << readFile(dir / "log");
 }
 
 TEST_P(MoonSearchPath, emit_moon_finds_installed_dependency) {
@@ -263,7 +283,7 @@ TEST_P(MoonSearchPath, config_target_selects_outputs_and_dependencies) {
         {
           "path": "lib.sun",
           "type": "library",
-          "output_name": "cross/library"
+          "name": "cross-library"
         }
       ]
     }
@@ -272,7 +292,7 @@ TEST_P(MoonSearchPath, config_target_selects_outputs_and_dependencies) {
     {
       "path": "lib.sun",
       "type": "library",
-      "output_name": "native/library"
+      "name": "native-library"
     }
   ]
 })";
@@ -281,8 +301,9 @@ TEST_P(MoonSearchPath, config_target_selects_outputs_and_dependencies) {
                 quote(dir / "project/sun-config.json")),
             0)
       << readFile(dir / "log");
-  EXPECT_TRUE(fs::exists(dir / "project/cross/library.moon"));
-  EXPECT_FALSE(fs::exists(dir / "project/native/library.moon"));
+  EXPECT_TRUE(
+      fs::exists(configuredOutput("aarch64-linux-gnu") / "cross-library.moon"));
+  EXPECT_FALSE(fs::exists(configuredOutput() / "native-library.moon"));
   EXPECT_NE(readFile(dir / "log").find(dependencyPath.string()),
             std::string::npos);
 }

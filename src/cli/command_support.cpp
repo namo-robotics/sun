@@ -6,6 +6,7 @@
 #include <iostream>
 #include <set>
 
+#include "driver/build_graph.h"
 #include "driver/git_source.h"
 #include "driver/manifest_processor.h"
 #include "llvm/Support/raw_ostream.h"
@@ -39,8 +40,9 @@ bool isConfigInput(const std::string& input) {
 SunConfig loadConfigInput(const std::string& input,
                           const std::string& targetTriple,
                           bool refreshSources) {
-  SunConfig config =
-      SunConfig::loadFile(std::filesystem::absolute(input), targetTriple);
+  SunConfig config = sun::driver::configureBuildPaths(
+      sun::driver::loadConfigGraph(input, targetTriple),
+      SunConfig::loadFile(std::filesystem::absolute(input), targetTriple));
   if (config.entrypoints.empty()) {
     sun::support::logAndThrowError(
         input +

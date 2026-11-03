@@ -83,7 +83,8 @@ def main():
     go = out / "bench_go"
     c = out / "bench_c"
     csharp = out / "csharp"
-    run("build-sun", [tools["sun"], "-c", "--dynamic", "-o", str(sun), str(SOURCE / "bench.sun")])
+    run("build-sun", [tools["sun"], "-c", "--dynamic", "--lib-path", str(ROOT / "build"),
+                      "-o", str(sun), str(SOURCE / "bench.sun")])
     run("build-c", [tools["cc"], "-O3", "-std=c11", "-o", str(c), str(SOURCE / "bench.c")])
     run("build-cpp", [tools["cxx"], "-O3", "-std=c++20", "-o", str(cpp), str(SOURCE / "bench.cpp")])
     run("build-rust", [tools["cargo"], "build", "--release", "--locked", "--manifest-path", str(manifest)])

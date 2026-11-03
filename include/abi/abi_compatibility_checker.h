@@ -8,6 +8,8 @@
 #include <vector>
 
 #include "abi/compatibility.h"
+#include "abi/nominal_identity.h"
+#include "semantic_analysis/qualified_name.h"
 
 /** Provides immutable container data to ABI validation. */
 namespace sun::moon_bundling {
@@ -99,15 +101,18 @@ class AbiCompatibilityChecker {
     return importedContracts_;
   }
 
-  /** Returns type correspondences authorized for the complete import set.
-   * Exact declaration records and embedded implementation symbols stay intact.
-   */
-  const std::map<std::string, std::string>& declarationAliases() const {
-    return declarationAliases_;
-  }
+  /** Checks a borrowed nominal argument without replacing either declaration. */
+  bool acceptsNominalBorrow(
+      const sun::semantic_analysis::QualifiedName& source,
+      const sun::semantic_analysis::QualifiedName& target,
+      NominalKind kind) const;
 
  private:
-  std::map<std::string, std::string> declarationAliases_;
+  /** Records ABI-compatible artifact pairs for later argument checks. */
+  void collectCompatibleRevisions(
+      const std::vector<moon_bundling::MoonReader*>& readers);
+  std::map<std::string, proto::LibraryAbiSnapshot> revisions_;
+  std::set<std::pair<std::string, std::string>> compatibleRevisions_;
   /** Validates immutable bytes, optionally recording an authorized import. */
   ValidatedBundle validateImpl(moon_bundling::MoonReader& reader,
                                const std::string& targetTriple, bool record);
@@ -128,7 +133,6 @@ class AbiCompatibilityChecker {
       byteHashes_;
   CompilationContext context_;
   std::set<std::string> warnedBundles_;
-  std::set<std::pair<std::string, std::string>> warnedArtifactPairs_;
   std::map<std::string, BundleContract> importedContracts_;
   std::map<std::pair<std::string, std::string>,
            std::shared_ptr<const BundleContract>>

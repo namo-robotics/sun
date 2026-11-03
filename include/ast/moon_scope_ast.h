@@ -28,6 +28,7 @@ class MoonScopeAST : public ExprAST {
   std::optional<std::string> alias_;  // Optional rename from manifest
   std::string moonPath_;  // Path to the moon file (for error messages)
   std::unique_ptr<BlockExprAST> body_;  // Module stubs from this moon
+  bool embeddedDependency_ = false;  // Available only through retained identities.
   bool ownBundle_ = false;              // The bundle being built, not an import
 
  public:
@@ -80,6 +81,12 @@ class MoonScopeAST : public ExprAST {
    * True for the bundle being built; false for an imported bundle's stubs
    */
   bool isOwnBundle() const { return ownBundle_; }
+
+  /** Hides a carried dependency from transparent source-name lookup. */
+  void setEmbeddedDependency(bool value) { embeddedDependency_ = value; }
+
+  /** Reports whether this scope only supplies implementation declarations. */
+  bool isEmbeddedDependency() const { return embeddedDependency_; }
 
   /** Visits replaceable child expressions so tree passes can rewrite them in
    * place. */

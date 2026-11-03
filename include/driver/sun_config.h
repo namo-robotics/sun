@@ -62,6 +62,9 @@ struct ConfigCBinding {
 struct ConfigDependency {
   bool available = true;
   bool package = false;
+  std::string library;
+  std::string binary;
+  std::vector<ConfigDependency> selections;
   std::string path;  // local artifact, or repository-relative Git source file
   std::string url;
   std::string hash;
@@ -70,6 +73,17 @@ struct ConfigDependency {
   std::string version;
   std::string config = "sun-config.json";
   std::string entrypoint;  // empty selects the only library in the config
+};
+
+/** A tracked external build action with declared inputs and outputs. */
+struct ConfigBuildStep {
+  std::string name;
+  std::vector<std::string> command;
+  std::vector<std::string> inputs;
+  std::vector<std::string> outputs;
+  std::vector<std::string> prerequisites;
+  std::string workingDirectory;
+  std::map<std::string, std::string> environment;
 };
 
 /** A named distribution assembled from configured production artifacts. */
@@ -101,9 +115,17 @@ struct ConfigEntrypoint {
   std::string path;     // the entrypoint .sun file
   std::string git;      // repository URL; empty for local entrypoints
   std::string version;  // commit ID, branch, or tag for a source checkout
+  std::vector<std::string> build;
+  std::vector<std::string> steps;
+  std::vector<std::string> compileArgs;
+  std::vector<std::string> pkgConfig;
+  std::vector<std::string> linkArgs;
+  std::vector<ConfigResource> resources;
+  std::vector<std::string> prerequisites;
+  bool exported = false;
   Type type = Type::Binary;
-  std::string outputName;      // empty: derived from the entrypoint's name
-  std::string testBinaryName;  // empty: outputName + "_test"
+  std::string outputName;      // resolved build artifact path
+  std::string testBinaryName;  // resolved test executable path
 };
 
 /** A formatter exclusion pattern anchored to its declaring config directory. */
@@ -116,6 +138,11 @@ struct ConfigFmtIgnore {
 struct SunConfig {
   static constexpr const char* kFileName = "sun-config.json";
 
+  std::vector<std::string> projects;
+  std::vector<ConfigBuildStep> steps;
+  std::vector<ConfigResource> exports;
+  std::string packageId;
+  std::filesystem::path configFile;  // selected configuration file
   std::filesystem::path configDir;   // directory of the nearest config file
   std::vector<std::string> sunPath;  // extra library search dirs (absolute)
   std::map<std::string, std::string> pathVariables;  // values made absolute

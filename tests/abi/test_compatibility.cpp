@@ -1,7 +1,7 @@
 /** Exercises ABI contract encoding, support decisions, and Moon integration. */
 #include <dlfcn.h>
-#include <google/protobuf/unknown_field_set.h>
 #include <google/protobuf/text_format.h>
+#include <google/protobuf/unknown_field_set.h>
 #include <gtest/gtest.h>
 #include <llvm/ADT/StringMap.h>
 #include <llvm/IR/DerivedTypes.h>
@@ -160,7 +160,8 @@ TEST(ABI_Compatibility, UnknownRequiredRuleIsRejected) {
                sun::support::SunError);
 }
 
-/** Compiler fingerprint differences alone do not prove incompatible behavior. */
+/** Compiler fingerprint differences alone do not prove incompatible behavior.
+ */
 TEST(ABI_Compatibility, ChangedFingerprintDoesNotProveIncompatibility) {
   auto changed = contract();
   for (auto& rule : *changed.mutable_requirements()) {
@@ -173,7 +174,8 @@ TEST(ABI_Compatibility, ChangedFingerprintDoesNotProveIncompatibility) {
       changed, "changed.moon", "x86_64-linux-gnu"));
 }
 
-/** Fingerprint differences survive payload checks and warn once after validation. */
+/** Fingerprint differences survive payload checks and warn once after
+ * validation. */
 TEST(ABI_Compatibility, ChangedFingerprintWarnsAfterPayloadValidation) {
   llvm::LLVMContext context;
   llvm::Module module("fingerprint_warning", context);
@@ -216,7 +218,8 @@ TEST(ABI_Compatibility, ChangedFingerprintWarnsAfterPayloadValidation) {
   std::filesystem::remove(path);
 }
 
-/** Bitcode hash differences survive payload checks and warn once after validation. */
+/** Bitcode hash differences survive payload checks and warn once after
+ * validation. */
 TEST(ABI_Compatibility, ChangedBitcodeHashWarnsAfterPayloadValidation) {
   llvm::LLVMContext context;
   llvm::Module module("bitcode_warning", context);
@@ -259,7 +262,8 @@ TEST(ABI_Compatibility, ChangedBitcodeHashWarnsAfterPayloadValidation) {
   std::filesystem::remove(path);
 }
 
-/** Advisory merging is deterministic, while malformed fingerprints stay invalid. */
+/** Advisory merging is deterministic, while malformed fingerprints stay
+ * invalid. */
 TEST(ABI_Compatibility, ExperimentalFingerprintMergesAreDeterministic) {
   auto first = contract();
   auto second = contract();
@@ -273,11 +277,13 @@ TEST(ABI_Compatibility, ExperimentalFingerprintMergesAreDeterministic) {
   auto right = second;
   EXPECT_NO_THROW(sun::abi::mergeContractRequirements(left, second));
   EXPECT_NO_THROW(sun::abi::mergeContractRequirements(right, first));
-  EXPECT_EQ(sun::abi::hashBundleContract(left), sun::abi::hashBundleContract(right));
+  EXPECT_EQ(sun::abi::hashBundleContract(left),
+            sun::abi::hashBundleContract(right));
   for (const auto& rule : sun::abi::compilerAbiSupport().rules()) {
     if (rule.version() == "experimental") {
       EXPECT_TRUE(sun::abi::compatibleRuleImplementations(
-          rule.name(), std::string(64, '0'), sun::abi::compatibilityImplementation()));
+          rule.name(), std::string(64, '0'),
+          sun::abi::compatibilityImplementation()));
       EXPECT_FALSE(sun::abi::compatibleRuleImplementations(
           rule.name(), "unknown", sun::abi::compatibilityImplementation()));
     }
@@ -288,7 +294,8 @@ TEST(ABI_Compatibility, ExperimentalFingerprintMergesAreDeterministic) {
       "unknown", std::string(64, '0'), std::string(64, '1')));
 }
 
-/** Bitcode uses a reader contract independently of experimental Sun semantics. */
+/** Bitcode uses a reader contract independently of experimental Sun semantics.
+ */
 TEST(ABI_Compatibility, BitcodeUsesReaderContract) {
   const auto expected = sun::abi::hashBitcodeReaderContract(
       sun::abi::compilerAbiSupport().bitcode_reader_contract());
@@ -306,7 +313,8 @@ TEST(ABI_Compatibility, BitcodeUsesReaderContract) {
       supported, "bitcode.moon", "x86_64-linux-gnu"));
 }
 
-/** Text formatting and requirement order do not affect the contract identity. */
+/** Text formatting and requirement order do not affect the contract identity.
+ */
 TEST(ABI_Compatibility, BitcodeContractHashesCanonicalValues) {
   sun::abi::proto::BitcodeReaderContract parsed;
   ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(R"(
@@ -317,8 +325,10 @@ TEST(ABI_Compatibility, BitcodeContractHashesCanonicalValues) {
     requirements: MATERIALIZE_ALL_BEFORE_IMPORT
     requirements: CONSUMER_LLVM_READER
     requirements: LLVM_BITCODE_MODULE
-  )", &parsed));
-  const auto& original = sun::abi::compilerAbiSupport().bitcode_reader_contract();
+  )",
+                                                            &parsed));
+  const auto& original =
+      sun::abi::compilerAbiSupport().bitcode_reader_contract();
   EXPECT_EQ(sun::abi::hashBitcodeReaderContract(original),
             sun::abi::hashBitcodeReaderContract(parsed));
   parsed.mutable_requirements()->RemoveLast();
@@ -326,13 +336,16 @@ TEST(ABI_Compatibility, BitcodeContractHashesCanonicalValues) {
             sun::abi::hashBitcodeReaderContract(parsed));
 }
 
-/** The build manifest cannot advertise missing, duplicate, or unknown obligations. */
+/** The build manifest cannot advertise missing, duplicate, or unknown
+ * obligations. */
 TEST(ABI_Compatibility, BitcodeContractRequiresImplementedObligations) {
   auto support = sun::abi::compilerAbiSupport();
   support.clear_bitcode_reader_contract();
   EXPECT_THROW(sun::abi::validateCompilerSupport(support), std::exception);
   support = sun::abi::compilerAbiSupport();
-  support.mutable_bitcode_reader_contract()->mutable_requirements()->RemoveLast();
+  support.mutable_bitcode_reader_contract()
+      ->mutable_requirements()
+      ->RemoveLast();
   EXPECT_THROW(sun::abi::validateCompilerSupport(support), std::exception);
   support = sun::abi::compilerAbiSupport();
   support.mutable_bitcode_reader_contract()->add_requirements(
@@ -342,26 +355,29 @@ TEST(ABI_Compatibility, BitcodeContractRequiresImplementedObligations) {
   auto* reader = support.mutable_bitcode_reader_contract();
   reader->mutable_requirements()->Set(0, 999);
   EXPECT_THROW(sun::abi::validateCompilerSupport(support), std::exception);
-  EXPECT_THROW(sun::abi::hashBitcodeReaderContract(*reader), sun::support::SunError);
+  EXPECT_THROW(sun::abi::hashBitcodeReaderContract(*reader),
+               sun::support::SunError);
   support = sun::abi::compilerAbiSupport();
   reader = support.mutable_bitcode_reader_contract();
   reader->GetReflection()->MutableUnknownFields(reader)->AddVarint(999, 1);
   EXPECT_THROW(sun::abi::validateCompilerSupport(support), std::exception);
-  EXPECT_THROW(sun::abi::hashBitcodeReaderContract(*reader), sun::support::SunError);
+  EXPECT_THROW(sun::abi::hashBitcodeReaderContract(*reader),
+               sun::support::SunError);
 }
 
 /** Malformed bitcode identities remain unsupported. */
 TEST(ABI_Compatibility, UnsupportedBitcodeReaderContractIsRejected) {
   for (const auto& implementation :
-       {std::string("unknown-reader"), std::string("1"),
-        std::string(63, '0'), std::string(64, 'g')}) {
+       {std::string("unknown-reader"), std::string("1"), std::string(63, '0'),
+        std::string(64, 'g')}) {
     auto unsupported = contract();
     for (auto& rule : *unsupported.mutable_requirements()) {
       if (rule.name() == "llvm.bitcode") {
         rule.set_implementation(implementation);
       }
     }
-    unsupported.set_compatibility_hash(sun::abi::hashBundleContract(unsupported));
+    unsupported.set_compatibility_hash(
+        sun::abi::hashBundleContract(unsupported));
     EXPECT_THROW(sun::abi::AbiCompatibilityChecker::current().validateContract(
                      unsupported, "bitcode.moon", "x86_64-linux-gnu"),
                  sun::support::SunError);
@@ -433,28 +449,30 @@ TEST(ABI_Compatibility, MacOSTargetVersionsValidateAndMerge) {
       sun::abi::compatibilityTarget(module.getTargetTriple()).data_layout());
   const auto original = sun::abi::describeContract(module);
   sun::abi::AbiCompatibilityChecker checker;
-  for (const auto* triple : {"arm64-apple-darwin23.6.0",
-                             "aarch64-apple-macosx14.0.0"}) {
+  for (const auto* triple :
+       {"arm64-apple-darwin23.6.0", "aarch64-apple-macosx14.0.0"}) {
     EXPECT_NO_THROW(checker.validateContract(original, "macos.moon", triple));
     module.setTargetTriple(triple);
     auto versioned = sun::abi::describeContract(module);
     EXPECT_NO_THROW(checker.validateContract(versioned, "macos.moon",
-                                            "arm64-apple-darwin"));
+                                             "arm64-apple-darwin"));
     auto merged = original;
     EXPECT_NO_THROW(sun::abi::mergeContractRequirements(merged, versioned));
     EXPECT_EQ(merged.target().platform_abi(), original.target().platform_abi());
   }
-  for (const auto* triple : {"x86_64-apple-darwin", "aarch64-apple-ios14.0",
-                             "aarch64-linux-gnu"}) {
+  for (const auto* triple :
+       {"x86_64-apple-darwin", "aarch64-apple-ios14.0", "aarch64-linux-gnu"}) {
     EXPECT_THROW(checker.validateContract(original, "macos.moon", triple),
                  sun::support::SunError);
   }
   auto different = original.target();
   different.set_platform_abi("darwin:simulator");
-  EXPECT_FALSE(sun::abi::compatibleTargetProfiles(original.target(), different));
+  EXPECT_FALSE(
+      sun::abi::compatibleTargetProfiles(original.target(), different));
   different = original.target();
   different.set_data_layout("different");
-  EXPECT_FALSE(sun::abi::compatibleTargetProfiles(original.target(), different));
+  EXPECT_FALSE(
+      sun::abi::compatibleTargetProfiles(original.target(), different));
 }
 
 /** Bundle metadata owns the contract and shared code regions validate once. */
@@ -880,17 +898,21 @@ TEST(ABI_Compatibility, LibraryRecordsAreValidatedBeforeImport) {
   ASSERT_NE(reader, nullptr);
   sun::moon_bundling::MoonHeader header;
   std::memcpy(&header, reader->getBytes()->data(), sizeof(header));
-  for (int invalidCase : {0, 1, 2, 3}) {
+  for (int invalidCase : {0, 1, 2, 3, 4}) {
     auto library = reader->getLibrary();
     if (invalidCase == 0) {
       *library.add_modules() = library.modules(0);
     } else if (invalidCase == 1) {
-      library.set_content_hash(std::string(64, 'b'));
+      library.set_content_hash(std::string(64, 'z'));
     } else if (invalidCase == 2) {
       library.mutable_modules(0)->set_bitcode_offset(
           header.bundleMetadataOffset);
-    } else {
+    } else if (invalidCase == 3) {
       library.clear_bundle_contract();
+    } else {
+      // A declaration must belong to its module's original artifact.
+      library.mutable_modules(0)->mutable_metadata()->add_module_declarations(
+          "$" + std::string(64, 'b') + "$_records");
     }
     const auto record = library.SerializeAsString();
     auto changed = header;
@@ -1179,7 +1201,7 @@ TEST(ABI_Compatibility, PackagingPreservesEntrypointLibraryIdentity) {
   /** Writes an explicit identity with otherwise identical library code. */
   const auto writeSource = [&](const std::string& identity) {
     std::ofstream file(source);
-    file << "manifest { library_id: \"" << identity << "\" }\n"
+    file << "manifest { id: \"" << identity << "\" }\n"
          << "/** Exports a value for identity packaging tests. */\n"
          << "public module identity_fixture {\n"
          << "/** Returns a constant. */\n"

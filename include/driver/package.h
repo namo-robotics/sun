@@ -28,8 +28,9 @@ struct PackagePlan {
 std::string packageFileHash(const std::filesystem::path& path);
 
 /** Resolves a configured dependency to a verified local directory on demand. */
-std::filesystem::path resolveConfigDependency(const SunConfig& config,
-                                              const std::string& name);
+std::filesystem::path resolveConfigDependency(
+    const SunConfig& config, const std::string& name,
+    const std::string& relativePath = "");
 
 /** Checks membership and output locations before compiling production files. */
 std::vector<PackagePlan> planPackages(
@@ -38,6 +39,6 @@ std::vector<PackagePlan> planPackages(
 /** Stages and compresses complete packages, preserving valid unchanged outputs.
  */
 void buildPackages(const SunConfig& config,
-                   const std::vector<PackagePlan>& plans);
+                   const std::vector<PackagePlan>& plans, bool archive = true);
 
 }  // namespace sun::driver

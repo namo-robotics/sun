@@ -269,7 +269,7 @@ std::optional<EarlyExit> validateBuildRunOptions(
   if (options.configInput && !options.outputFile.empty()) {
     return makeFailure(
         "Error: -o does not combine with a sun-config.json "
-        "input; the config's output_name fields name the "
+        "input; the config's entrypoint names determine the "
         "artifacts\n");
   }
   if (options.inputFiles.empty()) {

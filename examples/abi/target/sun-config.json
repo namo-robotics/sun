@@ -10,12 +10,12 @@
     {
       "path": "library.sun",
       "type": "library",
-      "output_name": "$ABI_BUILD/compatible"
+      "name": "compatible"
     },
     {
       "path": "main.sun",
       "type": "binary",
-      "output_name": "$ABI_BUILD/compatible"
+      "name": "compatible-app"
     }
   ]
 }

@@ -402,6 +402,10 @@ class MoonExactTypes : public ::testing::Test {
     a = bundle("a", R"(
       public module a {
         public function read(value: const ref b.Value) i32 { return value.n; }
+        /** Returns a value from the embedded dependency. */
+        public function make() b.Value { return b.Value(); }
+        /** Calls the dependency revision used to build this bundle. */
+        public function version() i32 { return b.version(); }
       }
     )",
                {MoonImport(b1)});
@@ -417,10 +421,19 @@ class MoonExactTypes : public ::testing::Test {
 };
 }  // namespace
 
-TEST_F(MoonExactTypes, missing_dependency_names_exact_declaration) {
+/** Embedded declarations work without making dependency names visible. */
+TEST_F(MoonExactTypes, embedded_dependency_needs_no_explicit_import) {
+  EXPECT_EQ(run({MoonImport(a)}, R"(
+    function main() i32 {
+      var value = a.make();
+      value.n = 42;
+      return a.read(value);
+    }
+  )"),
+            42);
   EXPECT_SUN_ERROR_WITH_MESSAGE(
-      run({MoonImport(a)}, "function main() i32 { return 0; }"),
-      "moon exact dependency");
+      run({MoonImport(a)}, "function main() i32 { return b.version(); }"),
+      "Unknown");
 }
 
 TEST_F(MoonExactTypes, exact_version_works_in_either_import_order) {
@@ -434,10 +447,24 @@ TEST_F(MoonExactTypes, exact_version_works_in_either_import_order) {
   EXPECT_EQ(run({MoonImport(b1), MoonImport(a)}, source), 42);
 }
 
-TEST_F(MoonExactTypes, wrong_version_cannot_rebind_signature) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      run({MoonImport(a), MoonImport(b2)}, "function main() i32 { return 0; }"),
-      "conflicting bundle supplied");
+/** An explicit revision does not replace the dependency retained by a bundle.
+ */
+TEST_F(MoonExactTypes, explicit_revision_preserves_embedded_dependency) {
+  EXPECT_EQ(run({MoonImport(a), MoonImport(b2)}, R"(
+    function main() i32 {
+      var value = a.make();
+      value.n = 42;
+      return a.read(value) + a.version() * 10 + b.version();
+    }
+  )"),
+            54);
+  EXPECT_THROW(run({MoonImport(a), MoonImport(b2)}, R"(
+    function main() i32 {
+      var value: b.Value = { n: 42 };
+      return a.read(value);
+    }
+  )"),
+               SunError);
 }
 
 TEST_F(MoonExactTypes, aliased_equal_layout_versions_remain_distinct) {
@@ -558,9 +585,7 @@ TEST_F(MoonExactTypes,
   EXPECT_TRUE(symbolic);
   EXPECT_TRUE(inferred);
   EXPECT_TRUE(array);
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      run({MoonImport(shapes)}, "function main() i32 { return 0; }"),
-      "moon exact dependency");
+  EXPECT_EQ(run({MoonImport(shapes)}, "function main() i32 { return 0; }"), 0);
   EXPECT_EQ(run({MoonImport(shapes), MoonImport(b1, "b", "renamed")},
                 "function main() i32 { return 0; }"),
             0);

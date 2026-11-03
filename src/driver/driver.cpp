@@ -551,6 +551,51 @@ void Driver::writeUserDefinedIR(const std::string& path) {
 // Moon import processing
 // ---------------------------------------------------------------------------
 
+/** Validates listed bundles, collects their explicit and embedded scopes, and
+ * retains their readers for linking. Embedded scopes are deduplicated and hidden
+ * from source lookup; explicit scopes preserve manifest aliases.
+ */
+static std::vector<std::unique_ptr<sun::ast::MoonScopeAST>> loadMoonScopes(
+    Parser& parser, const std::vector<MoonImport>& moonImports) {
+  // Resolve the complete graph before any bundle declarations enter the AST.
+  std::vector<std::unique_ptr<sun::moon_bundling::MoonReader>> readers;
+  std::vector<sun::moon_bundling::MoonReader*> snapshots;
+  for (const auto& moonImport : moonImports) {
+    readers.push_back(parser.openMoonImport(moonImport));
+    snapshots.push_back(readers.back().get());
+  }
+  abi::AbiCompatibilityChecker::current().validateImports(snapshots,
+                                                          parser.getFilePath());
+
+  std::vector<std::unique_ptr<sun::ast::MoonScopeAST>> scopes;
+  std::set<std::string> supplied;
+  // Only identical artifacts share a scope. Explicit listings expose their
+  // public names; different embedded revisions remain separate and hidden.
+  for (size_t i = 0; i < moonImports.size(); ++i) {
+    auto& reader = *readers[i];
+    const auto& hash = reader.getLibrary().content_hash();
+    supplied.insert(hash);
+    scopes.push_back(parser.collectMoonImport(moonImports[i], reader, hash));
+  }
+  for (size_t i = 0; i < moonImports.size(); ++i) {
+    auto& reader = *readers[i];
+    for (const auto& key : reader.listModules()) {
+      const auto& hash = reader.getMetadata(key)->content_hash();
+      if (!supplied.insert(hash).second) {
+        continue;
+      }
+      auto scope = parser.collectMoonImport(
+          MoonImport(moonImports[i].path), reader, hash);
+      scope->setEmbeddedDependency(true);
+      scopes.push_back(std::move(scope));
+    }
+  }
+  for (auto& reader : readers) {
+    sun::moon_bundling::LibraryCache::instance().addBundle(std::move(reader));
+  }
+  return scopes;
+}
+
 /**
  * Process moon imports: collect stubs, deduplicate, check for collisions
  * with source modules and between moons, then prepend to AST.
@@ -561,15 +606,7 @@ static void processMoonImports(BlockExprAST& blockAst, Parser& parser,
     return;
   }
 
-  // Resolve the complete graph before any bundle declarations enter the AST.
-  std::vector<std::unique_ptr<sun::moon_bundling::MoonReader>> readers;
-  std::vector<sun::moon_bundling::MoonReader*> snapshots;
-  for (const auto& moonImport : moonImports) {
-    readers.push_back(parser.openMoonImport(moonImport));
-    snapshots.push_back(readers.back().get());
-  }
-  abi::AbiCompatibilityChecker::current().validateImports(snapshots,
-                                                          parser.getFilePath());
+  auto scopes = loadMoonScopes(parser, moonImports);
 
   // Collect top-level module names from source files
   std::unordered_set<std::string> sourceModuleNames;
@@ -586,20 +623,12 @@ static void processMoonImports(BlockExprAST& blockAst, Parser& parser,
   std::unordered_map<std::string, std::pair<std::string, std::string>>
       moduleProviders;  // module_name -> (moon_path, content_hash)
 
-  size_t importIndex = 0;
-  for (const auto& moonImport : moonImports) {
-    auto stub =
-        parser.collectMoonImport(moonImport, std::move(readers[importIndex++]));
+  for (auto& stub : scopes) {
     if (!stub) {
       continue;
     }
 
-    if (stub->getType() != ASTNodeType::MOON_SCOPE) {
-      finalMoonScopeASTs.push_back(std::move(stub));
-      continue;
-    }
-
-    auto& moonScope = static_cast<sun::ast::MoonScopeAST&>(*stub);
+    auto& moonScope = *stub;
     const std::string& hash = moonScope.getContentHash();
     const std::string& moonPath = moonScope.getMoonPath();
 
@@ -608,6 +637,11 @@ static void processMoonImports(BlockExprAST& blockAst, Parser& parser,
       continue;
     }
 
+    // Embedded dependency scopes supply identities, not source module names.
+    if (moonScope.isEmbeddedDependency()) {
+      finalMoonScopeASTs.push_back(std::move(stub));
+      continue;
+    }
     // Check for module name collisions
     for (const auto& bodyExpr : moonScope.getBody().getBody()) {
       if (bodyExpr->getType() == ASTNodeType::MODULE) {
@@ -1175,11 +1209,14 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
     codegenVisitor->emitStaticInitFunction(staticInitOrder_, ownBundleHash_);
   }
 
-  // Link only the modules that provide symbols actually used by the code
-  // This happens AFTER codegen so we know exactly which symbols are needed
+  // Bundles retain complete dependencies for future generic specialization.
+  // Executables only need implementations reachable from their own code.
   if (hasMoonImports) {
     ScopedStage stage("moon link");
-    if (!linker.linkOnlyUsedSymbols(ownBundleHash_.empty())) {
+    const bool linked = ownBundleHash_.empty()
+                            ? linker.linkOnlyUsedSymbols(true)
+                            : linker.linkModules(precompiledImports);
+    if (!linked) {
       throw SunError(SunError::Kind::Semantic,
                      "Failed to link precompiled module: " + linker.getError());
     }

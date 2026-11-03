@@ -2,7 +2,7 @@
 # Removes the generated libraries, executables, and test log for this example.
 set -euo pipefail
 cd "$(dirname "$0")"
-output="."
+output=$(sun describe --field build_root)
 rm -f -- "$output/shapes_v1.moon" "$output/shapes_v1.1.moon" \
   "$output/shapes_v2.moon" "$output/shapes_user.moon" \
   "$output/revised" "$output/rejected" \

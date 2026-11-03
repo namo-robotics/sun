@@ -1,4 +1,4 @@
-/** Tries a revised layout that violates the shapes user's required ABI. */
+/** Attempts to pass a different revision's type to the compiled shapes user. */
 function main() i32 {
   var point = shapes.Point();
   return shapes_user.read(point) - 42;

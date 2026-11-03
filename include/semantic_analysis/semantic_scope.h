@@ -501,6 +501,7 @@ struct SemanticScopeBase
   std::map<std::string, SemanticScopeBase*> canonicalModules;
 
   // ===== Identification (for persistent scopes) =====
+  bool isEmbeddedDependency = false;  // Skip this bundle in transparent lookup.
   std::string scopeName;  // Display name (module name, source file, etc.)
   std::vector<std::string>
       scopePath;  // Scope path segments for qualified names

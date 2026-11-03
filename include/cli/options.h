@@ -50,6 +50,8 @@ struct SharedOptions {
  * into a .moon library.
  */
 struct BuildRunOptions {
+  std::string buildPackage;
+  std::string buildEntrypoint;
   SharedOptions shared;
   std::vector<std::string> inputFiles;
   std::string outputFile;                // -o <file>

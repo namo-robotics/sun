@@ -3,9 +3,41 @@
 #include "types/argument_compatibility.h"
 
 #include "types/type_utils.h"
+#include "abi/abi_compatibility_checker.h"
 
 /** Type definitions shared by analysis and code generation. */
 namespace sun::types {
+
+/** Checks nominal borrow compatibility while keeping exact type identities. */
+static bool compatibleBorrow(const TypePtr& source, const TypePtr& target) {
+  if (source->equals(*target)) {
+    return true;
+  }
+  if (source->isClass() && target->isClass()) {
+    const auto& from = static_cast<const ClassType&>(*source);
+    const auto& to = static_cast<const ClassType&>(*target);
+    if (from.isSpecialized() != to.isSpecialized() ||
+        from.getTypeArguments().size() != to.getTypeArguments().size()) {
+      return false;
+    }
+    for (size_t i = 0; i < from.getTypeArguments().size(); ++i) {
+      if (!from.getTypeArguments()[i]->equals(*to.getTypeArguments()[i])) {
+        return false;
+      }
+    }
+    return sun::abi::AbiCompatibilityChecker::current().acceptsNominalBorrow(
+        from.isSpecialized() ? from.getGenericQualifiedName() : from.getQualifiedName(),
+        to.isSpecialized() ? to.getGenericQualifiedName() : to.getQualifiedName(),
+        sun::abi::NominalKind::Class);
+  }
+  if (source->isEnum() && target->isEnum()) {
+    return sun::abi::AbiCompatibilityChecker::current().acceptsNominalBorrow(
+        static_cast<const EnumType&>(*source).getQualifiedName(),
+        static_cast<const EnumType&>(*target).getQualifiedName(),
+        sun::abi::NominalKind::Enum);
+  }
+  return false;
+}
 
 /** Reports whether a value of one type can be assigned to another. */
 bool isAssignableTo(const TypePtr& from, const TypePtr& to) {
@@ -127,13 +159,13 @@ bool isAssignableTo(const TypePtr& from, const TypePtr& to) {
 bool referenceParameterAccepts(const ReferenceType& param,
                                const TypePtr& argType) {
   const TypePtr& referent = param.getReferencedType();
-  if (referent->equals(*argType)) {
+  if (compatibleBorrow(argType, referent)) {
     return true;
   }
   if (argType->isReference()) {
     const auto& argRef = static_cast<const ReferenceType&>(*argType);
     if (refMutabilityConvertible(argRef, param) &&
-        referent->equals(*argRef.getReferencedType())) {
+        compatibleBorrow(argRef.getReferencedType(), referent)) {
       return true;
     }
   }

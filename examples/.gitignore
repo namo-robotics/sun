@@ -1,1 +1,3 @@
 **/main
+# Compiler-managed build and installation outputs for example projects.
+.sun/

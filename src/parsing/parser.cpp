@@ -3086,7 +3086,7 @@ unique_ptr<sun::ast::ManifestAST> Parser::parseManifest() {
   std::vector<ManifestArchiveDependency> archives;
   std::vector<ManifestTargetBlock> targets;
   std::vector<ManifestSunDependency> testSuns;
-  std::optional<std::string> libraryId;
+  std::optional<std::string> id;
 
   while (curTok.kind == TokenKind::IDENTIFIER) {
     auto ident = curTok.getIdentifier().value();
@@ -3096,14 +3096,13 @@ unique_ptr<sun::ast::ManifestAST> Parser::parseManifest() {
                            "expected ':' after '" + ident + "' in manifest");
     getNextToken();  // eat ':'
 
-    if (ident == "library_id") {
-      if (libraryId) {
-        parsingError("duplicate library_id in manifest");
+    if (ident == "id") {
+      if (id) {
+        parsingError("duplicate id in manifest");
       }
-      expectCurrentTokenKind(TokenKind::STRING,
-                             "expected string after library_id");
-      libraryId = curTok.getString().value();
-      sun::abi::validateLibraryId(*libraryId);
+      expectCurrentTokenKind(TokenKind::STRING, "expected string after id");
+      id = curTok.getString().value();
+      sun::abi::validateLibraryId(*id);
       getNextToken();
     } else if (ident == "source_files") {
       suns = parseManifestSuns();
@@ -3118,10 +3117,9 @@ unique_ptr<sun::ast::ManifestAST> Parser::parseManifest() {
     } else if (ident == "test_files") {
       testSuns = parseManifestSuns();
     } else {
-      parsingError(
-          "unexpected identifier '" + ident +
-          "' in manifest; expected 'source_files', 'test_files', "
-          "'libraries', 'protos', 'archives', 'library_id' or 'target'");
+      parsingError("unexpected identifier '" + ident +
+                   "' in manifest; expected 'source_files', 'test_files', "
+                   "'libraries', 'protos', 'archives', 'id' or 'target'");
     }
 
     // Sections are newline-separated; a trailing ',' or ';' is tolerated
@@ -3138,7 +3136,7 @@ unique_ptr<sun::ast::ManifestAST> Parser::parseManifest() {
   return finishNode(std::make_unique<sun::ast::ManifestAST>(
                         std::move(suns), std::move(moons), std::move(protos),
                         std::move(archives), std::move(targets),
-                        std::move(testSuns), std::move(libraryId)),
+                        std::move(testSuns), std::move(id)),
                     start);
 }
 
@@ -3767,11 +3765,9 @@ std::unique_ptr<sun::moon_bundling::MoonReader> Parser::openMoonImport(
 
 std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
     const sun::moon_bundling::MoonImport& moonImport,
-    std::unique_ptr<sun::moon_bundling::MoonReader> reader) {
-  if (!reader) {
-    reader = openMoonImport(moonImport);
-  }
-  sun::abi::AbiCompatibilityChecker::current().validate(*reader);
+    sun::moon_bundling::MoonReader& snapshot,
+    const std::string& declarationBundle) {
+  auto* reader = &snapshot;
   const auto resolved = reader->getPath();
   const auto resolvedStr = resolved.string();
   std::string contentHash;
@@ -3820,7 +3816,7 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
 
     // Get metadata for this module
     const auto* metadata = reader->getMetadata(moduleKey);
-    if (!metadata) {
+    if (!metadata || metadata->content_hash() != declarationBundle) {
       continue;
     }
 
@@ -4007,9 +4003,6 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
     }
   }
   PARSER_TIMER_END(process_modules);
-
-  // Store the moon reader in the cache for later linking
-  sun::moon_bundling::LibraryCache::instance().addBundle(std::move(reader));
 
   // Determine the alias if provided (from moduleRemap)
   std::optional<std::string> alias;

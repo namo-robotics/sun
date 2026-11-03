@@ -120,27 +120,27 @@ TEST(ABI_NominalIdentity, LibraryIdsPreserveTextAndLimitBytes) {
 /** Manifest processing and serialization retain the producer's exact ID. */
 TEST(ABI_NominalIdentity, ManifestIdentityRoundTrips) {
   auto parser = sun::parsing::Parser::createStringParser(
-      "manifest { library_id: \" org.example/名前 \\n\" }");
+      "manifest { id: \" org.example/名前 \\n\" }");
   auto program = parser.parseProgram();
-  const auto formatted = sun::parsing::formatSource(
-      "manifest { library_id: \" org.example/名前 \\n\" }");
+  const auto formatted =
+      sun::parsing::formatSource("manifest { id: \" org.example/名前 \\n\" }");
   auto formattedParser = sun::parsing::Parser::createStringParser(formatted);
   auto formattedProgram = formattedParser.parseProgram();
   const auto* manifest = sun::driver::ManifestProcessor::findManifest(*program);
   ASSERT_NE(manifest, nullptr);
-  ASSERT_TRUE(manifest->getLibraryId());
-  EXPECT_EQ(*manifest->getLibraryId(), " org.example/名前 \n");
+  ASSERT_TRUE(manifest->getId());
+  EXPECT_EQ(*manifest->getId(), " org.example/名前 \n");
   const auto* formattedManifest =
       sun::driver::ManifestProcessor::findManifest(*formattedProgram);
   ASSERT_NE(formattedManifest, nullptr);
-  EXPECT_EQ(formattedManifest->getLibraryId(), manifest->getLibraryId());
+  EXPECT_EQ(formattedManifest->getId(), manifest->getId());
   auto resolved = sun::driver::ManifestProcessor::process(*manifest, ".");
-  EXPECT_EQ(resolved.libraryId, manifest->getLibraryId());
+  EXPECT_EQ(resolved.libraryId, manifest->getId());
   sun::serialization::ASTSerializer serializer;
   sun::serialization::ASTDeserializer deserializer;
   auto restored = deserializer.deserialize(serializer.serialize(*manifest));
-  EXPECT_EQ(static_cast<const sun::ast::ManifestAST&>(*restored).getLibraryId(),
-            manifest->getLibraryId());
+  EXPECT_EQ(static_cast<const sun::ast::ManifestAST&>(*restored).getId(),
+            manifest->getId());
   auto absentParser = sun::parsing::Parser::createStringParser("manifest {}");
   auto absent = absentParser.parseProgram();
   const auto* absentManifest =
@@ -148,24 +148,23 @@ TEST(ABI_NominalIdentity, ManifestIdentityRoundTrips) {
   ASSERT_NE(absentManifest, nullptr);
   auto absentRestored =
       deserializer.deserialize(serializer.serialize(*absentManifest));
-  EXPECT_FALSE(static_cast<const sun::ast::ManifestAST&>(*absentRestored)
-                   .getLibraryId());
+  EXPECT_FALSE(
+      static_cast<const sun::ast::ManifestAST&>(*absentRestored).getId());
 }
 
 /** Malformed or target-specific identity declarations fail before packaging. */
 TEST(ABI_NominalIdentity, RejectsInvalidManifestIdentities) {
   for (const auto& source :
-       {std::string("manifest { library_id: \"\" }"),
-        std::string("manifest { library_id: 12 }"),
-        std::string("manifest { library_id: \"a\" library_id: \"b\" }"),
-        std::string("manifest { target: { linux: { library_id: \"a\" } } }"),
-        std::string("manifest { library_id: \"") + std::string(513, 'x') +
-            "\" }"}) {
+       {std::string("manifest { id: \"\" }"),
+        std::string("manifest { id: 12 }"),
+        std::string("manifest { id: \"a\" id: \"b\" }"),
+        std::string("manifest { target: { linux: { id: \"a\" } } }"),
+        std::string("manifest { id: \"") + std::string(513, 'x') + "\" }"}) {
     auto parser = sun::parsing::Parser::createStringParser(source);
     EXPECT_THROW(parser.parseProgram(), sun::support::SunError);
   }
   sun::proto::ast::ASTNode node;
-  node.mutable_manifest()->set_library_id("");
+  node.mutable_manifest()->set_id("");
   EXPECT_THROW(sun::serialization::ASTDeserializer().deserialize(node),
                sun::support::SunError);
 }

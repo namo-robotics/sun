@@ -277,9 +277,11 @@ bool MoonWriter::write(const std::filesystem::path& outputPath) {
     entry->set_bitcode_offset(location.offset);
     entry->set_bitcode_size(location.size);
 
-    // Declarations belong to this bundle; their type references already carry
-    // the exact identities bound in the analyzed program.
-    mod.metadata.set_content_hash(bundleHash_);
+    // Preserve the original identity of carried dependency declarations.
+    // Metadata created without an identity belongs to this bundle.
+    if (mod.metadata.content_hash().empty()) {
+      mod.metadata.set_content_hash(bundleHash_);
+    }
 
     *entry->mutable_metadata() = mod.metadata;
   }
@@ -403,10 +405,18 @@ std::unique_ptr<MoonReader> MoonReader::open(
     }
     const auto& metadata = module.metadata();
     if (metadata.source_hash().empty() ||
-        metadata.source_hash().size() > 1024 * 1024 ||
-        metadata.content_hash() != library.content_hash()) {
+        metadata.source_hash().size() > 1024 * 1024) {
       malformed();
     }
+    validateBundleHash(metadata.content_hash());
+    const auto ownerPrefix = "$" + metadata.content_hash() + "$_";
+    for (const auto& key : metadata.module_declarations()) {
+      if (!key.starts_with(ownerPrefix)) {
+        malformed();
+      }
+    }
+    // Derived declarations use generated keys. Their ownership is checked by
+    // declaration-graph validation, rather than the module-root prefix rule.
     ModuleIndexEntry entry{metadata.source_hash(), module.bitcode_offset(),
                            module.bitcode_size()};
     region(entry.bitcodeOffset, entry.bitcodeSize, true);
