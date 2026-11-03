@@ -76,12 +76,17 @@ class ExternCEmitter {
    * Declare a C function, applying the C ABI to its signature. Idempotent:
    * the block pre-pass declares externs up front so they can be called
    * before their declaration appears, and function codegen reaches the same
-   * declaration again. Re-creating would give LLVM a uniqued name
-   * (`abs.1`) that no longer matches the C symbol.
+   * declaration again. Distinct bindings get separate typed LLVM declarations
+   * until finalizeDeclarations redirects their uses to the native symbol.
    */
   llvm::Function* declare(const sun::ast::PrototypeAST& proto,
                           llvm::Type* returnType,
                           llvm::ArrayRef<llvm::Type*> paramTypes);
+
+  /** Merge typed binding addresses into native symbols after all code emission.
+   * Call instructions retain their own signatures and ABI attributes.
+   */
+  void finalizeDeclarations();
 
   /**
    * Declare storage owned by a native C global. Compatible repeated
@@ -158,13 +163,14 @@ class ExternCEmitter {
   sun::codegen::CodegenContext& ctx_;
   llvm::Module* module_;
 
-  /// Sun-side extern name -> C symbol. Name resolution rewrites call sites
-  /// through the Sun name, so this is where it becomes the real symbol.
+  /** Cache each binding's typed declaration until code generation finishes. */
+  std::map<const sun::ast::PrototypeAST*, llvm::Function*> declarations_;
 
-  /// C symbol -> how its signature was lowered. Call sites need the same plan
-  /// the declaration was built from; recomputing it independently would risk
-  /// the two disagreeing.
-  std::map<std::string, SignatureLowering> lowerings_;
+  /** Temporary typed declarations and the native symbols they reference. */
+  std::vector<std::pair<llvm::Function*, llvm::Function*>> aliases_;
+
+  /** Typed LLVM declaration to its own argument and result lowering. */
+  std::map<const llvm::Function*, SignatureLowering> lowerings_;
 };
 
 }  // namespace sun::codegen::abi

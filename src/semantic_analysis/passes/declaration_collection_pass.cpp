@@ -179,29 +179,79 @@ void DeclarationCollectionPass::collectFunctionSignature(FunctionAST& func) {
                                       ctx_.currentLocation());
 }
 
-/** Compare native value types without imposing a pointee type on C buffers. */
-static bool compatibleNativeValueTypes(const TypePtr& first,
-                                       const TypePtr& second) {
-  return (first->isRawPointer() && second->isRawPointer()) ||
-         first->equals(*second);
-}
-
-/** Compare C signatures while retaining scalar and callback type checks. */
-static bool compatibleNativeFunctionTypes(const TypePtr& first,
-                                          const TypePtr& second) {
-  const auto& a = static_cast<const sun::types::FunctionType&>(*first);
-  const auto& b = static_cast<const sun::types::FunctionType&>(*second);
-  if (!compatibleNativeValueTypes(a.getReturnType(), b.getReturnType()) ||
-      a.getParamTypes().size() != b.getParamTypes().size()) {
+/** Compare native type structure without equating unrelated Sun declarations.
+ * Visited pairs terminate comparisons of recursive native record pointers.
+ */
+static bool compatibleNativeTypes(
+    const TypePtr& first, const TypePtr& second,
+    std::vector<std::pair<const sun::types::Type*, const sun::types::Type*>>& seen) {
+  if (first->equals(*second)) {
+    return true;
+  }
+  if (first->getKind() != second->getKind()) {
     return false;
   }
-  for (size_t i = 0; i < a.getParamTypes().size(); ++i) {
-    if (!compatibleNativeValueTypes(a.getParamTypes()[i],
-                                    b.getParamTypes()[i])) {
-      return false;
+  const auto pair = std::make_pair(first.get(), second.get());
+  for (const auto& visited : seen) {
+    if (visited.first == pair.first && visited.second == pair.second) {
+      return true;
     }
   }
-  return true;
+  seen.emplace_back(pair);
+  if (first->isReference()) {
+    const auto& a = static_cast<const sun::types::ReferenceType&>(*first);
+    const auto& b = static_cast<const sun::types::ReferenceType&>(*second);
+    return a.isMutable() == b.isMutable() &&
+           compatibleNativeTypes(a.getReferencedType(), b.getReferencedType(), seen);
+  }
+  if (first->isRawPointer()) {
+    const auto& a = static_cast<const sun::types::RawPointerType&>(*first);
+    const auto& b = static_cast<const sun::types::RawPointerType&>(*second);
+    return compatibleNativeTypes(a.getPointeeType(), b.getPointeeType(), seen);
+  }
+  if (first->isClass()) {
+    const auto& a = static_cast<const sun::types::ClassType&>(*first);
+    const auto& b = static_cast<const sun::types::ClassType&>(*second);
+    if (a.isPacked() != b.isPacked() || a.getAlignment() != b.getAlignment() ||
+        a.getFields().size() != b.getFields().size()) {
+      return false;
+    }
+    for (size_t i = 0; i < a.getFields().size(); ++i) {
+      if (!compatibleNativeTypes(a.getFields()[i].type, b.getFields()[i].type, seen)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  if (first->isArray()) {
+    const auto& a = static_cast<const sun::types::ArrayType&>(*first);
+    const auto& b = static_cast<const sun::types::ArrayType&>(*second);
+    return a.getDimensions() == b.getDimensions() &&
+           compatibleNativeTypes(a.getElementType(), b.getElementType(), seen);
+  }
+  if (first->isFunction()) {
+    const auto& a = static_cast<const sun::types::FunctionType&>(*first);
+    const auto& b = static_cast<const sun::types::FunctionType&>(*second);
+    if (a.canThrow() != b.canThrow() || a.requiresUnsafe() != b.requiresUnsafe() ||
+        a.getParamTypes().size() != b.getParamTypes().size() ||
+        !compatibleNativeTypes(a.getReturnType(), b.getReturnType(), seen)) {
+      return false;
+    }
+    for (size_t i = 0; i < a.getParamTypes().size(); ++i) {
+      if (!compatibleNativeTypes(a.getParamTypes()[i], b.getParamTypes()[i], seen)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
+/** Compare independently declared C signatures, including record layouts. */
+static bool compatibleNativeFunctionTypes(const TypePtr& first,
+                                          const TypePtr& second) {
+  std::vector<std::pair<const sun::types::Type*, const sun::types::Type*>> seen;
+  return compatibleNativeTypes(first, second, seen);
 }
 
 void DeclarationCollectionPass::registerNativeFunction(
@@ -221,7 +271,7 @@ void DeclarationCollectionPass::registerNativeFunction(
     return;
   }
 
-  logAndThrowError("Conflicting signatures for native symbol '" +
+  sun::support::logWarning("Conflicting signatures for native symbol '" +
                        proto.getLinkName() + "': declaration '" +
                        proto.getName() + "' (" + type->toDisplayString() +
                        (proto.isCVariadic() ? ", variadic" : "") +
