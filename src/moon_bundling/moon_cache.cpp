@@ -188,7 +188,7 @@ void MoonCache::downloadWithCurl(const std::string& url,
 
 std::filesystem::path MoonCache::fetch(
     const std::string& url, const std::optional<std::string>& expectedHash,
-    const std::filesystem::path& cacheDir) {
+    const std::filesystem::path& cacheDir, bool refresh) {
   validateUrl(url);
 
   std::string wantedHash;
@@ -202,7 +202,7 @@ std::filesystem::path MoonCache::fetch(
   std::filesystem::create_directories(cacheDir, ec);
 
   auto dest = getCachePathFor(url, cacheDir);
-  if (std::filesystem::exists(dest)) {
+  if (!refresh && std::filesystem::exists(dest)) {
     if (wantedHash.empty() || computeFileSha256Hex(dest) == wantedHash) {
       return std::filesystem::absolute(dest);
     }
@@ -216,7 +216,12 @@ std::filesystem::path MoonCache::fetch(
   }
   close(descriptor);
   std::filesystem::path tmp(pattern);
-  downloadWithCurl(url, tmp);
+  try {
+    downloadWithCurl(url, tmp);
+  } catch (...) {
+    std::filesystem::remove(tmp, ec);
+    throw;
+  }
 
   if (!wantedHash.empty()) {
     auto actual = computeFileSha256Hex(tmp);

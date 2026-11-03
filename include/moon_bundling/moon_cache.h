@@ -14,7 +14,8 @@ namespace sun::moon_bundling {
  * the cache directory, keyed by the URL. A cached bundle is reused forever,
  * unless the config descriptor carries a `hash` (lowercase hex SHA-256 of the
  * file bytes) that the cached file no longer matches — then it is fetched
- * again and the fresh download must match the hash.
+ * again and the fresh download must match the hash. Callers can request a
+ * refresh when an unpinned dependency should follow a mutable URL.
  */
 class MoonCache {
  public:
@@ -27,11 +28,13 @@ class MoonCache {
   /**
    * Absolute path of the cached bundle for `url`, downloading on a cache
    * miss or hash mismatch. Throws SunError on a malformed URL, a failed
-   * download, or a hash mismatch on the fresh download.
+   * download, or a hash mismatch on the fresh download. With refresh enabled,
+   * always download and never fall back to a stale cached file.
    */
   static std::filesystem::path fetch(
       const std::string& url, const std::optional<std::string>& expectedHash,
-      const std::filesystem::path& cacheDir = defaultCacheDir());
+      const std::filesystem::path& cacheDir = defaultCacheDir(),
+      bool refresh = false);
 
   /**
    * Token for downloading private GitHub assets (--gh-token). Sent as an

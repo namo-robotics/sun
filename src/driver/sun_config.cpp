@@ -346,9 +346,6 @@ void dependencyValue(const llvm::json::Value& value) {
   if (bool(obj.get("url")) == bool(obj.get("path"))) {
     invalid("dependency requires exactly one of url or path");
   }
-  if (obj.get("url") && !obj.get("hash")) {
-    invalid("remote dependency requires hash");
-  }
   if (auto hash = obj.getString("hash")) {
     if (hash->size() != 64 ||
         hash->find_first_not_of("0123456789abcdef") != llvm::StringRef::npos) {

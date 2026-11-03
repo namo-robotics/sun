@@ -249,7 +249,12 @@ entrypoint `type` distinguishes the two kinds.
 ```
 
 Omit both selectors to download a complete Sun package archive. `library` and
-`binary` are mutually exclusive. Remote files require a lowercase SHA-256 hash.
+`binary` are mutually exclusive. A remote file may include a lowercase SHA-256 `hash`. With a hash, Sun
+reuses matching cached bytes and rejects downloads that differ. Without a hash,
+Sun downloads the URL on each dependency resolution, so rolling release URLs
+can update without configuration changes; download failures do not fall back to
+stale cached bytes. Package inventories, library identities, target compatibility,
+and ABI checks still apply. Use a hash for reproducible builds.
 A config-relative `path` can replace `url` for a local artifact. A whole-package
 path can also name an extracted package with a verified `package.json` inventory.
 Use the existing `default`/`target` wrapper around an array entry for
