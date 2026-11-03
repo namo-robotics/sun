@@ -347,7 +347,8 @@ jobs:
 
       - name: Install LLVM 20
         run: |
-          wget https://apt.llvm.org/llvm.sh
+          curl --fail --location --retry 5 --retry-all-errors --retry-delay 5 \
+            --connect-timeout 20 --max-time 120 https://apt.llvm.org/llvm.sh -o llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh 20
           sudo apt-get install -y llvm-20-dev libclang-20-dev lld-20 libarchive-dev libzstd-dev libgtest-dev ninja-build git curl ca-certificates
