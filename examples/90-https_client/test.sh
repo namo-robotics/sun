@@ -18,8 +18,16 @@ fi
 
 ./build.sh > /dev/null
 
-out=$(./client)
+if out=$(./client 2>&1); then
+  status=0
+else
+  status=$?
+fi
 echo "$out"
+if [ "$status" -ne 0 ]; then
+  echo "FAIL: HTTPS client exited with status $status"
+  exit "$status"
+fi
 
 grep -q "status: 200" <<< "$out" || { echo "FAIL: expected status 200"; exit 1; }
 grep -qE "body bytes: [0-9]{3,}" <<< "$out" || { echo "FAIL: empty body"; exit 1; }

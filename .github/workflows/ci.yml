@@ -347,7 +347,8 @@ jobs:
 
       - name: Install LLVM 20
         run: |
-          wget https://apt.llvm.org/llvm.sh
+          curl --fail --location --retry 5 --retry-all-errors --retry-delay 5 \
+            --connect-timeout 20 --max-time 120 https://apt.llvm.org/llvm.sh -o llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh 20
           sudo apt-get install -y llvm-20-dev libclang-20-dev lld-20 libarchive-dev libzstd-dev libgtest-dev ninja-build git curl ca-certificates
@@ -528,7 +529,7 @@ jobs:
         # No OpenSSL package: the tls bundle carries its own static build
         # (scripts/build-openssl-macos.sh), and the JIT loads the carried
         # archives just as the AOT link does.
-        run: brew install llvm@20 libarchive ninja ccache googletest
+        run: brew install llvm@20 libarchive ninja ccache googletest ca-certificates
 
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1.2.23
@@ -621,6 +622,9 @@ jobs:
       - name: Verify examples compile & execute
         run: |
           set -euo pipefail
+          # Static OpenSSL needs a PEM bundle; the runner's system bundle may lag its Keychain.
+          export SSL_CERT_FILE="$(brew --prefix)/etc/ca-certificates/cert.pem"
+          test -s "$SSL_CERT_FILE"
           fail=0
           for dir in examples/*/; do
             [ -f "${dir}build.sh" ] || continue
@@ -1110,8 +1114,8 @@ jobs:
     needs: build-macos
     runs-on: macos-latest
     # A fresh runner rather than the build job's workspace: everything the
-    # installed compiler needs has to come from the tarball plus its one
-    # declared dependencies.
+    # installed compiler needs has to come from the tarball plus its
+    # declared dependencies and an up-to-date CA bundle for HTTPS verification.
 
     steps:
       - name: Download artifact
@@ -1121,7 +1125,7 @@ jobs:
           path: dist/
 
       - name: Install compiler runtime dependencies
-        run: brew install llvm@20 libarchive
+        run: brew install llvm@20 libarchive ca-certificates
 
       # Unpacked into a prefix of its own, the way the formula installs it
       # into the Cellar. Nothing goes anywhere system-wide, so the only thing
@@ -1154,8 +1158,9 @@ jobs:
           ./test_aot
           # TLS: tls.moon carries its own static OpenSSL, so this needs no
           # libssl installed and no linker flags. A real fetch also proves
-          # certificate verification finds the CA bundle stock macOS ships
-          # at /etc/ssl/cert.pem.
+          # certificate verification uses the maintained PEM CA bundle.
+          export SSL_CERT_FILE="$(brew --prefix)/etc/ca-certificates/cert.pem"
+          test -s "$SSL_CERT_FILE"
           cat > tls_test.sun << 'PROGRAM'
           using std;
           using tls;

@@ -7,6 +7,7 @@
 #include <fstream>
 
 #include "driver/manifest_processor.h"
+#include "driver/build_graph.h"
 #include "driver/package.h"
 #include "driver/sun_config.h"
 #include "moon_bundling/moon_builder.h"
@@ -314,6 +315,35 @@ TEST_F(Packages, UnsafeArchives) {
   EXPECT_THROW(sun::driver::resolveConfigDependency(cfg, "BAD"), SunError);
   EXPECT_FALSE(fs::exists(dir / "escaped"));
 }
+/** Default caches follow the selected workspace while explicit overrides win.
+ */
+TEST_F(Packages, WorkspaceDependencyCache) {
+  const auto executable = fs::canonical("build/sun");
+  auto cfg = config(
+      std::string(
+          R"({"dependencies":[{"package":"example/compiler","binary":"example/sun","path":")") +
+          executable.string() + R"("}]})",
+      llvm::sys::getDefaultTargetTriple());
+  unsetenv("SUN_DEPENDENCY_CACHE");
+  const auto target = sun::driver::configTargetKey(cfg.targetTriple);
+  const auto standalone =
+      sun::driver::resolveConfigDependency(cfg, "example/compiler");
+  EXPECT_EQ(standalone.parent_path(),
+            dir / ".sun/cache/dependencies/example/compiler" / target);
+  sun::driver::ConfigGraph graph{dir / "workspace", {}};
+  sun::driver::ConfigGraphScope scope(graph);
+  const auto workspace =
+      sun::driver::resolveConfigDependency(cfg, "example/compiler");
+  EXPECT_EQ(workspace.parent_path(),
+            graph.root / ".sun/cache/dependencies/example/compiler" / target);
+  EXPECT_TRUE(fs::is_regular_file(workspace / "bin/sun"));
+  setenv("SUN_DEPENDENCY_CACHE", (dir / "override").c_str(), 1);
+  const auto overridden =
+      sun::driver::resolveConfigDependency(cfg, "example/compiler");
+  EXPECT_EQ(overridden.parent_path(),
+            dir / "override/example/compiler" / target);
+}
+
 /** Individual executables retain executable permissions and reject a foreign
  * target. */
 TEST_F(Packages, InstallsSelectedBinaryForItsPlatform) {
