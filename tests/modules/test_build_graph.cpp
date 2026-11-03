@@ -38,6 +38,30 @@ class BuildGraph : public testing::Test {
   }
 };
 
+/** Package identities form relative paths with nonempty portable components. */
+TEST_F(BuildGraph, PackageIdentityAcceptsPortablePaths) {
+  for (const auto* id : {"sun", "namo-robotics/sun", "org/tools/sun_v1.2"}) {
+    SCOPED_TRACE(id);
+    put("sun-config.json", std::string("{\"package_id\":\"") + id + "\"}");
+    EXPECT_EQ(SunConfig::loadFile(dir / "sun-config.json").packageId, id);
+  }
+}
+
+/** Unsafe paths and whitespace cannot become package output directories. */
+TEST_F(BuildGraph, PackageIdentityRejectsUnsafePaths) {
+  for (const auto* value : {
+           R"("")", R"("org/my package")", R"(" org/sun")", R"("org/sun ")",
+           R"("org/\tsun")", R"("org/\nsun")", R"("org/\u0000sun")",
+           R"("/org/sun")", R"("org//sun")", R"("org/sun/")",
+           R"(".")", R"("..")", R"("../sun")", R"("org/../sun")",
+           R"("org/./sun")", R"("org\\sun")", R"("C:/sun")",
+           R"("org/$SUN_BUILD")", R"("org/sun*")", R"("org/sun?")"}) {
+    SCOPED_TRACE(value);
+    put("sun-config.json", std::string("{\"package_id\":") + value + "}");
+    EXPECT_THROW(SunConfig::loadFile(dir / "sun-config.json"), SunError);
+  }
+}
+
 /** Including a config preserves its own variables and canonicalizes diamonds.
  */
 TEST_F(BuildGraph, CompositionIsExplicitAndDoesNotMergeSettings) {
@@ -99,6 +123,64 @@ TEST_F(BuildGraph, ManifestIdentityDoesNotNameArtifacts) {
       graph, SunConfig::loadFile(dir / "sun-config.json"));
   EXPECT_TRUE(fs::is_regular_file(installed / "lib/local-name.moon"));
   EXPECT_FALSE(fs::exists(installed / "lib/public-api.moon"));
+}
+
+/** Entrypoint names distinguish products even when source and manifest ID match. */
+TEST_F(BuildGraph, SharedIdentityBuildsDistinctEntrypoints) {
+  put("sun-config.json", R"({"entrypoints":[
+    {"name":"second","path":"api.sun","type":"library","requires":["first"]},
+    {"name":"first","path":"api.sun","type":"library"}]})");
+  put("api.sun", "manifest { id: \"example/api\" }\n");
+  auto graph = sun::driver::loadConfigGraph(dir / "sun-config.json");
+  sun::driver::ConfigGraphScope scope(graph);
+  std::vector<std::string> built;
+  sun::driver::setProductCompiler(
+      [&](const auto&, const auto& entry, const fs::path& output) {
+        built.push_back(entry.name);
+        std::ofstream(output) << entry.name;
+      });
+  auto config = SunConfig::loadFile(dir / "sun-config.json");
+  auto installed = sun::driver::buildConfigProducts(graph, config, {}, "first");
+  EXPECT_EQ(built, (std::vector<std::string>{"first"}));
+  EXPECT_FALSE(fs::exists(installed / "lib/second.moon"));
+  built.clear();
+  sun::driver::buildConfigProducts(graph, config);
+  EXPECT_EQ(built, (std::vector<std::string>{"first", "second"}));
+  EXPECT_TRUE(fs::is_regular_file(installed / "lib/first.moon"));
+  EXPECT_TRUE(fs::is_regular_file(installed / "lib/second.moon"));
+}
+
+/** ID selectors reject ambiguity among products of the requested kind. */
+TEST_F(BuildGraph, SharedIdentityRequiresUnambiguousSelection) {
+  put("sun-config.json", R"({"entrypoints":[
+    {"name":"first","path":"api.sun","type":"library"},
+    {"name":"second","path":"api.sun","type":"library"},
+    {"name":"tool","path":"api.sun","type":"binary"}]})");
+  put("api.sun", "manifest { id: \"example/api\" }\n");
+  auto graph = sun::driver::loadConfigGraph(dir / "sun-config.json");
+  sun::driver::ConfigGraphScope scope(graph);
+  std::vector<std::string> built;
+  sun::driver::setProductCompiler(
+      [&](const auto&, const auto& entry, const fs::path& output) {
+        built.push_back(entry.name);
+        std::ofstream(output) << entry.name;
+      });
+  auto config = SunConfig::loadFile(dir / "sun-config.json");
+  sun::driver::ConfigDependency selection;
+  selection.package = false;
+  selection.library = "example/api";
+  try {
+    sun::driver::buildConfigProducts(graph, config, {selection});
+    FAIL() << "expected an ambiguous product diagnostic";
+  } catch (const SunError& error) {
+    EXPECT_NE(std::string(error.what()).find("ambiguous product id: example/api"),
+              std::string::npos);
+  }
+  EXPECT_TRUE(built.empty());
+  selection.library.clear();
+  selection.binary = "example/api";
+  sun::driver::buildConfigProducts(graph, config, {selection});
+  EXPECT_EQ(built, (std::vector<std::string>{"tool"}));
 }
 
 /** Inclusion cycles and ambiguous package identities fail before compilation.

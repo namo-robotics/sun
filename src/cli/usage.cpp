@@ -19,6 +19,7 @@ const char* const kUsageBody =
     "  resolve          Resolve --dependency <package-id> and print its root "
     "as JSON\n"
     "  describe         Print resolved project and entrypoint paths as JSON\n"
+    "                   --field build_root|install_root|package_id prints plain text\n"
     "  dependency-path  Read a resolved dependency from a custom build "
     "context\n"
     "  build-compile    Compile the custom build target with inherited "

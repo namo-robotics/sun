@@ -438,7 +438,7 @@ fs::path buildConfigProducts(const ConfigGraph& workspace, SunConfig config,
   BuildGuard guard(projectName + "@" + target);
   const fs::path output = config.pathVariables.at("SUN_BUILD");
   const fs::path install = config.pathVariables.at("SUN_INSTALL");
-  std::map<std::string, const ConfigEntrypoint*> ids;
+  std::map<std::string, std::vector<const ConfigEntrypoint*>> ids;
   for (const auto& entry : config.entrypoints) {
     auto source = entry;
     source.path = ManifestProcessor::expandPathVariables(entry.path, &config);
@@ -446,8 +446,8 @@ fs::path buildConfigProducts(const ConfigGraph& workspace, SunConfig config,
       continue;
     }
     auto id = entrypointIdentity(source);
-    if (!id.empty() && !ids.emplace(id, &entry).second) {
-      fail("duplicate product id: " + id);
+    if (!id.empty()) {
+      ids[id].push_back(&entry);
     }
   }
   std::vector<const ConfigEntrypoint*> entries;
@@ -467,11 +467,22 @@ fs::path buildConfigProducts(const ConfigGraph& workspace, SunConfig config,
       if (found == ids.end()) {
         fail("local package " + config.packageId + " does not provide " + id);
       }
-      bool library = found->second->type == ConfigEntrypoint::Type::Library;
-      if (library != dep.binary.empty()) {
+      const ConfigEntrypoint* selected = nullptr;
+      for (const auto* candidate : found->second) {
+        const bool library = candidate->type == ConfigEntrypoint::Type::Library;
+        if (library != dep.binary.empty()) {
+          continue;
+        }
+        if (selected) {
+          fail("ambiguous product id: " + id + " matches entrypoints " +
+               selected->name + " and " + candidate->name);
+        }
+        selected = candidate;
+      }
+      if (!selected) {
         fail("wrong product kind for " + id);
       }
-      entries.push_back(found->second);
+      entries.push_back(selected);
     }
   } else {
     for (const auto& entry : config.entrypoints) {
@@ -488,11 +499,11 @@ fs::path buildConfigProducts(const ConfigGraph& workspace, SunConfig config,
   }
   auto& accumulated = selectedProducts[guard.key];
   for (const auto* entry : entries) {
-    accumulated.insert(entry->path);
+    accumulated.insert(entry->name);
   }
   entries.clear();
   for (const auto& entry : config.entrypoints) {
-    if (accumulated.count(entry.path)) {
+    if (accumulated.count(entry.name)) {
       entries.push_back(&entry);
     }
   }
@@ -500,11 +511,11 @@ fs::path buildConfigProducts(const ConfigGraph& workspace, SunConfig config,
   std::set<std::string> visitingEntries, builtEntries;
   std::function<void(const ConfigEntrypoint*)> order =
       [&](const ConfigEntrypoint* entry) {
-        if (builtEntries.count(entry->path)) {
+        if (builtEntries.count(entry->name)) {
           return;
         }
-        if (!visitingEntries.insert(entry->path).second) {
-          fail("entrypoint dependency cycle: " + entry->path);
+        if (!visitingEntries.insert(entry->name).second) {
+          fail("entrypoint dependency cycle: " + entry->name);
         }
         for (const auto& name : entry->prerequisites) {
           auto dependency = std::find_if(
@@ -515,8 +526,8 @@ fs::path buildConfigProducts(const ConfigGraph& workspace, SunConfig config,
           }
           order(&*dependency);
         }
-        visitingEntries.erase(entry->path);
-        builtEntries.insert(entry->path);
+        visitingEntries.erase(entry->name);
+        builtEntries.insert(entry->name);
         ordered.push_back(entry);
       };
   for (const auto* entry : entries) {

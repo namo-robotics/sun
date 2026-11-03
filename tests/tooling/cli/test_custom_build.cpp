@@ -263,6 +263,23 @@ TEST_F(CustomBuild, FailurePreservesInstallation) {
   EXPECT_EQ(read(installed), previous);
 }
 
+/** Shell queries return selected project values without building products. */
+TEST_F(CustomBuild, DescribeFieldPrintsPlainText) {
+  const std::vector<std::string> flags{"--target", foreignTarget(), "-g", "-O0"};
+  auto selected = describe(flags);
+  for (const auto* field : {"build_root", "install_root", "package_id"}) {
+    auto arguments = flags;
+    arguments.insert(arguments.end(), {"--field", field});
+    ASSERT_EQ(command("describe", arguments), 0) << diagnostics();
+    EXPECT_EQ(read(root / "stdout"), selected.getString(field)->str() + "\n");
+  }
+  EXPECT_FALSE(fs::exists(selected.getString("build_root")->str()));
+  EXPECT_NE(command("describe", {"--field", "entrypoints"}), 0);
+  EXPECT_NE(diagnostics().find("--field expects"), std::string::npos);
+  EXPECT_NE(command("describe", {"--field"}), 0);
+  EXPECT_NE(diagnostics().find("--field requires a value"), std::string::npos);
+}
+
 /** Build scripts require an array, cannot mix build modes, and require an
  * inherited context. */
 TEST_F(CustomBuild, InvalidSchemaAndMissingContext) {

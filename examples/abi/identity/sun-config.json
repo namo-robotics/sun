@@ -22,12 +22,19 @@
     {
       "path": "shapes_user.sun",
       "type": "library",
-      "name": "shapes_user"
+      "name": "shapes_user",
+      "requires": [
+        "shapes_v1"
+      ]
     },
     {
       "path": "main_v1.1.sun",
       "type": "binary",
-      "name": "revised"
+      "name": "revised",
+      "requires": [
+        "shapes_user",
+        "shapes_v1.1"
+      ]
     }
   ]
 }

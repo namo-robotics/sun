@@ -287,7 +287,11 @@ project settings:
 }
 ```
 
-Each producer declares a `package_id`. Dependencies matching an included producer
+Each producer declares a `package_id`. It must be a nonempty relative path such
+as `namo-robotics/sun`, with `/` separating components containing only letters,
+digits, `_`, `-`, and `.`. Spaces and other whitespace, empty components, `.` and
+`..` components, backslashes, and leading or trailing slashes are rejected.
+Dependencies matching an included producer
 use its local products before considering their external source. Duplicate
 package identities, inclusion cycles, missing selected products, and failed local
 builds are errors; a failed local build never falls back to a download.
@@ -310,12 +314,19 @@ For example, `.sun/build/aarch64-unknown-darwin/release/namo-robotics/sun_ui/`
 stays the same across compiler rebuilds. Cache validation includes the compiler;
 stale artifacts are rebuilt at the same paths.
 `$SUN_BUILD` and `$SUN_INSTALL` expose the current project's paths.
+Shell scripts can use `output=$(sun describe --field build_root)` without parsing
+JSON. `--field install_root` and `--field package_id` also print a single value.
+The command accepts `--config`, `--package`, and target and build flags to select
+the same paths as the build; without `--field`, it retains its JSON output.
 An entrypoint's `name` selects the build target and determines its filenames:
 `tls` produces `tls.moon` for a library, `tls` for a binary, and `tls_test` for tests.
 All are placed beneath `$SUN_BUILD`. When omitted, `name` defaults to the source
 filename without its extension; names must be unique among enabled entrypoints.
 Entrypoints do not accept `output_name` or `test_binary_name`. Manifest `id` remains
 optional and describes product identity; it never determines a filename.
+Different entrypoints may share a manifest ID, for example when building several
+revisions of one library. Dependencies selected by manifest ID must match exactly
+one entrypoint of the requested product kind; ambiguous selections are errors.
 Explicit `sun -o <path>` continues to accept a path for individual invocations.
 Export production entrypoints with `"export": true`; internal products remain
 selectable with `--entrypoint`. An entrypoint's `requires` list names local

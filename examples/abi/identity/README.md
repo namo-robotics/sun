@@ -8,6 +8,8 @@ docs-config: true
 An application can list another shapes revision without replacing that embedded
 copy. All revisions use `id: "sun.examples/shapes"`; this identifies the
 library but does not make their types interchangeable.
+The config distinguishes these revisions by entrypoint name. Its `requires`
+lists build the imported revision before `shapes_user` and the consumer.
 
 `main_v1.1.sun` constructs a v1.1 point containing `43` and passes it to
 `shapes_user.read`, compiled against v1. Their recorded ABI contracts match, so
@@ -26,7 +28,8 @@ bash examples/abi/identity/build.sh
 bash examples/abi/identity/test.sh
 ```
 
-The scripts build the libraries and executables in the example folder. `test.sh`
+The scripts build libraries and executables under the example's `.sun/build/`
+directory and use `sun describe --config` to resolve their paths. `test.sh`
 runs the compatible-borrow example and checks the cross-revision rejection.
 Use `build-incompatible.sh` to inspect the rejected call separately, and
 `clean.sh` to remove generated outputs.

@@ -15,7 +15,7 @@
     {
       "path": "main.sun",
       "type": "binary",
-      "name": "compatible"
+      "name": "compatible-app"
     }
   ]
 }

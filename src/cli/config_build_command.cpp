@@ -415,10 +415,11 @@ static int runConfigCommand(const std::vector<std::string>& args,
                             ConfigAction action) {
   try {
     std::vector<std::string> compilerArgs;
-    std::string package, entrypoint, configFile, dependency;
+    std::string package, entrypoint, configFile, dependency, field;
     for (size_t i = 0; i < args.size(); ++i) {
       if (args[i] == "--entrypoint" || args[i] == "--package" ||
-          args[i] == "--config" || args[i] == "--dependency") {
+          args[i] == "--config" || args[i] == "--dependency" ||
+          (action == ConfigAction::Describe && args[i] == "--field")) {
         const auto flag = args[i];
         if (++i == args.size()) {
           sun::support::logAndThrowError(flag + " requires a value");
@@ -434,6 +435,14 @@ static int runConfigCommand(const std::vector<std::string>& args,
         }
         if (flag == "--dependency") {
           dependency = args[i];
+        }
+        if (flag == "--field") {
+          field = args[i];
+          if (field != "build_root" && field != "install_root" &&
+              field != "package_id") {
+            sun::support::logAndThrowError(
+                "--field expects build_root, install_root, or package_id");
+          }
         }
       } else {
         compilerArgs.push_back(args[i]);
@@ -480,6 +489,15 @@ static int runConfigCommand(const std::vector<std::string>& args,
       }
       config = sun::driver::configureBuildPaths(graph, std::move(config));
       if (action == ConfigAction::Describe) {
+        if (!field.empty()) {
+          const auto& value = field == "package_id"
+                                  ? config.packageId
+                                  : config.pathVariables.at(
+                                        field == "build_root" ? "SUN_BUILD"
+                                                              : "SUN_INSTALL");
+          llvm::outs() << value << "\n";
+          return 0;
+        }
         llvm::json::Array entries;
         for (const auto& entry : config.entrypoints) {
           const auto path = sun::driver::ManifestProcessor::expandPathVariables(

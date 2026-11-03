@@ -2,7 +2,7 @@
 # Runs a compatible borrow and checks rejection of an incompatible revision.
 set -euo pipefail
 cd "$(dirname "$0")"
-output="."
+output=$(sun describe --field build_root)
 "$output/revised"
 rm -f "$output/rejected"
 
