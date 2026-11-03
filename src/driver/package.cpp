@@ -651,8 +651,13 @@ std::vector<PackagePlan> planPackages(
   std::vector<fs::path> outputs;
   for (auto& plan : result) {
     if (plan.output.empty()) {
-      plan.output = config.configDir / "dist" /
-                    (plan.name + "-" + configTargetKey(config.targetTriple));
+      const auto configured = config.pathVariables.find("SUN_BUILD");
+      const auto build = configured != config.pathVariables.end()
+                             ? fs::path(configured->second)
+                             : config.configDir / ".sun/build" /
+                                   configTargetKey(config.targetTriple) /
+                                   "release" / config.configDir.filename();
+      plan.output = build / "packages" / plan.name;
     }
     plan.output = fs::absolute(
         ManifestProcessor::expandPathVariables(plan.output.string(), &config));
