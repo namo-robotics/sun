@@ -1628,8 +1628,10 @@ TEST(Ffi, conflicting_native_signature_from_moon) {
   EXPECT_NE(warning.find("typed"), std::string::npos);
   EXPECT_NE(warning.find("native_binding.sun"), std::string::npos);
   EXPECT_NE(warning.find("[sun][warning]"), std::string::npos);
+  auto compiler = Driver::createForAOT("moon_signature_codegen");
+  compiler->setMoonImports({sun::moon_bundling::MoonImport(moon.string())});
   testing::internal::CaptureStderr();
-  EXPECT_NO_THROW(driver->compileString(client));
+  EXPECT_NO_THROW(compiler->compileString(client));
   const auto compiledWarning = testing::internal::GetCapturedStderr();
   EXPECT_NE(compiledWarning.find("Conflicting signatures"), std::string::npos);
   fs::remove_all(dir);
@@ -1704,7 +1706,7 @@ TEST(Ffi, conflicting_native_calls_preserve_declared_signatures) {
     extern "C" function variadic(value: i32, ...) i32 as "native_conflict";
     /** Compile each call without executing any incompatible native binding. */
     public function exercise() i64 {
-      return unsafe { small(1) + wide(2) + variadic(3, 4); };
+      return unsafe { _convert<i64>(small(1)) + wide(2) + _convert<i64>(variadic(3, 4)); };
     }
   )"));
   const auto warning = testing::internal::GetCapturedStderr();
@@ -1751,7 +1753,7 @@ TEST(Ffi, conflicting_native_calls_preserve_extension_attributes) {
     extern "C" function unsigned_value(value: u8) u8 as "native_extension";
     /** Compile both views without executing either. */
     public function exercise() i32 {
-      return unsafe { signed_value(1) + unsigned_value(2); };
+      return unsafe { _convert<i32>(signed_value(1)) + _convert<i32>(unsigned_value(2)); };
     }
   )"));
   const auto warning = testing::internal::GetCapturedStderr();
