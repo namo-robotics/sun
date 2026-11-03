@@ -1207,6 +1207,7 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
     codegenVisitor->codegen(*blockAst);
     // Emit static initialization function for globals that need runtime init
     codegenVisitor->emitStaticInitFunction(staticInitOrder_, ownBundleHash_);
+    codegenVisitor->externCEmitter().finalizeDeclarations();
   }
 
   // Bundles retain complete dependencies for future generic specialization.

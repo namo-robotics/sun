@@ -22,7 +22,10 @@ test('ABI documentation includes each project config and its exact Sun sources',
     const rendered = readFileSync(join(docs, 'generated', partial), 'utf8')
     await compile(rendered)
     assert.ok(rendered.includes(`examples/abi/${name}/`))
-    for (const file of readdirSync(directory).filter(file => file.endsWith('.sun') || file === 'sun-config.json')) {
+    const files = readdirSync(directory, { withFileTypes: true })
+      .filter(entry => entry.isFile() && (entry.name.endsWith('.sun') || entry.name === 'sun-config.json'))
+      .map(entry => entry.name)
+    for (const file of files) {
       const source = readFileSync(join(directory, file), 'utf8').trimEnd()
       assert.ok(rendered.includes(`filename="${file}"\n${source}\n`), `Missing source: ${name}/${file}`)
     }

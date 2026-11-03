@@ -120,62 +120,35 @@ void attachLoweringAttributes(Target* target, const SignatureLowering& lowering,
 llvm::Function* ExternCEmitter::declare(
     const sun::ast::PrototypeAST& proto, llvm::Type* returnType,
     llvm::ArrayRef<llvm::Type*> paramTypes) {
+  if (auto found = declarations_.find(&proto); found != declarations_.end()) {
+    return found->second;
+  }
   const std::string& symbol = proto.getLinkName();
   if (llvm::GlobalValue* named = module_->getNamedValue(symbol);
       named && !llvm::isa<llvm::Function>(named)) {
     logAndThrowError("C symbol '" + symbol +
                      "' was already declared as a global variable");
   }
-  // Validate every declaration, including symbols with a cached lowering.
   SignednessInfo signs = signednessOf(proto);
   auto lowering = lowerCSignature(targetTriple(module_), returnType, paramTypes,
                                   module_->getDataLayout(), &signs);
   llvm::FunctionType* funcType = buildLoweredFunctionType(
       lowering, ctx_.getContext(), proto.isCVariadic());
 
-  if (llvm::Function* existing = module_->getFunction(symbol)) {
-    if (funcType != existing->getFunctionType()) {
-      std::string previous = "previously compiled declaration";
-      if (auto* origin = existing->getMetadata("sun.cabi.declaration")) {
-        if (auto* text =
-                llvm::dyn_cast<llvm::MDString>(origin->getOperand(0))) {
-          previous = text->getString().str();
-        }
-      }
-      std::string signatures;
-      llvm::raw_string_ostream stream(signatures);
-      existing->getFunctionType()->print(stream);
-      stream << " versus ";
-      funcType->print(stream);
-      logAndThrowError("Conflicting signatures for native symbol '" + symbol +
-                           "': declaration '" + proto.getName() +
-                           "' conflicts with " + previous + " (" + signatures +
-                           ")",
-                       proto.getLocation());
-    }
-    if (!lowerings_.count(symbol)) {
-      lowerings_[symbol] = lowering;
-      applyAttributes(existing, lowering);
-    }
-    existing->addFnAttr("sun.cabi");
-    if (!existing->getMetadata("sun.cabi.declaration")) {
-      existing->setMetadata(
-          "sun.cabi.declaration",
-          llvm::MDNode::get(
-              ctx_.getContext(),
-              llvm::MDString::get(ctx_.getContext(),
-                                  "declaration '" + proto.getName() + "' at " +
-                                      proto.getLocation().toString())));
-    }
-    return existing;
+  // Keep a typed declaration for each Sun binding during code generation.
+  // Calls and function addresses are redirected to the native symbol only
+  // after every call has received its own signature and ABI attributes.
+  auto* existing = module_->getFunction(symbol);
+  llvm::Function* func = llvm::Function::Create(
+      funcType, llvm::Function::ExternalLinkage, existing ? "" : symbol, module_);
+
+  declarations_[&proto] = func;
+  if (existing) {
+    aliases_.emplace_back(func, existing);
   }
 
-  llvm::Function* func = llvm::Function::Create(
-      funcType, llvm::Function::ExternalLinkage, symbol, module_);
-
-  // Key the plan by the emitted symbol so any path that finds the Function
-  // can find the marshalling it was built with.
-  lowerings_[func->getName().str()] = lowering;
+  // Keep the lowering on this typed declaration, not on the shared C symbol.
+  lowerings_[func] = lowering;
   applyAttributes(func, lowering);
   func->addFnAttr("sun.cabi");
   // Keep the source identity when this declaration travels in moon bitcode.
@@ -200,6 +173,16 @@ llvm::Function* ExternCEmitter::declare(
   }
 
   return func;
+}
+
+void ExternCEmitter::finalizeDeclarations() {
+  for (const auto& [alias, symbol] : aliases_) {
+    alias->replaceAllUsesWith(symbol);
+    alias->eraseFromParent();
+  }
+  aliases_.clear();
+  declarations_.clear();
+  lowerings_.clear();
 }
 
 llvm::GlobalVariable* ExternCEmitter::declareGlobal(
@@ -236,7 +219,7 @@ const SignatureLowering* ExternCEmitter::loweringFor(
   if (!func) {
     return nullptr;
   }
-  auto it = lowerings_.find(func->getName().str());
+  auto it = lowerings_.find(func);
   return it == lowerings_.end() ? nullptr : &it->second;
 }
 

@@ -350,10 +350,16 @@ public module wrap {
 ```
 
 The *symbol* is still global. Two modules may each declare the same C function
-under their own Sun name, but their signatures must agree — the second
-declaration of a symbol is checked against the first and rejected on a
-mismatch. This is why the standard library keeps every one of its externs in a
-single private file, `stdlib/std/sys.sun`.
+under their own Sun name. Semantic analysis compares repeated declarations,
+including imported bindings, and warns when their signatures differ. The check
+compares record fields, packing, alignment, pointer pointees, and callback
+signatures structurally; independent names alone do not cause a warning.
+
+Compilation continues after this warning. Each call retains its declaration's
+argument and return handling, but all declarations still target one native
+symbol. The warning does not adapt incompatible calls or make them safe: each
+binding must correctly describe the actual C implementation. A wrong signature
+or record layout can cause undefined behavior inside an `unsafe` call.
 
 ## Carrying the C library along
 
