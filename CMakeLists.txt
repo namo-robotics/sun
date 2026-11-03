@@ -725,8 +725,8 @@ if(NOT SKIP_STDLIB)
         set(CROSS_BUNDLE_OUTPUTS "")
         foreach(cross_triple aarch64-linux-gnu aarch64-linux-musl)
             list(APPEND CROSS_BUNDLE_OUTPUTS
-                ${CMAKE_SOURCE_DIR}/build/${cross_triple}/stdlib.moon
-                ${CMAKE_SOURCE_DIR}/build/${cross_triple}/tls.moon)
+                ${CMAKE_BINARY_DIR}/${cross_triple}/stdlib.moon
+                ${CMAKE_BINARY_DIR}/${cross_triple}/tls.moon)
         endforeach()
         set(CROSS_OPENSSL_DIR ${CMAKE_SOURCE_DIR}/third_party/openssl/aarch64-linux-musl)
         foreach(archive libssl.a libcrypto.a)
@@ -737,7 +737,7 @@ if(NOT SKIP_STDLIB)
         set(BUILD_CROSS_BUNDLES_SCRIPT ${CMAKE_SOURCE_DIR}/scripts/build-cross-bundles.sh)
         add_custom_target(cross_bundles_aarch64
             COMMAND bash ${BUILD_CROSS_BUNDLES_SCRIPT} $<TARGET_FILE:sun>
-                    ${SUN_BUNDLE_FLAGS}
+                    ${CMAKE_BINARY_DIR} ${SUN_BUNDLE_FLAGS}
             BYPRODUCTS ${CROSS_BUNDLE_OUTPUTS}
             COMMENT "Checking AArch64 stdlib and TLS from sun-config.json"
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -745,27 +745,8 @@ if(NOT SKIP_STDLIB)
             VERBATIM
         )
         add_dependencies(cross_bundles_aarch64 sun)
-        # The shared config names source-relative outputs. Package builds
-        # collect those artifacts in their separate CMake build directory.
-        set(CROSS_PACKAGE_OUTPUTS "")
-        foreach(cross_triple aarch64-linux-gnu aarch64-linux-musl)
-            set(CROSS_BUNDLE_DIR ${CMAKE_SOURCE_DIR}/build/${cross_triple})
-            set(CROSS_PACKAGE_DIR ${CMAKE_BINARY_DIR}/${cross_triple})
-            if(NOT CROSS_PACKAGE_DIR STREQUAL CROSS_BUNDLE_DIR)
-                add_custom_command(
-                    OUTPUT ${CROSS_PACKAGE_DIR}/stdlib.moon ${CROSS_PACKAGE_DIR}/tls.moon
-                    COMMAND ${CMAKE_COMMAND} -E make_directory ${CROSS_PACKAGE_DIR}
-                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                            ${CROSS_BUNDLE_DIR}/stdlib.moon ${CROSS_BUNDLE_DIR}/tls.moon
-                            ${CROSS_PACKAGE_DIR}
-                    DEPENDS ${CROSS_BUNDLE_DIR}/stdlib.moon ${CROSS_BUNDLE_DIR}/tls.moon
-                    VERBATIM
-                )
-            endif()
-            list(APPEND CROSS_PACKAGE_OUTPUTS
-                ${CROSS_PACKAGE_DIR}/stdlib.moon ${CROSS_PACKAGE_DIR}/tls.moon)
-        endforeach()
-        add_custom_target(tls_cross_moon ALL DEPENDS ${CROSS_PACKAGE_OUTPUTS})
+        # The script stages resolved Sun outputs directly in the package tree.
+        add_custom_target(tls_cross_moon ALL)
         add_dependencies(tls_cross_moon cross_bundles_aarch64)
         # One target owns the shared outputs so parallel Make builds cannot
         # run the bundle command twice or delete an output still in use.
