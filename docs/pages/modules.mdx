@@ -1,3 +1,5 @@
+import PathVariables from '../generated/path_variables.mdx'
+
 # Modules and Manifests
 
 A module groups names. A manifest lists the files and libraries a program uses.
@@ -174,20 +176,7 @@ sun --lib-path /path/to/libraries main.sun
 
 ### Path variables
 
-```json filename="sun-config.json"
-{
-  "path_variables": { "LIBS": "vendor" }
-}
-```
-
-```sun
-manifest {
-    libraries: ["${LIBS}/shapes.moon"]
-}
-```
-
-`LIBS` points to `vendor` beside the config file. See
-[path variables](/#sun-config) for more configuration options.
+<PathVariables />
 
 ## Precompiled libraries (.moon)
 
