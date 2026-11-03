@@ -66,6 +66,9 @@ class ConfigGraphScope {
 /** Applies the selected root's generated and installed paths to one project. */
 SunConfig configureBuildPaths(const ConfigGraph& graph, SunConfig config);
 
+/** Returns the selected workspace root, or the standalone config directory. */
+std::filesystem::path configWorkspaceRoot(const SunConfig& config);
+
 /** Finds a selected project's config for source or generated source
  * directories. */
 std::optional<SunConfig> configForBuildDirectory(

@@ -531,10 +531,8 @@ fs::path resolveConfigDependency(const SunConfig& config,
   fs::path cache;
   if (const char* env = std::getenv("SUN_DEPENDENCY_CACHE")) {
     cache = env;
-  } else if (const char* home = std::getenv("HOME")) {
-    cache = fs::path(home) / ".sun/cache/dependencies";
   } else {
-    cache = fs::temp_directory_path() / "sun-cache/dependencies";
+    cache = configWorkspaceRoot(config) / ".sun/cache/dependencies";
   }
   cache = fs::weakly_canonical(fs::absolute(cache));
   const auto parent = cache / name / configTargetKey(config.targetTriple);

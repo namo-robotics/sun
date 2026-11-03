@@ -302,6 +302,10 @@ ConfigGraphScope::ConfigGraphScope(const ConfigGraph& graph)
 }
 ConfigGraphScope::~ConfigGraphScope() { currentGraph = previous_; }
 
+fs::path configWorkspaceRoot(const SunConfig& config) {
+  return currentGraph ? currentGraph->root : config.configDir;
+}
+
 std::string entrypointIdentity(const ConfigEntrypoint& entry) {
   std::ifstream input(entry.path);
   if (!input) {
