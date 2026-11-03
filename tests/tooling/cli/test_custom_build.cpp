@@ -269,7 +269,7 @@ TEST_F(CustomBuild, InvalidSchemaAndMissingContext) {
   for (const auto* json :
        {"[]", "\"scripts/prepare.sh\"", "[\"\"]", "[\"/bin/sh\"]", "[42]"}) {
     auto value = llvm::json::parse(json);
-    ASSERT_TRUE(value);
+    ASSERT_TRUE(static_cast<bool>(value));
     entry()["build"] = std::move(*value);
     save();
     EXPECT_NE(command("build"), 0) << json;

@@ -1095,18 +1095,19 @@ TEST(Modules, config_moon_url_is_fetched_and_imported) {
   fs::path mainFile = dir / "main.sun";
   {
     std::ofstream out(mainFile);
-    out << "manifest { libraries: [\"$URLLIB/lib.moon\"] }\n"
+    out << "manifest { libraries: [\"$URLLIB/lib/urllib.moon\"] }\n"
            "using urllib;\n"
            "/** Returns the value from the configured library. */\n"
            "function main() i32 { return seven(); }\n";
   }
   {
     std::ofstream out(dir / "sun-config.json");
-    out << "{\"root\":true,\"dependencies\":{\"URLLIB\":{\"moon\":{\"url\":"
+    out << "{\"root\":true,\"dependencies\":[{\"package\":\"URLLIB\","
+           "\"library\":\"urllib\",\"url\":"
            "\"file://"
         << fs::absolute(moonPath).string() << "\",\"hash\":\""
         << sun::driver::packageFileHash(moonPath)
-        << "\",\"filename\":\"lib.moon\"}}}}";
+        << "\"}]}";
   }
 
   auto driver = Driver::createForJIT("moon_url_main");
