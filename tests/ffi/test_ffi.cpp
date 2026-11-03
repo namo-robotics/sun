@@ -1605,8 +1605,7 @@ TEST(Ffi, conflicting_native_signature_from_moon) {
   sun::moon_bundling::MoonBuilder::build(source.string(), moon, options);
   auto driver = Driver::createForAOT("moon_signature_conflict");
   driver->setMoonImports({sun::moon_bundling::MoonImport(moon.string())});
-  testing::internal::CaptureStderr();
-  auto analyzed = driver->analyzeString(R"(
+  const std::string client = R"(
       /** Typed signal binding conflicts with the imported integer binding. */
       extern "C" function typed(sig: i32, handler: function (i32) void)
           raw_ptr<u8> as "signal";
@@ -1617,7 +1616,9 @@ TEST(Ffi, conflicting_native_signature_from_moon) {
         unsafe { typed(2, callback); };
         return 0;
       }
-    )");
+    )";
+  testing::internal::CaptureStderr();
+  auto analyzed = driver->analyzeString(client);
   const auto warning = testing::internal::GetCapturedStderr();
   ASSERT_FALSE(analyzed.error.has_value());
   EXPECT_NE(warning.find("Conflicting signatures"),
@@ -1627,6 +1628,10 @@ TEST(Ffi, conflicting_native_signature_from_moon) {
   EXPECT_NE(warning.find("typed"), std::string::npos);
   EXPECT_NE(warning.find("native_binding.sun"), std::string::npos);
   EXPECT_NE(warning.find("[sun][warning]"), std::string::npos);
+  testing::internal::CaptureStderr();
+  EXPECT_NO_THROW(driver->compileString(client));
+  const auto compiledWarning = testing::internal::GetCapturedStderr();
+  EXPECT_NE(compiledWarning.find("Conflicting signatures"), std::string::npos);
   fs::remove_all(dir);
 }
 
@@ -1732,6 +1737,99 @@ TEST(Ffi, conflicting_native_calls_preserve_declared_signatures) {
   EXPECT_EQ(narrowCalls, 1u);
   EXPECT_EQ(wideCalls, 1u);
   EXPECT_EQ(variadicCalls, 1u);
+}
+
+/** Aliases retain distinct Darwin integer extensions despite equal LLVM types. */
+TEST(Ffi, conflicting_native_calls_preserve_extension_attributes) {
+  auto driver = Driver::createForAOT("native_extensions", "arm64-apple-darwin",
+                                      false, false);
+  testing::internal::CaptureStderr();
+  EXPECT_NO_THROW(driver->compileString(R"(
+    /** Signed narrow binding. */
+    extern "C" function signed_value(value: i8) i8 as "native_extension";
+    /** Unsigned narrow binding with the same LLVM integer widths. */
+    extern "C" function unsigned_value(value: u8) u8 as "native_extension";
+    /** Compile both views without executing either. */
+    public function exercise() i32 {
+      return unsafe { signed_value(1) + unsigned_value(2); };
+    }
+  )"));
+  const auto warning = testing::internal::GetCapturedStderr();
+  EXPECT_NE(warning.find("Conflicting signatures"), std::string::npos);
+  auto* native = driver->getModule().getFunction("native_extension");
+  ASSERT_NE(native, nullptr);
+  size_t signedCalls = 0, unsignedCalls = 0;
+  for (auto& function : driver->getModule()) {
+    for (auto& block : function) {
+      for (auto& instruction : block) {
+        auto* call = llvm::dyn_cast<llvm::CallBase>(&instruction);
+        if (!call || call->getCalledOperand()->stripPointerCasts() != native) {
+          continue;
+        }
+        if (call->hasRetAttr(llvm::Attribute::SExt)) {
+          ++signedCalls;
+          EXPECT_TRUE(call->paramHasAttr(0, llvm::Attribute::SExt));
+          EXPECT_FALSE(call->paramHasAttr(0, llvm::Attribute::ZExt));
+        } else {
+          ++unsignedCalls;
+          EXPECT_TRUE(call->hasRetAttr(llvm::Attribute::ZExt));
+          EXPECT_TRUE(call->paramHasAttr(0, llvm::Attribute::ZExt));
+          EXPECT_FALSE(call->paramHasAttr(0, llvm::Attribute::SExt));
+        }
+      }
+    }
+  }
+  EXPECT_EQ(signedCalls, 1u);
+  EXPECT_EQ(unsignedCalls, 1u);
+}
+
+/** Aggregate and scalar aliases keep independent argument and result lowering. */
+TEST(Ffi, conflicting_native_calls_preserve_aggregate_lowering) {
+  for (const std::string& target : {"x86_64-linux-gnu", "arm64-apple-darwin"}) {
+    auto driver = Driver::createForAOT("native_aggregate", target, false, false);
+    testing::internal::CaptureStderr();
+    EXPECT_NO_THROW(driver->compileString(R"(
+      /** A record large enough to use indirect C argument and result storage. */
+      class Record { public var a: i64; public var b: i64; public var c: i64; }
+      /** Aggregate view of a native function. */
+      extern "C" function aggregate(value: Record) Record as "native_record";
+      /** Scalar view of the same native symbol. */
+      extern "C" function scalar(value: i64) i64 as "native_record";
+      /** Compile both views without calling an incompatible implementation. */
+      public function exercise() i64 {
+        var value: Record = { a: 1, b: 2, c: 3 };
+        var result = unsafe { aggregate(value); };
+        return result.a + unsafe { scalar(4); };
+      }
+    )"));
+    const auto warning = testing::internal::GetCapturedStderr();
+    EXPECT_NE(warning.find("Conflicting signatures"), std::string::npos);
+    auto* native = driver->getModule().getFunction("native_record");
+    ASSERT_NE(native, nullptr);
+    size_t aggregateCalls = 0, scalarCalls = 0;
+    for (auto& function : driver->getModule()) {
+      for (auto& block : function) {
+        for (auto& instruction : block) {
+          auto* call = llvm::dyn_cast<llvm::CallBase>(&instruction);
+          if (!call || call->getCalledOperand()->stripPointerCasts() != native) {
+            continue;
+          }
+          if (call->getType()->isVoidTy()) {
+            ++aggregateCalls;
+            EXPECT_EQ(call->arg_size(), 2u);
+            EXPECT_TRUE(call->paramHasAttr(0, llvm::Attribute::StructRet));
+          } else {
+            ++scalarCalls;
+            EXPECT_TRUE(call->getType()->isIntegerTy(64));
+            EXPECT_EQ(call->arg_size(), 1u);
+            EXPECT_FALSE(call->paramHasAttr(0, llvm::Attribute::StructRet));
+          }
+        }
+      }
+    }
+    EXPECT_EQ(aggregateCalls, 1u);
+    EXPECT_EQ(scalarCalls, 1u);
+  }
 }
 
 /** Compares explicit Sun alignment with native C sizes, offsets and calls. */
