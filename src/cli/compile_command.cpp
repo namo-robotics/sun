@@ -200,11 +200,6 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
        job.optimize});
   const std::string& inputFile = job.inputFiles[0];
   const std::string testOutput = getTestOutputName(job);
-  sun::support::messageStream("info")
-      << "Building tests: " << sun::support::displayPath(inputFile) << " -> "
-      << sun::support::displayPath(testOutput) << "\n";
-  llvm::outs().flush();
-
   const std::string inputHash = computeJobInputHash(job, /*forTests=*/true);
   std::optional<BuildRecord> existing;
   if (maySkip(job) && isUpToDate(testOutput, inputHash, existing)) {
@@ -212,6 +207,11 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
         << "Up to date: " << sun::support::displayPath(testOutput) << "\n";
     return 0;
   }
+
+  sun::support::messageStream("info")
+      << "Building tests: " << sun::support::displayPath(inputFile) << " -> "
+      << sun::support::displayPath(testOutput) << "\n";
+  llvm::outs().flush();
 
   // Tests inherit production optimization and always carry debug info.
   auto testDriver = Driver::createForAOT("test_module", job.targetTriple,
@@ -238,7 +238,7 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
   sun::driver::embedBuildRecord(testDriver->getModule(),
                                 {inputHash, /*hasTests=*/true, hasExecutable});
   std::string errorMsg;
-  sun::support::messageStream("info")
+  sun::support::messageStream("debug")
       << "Linking tests: " << sun::support::displayPath(testOutput) << "\n";
   llvm::outs().flush();
   if (!sun::driver::compileToExecutable(
@@ -263,10 +263,6 @@ int compileEntrypoint(const CompileJob& job) {
   const std::string& inputFile = job.inputFiles[0];
 
   try {
-    sun::support::messageStream("info")
-        << "Building: " << sun::support::displayPath(inputFile) << " -> "
-        << sun::support::displayPath(job.outputFile) << "\n";
-    llvm::outs().flush();
     const bool wantTests = !job.noTest && !job.emitObjOnly;
     const std::string inputHash = computeJobInputHash(job, /*forTests=*/false);
 
@@ -300,6 +296,11 @@ int compileEntrypoint(const CompileJob& job) {
         return 0;
       }
     }
+
+    sun::support::messageStream("info")
+        << "Building: " << sun::support::displayPath(inputFile) << " -> "
+        << sun::support::displayPath(job.outputFile) << "\n";
+    llvm::outs().flush();
 
     auto driver = Driver::createForAOT("main_module", job.targetTriple,
                                        job.debugInfo, job.optimize);
@@ -339,7 +340,7 @@ int compileEntrypoint(const CompileJob& job) {
       sun::support::messageStream("info")
           << "No main() found; emitting only the test binary\n";
     } else if (job.emitLLVMOnly) {
-      sun::support::messageStream("info")
+      sun::support::messageStream("debug")
           << "Writing LLVM IR: " << sun::support::displayPath(job.outputFile)
           << "\n";
       llvm::outs().flush();
@@ -357,14 +358,14 @@ int compileEntrypoint(const CompileJob& job) {
         }
       }
     } else if (job.emitObjOnly) {
-      sun::support::messageStream("info")
+      sun::support::messageStream("debug")
           << "Writing object: " << sun::support::displayPath(job.outputFile)
           << "\n";
       llvm::outs().flush();
       success = sun::driver::emitObjectFile(driver->getModule(), job.outputFile,
                                             errorMsg, job.optimize);
     } else {
-      sun::support::messageStream("info")
+      sun::support::messageStream("debug")
           << "Linking executable: " << sun::support::displayPath(job.outputFile)
           << "\n";
       llvm::outs().flush();

@@ -1011,7 +1011,7 @@ void Driver::applyTestHandling(BlockExprAST& blockAst) {
     std::ofstream runnerFile(runnerPath);
     if (runnerFile) {
       runnerFile << runnerSrc;
-      sun::support::messageStream("info")
+      sun::support::messageStream("debug")
           << "  Generated: " << sun::support::displayPath(runnerPath) << "\n";
     } else {
       sun::support::messageStream("warning")
@@ -1140,7 +1140,7 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
     std::ofstream dotFile(dotPath);
     if (dotFile) {
       dotFile << dot;
-      sun::support::messageStream("info")
+      sun::support::messageStream("debug")
           << "  Generated: " << sun::support::displayPath(dotPath) << "\n";
     } else {
       sun::support::messageStream("warning")
@@ -1158,7 +1158,7 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
     std::ofstream scopeFile(scopePath);
     if (scopeFile) {
       scopeFile << html;
-      sun::support::messageStream("info")
+      sun::support::messageStream("debug")
           << "  Generated: " << sun::support::displayPath(scopePath) << "\n";
     } else {
       sun::support::messageStream("warning")
@@ -1265,7 +1265,7 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
   if (debugMode_ && !debugFolder_.empty()) {
     std::string irPath = debugFolder_ + "/ir.ll";
     writeUserDefinedIR(irPath);
-    sun::support::messageStream("info")
+    sun::support::messageStream("debug")
         << "  Generated: " << sun::support::displayPath(irPath) << "\n";
   }
 

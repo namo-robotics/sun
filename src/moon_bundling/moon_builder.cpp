@@ -401,7 +401,7 @@ void MoonBuilder::writeDebugJson(const std::filesystem::path& outputPath,
   if (!reader->writeDebugJson(jsonPath)) {
     sun::support::logAndThrowError(reader->getError());
   }
-  sun::support::messageStream("info")
+  sun::support::messageStream("debug")
       << "  Generated: " << sun::support::displayPath(jsonPath.string())
       << "\n";
 }
@@ -478,10 +478,6 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
                                          options.debugInfo, options.optimize});
   sun::driver::GitDependencyBuildScope dependencyScope(
       options.debugInfo, options.optimize, options.forceRebuild);
-  sun::support::messageStream("info")
-      << "Building library: " << sun::support::displayPath(entrypoint) << " -> "
-      << sun::support::displayPath(outputPath.string()) << "\n";
-  llvm::outs().flush();
   auto inputs = loadInputs(entrypoint, options);
   if (isUpToDate(inputs.inputHash, outputPath, options)) {
     sun::support::messageStream("info")
@@ -492,12 +488,17 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
                               std::move(inputs.report));
   }
 
+  sun::support::messageStream("info")
+      << "Building library: " << sun::support::displayPath(entrypoint) << " -> "
+      << sun::support::displayPath(outputPath.string()) << "\n";
+  llvm::outs().flush();
+
   if (options.onBuildStart) {
     options.onBuildStart();
   }
   const auto symbols = prepareNativeSymbols(inputs);
   auto compiled = compile(inputs, symbols, entrypoint, options);
-  sun::support::messageStream("info")
+  sun::support::messageStream("debug")
       << "Writing library: " << sun::support::displayPath(outputPath.string())
       << "\n";
   llvm::outs().flush();

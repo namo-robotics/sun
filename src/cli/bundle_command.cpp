@@ -25,15 +25,15 @@ int buildMoonBundle(const std::string& entrypoint,
       return 0;
     }
     for (const auto& f : report.sunFiles) {
-      sun::support::messageStream("info")
+      sun::support::messageStream("debug")
           << "  Including: " << sun::support::displayPath(f) << "\n";
     }
     for (const auto& p : report.protoFiles) {
-      sun::support::messageStream("info")
+      sun::support::messageStream("debug")
           << "  Including proto: " << sun::support::displayPath(p) << "\n";
     }
     for (const auto& m : report.moonImports) {
-      sun::support::messageStream("info")
+      sun::support::messageStream("debug")
           << "  Moon import: " << sun::support::displayPath(m.path) << "\n";
     }
     return 0;
