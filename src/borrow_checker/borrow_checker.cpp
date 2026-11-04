@@ -131,22 +131,7 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
       checkBlockExpr(static_cast<const BlockExprAST&>(expr));
       break;
 
-    case ASTNodeType::THROW: {
-      const auto& thrown = static_cast<const sun::ast::ThrowExprAST&>(expr);
-      if (thrown.hasErrorExpr()) {
-        const auto& value = thrown.getErrorExpr();
-        checkExpr(value);
-        auto type = value.getResolvedType();
-        if (type && !type->isReference() &&
-            (isFrameBoundExpr(value) ||
-             (classStoresRefs(type) && holderPointsIntoFrame(value)))) {
-          reportError("cannot throw a value that borrows from this frame",
-                      thrown.getLocation());
-        }
-        consumeOwnedValue(value);
-      }
-      break;
-    }
+
 
     case ASTNodeType::RETURN:
       checkReturnStmt(static_cast<const ReturnExprAST&>(expr));
@@ -189,10 +174,6 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
     case ASTNodeType::COMPOUND_ASSIGNMENT:
       checkCompoundAssignment(
           static_cast<const sun::ast::CompoundAssignmentAST&>(expr));
-      break;
-
-    case ASTNodeType::TRY_CATCH:
-      checkTryCatch(static_cast<const sun::ast::TryCatchExprAST&>(expr));
       break;
 
     case ASTNodeType::UNSAFE_BLOCK:
@@ -3553,55 +3534,7 @@ void BorrowChecker::checkIndexExpr(const IndexAST& index) {
   }
 }
 
-void BorrowChecker::checkTryCatch(const sun::ast::TryCatchExprAST& tryCatch) {
-  enterScope();
-  checkBlockExpr(tryCatch.getTryBlock());
-  exitScope();
 
-  // Catch clauses are alternatives to one another, each entered from the try
-  // block's state. As with if/else, a clause that returns or throws cannot
-  // poison the code that follows the try/catch — only clauses that fall
-  // through contribute their moves.
-  auto movedBefore = movedVariables_;
-  auto movedAfter = movedVariables_;
-
-  for (const auto& clause : tryCatch.getCatchClauses()) {
-    movedVariables_ = movedBefore;
-    auto savedRefs = refVariables_;
-    auto savedParams = refTypedParams_;
-    auto savedLifetimes = paramLifetimes_;
-    auto savedLocals = frameLocalNames_;
-    auto savedDepths = declDepths_;
-    auto previousLifetime = state_.getLifetime(clause.bindingName);
-    enterScope();
-    refVariables_.erase(clause.bindingName);
-    refTypedParams_.erase(clause.bindingName);
-    paramLifetimes_.erase(clause.bindingName);
-    frameLocalNames_.insert(clause.bindingName);
-    declDepths_[clause.bindingName] = currentScope_;
-    state_.setLifetime(clause.bindingName,
-                       Lifetime::local(clause.bindingName, currentScope_));
-    if (clause.body) {
-      checkBlockExpr(*clause.body);
-      if (!exprDiverges(*clause.body)) {
-        movedAfter.insert(movedVariables_.begin(), movedVariables_.end());
-      }
-    }
-    exitScope();
-    refVariables_ = std::move(savedRefs);
-    refTypedParams_ = std::move(savedParams);
-    paramLifetimes_ = std::move(savedLifetimes);
-    frameLocalNames_ = std::move(savedLocals);
-    declDepths_ = std::move(savedDepths);
-    if (previousLifetime) {
-      state_.setLifetime(clause.bindingName, *previousLifetime);
-    } else {
-      state_.clearLifetime(clause.bindingName);
-    }
-  }
-
-  movedVariables_ = std::move(movedAfter);
-}
 
 void BorrowChecker::checkUnsafeBlock(const UnsafeBlockAST& unsafeBlock) {
   // Unsafe blocks are just scoped blocks - check the body normally

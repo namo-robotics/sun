@@ -11,7 +11,6 @@ using sun::ast::ExprAST;
 using sun::ast::forEachChild;
 using sun::ast::InterfaceDefinitionAST;
 using sun::ast::MatchExprAST;
-using sun::ast::TryCatchExprAST;
 using sun::support::logAndThrowError;
 
 /** Provides the ordered preparation and registration passes for analysis. */
@@ -132,17 +131,6 @@ void resetBindings(const ExprAST& root, bool resetIdentity) {
           if (resetIdentity) {
             value.declaration.resetSession();
           }
-        }
-      }
-      break;
-    case ASTNodeType::TRY_CATCH:
-      for (auto& clause : const_cast<TryCatchExprAST&>(
-                              static_cast<const TryCatchExprAST&>(root))
-                              .getCatchClausesMutable()) {
-        clause.isCatchAll = false;
-        clause.resolvedType.reset();
-        if (resetIdentity) {
-          clause.declaration.resetSession();
         }
       }
       break;
@@ -373,19 +361,7 @@ void DeclarationIdentityPass::visit(const ExprAST& root, DeclarationId owner,
       }
       break;
     }
-    case ASTNodeType::TRY_CATCH: {
-      const auto& clauses =
-          static_cast<const TryCatchExprAST&>(root).getCatchClauses();
-      for (size_t i = 0; i < clauses.size(); ++i) {
-        auto source = origin ? static_cast<const TryCatchExprAST&>(*origin)
-                                   .getCatchClauses()[i]
-                                   .declaration.id
-                             : DeclarationId{};
-        binding(clauses[i].declaration, DeclarationKind::Binding,
-                clauses[i].bindingName, table_, owner, module, source);
-      }
-      break;
-    }
+
     default:
       break;
   }

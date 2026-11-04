@@ -459,8 +459,8 @@ TEST(Interfaces_Iterator, wrong_next_signature_is_error) {
 // Builtin Type Redefinition Tests
 // ============================================================================
 
-TEST(Interfaces_Builtin, cannot_redefine_IError_interface) {
-  EXPECT_ANY_THROW({
+TEST(Interfaces_Builtin, can_declare_IError_interface) {
+  EXPECT_NO_THROW({
     executeString(R"(
       interface IError {
         const method code() i32;
@@ -470,8 +470,8 @@ TEST(Interfaces_Builtin, cannot_redefine_IError_interface) {
   });
 }
 
-TEST(Interfaces_Builtin, cannot_redefine_IError_as_class) {
-  EXPECT_ANY_THROW({
+TEST(Interfaces_Builtin, can_declare_IError_as_class) {
+  EXPECT_NO_THROW({
     executeString(R"(
       class IError {
         var code: i32;
@@ -1541,10 +1541,18 @@ TEST(Interfaces, inherited_overloads_dispatch_by_argument_type) {
             42);
 }
 
-/** Descendants of the builtin error interface remain throwable and catchable.
+/** Descendants of an ordinary error interface support borrowed result matching.
  */
-TEST(Interfaces, extends_builtin_error_interface) {
+TEST(Interfaces, extends_source_error_interface) {
   EXPECT_EQ(executeString(R"(
+/** Groups literal-only errors used by this standalone fixture. */
+interface IError {
+  /** Returns the fixture error code. */
+  const method code() i32;
+  /** Returns the fixture diagnostic. */
+  const method message() static_ptr<u8>;
+}
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), MyError(MyError) }
 
@@ -1832,6 +1840,14 @@ TEST(Interfaces, interface_return_contract_cannot_dispatch) {
 /** Throwing interface calls reach a local catch through the vtable. */
 TEST(Interfaces, throwing_method_dispatch) {
   EXPECT_EQ(executeString(R"(
+/** Groups literal-only errors used by this standalone fixture. */
+interface IError {
+  /** Returns the fixture error code. */
+  const method code() i32;
+  /** Returns the fixture diagnostic. */
+  const method message() static_ptr<u8>;
+}
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), Failure(Failure) }
 
@@ -1885,6 +1901,14 @@ function main() i32 {
 /** Generic inherited defaults preserve throwing contracts and propagation. */
 TEST(Interfaces, throwing_generic_inherited_default) {
   EXPECT_EQ(executeString(R"(
+/** Groups literal-only errors used by this standalone fixture. */
+interface IError {
+  /** Returns the fixture error code. */
+  const method code() i32;
+  /** Returns the fixture diagnostic. */
+  const method message() static_ptr<u8>;
+}
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), Failure(Failure) }
 
@@ -1948,6 +1972,14 @@ function main() i32 {
 /** Infallible implementations may satisfy fallible interface requirements. */
 TEST(Interfaces, nonthrowing_method_implements_throwing_contract) {
   EXPECT_EQ(executeString(R"(
+/** Groups literal-only errors used by this standalone fixture. */
+interface IError {
+  /** Returns the fixture error code. */
+  const method code() i32;
+  /** Returns the fixture diagnostic. */
+  const method message() static_ptr<u8>;
+}
+
 /** Represents a fixture failure without a standard-library dependency. */
 class Error implements IError {
   /** Creates the fixture failure. */

@@ -138,8 +138,9 @@ TEST(ControlFlow_Ternary, zero_integer_condition_is_false) {
 
 TEST(ControlFlow_Ternary, untaken_branch_not_evaluated) {
   auto value = executeString(R"(
+
 /** Represents a fixture failure without a standard-library dependency. */
-class Error implements IError {
+class Error {
   /** Creates the fixture failure. */
   init() {}
   /** Returns its numeric code. */

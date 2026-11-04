@@ -58,8 +58,6 @@ enum class ASTNodeType {
   MEMBER_ACCESS,         // object.field or object.method(...)
   THIS,                  // this keyword
   MEMBER_ASSIGNMENT,     // object.field = value
-  TRY_CATCH,             // try { ... } catch (e: ref IError) { ... }
-  THROW,                 // throw <expr>
   BREAK_STMT,            // break statement
   CONTINUE_STMT,         // continue statement
   GENERIC_CALL,          // Generic function call: create<Type>(args...)

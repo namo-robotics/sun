@@ -382,13 +382,6 @@ class DeclaredNameFinder {
         }
         break;
       }
-      case ASTNodeType::TRY_CATCH:
-        forEachCatchBinding(
-            static_cast<const sun::ast::TryCatchExprAST&>(node),
-            [&](const sun::ast::CatchClause& clause, const Position& header) {
-              consider(Declaration{header, "", &node, clause.bindingName});
-            });
-        break;
       default:
         break;
     }
@@ -630,15 +623,6 @@ void forEachTypeDefinition(const ExprAST& node,
 }
 
 /**
- * Members of the interfaces the compiler declares itself, with no node in
- * any tree
- */
-bool isBuiltinInterfaceMember(const std::string& interface,
-                              const std::string& member) {
-  return interface == "IError" && (member == "code" || member == "message");
-}
-
-/**
  * Builds a MemberGroup, deduplicating by declaration key
  */
 class GroupBuilder {
@@ -672,9 +656,6 @@ class GroupBuilder {
       for (const auto& iface : cls.getImplementedInterfaces()) {
         const ExprAST* decl = findDeclaration(program_, iface.name, {});
         if (!decl) {
-          if (isBuiltinInterfaceMember(iface.name, name_)) {
-            group_.builtinInterface = iface.name;
-          }
           continue;
         }
         std::optional<Declaration> shared = findMember(*decl, name_);

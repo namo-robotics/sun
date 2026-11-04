@@ -429,7 +429,7 @@ using std;
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), NotANumber(NotANumber) }
 
-class NotANumber implements IError {
+class NotANumber {
   init() {}
   const method code() i32 {
     return 7;
@@ -478,7 +478,7 @@ function main() i32 {
   };
   match attempt_0() {
     Outcome.Ok => {},
-    (e: ref IError) => {
+    (e: ref NotANumber) => {
       return _convert<i32>(total) + e.code();
     }
   };

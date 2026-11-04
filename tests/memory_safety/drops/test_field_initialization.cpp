@@ -444,7 +444,8 @@ TEST(MemorySafety_Drops_FieldInit, generic_class_first_write_drops_nothing) {
 TEST(MemorySafety_Drops_FieldInit,
      a_catch_that_reassigns_the_field_is_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(withPreamble(R"(
-    class Boom implements IError {
+
+    class Boom {
       init() {}
       const method code() i32 { return 1; }
       const method message() static_ptr<u8> { return "boom"; }
@@ -469,7 +470,8 @@ TEST(MemorySafety_Drops_FieldInit,
 // the catch replace a value that is certainly there.
 TEST(MemorySafety_Drops_FieldInit, a_field_settled_before_a_try_is_certain) {
   auto value = executeString(withPreamble(R"(
-    class Boom implements IError {
+
+    class Boom {
       init() {}
       const method code() i32 { return 1; }
       const method message() static_ptr<u8> { return "boom"; }

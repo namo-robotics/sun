@@ -13,7 +13,6 @@ namespace sun::ast {
 bool exprDiverges(const ExprAST& expr) {
   switch (expr.getType()) {
     case ASTNodeType::RETURN:
-    case ASTNodeType::THROW:
     case ASTNodeType::BREAK_STMT:
     case ASTNodeType::CONTINUE_STMT:
       return true;

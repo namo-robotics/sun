@@ -145,11 +145,6 @@ Value* CodegenVisitor::codegenExpression(const ExprAST& expr) {
     case ASTNodeType::MEMBER_ASSIGNMENT:
       return classes.codegen(
           static_cast<const sun::ast::MemberAssignmentAST&>(expr));
-    case ASTNodeType::TRY_CATCH:
-      return errors.codegen(
-          static_cast<const sun::ast::TryCatchExprAST&>(expr));
-    case ASTNodeType::THROW:
-      return errors.codegen(static_cast<const sun::ast::ThrowExprAST&>(expr));
     case ASTNodeType::UNSAFE_BLOCK:
       return errors.codegen(static_cast<const sun::ast::UnsafeBlockAST&>(expr));
     case ASTNodeType::GENERIC_CALL:

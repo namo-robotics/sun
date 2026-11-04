@@ -88,7 +88,6 @@ struct ClassAllocation {
  */
 struct CodegenScope {
   std::map<DeclarationId, llvm::AllocaInst*> variables;
-  llvm::Function* endCatch = nullptr;  // Releases the runtime-owned exception.
   bool isFunctionBoundary = false;     // True for scopes marking function entry
   bool hasDebugScope = false;  // True when a DILexicalBlock was opened with it
   std::vector<OwnedAllocation> ownedAllocations;
@@ -143,7 +142,7 @@ class ScopeManager {
   }
 
   /**
-   * Open a scope for a source block (if/else, loop, try/catch). Also opens a
+   * Open a scope for a source block (if/else or loop). Also opens a
    * DILexicalBlock so debuggers see block-accurate variable visibility (no-op
    * without -g); pop() closes it symmetrically.
    */
@@ -268,7 +267,7 @@ class ScopeManager {
   void markInitialized(llvm::Value* ptr, const TypePtr& type);
 
   /**
-   * True if any scope at or above `depth` holds an owner or an active catch —
+   * True if any scope at or above `depth` holds an owner —
    * i.e. unwinding past this point would need cleanup
    */
   bool hasLiveOwners(size_t depth) const;

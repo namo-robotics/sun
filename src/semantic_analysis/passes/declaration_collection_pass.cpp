@@ -484,20 +484,7 @@ void DeclarationCollectionPass::registerClassShape(
   }
   ctx_.setCurrentClass(savedClass);
 
-  // The builtin IError predates all source, so it is registered with
-  // message() returning static_ptr<u8> — the only string type that exists at
-  // that point. The stdlib upgrades the contract: once std.String is known,
-  // IError.message() returns an owned String clone, and every implementation
-  // compiled after this line must match that signature.
-  const auto module =
-      ctx_.results().declarations.get(classDef.getDeclarationId()).module;
-  if (qualifiedClass.baseName == "String" && module &&
-      ctx_.results().declarations.get(module).name == "std") {
-    if (auto ierror = ctx_.types()->errorInterface) {
-      ierror->setMethodReturnType("message", classType);
-      ctx_.types()->arithmeticError->setMethodReturnType("message", classType);
-    }
-  }
+
 }
 
 void DeclarationCollectionPass::run(

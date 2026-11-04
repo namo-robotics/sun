@@ -426,13 +426,6 @@ pbc::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
       serializeMemberAccess(static_cast<const sun::ast::MemberAccessAST&>(expr),
                             &node);
       break;
-    case ASTNodeType::TRY_CATCH:
-      serializeTryCatch(static_cast<const sun::ast::TryCatchExprAST&>(expr),
-                        &node);
-      break;
-    case ASTNodeType::THROW:
-      serializeThrow(static_cast<const sun::ast::ThrowExprAST&>(expr), &node);
-      break;
     case ASTNodeType::DECLARE_TYPE:
       serializeDeclareType(static_cast<const sun::ast::DeclareTypeAST&>(expr),
                            &node);
@@ -1028,34 +1021,9 @@ void ASTSerializer::serializeMemberAccess(const sun::ast::MemberAccessAST& expr,
   }
 }
 
-void ASTSerializer::serializeTryCatch(const sun::ast::TryCatchExprAST& expr,
-                                      pbc::ASTNode* node) const {
-  auto* tryCatch = node->mutable_try_catch();
 
-  // Serialize try block
-  serializeBlockInto(expr.getTryBlock(), tryCatch->mutable_try_block());
 
-  // Serialize catch clauses (source order)
-  for (const auto& cc : expr.getCatchClauses()) {
-    auto* catchClause = tryCatch->add_catch_clauses();
-    if (config_.declarations) {
-      *catchClause->mutable_declaration_identity() =
-          serializeIdentity(cc.declaration);
-    }
-    catchClause->set_binding_name(cc.bindingName);
-    if (cc.bindingType) {
-      *catchClause->mutable_binding_type() =
-          serializeTypeAnnotation(*cc.bindingType);
-    }
-    serializeBlockInto(*cc.body, catchClause->mutable_body());
-  }
-}
 
-void ASTSerializer::serializeThrow(const sun::ast::ThrowExprAST& expr,
-                                   pbc::ASTNode* node) const {
-  auto* throwExpr = node->mutable_throw_expr();
-  *throwExpr->mutable_error_expr() = serialize(expr.getErrorExpr());
-}
 
 void ASTSerializer::serializeDeclareType(const sun::ast::DeclareTypeAST& expr,
                                          pbc::ASTNode* node) const {

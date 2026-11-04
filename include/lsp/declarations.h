@@ -11,7 +11,6 @@
 #include <vector>
 
 #include "ast/block_expr_ast.h"
-#include "ast/try_catch_expr_ast.h"
 #include "ast/type_annotation.h"
 #include "semantic_analysis/qualified_name.h"
 #include "support/position.h"
@@ -229,17 +228,6 @@ std::optional<Declaration> findDeclarationAt(const BlockExprAST& program,
                                              const std::string& documentPath,
                                              const std::string& source,
                                              int byteOffset);
-
-/**
- * Catch clauses with the span that declares each one's binding: a binding
- * has no position of its own, so it is the text between the previous block
- * and the clause's body
- */
-using CatchBindingFn = std::function<void(
-    const sun::ast::CatchClause&, const sun::support::Position& header)>;
-/** Visits the error bindings introduced by catch clauses. */
-void forEachCatchBinding(const sun::ast::TryCatchExprAST& tryCatch,
-                         const CatchBindingFn& fn);
 
 /**
  * Text of the file a declaration lives in: the document itself, or a file

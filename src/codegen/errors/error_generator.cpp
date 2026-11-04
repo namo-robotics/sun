@@ -8,7 +8,7 @@
 #include "codegen/codegen_visitor.h"
 #include "semantic_analysis/type_registry.h"
 
-/** Generates control flow for throwing and catching Sun errors. */
+/** Generates concrete arithmetic errors, unsafe scopes, and call cleanup. */
 namespace sun::codegen::errors {
 
 sun::codegen::scopes::ScopeManager& ErrorGenerator::scopes() {
@@ -26,13 +26,6 @@ llvm::Value* ErrorGenerator::codegen(const sun::ast::BlockExprAST& block) {
 std::shared_ptr<sun::semantic_analysis::TypeRegistry>&
 ErrorGenerator::typeRegistry() {
   return state_.typeRegistry;
-}
-
-void ErrorGenerator::debugDeclareLocal(llvm::AllocaInst* alloca,
-                                       const std::string& name,
-                                       const sun::types::TypePtr& type,
-                                       const sun::support::Position& loc) {
-  state_.debugInfo.declareLocal(*ctx.builder, alloca, name, type, loc);
 }
 
 }  // namespace sun::codegen::errors

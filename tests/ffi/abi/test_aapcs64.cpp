@@ -663,7 +663,8 @@ bool haveAarch64MuslToolchain() {
 // Exercises the C++ exception runtime, the part of static linking that
 // genuinely depends on the toolchain shipping a musl-built libstdc++.
 constexpr const char* kThrowingProgram = R"(
-    class DivByZero implements IError {
+
+    class DivByZero {
       init() {}
       const method code() i32 { return 1; }
       const method message() static_ptr<u8> { return "division by zero"; }

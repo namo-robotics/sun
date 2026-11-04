@@ -240,21 +240,6 @@ class InterfaceType : public NominalType {
   }
 
   /**
-   * Rebind one method's return type. Exists for the builtin IError: it is
-   * registered before any source is read, so message() starts as
-   * static_ptr<u8> and is retargeted to the String class when the stdlib
-   * registers one (see SemanticAnalyzer::registerClassShape).
-   */
-  void setMethodReturnType(const std::string& methodName, TypePtr returnType) {
-    for (auto& method : methods) {
-      if (method.name == methodName) {
-        method.returnType = std::move(returnType);
-        return;
-      }
-    }
-  }
-
-  /**
    * Get methods that don't have default implementations (must be implemented by
    * class)
    */

@@ -347,22 +347,8 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       emitEdge(valId, "value");
       break;
     }
-    case ASTNodeType::TRY_CATCH: {
-      const auto* tc = static_cast<const sun::ast::TryCatchExprAST*>(node);
-      int tryId = visitNode(&tc->getTryBlock());
-      emitEdge(tryId, "try");
-      for (const auto& clause : tc->getCatchClauses()) {
-        int catchId = visitNode(clause.body.get());
-        emitEdge(catchId, "catch");
-      }
-      break;
-    }
-    case ASTNodeType::THROW: {
-      const auto* th = static_cast<const sun::ast::ThrowExprAST*>(node);
-      int valId = visitNode(&th->getErrorExpr());
-      emitEdge(valId);
-      break;
-    }
+
+
     case ASTNodeType::UNSAFE_BLOCK: {
       const auto* ub = static_cast<const sun::ast::UnsafeBlockAST*>(node);
       int bodyId = visitNode(&ub->getBody());

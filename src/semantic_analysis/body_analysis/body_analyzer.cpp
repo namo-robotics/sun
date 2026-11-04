@@ -119,7 +119,7 @@ static void checkResultHandling(const BlockExprAST& body,
       }
       auto error = std::dynamic_pointer_cast<sun::types::ClassType>(
           sun::types::unwrapRef(variants[i].payloadTypes.front()));
-      if (!error || !error->implementsInterface(*ctx.types()->errorInterface)) {
+      if (!error) {
         return false;
       }
     }
@@ -274,10 +274,10 @@ void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
                          ? std::dynamic_pointer_cast<sun::types::ClassType>(
                                payload.front())
                          : nullptr;
-        if (!error ||
-            !error->implementsInterface(*ctx_.types()->errorInterface)) {
+        auto reportable = ctx_.lookupInterface("std.IError");
+        if (!error || !reportable || !error->implementsInterface(*reportable)) {
           logAndThrowError(
-              "Test failure variants must own a concrete IError payload",
+              "Test failure variants must own a concrete std.IError payload",
               func.getLocation());
         }
       }

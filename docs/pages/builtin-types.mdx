@@ -368,58 +368,7 @@ passed or rebound as `const ref T`, never the other way round.
   [Memory Safety](/memory-safety#references) has the full rules.
 </Callout>
 
-## Builtin Interfaces
-
-Sun provides builtin interfaces for common patterns. These interfaces are always available and **cannot be redefined**.
-
-### IError
-
-The builtin interface for reading error codes and messages. Both methods are
-const. With the standard library, `message()` returns an owned `String`.
-
-```sun
-class DivByZero implements IError {
-    init() {}
-    const method code() i32 { return 1; }
-    const method message() String { return String("division by zero"); }
-}
-
-/** Owns either a quotient or its concrete failure. */
-enum DivideResult<T> { Ok(T), Error(DivByZero) }
-
-/** Checks for a zero divisor before computing the quotient. */
-function divide(a: i32, b: i32) DivideResult<i32> {
-    if (b == 0) { return DivideResult.Error(DivByZero()); }
-    return DivideResult.Ok(a / b);
-}
-
-/** Handles an owned error through a borrowed interface view. */
-function main() i32 {
-    return match divide(10, 0) {
-        DivideResult.Ok(value) => value,
-        (e: const ref IError) => -1
-    };
-}
-```
-
-### Iteration interfaces
-
-`IIterator<T, Container>` and `IIterable<T, Self>` are ordinary stdlib
-interfaces (`stdlib/std/iterator.sun`), not builtins, because their contract names
-`Option<T>`. See [Iteration](/stdlib#iteration-iiteratort-container-and-iiterablet-self)
-in the standard library reference and the [for-in loop](/control-flow#for-in-loop).
-
 ## Reserved Type Names
 
-The following type names are reserved and cannot be redefined:
-
-- `IError` - Error handling interface
-
-Attempting to define a class or interface with this name will result in a compilation error:
-
-```sun
-// ❌ ERROR: Cannot redefine builtin interface 'IError'
-interface IError {
-    const method code() i32;
-}
-```
+`ArithmeticError` is a builtin concrete type and cannot be redefined. `IError`
+is not reserved: it is an ordinary interface declared by the standard library.

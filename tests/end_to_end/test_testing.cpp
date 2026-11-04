@@ -355,7 +355,7 @@ TEST(EndToEnd_Testing, rejects_non_error_test_payload) {
     /** Attempts to return an unsupported error payload. */
     test_function invalid() Outcome { return Outcome.Failure(1); }
   )"),
-      "Test failure variants must own a concrete IError payload");
+      "Test failure variants must own a concrete std.IError payload");
 }
 
 /** Tests without annotations return the standard assertion enum. */
@@ -413,4 +413,15 @@ TEST(EndToEnd_Testing, public_errno_and_nonblocking_helpers) {
     }
   )"),
             0);
+}
+
+/** Arithmetic error results fail tests without an IError implementation. */
+TEST(EndToEnd_Testing, concrete_arithmetic_errors_fail_tests) {
+  EXPECT_EQ(executeTestsWithStdlib(R"(
+    /** Propagates the builtin concrete failure from checked division. */
+    test_function checked_failure() _Result<void, ArithmeticError> {
+      var value = try checked_div(10, 0);
+      return _Result.Ok;
+    }
+  )"), 1);
 }

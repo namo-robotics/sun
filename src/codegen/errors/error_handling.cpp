@@ -1,5 +1,5 @@
 #include "abi/lowering_descriptors.h"
-// error_handling.cpp — Codegen for error handling expressions (try/catch/throw)
+// Concrete arithmetic errors, unsafe scopes, and call cleanup.
 
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/Function.h>
@@ -12,28 +12,10 @@
 #include "codegen/codegen_visitor.h"
 #include "codegen/errors/error_generator.h"
 
-using sun::types::ClassType;
-using sun::types::InterfaceType;
-
 using namespace llvm;
 
-/** Generates control flow for throwing and catching Sun errors. */
+/** Generates concrete arithmetic errors, unsafe scopes, and call cleanup. */
 namespace sun::codegen::errors {
-
-/** Keeps the implementation helpers in this file private to this translation
- * unit. */
-namespace {
-/** Retain the runtime tag width while deriving it from the portable identity.
- */
-uint64_t sunTypeId(const ClassType& type,
-                   const sun::semantic_analysis::DeclarationTable& table) {
-  const auto symbol =
-      sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
-          type.getDeclarationId(), table)
-          .symbol("error-type");
-  return std::stoull(symbol.substr(6, 16), nullptr, 16);
-}
-}  // namespace
 
 void ErrorGenerator::emitArithmeticErrorMethods(bool defineBodies) {
   auto error = typeRegistry()->arithmeticError;
@@ -80,193 +62,8 @@ void ErrorGenerator::emitArithmeticErrorMethods(bool defineBodies) {
     Value* literal = UndefValue::get(literalType);
     literal = builder.CreateInsertValue(literal, data, 0);
     literal = builder.CreateInsertValue(literal, length, 1);
-    if (!method.returnType->isClass()) {
-      builder.CreateRet(literal);
-      continue;
-    }
-    auto string = std::static_pointer_cast<ClassType>(method.returnType);
-    const auto* constructor =
-        string->getMethodForArgs("init", {sun::types::Types::String()});
-    if (!constructor) {
-      sun::support::logAndThrowError("String lacks its literal constructor");
-    }
-    auto* init =
-        gen_.functionRegistry().lookupFunctionById(constructor->declarationId);
-    auto* result = builder.CreateAlloca(returnType);
-    auto* closure = builder.CreateAlloca(closureType);
-    builder.CreateStore(init, builder.CreateStructGEP(closureType, closure, 0));
-    builder.CreateStore(result,
-                        builder.CreateStructGEP(closureType, closure, 1));
-    builder.CreateCall(init, {closure, literal});
-    builder.CreateRet(builder.CreateLoad(returnType, result));
+    builder.CreateRet(literal);
   }
-}
-
-TryContext* ErrorGenerator::activeTry() {
-  if (tryStack.empty() || !ctx.builder->GetInsertBlock() ||
-      tryStack.back().landingPad->getParent() !=
-          ctx.builder->GetInsertBlock()->getParent()) {
-    return nullptr;
-  }
-  return &tryStack.back();
-}
-
-llvm::StructType* ErrorGenerator::exceptionStorageType(ClassType* type) {
-  return StructType::get(ctx.builder->getInt64Ty(),
-                         InterfaceType::getFatPointerType(ctx.getContext()),
-                         type->getStructType(ctx.getContext()));
-}
-
-llvm::Function* ErrorGenerator::exceptionDestructor(ClassType* type) {
-  auto name =
-      state_.declarationSymbol(type->getDeclarationId(), "exception-drop");
-  if (auto* existing = module->getFunction(name)) {
-    return existing;
-  }
-  auto* ptrType = PointerType::getUnqual(ctx.getContext());
-  auto* signature =
-      llvm::FunctionType::get(ctx.builder->getVoidTy(), {ptrType}, false);
-  auto* function =
-      Function::Create(signature, Function::LinkOnceODRLinkage, name, module);
-  sun::codegen::CodegenState::InsertPointGuard here(state_);
-  ctx.builder->SetInsertPoint(
-      BasicBlock::Create(ctx.getContext(), "entry", function));
-  auto* object = ctx.builder->CreateStructGEP(exceptionStorageType(type),
-                                              function->getArg(0), 2);
-  scopes().emitDeinitCall(type, object);
-  scopes().emitFieldDeinit(object, type, "exception.payload");
-  ctx.builder->CreateRetVoid();
-  return function;
-}
-
-void ErrorGenerator::emitRethrow() {
-  // __cxa_rethrow marks the exception as propagating before cleanup ends this
-  // catch.
-  emitPossiblyThrowingCall(getCxaRethrow(), {}, true, "");
-  ctx.builder->CreateUnreachable();
-}
-
-void ErrorGenerator::throwArithmeticError(int code) {
-  auto error = typeRegistry()->arithmeticError;
-  auto* objectType = error->getStructType(ctx.getContext());
-  auto* fatType = InterfaceType::getFatPointerType(ctx.getContext());
-  auto* i64Type = ctx.builder->getInt64Ty();
-  const auto& layout = module->getDataLayout();
-  uint64_t fatOffset = layout.getTypeAllocSize(i64Type);
-  auto* storageType = exceptionStorageType(error.get());
-  auto* exception = ctx.builder->CreateCall(
-      getCxaAllocateException(),
-      {ctx.builder->getInt64(layout.getTypeAllocSize(storageType))});
-  ctx.builder->CreateStore(
-      ctx.builder->getInt64(sunTypeId(*error, state_.analysis->declarations)),
-      exception);
-  auto* object = ctx.builder->CreateStructGEP(storageType, exception, 2);
-  ctx.builder->CreateStore(ctx.builder->getInt32(code),
-                           ctx.builder->CreateStructGEP(objectType, object, 0));
-  auto* fat = gen_.classGenerator().createInterfaceFatPointer(
-      object, error.get(), typeRegistry()->errorInterface.get());
-  ctx.builder->CreateStore(
-      fat, ctx.builder->CreateGEP(ctx.builder->getInt8Ty(), exception,
-                                  ctx.builder->getInt64(fatOffset)));
-  scopes().emitCleanupToDepth(
-      !activeTry() ? scopes().functionBoundaryDepth() : activeTry()->scopeDepth,
-      /*unwinding=*/true);
-  emitCxaThrowAndUnreachable(exception, exceptionDestructor(error.get()));
-}
-
-// Emit __cxa_throw of an already-populated exception buffer, then terminate
-// with unreachable. If we're inside a try block, the throw is an `invoke` that
-// unwinds to that try's landing pad so the exception is caught in the same
-// function; otherwise it's a plain call that unwinds into the caller.
-void ErrorGenerator::emitCxaThrowAndUnreachable(Value* excPtr,
-                                                Function* destructor) {
-  Function* func = ctx.builder->GetInsertBlock()->getParent();
-  FunctionCallee cxaThrow = getCxaThrow();
-  Value* tinfo = getSunExceptionTypeInfo();
-
-  if (activeTry()) {
-    ensurePersonality(func);
-    BasicBlock* contBB =
-        BasicBlock::Create(ctx.getContext(), "throw.cont", func);
-    ctx.builder->CreateInvoke(cxaThrow, contBB, activeTry()->landingPad,
-                              {excPtr, tinfo, destructor});
-    ctx.builder->SetInsertPoint(contBB);
-  } else {
-    ctx.builder->CreateCall(cxaThrow, {excPtr, tinfo, destructor});
-  }
-  // __cxa_throw is noreturn: the normal-continuation edge is unreachable.
-  ctx.builder->CreateUnreachable();
-
-  // Leave the builder in a dead, already-terminated block so callers that
-  // inspect `getInsertBlock()->getTerminator()` see the throw as terminating
-  // (matching the old return-based throw), while any dead follow-on code still
-  // has a valid insertion point.
-  BasicBlock* deadBB =
-      BasicBlock::Create(ctx.getContext(), "throw.unreachable", func);
-  ctx.builder->SetInsertPoint(deadBB);
-  ctx.builder->CreateUnreachable();
-}
-
-// Codegen for throw expression: throw <expr>
-// Moves a concrete error into a C++ ABI exception, or rethrows the active
-// catch. Exception buffer layout: { i64 typeId, InterfaceFat fat, <object
-// bytes> } where fat.data points at the owned payload so it survives unwinding,
-// and typeId (derived from the concrete class's portable identity) lets typed
-// catches match without RTTI. See the matching landing pad in
-// codegen(TryCatchExprAST).
-Value* ErrorGenerator::codegen(const sun::ast::ThrowExprAST& expr) {
-  if (!currentFunctionCanError()) {
-    sun::support::logAndThrowError(
-        "throw can only be used in functions declared with 'throws IError'");
-    return nullptr;
-  }
-
-  const DataLayout& DL = module->getDataLayout();
-  auto* i64Ty = llvm::Type::getInt64Ty(ctx.getContext());
-  auto* i8Ty = llvm::Type::getInt8Ty(ctx.getContext());
-  uint64_t idSize = DL.getTypeAllocSize(i64Ty);  // header: typeId
-  uint64_t fatOffset = idSize;
-
-  auto storeAt = [&](Value* base, uint64_t off, Value* val) {
-    Value* slot =
-        ctx.builder->CreateGEP(i8Ty, base, {ConstantInt::get(i64Ty, off)});
-    ctx.builder->CreateStore(val, slot);
-  };
-
-  sun::types::TypePtr errType =
-      expr.hasErrorExpr() ? expr.getErrorExpr().getResolvedType() : nullptr;
-
-  if (errType && errType->isReference()) {
-    emitRethrow();
-    return nullptr;
-  }
-  auto* classType = sun::codegen::support::tryGetType<ClassType>(errType);
-  if (!classType) {
-    sun::support::logAndThrowError("Thrown value lacks a concrete error type");
-  }
-  auto* storageType = exceptionStorageType(classType);
-  Value* objPtr = codegen(expr.getErrorExpr());
-  if (!objPtr) {
-    return nullptr;
-  }
-  Value* exc = ctx.builder->CreateCall(
-      getCxaAllocateException(),
-      {ConstantInt::get(i64Ty, DL.getTypeAllocSize(storageType))}, "exc");
-  ctx.builder->CreateStore(
-      ConstantInt::get(i64Ty,
-                       sunTypeId(*classType, state_.analysis->declarations)),
-      exc);
-  Value* objSlot = ctx.builder->CreateStructGEP(storageType, exc, 2, "exc.obj");
-  ctx.builder->CreateStore(gen_.applyMoveSemantics(objPtr, errType), objSlot);
-  Value* fat = gen_.classGenerator().createInterfaceFatPointer(
-      objSlot, classType, typeRegistry()->errorInterface.get());
-  storeAt(exc, fatOffset, fat);
-  scopes().emitCleanupToDepth(
-      activeTry() ? activeTry()->scopeDepth : scopes().functionBoundaryDepth(),
-      true);
-  emitCxaThrowAndUnreachable(exc, exceptionDestructor(classType));
-
-  return nullptr;
 }
 
 // Codegen for unsafe block: unsafe { ... }
@@ -290,246 +87,11 @@ Value* ErrorGenerator::codegen(const sun::ast::UnsafeBlockAST& expr) {
   return result;
 }
 
-// Codegen for try-catch: try { ... } catch (e: ref A) { ... } catch (e: ref
-// IError) {} Throwing calls in the try block `invoke` to a single catch-all
-// landing pad. The pad enters the C++ ABI catch, reads the exception's typeId
-// header, and dispatches to the first clause whose type matches (concrete class
-// → id compare; `IError` → unconditional catch-all). If nothing matches, the
-// exception is __cxa_rethrow'd to the nearest outer handler.
-Value* ErrorGenerator::codegen(const sun::ast::TryCatchExprAST& expr) {
-  Function* func = ctx.builder->GetInsertBlock()->getParent();
-  ensurePersonality(func);
-
-  BasicBlock* lpadBB = BasicBlock::Create(ctx.getContext(), "try.lpad", func);
-  BasicBlock* dispatchBB =
-      BasicBlock::Create(ctx.getContext(), "try.dispatch", func);
-  BasicBlock* mergeBB = BasicBlock::Create(ctx.getContext(), "try.merge", func);
-
-  auto* ptrTy = PointerType::getUnqual(ctx.getContext());
-
-  // Dispatch block: an exception-pointer phi fed by the plain landing pad and
-  // by any per-call-site cleanup pads (which drop live owners before joining).
-  PHINode* excPhi;
-  {
-    sun::codegen::CodegenState::InsertPointGuard here(state_);
-    ctx.builder->SetInsertPoint(dispatchBB);
-    excPhi = ctx.builder->CreatePHI(ptrTy, 2, "exc.phi");
-  }
-
-  // Push the try body scope, then the try context (records the body scope
-  // depth so unwind paths know how far to clean).
-  scopes().push(expr.getTryBlock().getLocation());
-  tryStack.push_back({lpadBB, dispatchBB, excPhi, scopes().size() - 1});
-
-  Value* tryResult = codegen(expr.getTryBlock());
-
-  tryStack.pop_back();
-  scopes().pop();
-
-  // Fallthrough of the try body (no exception): branch to merge. A try-catch
-  // is a statement — a `try` body is not a value-producing block kind — so
-  // the carried value only keeps the PHI well-formed.
-  std::vector<std::pair<Value*, BasicBlock*>> results;
-  if (!ctx.builder->GetInsertBlock()->getTerminator()) {
-    BasicBlock* tryEndBB = ctx.builder->GetInsertBlock();
-    ctx.builder->CreateBr(mergeBB);
-    if (tryResult) {
-      results.push_back({tryResult, tryEndBB});
-    }
-  }
-
-  // ---- Landing pad (no live owners on this edge) ----
-  ctx.builder->SetInsertPoint(lpadBB);
-  auto* i32Ty = llvm::Type::getInt32Ty(ctx.getContext());
-  auto* i64Ty = llvm::Type::getInt64Ty(ctx.getContext());
-  llvm::StructType* lpadTy = StructType::get(ptrTy, i32Ty);
-  llvm::LandingPadInst* lp = ctx.builder->CreateLandingPad(lpadTy, 1, "lpad");
-  lp->addClause(ConstantPointerNull::get(ptrTy));  // catch(...)
-  Value* lpExcPtr = ctx.builder->CreateExtractValue(lp, 0, "exc.ptr");
-  excPhi->addIncoming(lpExcPtr, ctx.builder->GetInsertBlock());
-  ctx.builder->CreateBr(dispatchBB);
-
-  // ---- Catch dispatch ----
-  ctx.builder->SetInsertPoint(dispatchBB);
-  Value* obj = ctx.builder->CreateCall(getCxaBeginCatch(), {excPhi}, "exc.obj");
-
-  // Exception header (see codegen(ThrowExprAST)): { i64 typeId, InterfaceFat }.
-  llvm::StructType* fatTy = InterfaceType::getFatPointerType(ctx.getContext());
-  const DataLayout& DL = module->getDataLayout();
-  uint64_t fatOffset = DL.getTypeAllocSize(i64Ty);
-  Value* typeId = ctx.builder->CreateLoad(i64Ty, obj, "exc.typeId");
-  Value* fatSlot = ctx.builder->CreateGEP(
-      llvm::Type::getInt8Ty(ctx.getContext()), obj,
-      {ConstantInt::get(i64Ty, fatOffset)}, "exc.fat.slot");
-  Value* fat = ctx.builder->CreateLoad(fatTy, fatSlot, "exc.fat");
-
-  // A library without stdlib returns literal messages; its caller may use
-  // owned String messages. Rebind builtin errors to the caller's local ABI.
-  auto arithmetic = typeRegistry()->arithmeticError;
-  auto* arithmeticData = ctx.builder->CreateExtractValue(fat, 0);
-  auto* localArithmetic = gen_.classGenerator().createInterfaceFatPointer(
-      arithmeticData, arithmetic.get(), typeRegistry()->errorInterface.get());
-  auto* isArithmetic = ctx.builder->CreateICmpEQ(
-      typeId,
-      ConstantInt::get(i64Ty,
-                       sunTypeId(*arithmetic, state_.analysis->declarations)));
-  fat = ctx.builder->CreateSelect(isArithmetic, localArithmetic, fat);
-
-  const auto& clauses = expr.getCatchClauses();
-  size_t n = clauses.size();
-
-  // Per-clause test and body blocks; branch from the pad into the first test.
-  std::vector<BasicBlock*> testBBs(n), bodyBBs(n);
-  for (size_t i = 0; i < n; ++i) {
-    testBBs[i] = BasicBlock::Create(ctx.getContext(), "catch.test", func);
-    bodyBBs[i] = BasicBlock::Create(ctx.getContext(), "catch.body", func);
-  }
-  bool hasCatchAll = n > 0 && clauses.back().isCatchAll;
-  BasicBlock* nomatchBB =
-      hasCatchAll ? nullptr
-                  : BasicBlock::Create(ctx.getContext(), "catch.nomatch", func);
-  ctx.builder->CreateBr(testBBs[0]);
-
-  for (size_t i = 0; i < n; ++i) {
-    const auto& clause = clauses[i];
-
-    // ---- test ----
-    ctx.builder->SetInsertPoint(testBBs[i]);
-    if (clause.isCatchAll) {
-      ctx.builder->CreateBr(bodyBBs[i]);
-    } else {
-      Value* want = ConstantInt::get(
-          i64Ty, sunTypeId(sun::codegen::support::requireType<ClassType>(
-                               sun::types::unwrapRef(clause.resolvedType),
-                               "catch type"),
-                           state_.analysis->declarations));
-      Value* m = ctx.builder->CreateICmpEQ(typeId, want, "catch.match");
-      BasicBlock* elseBB = (i + 1 < n) ? testBBs[i + 1] : nomatchBB;
-      ctx.builder->CreateCondBr(m, bodyBBs[i], elseBB);
-    }
-
-    // ---- body ----
-    ctx.builder->SetInsertPoint(bodyBBs[i]);
-    scopes().push(clause.body->getLocation());
-    scopes().back().endCatch = cast<Function>(getCxaEndCatch().getCallee());
-    if (!clause.bindingName.empty()) {
-      IRBuilder<> entry(&func->getEntryBlock(), func->getEntryBlock().begin());
-      Value* referent;
-      if (clause.isCatchAll) {
-        auto* view = entry.CreateAlloca(fatTy, nullptr, "catch.view");
-        ctx.builder->CreateStore(fat, view);
-        referent = view;
-      } else {
-        referent = ctx.builder->CreateExtractValue(fat, 0, "err.data");
-      }
-      auto* binding = entry.CreateAlloca(ptrTy, nullptr, clause.bindingName);
-      ctx.builder->CreateStore(referent, binding);
-      scopes().back().variables[clause.declaration.id] = binding;
-      debugDeclareLocal(binding, clause.bindingName, clause.resolvedType,
-                        expr.getLocation());
-    }
-    Value* catchResult = codegen(*clause.body);
-    scopes().pop();
-
-    if (!ctx.builder->GetInsertBlock()->getTerminator()) {
-      BasicBlock* bodyEndBB = ctx.builder->GetInsertBlock();
-      ctx.builder->CreateBr(mergeBB);
-      if (catchResult) {
-        results.push_back({catchResult, bodyEndBB});
-      }
-    }
-  }
-
-  // No clause matched → rethrow to the nearest outer handler (the current try
-  // was already popped from tryStack, so tryStack.back() is the outer one).
-  if (nomatchBB) {
-    ctx.builder->SetInsertPoint(nomatchBB);
-    scopes().push();
-    scopes().back().endCatch = cast<Function>(getCxaEndCatch().getCallee());
-    emitRethrow();
-    scopes().pop();
-  }
-
-  // ---- Merge ----
-  ctx.builder->SetInsertPoint(mergeBB);
-
-  // Produce a phi if every path reaching merge carries the same non-void type
-  // (try/catch used as an expression); otherwise it is a statement.
-  if (!results.empty()) {
-    llvm::Type* t = results[0].first->getType();
-    bool uniform = !t->isVoidTy();
-    for (auto& [v, b] : results) {
-      if (v->getType() != t) {
-        uniform = false;
-      }
-    }
-    if (uniform) {
-      PHINode* phi = ctx.builder->CreatePHI(t, results.size(), "try.result");
-      for (auto& [v, b] : results) {
-        phi->addIncoming(v, b);
-      }
-      return phi;
-    }
-  }
-  // Non-null dummy so the enclosing block keeps generating statements
-  // (block codegen aborts on a null statement value).
-  return ConstantInt::get(i32Ty, 0);
-}
-
 // =============================================================================
 // LLVM Exception Handling Helpers
 // =============================================================================
 // These functions declare/get the C++ ABI exception handling functions
 // needed for LLVM's native exception handling mechanism.
-
-// Get or declare: void* __cxa_allocate_exception(size_t)
-FunctionCallee ErrorGenerator::getCxaAllocateException() {
-  auto* i8PtrTy = PointerType::getUnqual(ctx.getContext());
-  auto* i64Ty = llvm::Type::getInt64Ty(ctx.getContext());
-  llvm::FunctionType* fnType = llvm::FunctionType::get(i8PtrTy, {i64Ty}, false);
-  return module->getOrInsertFunction("__cxa_allocate_exception", fnType);
-}
-
-// Get or declare: void __cxa_throw(void* exception, void* tinfo, void* dest)
-FunctionCallee ErrorGenerator::getCxaThrow() {
-  auto* voidTy = llvm::Type::getVoidTy(ctx.getContext());
-  auto* i8PtrTy = PointerType::getUnqual(ctx.getContext());
-  llvm::FunctionType* fnType =
-      llvm::FunctionType::get(voidTy, {i8PtrTy, i8PtrTy, i8PtrTy}, false);
-  auto fn = module->getOrInsertFunction("__cxa_throw", fnType);
-  // Mark __cxa_throw as noreturn
-  if (auto* func = dyn_cast<Function>(fn.getCallee())) {
-    func->addFnAttr(Attribute::NoReturn);
-  }
-  return fn;
-}
-
-// Get or declare: void* __cxa_begin_catch(void* exception)
-FunctionCallee ErrorGenerator::getCxaBeginCatch() {
-  auto* i8PtrTy = PointerType::getUnqual(ctx.getContext());
-  llvm::FunctionType* fnType =
-      llvm::FunctionType::get(i8PtrTy, {i8PtrTy}, false);
-  return module->getOrInsertFunction("__cxa_begin_catch", fnType);
-}
-
-// Get or declare: void __cxa_end_catch()
-FunctionCallee ErrorGenerator::getCxaEndCatch() {
-  auto* voidTy = llvm::Type::getVoidTy(ctx.getContext());
-  llvm::FunctionType* fnType = llvm::FunctionType::get(voidTy, {}, false);
-  return module->getOrInsertFunction("__cxa_end_catch", fnType);
-}
-
-// Get or declare: void __cxa_rethrow() — rethrows the exception currently being
-// handled (must be called between __cxa_begin_catch and __cxa_end_catch).
-FunctionCallee ErrorGenerator::getCxaRethrow() {
-  auto* voidTy = llvm::Type::getVoidTy(ctx.getContext());
-  llvm::FunctionType* fnType = llvm::FunctionType::get(voidTy, {}, false);
-  auto fn = module->getOrInsertFunction("__cxa_rethrow", fnType);
-  if (auto* func = dyn_cast<Function>(fn.getCallee())) {
-    func->addFnAttr(Attribute::NoReturn);
-  }
-  return fn;
-}
 
 // Get the personality function for exception handling.
 // We use __gxx_personality_v0 for C++ ABI compatibility.
@@ -545,15 +107,6 @@ Constant* ErrorGenerator::getPersonalityFunction() {
   return cast<Constant>(fn.getCallee());
 }
 
-// Get the type info used for Sun exceptions. Every throw uses this token;
-// landing pads catch it before dispatching by the concrete Sun type tag.
-// A single valid C++ RTTI symbol therefore works here. We reuse
-// libstdc++'s typeinfo for `int` (resolved from the host process at JIT time).
-Constant* ErrorGenerator::getSunExceptionTypeInfo() {
-  auto* ptrTy = PointerType::getUnqual(ctx.getContext());
-  return cast<Constant>(module->getOrInsertGlobal("_ZTIi", ptrTy));
-}
-
 // Ensure a function has a personality function (required once it contains an
 // invoke/landingpad). Idempotent.
 void ErrorGenerator::ensurePersonality(Function* fn) {
@@ -562,14 +115,9 @@ void ErrorGenerator::ensurePersonality(Function* fn) {
   }
 }
 
-// Emit a call that may unwind. Inside a try block a throwing callee must be
-// `invoke`d so the exception routes to the local landing pad. Outside a try,
-// a plain call lets the exception propagate out of the current function —
-// unless scopes with live owners would be skipped, in which case the call is
-// `invoke`d to a per-call-site cleanup pad that drops them first and then
-// resumes unwinding (or joins the try's catch dispatch). Pads are per call
-// site because the emitted drop set is a codegen-time snapshot of which
-// owners are live and non-moved at this point.
+// A call that can unwind needs a cleanup pad when live owners would be skipped.
+// Drop those owners and resume unwinding; Sun does not install catch handlers.
+// Each pad records the owners that are live at its particular call site.
 Value* ErrorGenerator::emitPossiblyThrowingCall(llvm::FunctionType* fnTy,
                                                 Value* callee,
                                                 ArrayRef<Value*> args,
@@ -587,12 +135,10 @@ Value* ErrorGenerator::emitPossiblyThrowingCall(llvm::FunctionType* fnTy,
         ctx.builder->CreateCall(fnTy, callee, args, isVoid ? "" : name));
   }
 
-  bool inTry = activeTry() != nullptr;
-  size_t cleanupDepth =
-      inTry ? activeTry()->scopeDepth : scopes().functionBoundaryDepth();
+  size_t cleanupDepth = scopes().functionBoundaryDepth();
   bool needsCleanup = scopes().hasLiveOwners(cleanupDepth);
 
-  if (!inTry && !needsCleanup) {
+  if (!needsCleanup) {
     // Nothing to clean: let the exception unwind straight into the caller.
     return finish(
         ctx.builder->CreateCall(fnTy, callee, args, isVoid ? "" : name));
@@ -604,10 +150,7 @@ Value* ErrorGenerator::emitPossiblyThrowingCall(llvm::FunctionType* fnTy,
       BasicBlock::Create(ctx.getContext(), "invoke.cont", curFn);
 
   BasicBlock* unwindDest;
-  if (!needsCleanup) {
-    // Inside a try with no owners on the unwind edge: use the plain pad.
-    unwindDest = activeTry()->landingPad;
-  } else {
+  {
     // Build the per-call-site cleanup pad.
     auto* ptrTy = PointerType::getUnqual(ctx.getContext());
     auto* i32Ty = llvm::Type::getInt32Ty(ctx.getContext());
@@ -619,22 +162,10 @@ Value* ErrorGenerator::emitPossiblyThrowingCall(llvm::FunctionType* fnTy,
     ctx.builder->SetInsertPoint(padBB);
     llvm::LandingPadInst* lp =
         ctx.builder->CreateLandingPad(lpadTy, 1, "cleanup.lp");
-    if (inTry) {
-      // Same catch-all clause as the try's plain pad; after dropping owners
-      // the exception joins the catch dispatch.
-      lp->addClause(ConstantPointerNull::get(ptrTy));
-      Value* excPtr = ctx.builder->CreateExtractValue(lp, 0, "exc.ptr");
-      scopes().emitCleanupToDepth(cleanupDepth, /*unwinding=*/true);
-      // Cleanup may have moved the insert point into a later block (owned-ptr
-      // frees create null-check blocks): the dispatch edge starts there.
-      activeTry()->excPhi->addIncoming(excPtr, ctx.builder->GetInsertBlock());
-      ctx.builder->CreateBr(activeTry()->dispatchBB);
-    } else {
-      // Pure cleanup pad: drop owners, then continue unwinding to the caller.
-      lp->setCleanup(true);
-      scopes().emitCleanupToDepth(cleanupDepth, /*unwinding=*/true);
-      ctx.builder->CreateResume(lp);
-    }
+    // Drop owners, then continue unwinding to the caller.
+    lp->setCleanup(true);
+    scopes().emitCleanupToDepth(cleanupDepth, /*unwinding=*/true);
+    ctx.builder->CreateResume(lp);
     unwindDest = padBB;
   }
 

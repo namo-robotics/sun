@@ -313,9 +313,6 @@ std::optional<std::string> ScopeManager::releaseBlockResult(Value* result) {
 
 bool ScopeManager::hasLiveOwners(size_t depth) const {
   for (size_t i = depth; i < scopes_.size(); ++i) {
-    if (scopes_[i].endCatch) {
-      return true;
-    }
     // A drop flag means ownership is a run-time answer, so assume it is owned
     for (const auto& a : scopes_[i].classAllocations) {
       if (!a.moved || a.dropFlag) {
@@ -541,9 +538,6 @@ void ScopeManager::emitCleanupForScope(CodegenScope& scope, bool unwinding) {
   // Then, cleanup owned pointer allocations (ptr<T>)
   auto& currentScope = scope.ownedAllocations;
   if (currentScope.empty()) {
-    if (scope.endCatch) {
-      ctx.builder->CreateCall(scope.endCatch, {});
-    }
     return;
   }
 
@@ -595,9 +589,6 @@ void ScopeManager::emitCleanupForScope(CodegenScope& scope, bool unwinding) {
       ctx.builder->CreateBr(skipBB);
       ctx.builder->SetInsertPoint(skipBB);
     }
-  }
-  if (scope.endCatch) {
-    ctx.builder->CreateCall(scope.endCatch, {});
   }
 }
 

@@ -9,18 +9,8 @@ namespace sun::codegen::scopes {
 class ScopeManager;
 }
 
-// error_generator.h — throw, try/catch, and calls that may unwind
-//
-// Sun's error unions are native LLVM exceptions: a function declared
-// `throws IError` returns a plain T and may unwind. So a call to one is an
-// `invoke` whenever there is a landing pad to unwind to, and a plain call
-// otherwise — which is the single decision `emitPossiblyThrowingCall` makes
-// for every call site in codegen.
-//
-// Unwinding past a scope that still owns values has to drop them first. A try
-// block therefore has two entry points for an exception: a plain landing pad
-// when there is nothing to clean, and a per-call-site cleanup pad that drops
-// the live owners and then joins the catch dispatch.
+// Generates concrete arithmetic error methods and preserves owned values
+// across scoped unsafe blocks and calls that may unwind.
 
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
@@ -35,26 +25,11 @@ class ScopeManager;
 #include "codegen/codegen_state.h"
 #include "semantic_analysis/type_registry.h"
 
-/** Generates control flow for throwing and catching Sun errors. */
+/** Generates value-based error support and call cleanup. */
 namespace sun::codegen::errors {
 using sun::ast::ExprAST;
 
-/**
- * One open try block. Throwing calls inside it are emitted as `invoke`s that
- * unwind to its landing pad, or — when scopes with live owners must be
- * cleaned first — to a per-call-site cleanup pad that drops them and then
- * branches into dispatchBB.
- */
-struct TryContext {
-  llvm::BasicBlock* landingPad;  // Plain landing pad (no owners to clean)
-  llvm::BasicBlock* dispatchBB;  // Catch-clause dispatch (target of pads)
-  llvm::PHINode* excPhi;         // Exception-pointer phi at dispatchBB entry
-  size_t scopeDepth;             // Scope index of the try body scope
-};
-
-/**
- * Emits throw, try/catch, and every call that might unwind.
- */
+/** Emits builtin error methods, unsafe blocks, and calls with cleanup. */
 class ErrorGenerator {
  public:
   /** Binds error propagation generation to the shared expression visitor and
@@ -70,13 +45,6 @@ class ErrorGenerator {
    * duplicated. */
   ErrorGenerator& operator=(const ErrorGenerator&) = delete;
 
-  /** Emits LLVM instructions for this syntax node and returns its generated
-   * value. */
-  llvm::Value* codegen(const sun::ast::TryCatchExprAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated
-   * value. */
-  llvm::Value* codegen(const sun::ast::ThrowExprAST& expr);
-
   /**
    * The body is emitted as written, in a scope of its own; the block's value
    * is handed out to the enclosing scope. Safety checks are done in sema.
@@ -84,16 +52,13 @@ class ErrorGenerator {
   llvm::Value* codegen(const sun::ast::UnsafeBlockAST& expr);
 
   /**
-   * Emits a call that may unwind. If `canThrow` and we are inside a try
-   * block, emits an `invoke` unwinding to the innermost try's landing pad and
-   * continues codegen in the normal-destination block; otherwise emits a
-   * plain call.
+   * Applies the callee ABI and drops live owners if the call unwinds.
    */
   llvm::Value* emitPossiblyThrowingCall(llvm::FunctionType* fnTy,
                                         llvm::Value* callee,
                                         llvm::ArrayRef<llvm::Value*> args,
                                         bool canThrow, const llvm::Twine& name);
-  /** Emits a call and propagates its error result when the callee can throw. */
+  /** Emits a declared callee using the same ABI and ownership cleanup rules. */
   llvm::Value* emitPossiblyThrowingCall(llvm::FunctionCallee callee,
                                         llvm::ArrayRef<llvm::Value*> args,
                                         bool canThrow, const llvm::Twine& name);
@@ -102,23 +67,17 @@ class ErrorGenerator {
    * methods. */
   void emitArithmeticErrorMethods(bool defineBodies = false);
 
-  /** Constructs and throws ArithmeticError, cleaning up live owners. */
-  void throwArithmeticError(int code);
-
  private:
   sun::codegen::CodegenState& state_;
   sun::codegen::CodegenVisitor& gen_;
   sun::codegen::CodegenContext& ctx;
-
-  // Stack of try contexts for error propagation to catch blocks
-  std::vector<TryContext> tryStack;
 
   // Aliases into the shared state, so the emission code reads the same way
   // the rest of codegen does
   llvm::Module* module;
 
   /**
-   * What throwing and catching borrow from the rest of codegen
+   * Delegates expression generation to the enclosing visitor.
    */
   llvm::Value* codegen(const ExprAST& expr);
   /** Emits LLVM instructions for this syntax node and returns its generated
@@ -142,31 +101,8 @@ class ErrorGenerator {
   sun::codegen::scopes::ScopeManager& scopes();
   /** Provides the semantic types available to this code generator. */
   std::shared_ptr<sun::semantic_analysis::TypeRegistry>& typeRegistry();
-  /** Associates local storage with its source variable for debugging. */
-  void debugDeclareLocal(llvm::AllocaInst* alloca, const std::string& name,
-                         const sun::types::TypePtr& type,
-                         const sun::support::Position& loc);
-  /**
-   * True when the function being emitted may return errors
-   */
-  bool currentFunctionCanError() const { return state_.frame.canError; }
-
-  /**
-   * Get or declare the C++ ABI exception handling functions
-   */
-  llvm::FunctionCallee getCxaAllocateException();
-  /** Returns the cxa throw stored by this object. */
-  llvm::FunctionCallee getCxaThrow();
-  /** Returns the cxa begin catch stored by this object. */
-  llvm::FunctionCallee getCxaBeginCatch();
-  /** Returns the cxa end catch stored by this object. */
-  llvm::FunctionCallee getCxaEndCatch();
-  /** Returns the cxa rethrow stored by this object. */
-  llvm::FunctionCallee getCxaRethrow();
   /** Returns the personality function stored by this object. */
   llvm::Constant* getPersonalityFunction();
-  /** Returns the runtime type information for Sun exceptions. */
-  llvm::Constant* getSunExceptionTypeInfo();
 
   /**
    * Ensure `fn` has a personality function set (needed for any function that
@@ -174,27 +110,6 @@ class ErrorGenerator {
    */
   void ensurePersonality(llvm::Function* fn);
 
-  /**
-   * Emit __cxa_throw(excPtr, tinfo, destructor) (as an invoke to the innermost
-   * try's landing pad if inside a try, else a plain call), terminate the
-   * current block with unreachable, and leave the builder in a fresh dead
-   * block.
-   */
-  void emitCxaThrowAndUnreachable(llvm::Value* excPtr,
-                                  llvm::Function* destructor);
-
-  /** Returns the innermost try in the function currently being emitted. */
-  TryContext* activeTry();
-
-  /** Builds aligned exception storage containing the tag, view, and payload. */
-  llvm::StructType* exceptionStorageType(sun::types::ClassType* type);
-
-  /** Emits the callback that drops a concrete payload without freeing its
-   * buffer. */
-  llvm::Function* exceptionDestructor(sun::types::ClassType* type);
-
-  /** Rethrows the active exception and ends exited catches during unwinding. */
-  void emitRethrow();
 };
 
 }  // namespace sun::codegen::errors

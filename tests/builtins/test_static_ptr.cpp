@@ -78,7 +78,8 @@ TEST(Builtins_StaticPtr, length_of_a_class_field) {
 
 TEST(Builtins_StaticPtr, length_of_a_method_result) {
   auto value = executeString(R"(
-    class Boom implements IError {
+
+    class Boom {
       init() {}
       const method code() i32 { return 9; }
       const method message() static_ptr<u8> { return "boom"; }

@@ -215,10 +215,11 @@ TEST(MemorySafety_Drops_Match, explicit_return_cleans_remaining_payloads) {
 
 TEST(MemorySafety_Drops_Match, unwind_cleans_owned_payloads) {
   EXPECT_EQ(executeString(program(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), Error(Error) }
 
-class Error implements IError {
+class Error {
   init() {}
   const method code() i32 {
     return 1;
@@ -254,7 +255,7 @@ function main() i32 {
   };
   match attempt_0() {
     Outcome.Ok => {},
-    (e: ref IError) => {
+    (e: ref Error) => {
       return drops;
     }
   };
@@ -412,10 +413,11 @@ TEST(MemorySafety_Drops_Match,
 
 TEST(MemorySafety_Drops_Match, thrown_payload_survives_unwind) {
   EXPECT_EQ(executeString(program(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), Error(Error) }
 
-class Error implements IError {
+class Error {
   var id: i32;
   init() {
     this.id = 7;
@@ -445,7 +447,7 @@ function run() Outcome<i32> {
   };
   match attempt_0() {
     Outcome.Ok => {},
-    (e: ref IError) => {
+    (e: ref Error) => {
       return Outcome.Ok(e.code());
     }
   };

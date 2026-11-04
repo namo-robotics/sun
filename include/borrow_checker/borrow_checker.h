@@ -368,9 +368,6 @@ class BorrowChecker {
   // Protos of the lambdas whose bodies are currently being checked
   // (innermost last) - nested by-ref captures alias their loans
   std::vector<const sun::ast::PrototypeAST*> lambdaProtoStack_;
-  /** Checks ownership and lifetime rules for this try catch and updates active
-   * loans. */
-  void checkTryCatch(const sun::ast::TryCatchExprAST& tryCatch);
   /** Checks ownership and lifetime rules for this unsafe block and updates
    * active loans. */
   void checkUnsafeBlock(const sun::ast::UnsafeBlockAST& unsafeBlock);

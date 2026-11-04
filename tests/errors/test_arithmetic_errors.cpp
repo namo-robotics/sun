@@ -155,16 +155,16 @@ TEST(Errors_Arithmetic, propagation_drops_live_values) {
             2);
 }
 
-/** Returned arithmetic errors expose owned messages through const interfaces.
+/** Returned arithmetic errors retain literal messages with the stdlib loaded.
  */
 TEST(Errors_Arithmetic, messages_with_stdlib) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
-    /** Reads the message through a borrowed error interface. */
+    /** Reads the concrete error and explicitly owns its diagnostic. */
     function main() i32 {
       return match checked_div(1, 0) {
         _Result.Ok(value) => -1,
-        (error: const ref IError) => {
-          var message = error.message();
+        _Result.Err(error) => {
+          var message = std.String(error.message());
           if (message.equals_literal("integer division by zero")) { return 0; }
           return 1;
         }
@@ -224,12 +224,12 @@ TEST(Errors_Arithmetic, library_result_without_stdlib_handled_with_stdlib) {
   imports.push_back({std::filesystem::absolute(library).string(), {}});
   driver->setMoonImports(std::move(imports));
   EXPECT_EQ(driver->executeString(R"(
-    /** Reads an owned message from a library's returned error. */
+    /** Explicitly owns the literal message from a library's returned error. */
     function main() i32 {
       return match arithmetic_fixture.divide(1, 0) {
         _Result.Ok(value) => value,
         _Result.Err(error) => {
-          var message = error.message();
+          var message = std.String(error.message());
           if (message.equals_literal("integer division by zero")) { return 0; }
           return 1;
         }
