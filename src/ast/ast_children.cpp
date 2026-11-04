@@ -216,21 +216,8 @@ void forEachChild(const ExprAST& node, const ChildFn& fn) {
       visit(assign.getValue(), fn);
       break;
     }
-    case ASTNodeType::TRY_CATCH: {
-      const auto& tryCatch = static_cast<const TryCatchExprAST&>(node);
-      fn(tryCatch.getTryBlock());
-      for (const auto& clause : tryCatch.getCatchClauses()) {
-        visit(clause.body.get(), fn);
-      }
-      break;
-    }
-    case ASTNodeType::THROW: {
-      const auto& throwExpr = static_cast<const ThrowExprAST&>(node);
-      if (throwExpr.hasErrorExpr()) {
-        fn(throwExpr.getErrorExpr());
-      }
-      break;
-    }
+
+
     case ASTNodeType::UNSAFE_BLOCK:
       fn(static_cast<const UnsafeBlockAST&>(node).getBody());
       break;

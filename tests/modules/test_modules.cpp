@@ -942,15 +942,15 @@ TEST(Modules, moon_clean_lambda_param_still_rejects_captures) {
                sun::support::SunError);
 }
 
-// A throwing free function in a .moon must be invoked (not called) inside a
-// try block, or its exception skips the local catch and terminates.
+// Concrete error results survive calls and propagation across a Moon boundary.
 TEST(Modules, moon_free_function_throw_is_caught_by_importer) {
   initTestEnvironment();
   auto moonPath = writeMoonLib("throwlib", R"(
+
 public module throwlib {
   /** Owns successes and concrete errors across a library boundary. */
   public enum Outcome<T> { Ok(T), Boom(Boom) }
-  public class Boom implements IError {
+  public class Boom {
     init() {}
     public const method code() i32 {
       return 77;
@@ -978,9 +978,9 @@ public module throwlib {
 
     function main() i32 {
         var r: i32 = 0;
-        match fail(1) { Outcome.Ok(value) => { r += value; }, (e: ref IError) => { r += e.code(); } };
-        match nested(1) { Outcome.Ok(value) => { r += value; }, (e: ref IError) => { r += 1000; } };
-        match fail(0) { Outcome.Ok(value) => { r += value; }, (e: ref IError) => { r += 5000; } };
+        match fail(1) { Outcome.Ok(value) => { r += value; }, (e: ref Boom) => { r += e.code(); } };
+        match nested(1) { Outcome.Ok(value) => { r += value; }, (e: ref Boom) => { r += 1000; } };
+        match fail(0) { Outcome.Ok(value) => { r += value; }, (e: ref Boom) => { r += 5000; } };
         return r;
     }
   )");
@@ -2316,4 +2316,58 @@ TEST(Modules, other_bindings_cannot_shadow_later_globals) {
   )")
                 .find("Cannot shadow global variable 'total'"),
             std::string::npos);
+}
+
+/** Independent stdlib revisions retain their own error interface and String. */
+TEST(Modules, error_interfaces_keep_bundle_revision_identity) {
+  initTestEnvironment();
+  auto library = [](const std::string& module, int value) {
+    return writeMoonLib("error_contract_" + module, R"(
+      /** Models the revision-owned standard library declarations. */
+      public module std {
+        /** Owns the diagnostic value for this revision. */
+        public class String {
+          public var value: i32;
+          /** Initializes the diagnostic. */
+          init(value: i32) { this.value = value; }
+        }
+        /** Returns this revision's diagnostic type. */
+        public interface IError {
+          /** Returns an owned diagnostic. */
+          public const method message() String;
+        }
+        /** Implements the local error contract. */
+        public class Error implements IError {
+          /** Creates the fixture error. */
+          init() {}
+          /** Returns an owned revision-specific diagnostic. */
+          public const method message() String { return String()" +
+      std::to_string(value) + R"(); }
+        }
+      }
+      /** Exposes one revision without exposing its standard-library names. */
+      public module )" + module + R"( {
+        /** Exercises interface dispatch and its owned return value. */
+        public function read() i32 {
+          var error = std.Error();
+          var view: const ref std.IError = error;
+          var message = view.message();
+          return message.value;
+        }
+      }
+    )");
+  };
+  auto first = library("first_error_revision", 20);
+  auto second = library("second_error_revision", 22);
+  for (bool reverse : {false, true}) {
+    auto driver = Driver::createForJIT("error_contract_revisions");
+    driver->setMoonImports({MoonImport((reverse ? second : first).string(), "std", "stdlib_a"),
+                            MoonImport((reverse ? first : second).string(), "std", "stdlib_b")});
+    EXPECT_EQ(driver->executeString(R"(
+      /** Calls both independent error contracts. */
+      function main() i32 {
+        return first_error_revision.read() + second_error_revision.read();
+      }
+    )"), 42);
+  }
 }

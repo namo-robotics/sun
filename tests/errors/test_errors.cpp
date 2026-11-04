@@ -31,10 +31,11 @@ TEST(Errors, basic_function_call) {
 
 TEST(Errors, throw_basic) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -54,7 +55,7 @@ function mayThrow(x: i32) Outcome<i32> {
 function main() i32 {
   return match mayThrow(5) {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -1;
     }
   };
@@ -65,10 +66,11 @@ function main() i32 {
 
 TEST(Errors, throw_triggers_catch) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -88,7 +90,7 @@ function mayThrow(x: i32) Outcome<i32> {
 function main() i32 {
   return match mayThrow(-5) {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return 99;
     }
   };
@@ -99,10 +101,11 @@ function main() i32 {
 
 TEST(Errors, try_catch_success_path) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -122,7 +125,7 @@ function compute(a: i32, b: i32) Outcome<i32> {
 function main() i32 {
   return match compute(20, 4) {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -1;
     }
   };
@@ -136,10 +139,11 @@ function main() i32 {
 // catch body (impossible under the old return-value error-union model).
 TEST(Errors, catch_binding_code_is_usable) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), MyError(MyError) }
 
-class MyError implements IError {
+class MyError {
   init() {}
   const method code() i32 {
     return 7;
@@ -159,7 +163,7 @@ function mayThrow(x: i32) Outcome<i32> {
 function main() i32 {
   return match mayThrow(-1) {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref MyError) => {
       return e.code() + 100;
     }
   };
@@ -172,6 +176,14 @@ TEST(Errors, catch_binding_dispatches_to_concrete_type) {
   // The vtable carried in the exception reflects the concrete thrown class, so
   // dynamic dispatch picks the right override.
   auto value = executeString(R"(
+/** Groups literal-only errors used by this standalone fixture. */
+interface IError {
+  /** Returns the fixture error code. */
+  const method code() i32;
+  /** Returns the fixture diagnostic. */
+  const method message() static_ptr<u8>;
+}
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), ErrA(ErrA), ErrB(ErrB) }
 
@@ -220,6 +232,14 @@ function main() i32 {
 /** Keeps test fixtures and helpers local to this source file. */
 namespace {
 constexpr const char* kTypedErrors = R"(
+/** Groups literal-only errors used by this standalone fixture. */
+interface IError {
+  /** Returns the fixture error code. */
+  const method code() i32;
+  /** Returns the fixture diagnostic. */
+  const method message() static_ptr<u8>;
+}
+
     class ErrA implements IError {
       init() {}
       const method code() i32 { return 1; }
@@ -297,10 +317,11 @@ TEST(Errors, typed_catch_concrete_binding_reads_field) {
   // The concrete binding is the real object, so a method unique to that class
   // (not on IError) is callable.
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), BoundsErr(BoundsErr) }
 
-class BoundsErr implements IError {
+class BoundsErr {
   var idx_: i64;
   init(i: i64) {
     this.idx_ = i;
@@ -380,10 +401,11 @@ function main() i32 {
 
 TEST(Errors, try_catch_error_path) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -403,7 +425,7 @@ function compute(a: i32, b: i32) Outcome<i32> {
 function main() i32 {
   return match compute(20, 0) {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -1;
     }
   };
@@ -418,10 +440,11 @@ function main() i32 {
 
 TEST(Errors, nested_try_catch) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -446,7 +469,7 @@ function outer(x: i32) Outcome<i32> {
 function main() i32 {
   return match outer(5) {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -1;
     }
   };
@@ -457,10 +480,11 @@ function main() i32 {
 
 TEST(Errors, nested_error_propagation) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -485,7 +509,7 @@ function outer(x: i32) Outcome<i32> {
 function main() i32 {
   return match outer(0) {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -1;
     }
   };
@@ -496,10 +520,11 @@ function main() i32 {
 
 TEST(Errors, pass_mayThrow_to_function) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -525,7 +550,7 @@ function main() i32 {
   var invoke = () => Outcome<i32> { return Outcome.Ok(foo(try mayThrow(-5))); };
   return match invoke() {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -1;
     }
   };
@@ -536,10 +561,11 @@ function main() i32 {
 
 TEST(Errors, pass_mayThrow_success) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -565,7 +591,7 @@ function main() i32 {
   var invoke = () => Outcome<i32> { return Outcome.Ok(foo(try mayThrow(1))); };
   return match invoke() {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -1;
     }
   };
@@ -580,10 +606,11 @@ function main() i32 {
 
 TEST(Errors, safe_divide_success) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -603,7 +630,7 @@ function safeDivide(a: i32, b: i32) Outcome<i32> {
 function main() i32 {
   return match safeDivide(42, 7) {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -1;
     }
   };
@@ -614,10 +641,11 @@ function main() i32 {
 
 TEST(Errors, safe_divide_by_zero) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -637,7 +665,7 @@ function safeDivide(a: i32, b: i32) Outcome<i32> {
 function main() i32 {
   return match safeDivide(42, 0) {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -1;
     }
   };
@@ -649,8 +677,9 @@ function main() i32 {
 TEST(Errors, auto_safe_division_success) {
   // Valid division also works in functions declared to throw.
   auto value = executeString(R"(
+
 /** Represents a fixture failure without a standard-library dependency. */
-class Error implements IError {
+class Error {
   /** Creates the fixture failure. */
   init() {}
   /** Returns its numeric code. */
@@ -672,7 +701,7 @@ function divide(a: i32, b: i32) Outcome<i32> {
 function main() i32 {
   return match divide(100, 5) {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref Error) => {
       return -1;
     }
   };
@@ -687,10 +716,11 @@ function main() i32 {
 
 TEST(Errors, try_catch_with_computation) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -715,7 +745,7 @@ function main() i32 {
   };
   return match attempt_0() {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return 0;
     }
   };
@@ -726,10 +756,11 @@ function main() i32 {
 
 TEST(Errors, try_catch_with_multiple_calls) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -761,7 +792,7 @@ function main() i32 {
   };
   return match attempt_0() {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -1;
     }
   };
@@ -772,10 +803,11 @@ function main() i32 {
 
 TEST(Errors, try_catch_with_variable_args) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -798,7 +830,7 @@ function main() i32 {
   var z: i32 = 3;
   return match combine(x, y, z) {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -1;
     }
   };
@@ -813,10 +845,11 @@ function main() i32 {
 
 TEST(Errors, catch_returns_different_value) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -836,7 +869,7 @@ function mayFail(x: i32) Outcome<i32> {
 function main() i32 {
   return match mayFail(0) {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return 42;
     }
   };
@@ -847,10 +880,11 @@ function main() i32 {
 
 TEST(Errors, success_returns_original_value) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -870,7 +904,7 @@ function mayFail(x: i32) Outcome<i32> {
 function main() i32 {
   return match mayFail(5) {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return 42;
     }
   };
@@ -885,10 +919,11 @@ function main() i32 {
 
 TEST(Errors, multiple_throw_conditions) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -911,7 +946,7 @@ function validate(x: i32) Outcome<i32> {
 function main() i32 {
   return match validate(50) {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -1;
     }
   };
@@ -922,10 +957,11 @@ function main() i32 {
 
 TEST(Errors, first_condition_throws) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -948,7 +984,7 @@ function validate(x: i32) Outcome<i32> {
 function main() i32 {
   return match validate(-5) {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -1;
     }
   };
@@ -959,10 +995,11 @@ function main() i32 {
 
 TEST(Errors, second_condition_throws) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -985,7 +1022,7 @@ function validate(x: i32) Outcome<i32> {
 function main() i32 {
   return match validate(150) {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -2;
     }
   };
@@ -1000,10 +1037,11 @@ function main() i32 {
 
 TEST(Errors, throw_inside_for_loop) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -1031,7 +1069,7 @@ function main() i32 {
   };
   return match attempt_0() {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -1;
     }
   };
@@ -1043,10 +1081,11 @@ function main() i32 {
 
 TEST(Errors, throw_inside_while_loop) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -1076,7 +1115,7 @@ function main() i32 {
   };
   return match attempt_0() {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -1;
     }
   };
@@ -1088,10 +1127,11 @@ function main() i32 {
 
 TEST(Errors, for_loop_completes_without_throw) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -1119,7 +1159,7 @@ function main() i32 {
   };
   return match attempt_0() {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -1;
     }
   };
@@ -1131,10 +1171,11 @@ function main() i32 {
 
 TEST(Errors, while_loop_completes_without_throw) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -1164,7 +1205,7 @@ function main() i32 {
   };
   return match attempt_0() {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -1;
     }
   };
@@ -1176,10 +1217,11 @@ function main() i32 {
 
 TEST(Errors, throw_inside_nested_for_loops) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -1211,7 +1253,7 @@ function main() i32 {
   };
   return match attempt_0() {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -1;
     }
   };
@@ -1223,10 +1265,11 @@ function main() i32 {
 
 TEST(Errors, throw_inside_for_loop_with_break) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -1257,7 +1300,7 @@ function main() i32 {
   };
   return match attempt_0() {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -1;
     }
   };
@@ -1270,10 +1313,11 @@ function main() i32 {
 
 TEST(Errors, throw_inside_while_loop_with_continue) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -1306,7 +1350,7 @@ function main() i32 {
   };
   return match attempt_0() {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -1;
     }
   };
@@ -1318,10 +1362,11 @@ function main() i32 {
 
 TEST(Errors, throw_after_loop_iteration) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -1349,7 +1394,7 @@ function main() i32 {
   };
   return match attempt_0() {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -1;
     }
   };
@@ -1361,10 +1406,11 @@ function main() i32 {
 
 TEST(Errors, throw_after_loop_exceeds_limit) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -1392,7 +1438,7 @@ function main() i32 {
   };
   return match attempt_0() {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -1;
     }
   };
@@ -1521,7 +1567,8 @@ TEST(Errors, message_returns_an_independent_clone_each_time) {
 TEST(Errors, without_stdlib_message_stays_literal_only) {
   // The builtin message contract is independent of the standard library.
   auto value = executeString(R"(
-    class Boom implements IError {
+
+    class Boom {
       init() {}
       const method code() i32 { return 9; }
       const method message() static_ptr<u8> { return "boom"; }
@@ -1540,10 +1587,11 @@ TEST(Errors, throw_and_catch_work_without_stdlib) {
   // program can throw, catch through the IError binding and read the
   // literal message with nothing imported.
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), Boom(Boom) }
 
-class Boom implements IError {
+class Boom {
   init() {}
   const method code() i32 {
     return 9;
@@ -1560,7 +1608,7 @@ function fail() Outcome<i32> {
 function main() i32 {
   return match fail() {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref Boom) => {
       return e.code() + _convert<i32>(e.message().length());
     }
   };
@@ -1627,8 +1675,9 @@ TEST(Errors, binding_a_try_catch_is_an_error) {
 // The supported shape: return from inside the try.
 TEST(Errors, returning_from_inside_the_try_is_the_value_form) {
   auto value = executeString(R"(
+
 /** Represents a fixture failure without a standard-library dependency. */
-class Error implements IError {
+class Error {
   /** Creates the fixture failure. */
   init() {}
   /** Returns its numeric code. */
@@ -1649,7 +1698,7 @@ function g() Outcome<i32> {
 function main() i32 {
   return match g() {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref Error) => {
       return -1;
     }
   };
@@ -1660,10 +1709,11 @@ function main() i32 {
 
 TEST(Errors, bool_leading_class_return_field_access) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -1705,7 +1755,7 @@ function main() i32 {
     Outcome.Ok(value) => {
       return value;
     },
-    (e: ref IError) => {
+    (e: ref TestError) => {
       result = result + 2;
     }
   };

@@ -63,8 +63,6 @@
 #include "ast/prototype_ast.h"
 
 // Error handling nodes
-#include "ast/throw_expr_ast.h"
-#include "ast/try_catch_expr_ast.h"
 
 // Module nodes
 #include "ast/manifest_ast.h"

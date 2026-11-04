@@ -377,7 +377,6 @@ class Formatter {
       case ASTNodeType::WHILE_LOOP:
       case ASTNodeType::FOR_LOOP:
       case ASTNodeType::FOR_IN_LOOP:
-      case ASTNodeType::TRY_CATCH:
       case ASTNodeType::BLOCK:
         return false;
       default:
@@ -1013,22 +1012,6 @@ class Formatter {
     out_ += '}';
   }
 
-  /** Writes a error handler using formatted Sun source syntax. */
-  void printTryCatch(const sun::ast::TryCatchExprAST& t) {
-    out_ += "try ";
-    printBlockML(t.getTryBlock());
-    for (const auto& clause : t.getCatchClauses()) {
-      out_ += " catch (";
-      out_ += clause.bindingName;
-      if (clause.bindingType.has_value()) {
-        out_ += ": ";
-        printType(*clause.bindingType);
-      }
-      out_ += ") ";
-      printBlockML(*clause.body);
-    }
-  }
-
   /** Writes a conditional expression using formatted Sun source syntax. */
   void printIf(const IfExprAST& n) {
     out_ += "if ";
@@ -1423,15 +1406,7 @@ class Formatter {
         break;
       }
 
-      case ASTNodeType::THROW: {
-        const auto& n = static_cast<const sun::ast::ThrowExprAST&>(e);
-        out_ += "throw";
-        if (n.hasErrorExpr()) {
-          out_ += ' ';
-          printExpr(n.getErrorExpr());
-        }
-        break;
-      }
+
 
       case ASTNodeType::BREAK_STMT:
         out_ += "break";
@@ -1443,10 +1418,6 @@ class Formatter {
 
       case ASTNodeType::MATCH:
         printMatch(static_cast<const sun::ast::MatchExprAST&>(e));
-        break;
-
-      case ASTNodeType::TRY_CATCH:
-        printTryCatch(static_cast<const sun::ast::TryCatchExprAST&>(e));
         break;
 
       case ASTNodeType::CLASS_DEFINITION:

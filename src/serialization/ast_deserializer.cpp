@@ -433,11 +433,11 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserialize(
       result = deserializeMemberAccess(node.member_access());
       break;
     case pbc::ASTNode::kTryCatch:
-      result = deserializeTryCatch(node.try_catch());
-      break;
+      sun::support::logAndThrowError(
+          "Legacy catch nodes are unsupported; rebuild the bundle");
     case pbc::ASTNode::kThrowExpr:
-      result = deserializeThrow(node.throw_expr());
-      break;
+      sun::support::logAndThrowError(
+          "Legacy throw nodes are unsupported; rebuild the bundle");
     case pbc::ASTNode::kDeclareType:
       result = deserializeDeclareType(node.declare_type());
       break;
@@ -1094,33 +1094,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeMemberAccess(
       std::move(object), proto.member_name(), std::move(typeArgs));
 }
 
-std::unique_ptr<ExprAST> ASTDeserializer::deserializeTryCatch(
-    const pbc::TryCatch& proto) const {
-  auto tryBlock = deserializeBlockExpr(proto.try_block());
 
-  std::vector<sun::ast::CatchClause> catchClauses;
-  for (const auto& cc : proto.catch_clauses()) {
-    sun::ast::CatchClause catchClause;
-    if (cc.has_declaration_identity()) {
-      deserializeIdentity(cc.declaration_identity(), catchClause.declaration);
-    }
-    catchClause.bindingName = cc.binding_name();
-    if (cc.has_binding_type()) {
-      catchClause.bindingType = deserializeTypeAnnotation(cc.binding_type());
-    }
-    catchClause.body = deserializeBlockExpr(cc.body());
-    catchClauses.push_back(std::move(catchClause));
-  }
 
-  return std::make_unique<sun::ast::TryCatchExprAST>(std::move(tryBlock),
-                                                     std::move(catchClauses));
-}
 
-std::unique_ptr<ExprAST> ASTDeserializer::deserializeThrow(
-    const pbc::ThrowExpr& proto) const {
-  return std::make_unique<sun::ast::ThrowExprAST>(
-      deserialize(proto.error_expr()));
-}
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeDeclareType(
     const pbc::DeclareType& proto) const {

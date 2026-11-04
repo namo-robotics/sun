@@ -330,7 +330,7 @@ function main() i32 {
 
 TEST(Tooling_Lsp_Definition, CatchBinding) {
   std::string source = R"(
-class Oops implements IError {
+class Oops {
     init() {}
     const method code() i32 { return 1; }
     const method message() static_ptr<u8> { return "oops"; }
@@ -342,14 +342,14 @@ function risky(x: i32) _Result<i32, Oops> {
 function main() i32 {
     return match risky(1) {
       _Result.Ok(value) => value,
-      (err: ref IError) => {
+      (err: ref Oops) => {
         return err.code();
       }
     };
 }
 )";
-  EXPECT_TRUE(definedAt(source, "err.code()", "err: ref IError"));
-  EXPECT_TRUE(definedAt(source, "Oops());", "Oops implements"));
+  EXPECT_TRUE(definedAt(source, "err.code()", "err: ref Oops"));
+  EXPECT_TRUE(definedAt(source, "Oops());", "Oops {"));
   EXPECT_TRUE(definedAt(source, "risky(1)", "risky(x: i32)"));
 }
 

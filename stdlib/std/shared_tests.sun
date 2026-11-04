@@ -62,7 +62,7 @@ public module std {
     /**
      * Error type for the unwinding test.
      */
-    class Boom implements IError {
+    class Boom {
       /** Creates an empty fixture value for this example or regression test. */
       init() {}
 

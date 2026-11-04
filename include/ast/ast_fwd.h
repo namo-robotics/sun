@@ -70,8 +70,6 @@ class CompoundAssignmentAST;
 class MoonScopeAST;
 
 // Error handling nodes
-class ThrowExprAST;
-class TryCatchExprAST;
 
 // Module/import nodes
 class ModuleAST;

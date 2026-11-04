@@ -339,10 +339,11 @@ TEST(MemorySafety_Drops_Enums, block_scoped_owning_enum_dropped_at_block_exit) {
 
 TEST(MemorySafety_Drops_Enums, owning_enum_dropped_on_unwind) {
   auto value = executeString(withPreamble(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -374,7 +375,7 @@ function main() i32 {
   };
   match attempt_0() {
     Outcome.Ok => {},
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return counter;
     }
   };

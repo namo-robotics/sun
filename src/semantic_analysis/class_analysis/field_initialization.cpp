@@ -53,7 +53,6 @@ using sun::ast::forEachChild;
 using sun::ast::FunctionAST;
 using sun::ast::MemberAccessAST;
 using sun::ast::MemberAssignmentAST;
-using sun::ast::TryCatchExprAST;
 using sun::support::logAndThrowError;
 using sun::support::Position;
 
@@ -311,12 +310,6 @@ class BodyWalk {
   void walkBranches(const std::vector<const ExprAST*>& branches);
 
   /**
-   * Walks a `try` and its `catch` clauses. A throw can leave the try block
-   * part-way through, so a clause finds whatever it had assigned by then.
-   */
-  void walkTryCatch(const TryCatchExprAST& tryCatch);
-
-  /**
    * Walks a loop: `once` runs before the first test, `body` and `then` may
    * run any number of times, including none.
    */
@@ -503,39 +496,7 @@ void BodyWalk::walkBranches(const std::vector<const ExprAST*>& branches) {
   states_ = after ? std::move(*after) : std::move(before);
 }
 
-void BodyWalk::walkTryCatch(const TryCatchExprAST& tryCatch) {
-  FieldStates before = states_;
 
-  states_ = before;
-  walk(tryCatch.getTryBlock());
-  std::optional<FieldStates> after;
-  if (!exprDiverges(tryCatch.getTryBlock())) {
-    after = states_;
-  }
-
-  // A throw can leave the try block part-way through, so a clause picks up
-  // with whatever the block had assigned by then
-  states_ = before;
-  forgetEveryWrittenField(tryCatch.getTryBlock());
-  FieldStates atCatch = std::move(states_);
-
-  for (const auto& clause : tryCatch.getCatchClauses()) {
-    states_ = atCatch;
-    if (clause.body) {
-      walk(*clause.body);
-      if (exprDiverges(*clause.body)) {
-        continue;
-      }
-    }
-    if (after) {
-      mergeInto(*after, states_);
-    } else {
-      after = states_;
-    }
-  }
-
-  states_ = after ? std::move(*after) : std::move(before);
-}
 
 void BodyWalk::walkLoop(const std::vector<const ExprAST*>& once,
                         const ExprAST* body, const ExprAST* then) {
@@ -700,10 +661,7 @@ void BodyWalk::walk(const ExprAST& expr) {
       walkBranches(arms);
       return;
     }
-    case ASTNodeType::TRY_CATCH: {
-      walkTryCatch(static_cast<const TryCatchExprAST&>(expr));
-      return;
-    }
+
     case ASTNodeType::WHILE_LOOP: {
       const auto& loop = static_cast<const sun::ast::WhileExprAST&>(expr);
       walkLoop({loop.getCondition()}, loop.getBody(), nullptr);

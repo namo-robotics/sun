@@ -303,22 +303,7 @@ class SemanticContext : public AccessContext {
   /** Get all active using imports (from all enclosing scopes). */
   std::vector<UsingImport> getActiveUsingImports() const;
 
-  // ---- Throwing, try and unsafe context ----------------------------------
-
-  /**
-   * Check if we're currently inside a function declared with "throws IError".
-   * Traverses parent scopes to find the nearest function scope.
-   */
-  bool isInThrowingFunction() const;
-
-  /** Check if we're currently inside a try block. */
-  bool isInTryBlock() const;
-
-  /** Enter a try block (increments the try depth counter). */
-  void enterTryBlock();
-
-  /** Leave a try block (decrements the try depth counter). */
-  void exitTryBlock();
+  // ---- Unsafe context ---------------------------------------------------
 
   /** Check if we're currently inside an unsafe block. */
   bool isInUnsafeBlock() const;

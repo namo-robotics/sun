@@ -193,8 +193,9 @@ TEST(Operators_Arithmetic, div_i32) {
 
 TEST(Operators_Arithmetic, div_i32_variables) {
   auto value = executeString(R"(
+
 /** Represents a fixture failure without a standard-library dependency. */
-class Error implements IError {
+class Error {
   /** Creates the fixture failure. */
   init() {}
   /** Returns its numeric code. */
@@ -269,8 +270,9 @@ TEST(Operators_Arithmetic, mod_i32) {
 
 TEST(Operators_Arithmetic, mod_i32_variables) {
   auto value = executeString(R"(
+
 /** Represents a fixture failure without a standard-library dependency. */
-class Error implements IError {
+class Error {
   /** Creates the fixture failure. */
   init() {}
   /** Returns its numeric code. */
@@ -332,8 +334,9 @@ TEST(Operators_Arithmetic, mod_both_negative) {
 
 TEST(Operators_Arithmetic, mod_i64) {
   auto value = executeString(R"(
+
 /** Represents a fixture failure without a standard-library dependency. */
-class Error implements IError {
+class Error {
   /** Creates the fixture failure. */
   init() {}
   /** Returns its numeric code. */
@@ -613,8 +616,9 @@ TEST(Operators_Arithmetic, chained_operations) {
 
 TEST(Operators_Arithmetic, quotient_remainder_identity) {
   auto value = executeString(R"(
+
 /** Represents a fixture failure without a standard-library dependency. */
-class Error implements IError {
+class Error {
   /** Creates the fixture failure. */
   init() {}
   /** Returns its numeric code. */
@@ -694,8 +698,9 @@ TEST(Operators_Arithmetic, f32_plus_literal_stays_f32) {
 
 TEST(Operators_Arithmetic, mixed_width_operands_promote_to_wider) {
   auto value = executeString(R"(
+
 /** Represents a fixture failure without a standard-library dependency. */
-class Error implements IError {
+class Error {
   /** Creates the fixture failure. */
   init() {}
   /** Returns its numeric code. */
@@ -739,8 +744,9 @@ TEST(Operators_Arithmetic, literal_too_wide_for_operand_is_error) {
 /** Valid boundary counts and divisors retain their ordinary results. */
 TEST(Operators_Arithmetic, checked_integer_boundaries_succeed) {
   EXPECT_EQ(executeString(R"(
+
 /** Represents a fixture failure without a standard-library dependency. */
-class Error implements IError {
+class Error {
   /** Creates the fixture failure. */
   init() {}
   /** Returns its numeric code. */

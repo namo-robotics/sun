@@ -14,6 +14,19 @@
 
 using sun::driver::executeString;
 
+/** Obsolete wire nodes are rejected before they enter the compiler AST. */
+TEST(Errors_Results, rejects_serialized_exception_nodes) {
+  sun::serialization::ASTDeserializer deserializer;
+  sun::proto::ast::ASTNode throwing;
+  throwing.mutable_throw_expr();
+  EXPECT_SUN_ERROR_WITH_MESSAGE(deserializer.deserialize(throwing),
+                                "Legacy throw nodes are unsupported");
+  sun::proto::ast::ASTNode catching;
+  catching.mutable_try_catch();
+  EXPECT_SUN_ERROR_WITH_MESSAGE(deserializer.deserialize(catching),
+                                "Legacy catch nodes are unsupported");
+}
+
 /** Propagation unwraps success and returns an error without running later code.
  */
 TEST(Errors_Results, propagation) {
@@ -542,8 +555,14 @@ TEST(Errors_Results, explicit_discard_cleanup) {
  * interface. */
 TEST(Errors_Results, borrowed_error_interfaces) {
   EXPECT_EQ(executeString(R"(
+    /** Provides the shared view exercised by this interface-specific test. */
+    interface ErrorView {
+      /** Identifies a fixture error. */
+      const method code() i32;
+    }
+
     /** Marks failures for which another attempt can succeed. */
-    interface IRetryableError extends IError {
+    interface IRetryableError extends ErrorView {
       const method delay() i32;
     }
     /** Supplies one concrete retryable failure. */
@@ -552,8 +571,6 @@ TEST(Errors_Results, borrowed_error_interfaces) {
       init() {}
       /** Identifies the error. */
       public const method code() i32 { return 21; }
-      /** Describes the error. */
-      public const method message() static_ptr<u8> { return "retry"; }
       /** Suggests a delay. */
       public const method delay() i32 { return 1; }
     }
@@ -561,13 +578,13 @@ TEST(Errors_Results, borrowed_error_interfaces) {
     enum BorrowedResult {
       Ok,
       RetryableError(const ref IRetryableError),
-      OtherError(const ref IError)
+      OtherError(const ref ErrorView)
     }
     /** Handles both categories through their shared interface. */
     function inspect(result: const ref BorrowedResult) i32 {
       return match result {
         BorrowedResult.Ok => 0,
-        (e: const ref IError) => e.code()
+        (e: const ref ErrorView) => e.code()
       };
     }
     /** Keeps both borrowed results inside their owner's lifetime. */
@@ -585,28 +602,32 @@ TEST(Errors_Results, borrowed_error_interfaces) {
  * the default. */
 TEST(Errors_Results, result_borrowed_interface_error) {
   EXPECT_EQ(executeString(R"(
+/** Provides a borrowed code view without importing a stdlib error contract. */
+interface ErrorView {
+  /** Returns the fixture error code. */
+  const method code() i32;
+}
+
     /** Provides a concrete failure to borrow. */
-    class Error implements IError {
+    class Error implements ErrorView {
       /** Creates the error. */
       init() {}
       /** Identifies it. */
       public const method code() i32 { return 42; }
-      /** Describes it. */
-      public const method message() static_ptr<u8> { return "failed"; }
     }
     /** Borrows the caller's error explicitly. */
-    function source(error: const ref Error) _Result<void, const ref IError> {
+    function source(error: const ref Error) _Result<void, const ref ErrorView> {
       return _Result.Err(error);
     }
     /** Propagates the borrowed interface without making an owned copy. */
-    function forward(error: const ref Error) _Result<void, const ref IError> {
+    function forward(error: const ref Error) _Result<void, const ref ErrorView> {
       try source(error);
       return _Result.Ok;
     }
     /** Handles the borrow while the concrete error is alive. */
     function main() i32 {
       var error = Error();
-      return match forward(error) { _Result.Ok => 0, (e: const ref IError) => e.code() };
+      return match forward(error) { _Result.Ok => 0, (e: const ref ErrorView) => e.code() };
     }
   )"),
             42);
@@ -1203,7 +1224,7 @@ function code(index:i64) i32 {
   return match access(index) {
     Result.Ok(value)=>value,
     Result.OutOfBounds(error)=>error.code(),
-    (_:const ref IError)=>-100
+    _ =>-100
   };
 }
 /** Checks library results, the builtin, and explicit discard in one program. */
@@ -1257,7 +1278,7 @@ TEST(Errors_Results, buffer_and_string_access_propagation) {
     function main() i32 {
       var success = match read(0) {
         Result.Ok(value) => value,
-        (_: const ref IError) => -100
+        _ => -100
       };
       var buffer_error = match read(1) {
         Result.OutOfBounds(_) => 1,
@@ -1294,7 +1315,7 @@ TEST(Errors_Results, collection_result_propagation) {
         Result.Ok(value) => value,
         Result.NotFound(_) => 1,
         Result.Empty(_) => 2,
-        (_: const ref IError) => -100
+        _ => -100
       };
     }
     /** Checks success, early lookup propagation, and later empty propagation. */
@@ -1334,7 +1355,7 @@ TEST(Errors_Results, json_result_propagation) {
     function main() i32 {
       var value = match read("42") {
         Result.Ok(number) => number,
-        (_: const ref IError) => -100
+        _ => -100
       };
       var parse_error = match read("[") {
         Result.Json(error) => error.offset() >= 0 and error.code() == 60,
@@ -1388,7 +1409,7 @@ TEST(Errors_Results, numeric_result_propagation) {
         Result.Conversion(_) => 100,
         Result.Overflow(_) => 200,
         Result.DivisionByZero(_) => 300,
-        (_: const ref IError) => -1000
+        _ => -1000
       };
     }
     /** Checks success and failure at each propagation point. */
@@ -1706,4 +1727,26 @@ TEST(Errors_Results, removed_exception_syntax) {
       executeString("/** Rejects an old handler. */ function main() i32 { try "
                     "{} catch (e: ref IError) {} return 0; }"),
       "block-form 'try' is no longer supported");
+}
+
+/** Custom result propagation does not require an error interface. */
+TEST(Errors_Results, concrete_errors_need_no_interface) {
+  EXPECT_EQ(executeString(R"(
+    /** Carries a typed failure without a shared interface. */
+    class Failure {
+      public var value: i32;
+      /** Stores the failure code. */
+      init(value: i32) { this.value = value; }
+    }
+    /** Owns either a success or a concrete failure. */
+    enum Outcome<T> { Ok(T), Failed(Failure) }
+    /** Returns the concrete error. */
+    function source() Outcome<i32> { return Outcome.Failed(Failure(42)); }
+    /** Propagates the error as a return value. */
+    function forward() Outcome<i32> { return Outcome.Ok(try source()); }
+    /** Inspects the concrete error directly. */
+    function main() i32 {
+      return match forward() { Outcome.Ok(value) => value, Outcome.Failed(error) => error.value };
+    }
+  )"), 42);
 }

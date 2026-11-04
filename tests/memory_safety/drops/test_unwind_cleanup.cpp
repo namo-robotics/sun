@@ -1,6 +1,5 @@
-// Tests that exception unwinding runs deinit for live owners in every scope
-// the exception leaves: throws clean their own frame inline, and calls that
-// can throw get per-call-site cleanup landing pads when owners are live.
+// Tests that returning and propagating concrete errors drops live owners
+// in each exited scope.
 
 #include <gtest/gtest.h>
 
@@ -12,6 +11,7 @@ using sun::driver::executeString;
 namespace {
 
 const char* kOwnerPreamble = R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
@@ -24,7 +24,7 @@ class Owner {
   }
 }
 
-class TestError implements IError {
+class TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -66,7 +66,7 @@ function main() i32 {
   };
   match attempt_0() {
     Outcome.Ok => {},
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return counter;
     }
   };
@@ -102,7 +102,7 @@ function main() i32 {
   };
   match attempt_0() {
     Outcome.Ok => {},
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return counter;
     }
   };
@@ -125,7 +125,7 @@ function helper() Outcome<i32> {
   };
   match attempt_0() {
     Outcome.Ok => {},
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return Outcome.Ok(counter);
     }
   };
@@ -139,7 +139,7 @@ function main() i32 {
   };
   return match attempt_1() {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -2;
     }
   };
@@ -167,7 +167,7 @@ function helper() Outcome<i32> {
   };
   match attempt_0() {
     Outcome.Ok => {},
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return Outcome.Ok(counter);
     }
   };
@@ -181,7 +181,7 @@ function main() i32 {
   };
   return match attempt_1() {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -2;
     }
   };
@@ -212,7 +212,7 @@ function main() i32 {
   };
   match attempt_0() {
     Outcome.Ok => {},
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return counter;
     }
   };
@@ -243,7 +243,7 @@ function main() i32 {
   };
   match attempt_0() {
     Outcome.Ok => {},
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return counter;
     }
   };
@@ -269,7 +269,7 @@ function helper() Outcome<i32> {
   };
   match attempt_0() {
     Outcome.Ok => {},
-    (e: ref IError) => {
+    (e: ref TestError) => {
       // inside dropped by the unwind edge; outside still live
     }
   };
@@ -283,7 +283,7 @@ function main() i32 {
   };
   return match attempt_1() {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return -2;
     }
   };
@@ -312,7 +312,7 @@ function main() i32 {
   };
   match attempt_0() {
     Outcome.Ok => {},
-    (e: ref IError) => {
+    (e: ref TestError) => {
       return 42;
     }
   };
@@ -325,12 +325,13 @@ function main() i32 {
 TEST(MemorySafety_Drops_UnwindCleanup,
      thrown_error_object_survives_frame_cleanup) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), Payload(Payload) }
 
 var counter: i32 = 0;
 
-class Payload implements IError {
+class Payload {
   var errCode: i32;
   init(errCode: i32) {
     this.errCode = errCode;
@@ -365,7 +366,7 @@ function main() i32 {
     (e: ref Payload) => {
       return e.code();
     },
-    (e: ref IError) => {
+    (e: ref Payload) => {
       return -2;
     }
   };

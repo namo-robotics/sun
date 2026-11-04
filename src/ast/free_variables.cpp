@@ -84,17 +84,7 @@ std::set<std::string> collectFreeVariables(const ExprAST& expr,
       break;
     }
 
-    case ASTNodeType::TRY_CATCH: {
-      const auto& tryCatch = static_cast<const TryCatchExprAST&>(expr);
-      collectFrom(tryCatch.getTryBlock(), bound);
-      for (const auto& clause : tryCatch.getCatchClauses()) {
-        // The caught error is declared by the clause
-        std::set<std::string> clauseBound = bound;
-        clauseBound.insert(clause.bindingName);
-        collectFrom(*clause.body, clauseBound);
-      }
-      break;
-    }
+
 
     case ASTNodeType::LAMBDA: {
       // A nested lambda's free variables (minus its own params) are free in

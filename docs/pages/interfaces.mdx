@@ -360,11 +360,8 @@ class Service implements Runnable, Stoppable {
 
 ## Builtin and Stdlib Interfaces
 
-`IError` (error handling, `code()` and `message()`) is builtin and cannot be
-redefined; see [Builtin Types](/builtin-types). `catch (error: ref IError)` borrows
-a runtime-owned exception. Catch bindings must explicitly use `ref` or
-`const ref`; they never own the error. Exception transport still allocates and is
-separate from allocation-free interface views.
+`std.IError` is an ordinary standard-library interface for reading error codes
+and messages. Concrete result payloads do not have to implement it.
 
 The iteration protocol comes
 from the standard library (`iterator.sun`, see [Iteration](/stdlib#iteration-iiteratort-container-and-iiterablet-self)):
@@ -403,5 +400,5 @@ import { Callout } from 'nextra/components'
 </Callout>
 
 <Callout type="warning">
-  Attempting to redefine the builtin `IError` interface will result in a compilation error.
+  `IError` is not reserved by the compiler; applications can declare their own interfaces.
 </Callout>

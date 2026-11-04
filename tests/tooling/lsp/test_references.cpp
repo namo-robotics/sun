@@ -432,7 +432,7 @@ function main() i32 {
 
 TEST(Tooling_Lsp_References, CatchBinding) {
   std::string source = R"(
-class Oops implements IError {
+class Oops {
     init() {}
     const method code() i32 { return 1; }
     const method message() static_ptr<u8> { return "oops"; }
@@ -444,7 +444,7 @@ function risky(x: i32) _Result<i32, Oops> {
 function main() i32 {
     return match risky(1) {
       _Result.Ok(value) => value,
-      (err: ref IError) => {
+      _Result.Err(err) => {
         return err.code() + err.code();
       }
     };
@@ -452,13 +452,13 @@ function main() i32 {
 )";
   EXPECT_TRUE(
       refersTo(source, "err.code() +", true,
-               {{"err: ref IError"}, {"err.code() +"}, {"err.code();"}}));
+               {{"err) =>"}, {"err.code() +"}, {"err.code();"}}));
   // The cursor on the binding's own declaration
   EXPECT_TRUE(
-      refersTo(source, "err: ref IError", true,
-               {{"err: ref IError"}, {"err.code() +"}, {"err.code();"}}));
+      refersTo(source, "err) =>", true,
+               {{"err) =>"}, {"err.code() +"}, {"err.code();"}}));
   EXPECT_TRUE(refersTo(source, "Oops());", true,
-                       {{"Oops implements"}, {"Oops>"}, {"Oops());"}}));
+               {{"Oops {"}, {"Oops>"}, {"Oops());"}}));
 }
 
 TEST(Tooling_Lsp_References, MergedFiles) {

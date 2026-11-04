@@ -130,13 +130,20 @@ function quotient(a: i32, b: i32) _Result<i32, ArithmeticError> {
 
 ## Error messages
 
-`IError.code()` and `IError.message()` are const methods. With the standard
-library, `message()` returns an owned `String` copy that may outlive the error.
-Without the standard library, the existing `static_ptr<u8>` contract is retained.
+`std.IError.code()` and `std.IError.message()` are const methods. The interface
+is defined in the standard library, and `message()` returns an owned `String`
+copy that may outlive the error. Without the standard library, use concrete
+error values or declare an application-specific interface.
 
 ## Error Types
 
-An error is a class that implements the builtin `IError` interface:
+Errors are ordinary result payloads; propagation does not require an interface.
+For a shared borrowed view, implement the standard library interface `std.IError`:
+
+The interface belongs to its stdlib revision, including when that revision is
+embedded in a Moon bundle. Rebuild dependent bundles when migrating from the
+former compiler-built-in `IError`; their old interface references are not the
+new stdlib declaration.
 
 ```sun
 interface IError {
@@ -202,7 +209,9 @@ first match `_Result.Err(error)`, then match `error` with the interface arm.
 
 ## Built-in Arithmetic Errors
 
-`ArithmeticError` implements `IError` and is available without an import.
+`ArithmeticError` is a concrete builtin available without an import. It does
+not implement `std.IError`: `code()` returns an integer and `message()` returns
+a literal `static_ptr<u8>`, independent of any stdlib revision.
 `checked_div` and `checked_rem` return it on failure; ordinary integer
 arithmetic traps instead.
 
@@ -212,11 +221,11 @@ function divide(a: i32, b: i32) _Result<i32, ArithmeticError> {
   return checked_div(a, b);
 }
 
-/** Handles division by zero through the error interface. */
+/** Handles division by zero through its concrete result payload. */
 function main() i32 {
   return match divide(1, 0) {
     _Result.Ok(value) => value,
-    (error: const ref IError) => error.code()
+    _Result.Err(error) => error.code()
   };
 }
 ```

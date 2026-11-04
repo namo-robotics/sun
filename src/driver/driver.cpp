@@ -921,10 +921,13 @@ void visitTests(BlockExprAST& block, std::vector<std::string>& modulePath,
         path += segment + ".";
       }
       path += func.getProto().getName();
-      found->push_back(
-          {path, func.getProto().getReturnType()->baseName == "_Result"
-                     ? "run_one"
-                     : "run_result"});
+      const auto& result = *func.getProto().getReturnType();
+      const bool arithmetic = result.baseName == "_Result" &&
+                              result.typeArguments.size() == 2 &&
+                              result.typeArguments[1]->baseName == "ArithmeticError";
+      found->push_back({path, arithmetic ? "run_arithmetic"
+                             : result.baseName == "_Result" ? "run_one"
+                                                            : "run_result"});
       ++it;
       continue;
     }

@@ -525,8 +525,9 @@ TEST(Functions, overloaded_function_value_without_context_is_ambiguous) {
 
 TEST(Functions, nonthrowing_pointer_widens_to_throwing_pointer) {
   auto value = executeString(R"(
+
 /** Represents a fixture failure without a standard-library dependency. */
-class Error implements IError {
+class Error {
   /** Creates the fixture failure. */
   init() {}
   /** Returns its numeric code. */
@@ -552,7 +553,7 @@ function invoke(callback: function (i32) Outcome<i32>, x: i32) Outcome<i32> {
 function main() i32 {
   return match invoke(double, 21) {
     Outcome.Ok(value) => value,
-    (error: ref IError) => {
+    (error: ref Error) => {
       return -1;
     }
   };
@@ -563,10 +564,11 @@ function main() i32 {
 
 TEST(Functions, throwing_pointer_propagates_indirect_exceptions) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), CallbackError(CallbackError) }
 
-class CallbackError implements IError {
+class CallbackError {
   init() {}
   const method code() i32 {
     return 1;
@@ -584,7 +586,7 @@ function main() i32 {
   var callback: function (i32) Outcome<i32> = fail;
   return match callback(1) {
     Outcome.Ok(value) => value,
-    (error: ref IError) => {
+    (error: ref CallbackError) => {
       return 42;
     }
   };
@@ -595,7 +597,8 @@ function main() i32 {
 
 TEST(Functions, throwing_pointer_does_not_narrow) {
   EXPECT_THROW(executeString(R"(
-    class CallbackError implements IError {
+
+    class CallbackError {
         init() {}
         const method code() i32 { return 1; }
         const method message() static_ptr<u8> { return "callback failed"; }
@@ -611,7 +614,8 @@ TEST(Functions, throwing_pointer_does_not_narrow) {
 
 TEST(Functions, indirect_throwing_call_requires_error_handling) {
   EXPECT_THROW(executeString(R"(
-    class CallbackError implements IError {
+
+    class CallbackError {
         init() {}
         const method code() i32 { return 1; }
         const method message() static_ptr<u8> { return "callback failed"; }
@@ -703,8 +707,9 @@ TEST(Functions, callable_variable_shadows_direct_function_target) {
 /** Constructor arguments accept widening from a stored infallible pointer. */
 TEST(Functions, nonthrowing_pointer_widens_in_constructor) {
   EXPECT_EQ(executeString(R"(
+
 /** Represents a fixture failure without a standard-library dependency. */
-class Error implements IError {
+class Error {
   /** Creates the fixture failure. */
   init() {}
   /** Returns its numeric code. */
@@ -741,7 +746,7 @@ function main() i32 {
   var handler = Handler(callback);
   return match handler.call(21) {
     Outcome.Ok(value) => value,
-    (error: ref IError) => {
+    (error: ref Error) => {
       return 0;
     }
   };

@@ -556,7 +556,8 @@ TEST(Classes, interface_cannot_declare_init) {
 // A constructor that can fail: init(args) throws IError { }
 TEST(Classes, throwing_constructor) {
   auto value = executeString(R"(
-    class NegativeError implements IError {
+
+    class NegativeError {
       init() {}
       const method code() i32 { return 1; }
       const method message() static_ptr<u8> { return "negative"; }
@@ -1712,7 +1713,8 @@ TEST(Classes_FieldInitializers, owning_defaults_are_replaced_and_dropped_once) {
 TEST(Classes_FieldInitializers,
      throwing_defaults_require_throwing_constructor) {
   const std::string preamble = R"(
-    class Failure implements IError {
+
+    class Failure {
       init() {}
       const method code() i32 { return 1; }
       const method message() static_ptr<u8> { return "failed"; }
@@ -1757,13 +1759,14 @@ TEST(Classes_FieldInitializers,
 TEST(Classes_FieldInitializers,
      failing_defaults_clean_up_fields_and_owned_arguments) {
   EXPECT_EQ(executeString(R"(
+
     var dropped: i32 = 0;
     class Resource {
       var id: i32;
       init(id: i32) { this.id = id; }
       deinit() { dropped = dropped + this.id; }
     }
-    class Failure implements IError {
+    class Failure {
       init() {}
       const method code() i32 { return 1; }
       const method message() static_ptr<u8> { return "failed"; }
@@ -1803,13 +1806,14 @@ TEST(Classes_FieldInitializers,
 TEST(Classes_FieldInitializers,
      constructor_catch_keeps_defaults_and_escape_drops_replacement) {
   EXPECT_EQ(executeString(R"(
+
     var dropped: i32 = 0;
     class Resource {
       var id: i32;
       init(id: i32) { this.id = id; }
       deinit() { dropped = dropped + this.id; }
     }
-    class Failure implements IError {
+    class Failure {
       init() {}
       const method code() i32 { return 1; }
       const method message() static_ptr<u8> { return "failed"; }

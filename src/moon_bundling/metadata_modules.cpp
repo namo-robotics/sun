@@ -170,12 +170,6 @@ void bindModules(google::protobuf::Message& message, SemanticContext& ctx,
     bindModules(*arm.mutable_body(), ctx, locals);
     return;
   }
-  if (desc == pbc::CatchClause::descriptor()) {
-    auto& clause = static_cast<pbc::CatchClause&>(message);
-    locals.insert(clause.binding_name());
-    bindModules(*clause.mutable_body(), ctx, locals);
-    return;
-  }
 
   // Template parameters, function arguments, captures, and class members can
   // shadow a module name even before a generic body has been analyzed.

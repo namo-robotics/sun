@@ -368,14 +368,15 @@ passed or rebound as `const ref T`, never the other way round.
   [Memory Safety](/memory-safety#references) has the full rules.
 </Callout>
 
-## Builtin Interfaces
+## Standard-library interfaces
 
-Sun provides builtin interfaces for common patterns. These interfaces are always available and **cannot be redefined**.
+Common interfaces are ordinary declarations provided by the standard library.
 
 ### IError
 
-The builtin interface for reading error codes and messages. Both methods are
-const. With the standard library, `message()` returns an owned `String`.
+`std.IError` reads error codes and messages. Both methods are const, and
+`message()` returns an owned `std.String`. Import the stdlib and use `using std;`
+to access these names. Result propagation does not require this interface.
 
 ```sun
 class DivByZero implements IError {
@@ -411,15 +412,5 @@ in the standard library reference and the [for-in loop](/control-flow#for-in-loo
 
 ## Reserved Type Names
 
-The following type names are reserved and cannot be redefined:
-
-- `IError` - Error handling interface
-
-Attempting to define a class or interface with this name will result in a compilation error:
-
-```sun
-// ❌ ERROR: Cannot redefine builtin interface 'IError'
-interface IError {
-    const method code() i32;
-}
-```
+`ArithmeticError` is a builtin concrete type and cannot be redefined. `IError`
+is not reserved: it is an ordinary interface declared by the standard library.

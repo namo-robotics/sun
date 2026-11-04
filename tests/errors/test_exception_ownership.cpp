@@ -1,4 +1,4 @@
-/** Checks ownership and lifetime boundaries of runtime-managed exceptions. */
+/** Checks ownership and lifetime boundaries of returned error values. */
 #include <gtest/gtest.h>
 
 #include <string>
@@ -9,6 +9,12 @@
 namespace {
 /** Counts concrete error destruction and cleanup of its owned field. */
 const std::string trackedError = R"(
+/** Borrows an error code to test interface ownership independently of stdlib. */
+interface ErrorView {
+  /** Returns the fixture error code. */
+  const method code() i32;
+}
+
 var dropped: i32 = 0;
 var fields_dropped: i32 = 0;
 var order: i32 = 0;
@@ -23,7 +29,7 @@ class Payload {
   }
 }
 /** Owns a payload while the exception runtime owns this error. */
-class Tracked implements IError {
+class Tracked implements ErrorView {
   var payload: Payload;
   var id: i32;
   /** Initializes the owned payload. */
@@ -40,22 +46,14 @@ class Tracked implements IError {
   const method code() i32 {
     return this.id;
   }
-  /** Reads a static error message. */
-  const method message() static_ptr<u8> {
-    return "tracked";
-  }
 }
 /** Provides a different matching tag. */
-class Other implements IError {
+class Other implements ErrorView {
   /** Creates the error. */
   init() {}
   /** Reads the error code. */
   const method code() i32 {
     return 99;
-  }
-  /** Reads a static message. */
-  const method message() static_ptr<u8> {
-    return "other";
   }
 }
 /** Moves an error into runtime ownership. */
@@ -89,7 +87,7 @@ TEST(Errors_Ownership, handler_exit_paths_drop_payload) {
            "match fail() { (e: ref Tracked) => { e.id = 8; }, _ => {} };",
            "match fail() { (e: const ref Tracked) => { if (e.code() != 7) { "
            "return Outcome.Other(Other()); } }, _ => {} };",
-           "match fail() { (e: ref IError) => { if (dropped != 0) { return "
+           "match fail() { (e: ref ErrorView) => { if (dropped != 0) { return "
            "Outcome.Other(Other()); } }, _ => {} };",
            "match fail() { (e: ref Tracked) => { return Outcome.Ok; }, _ => {} "
            "};",
@@ -128,7 +126,7 @@ TEST(Errors_Ownership, rethrow_preserves_type_and_single_owner) {
         return match fail() {
           Outcome.Error(e) => {
             if (mode == 0) { e.id = 42; }
-            if (mode == 1) { var view: ref IError = e; if (view.code() != 7) { return Outcome.Other(Other()); } }
+            if (mode == 1) { var view: ref ErrorView = e; if (view.code() != 7) { return Outcome.Other(Other()); } }
             if (mode == 2) { var view: const ref Tracked = e; if (view.code() != 7) { return Outcome.Other(Other()); } }
             return Outcome.Error(e);
           },
@@ -181,7 +179,7 @@ TEST(Errors_Ownership, handler_locals_drop_before_exception) {
 TEST(Errors_Ownership, invalid_catch_ownership_is_rejected) {
   for (const auto* statement : {
            "var copy: Tracked = e;",
-           "var copy: IError = e;",
+           "var copy: ErrorView = e;",
        }) {
     SCOPED_TRACE(statement);
     EXPECT_THROW(sun::driver::executeString(

@@ -75,44 +75,7 @@ class TypeRegistry {
   std::unordered_map<SpecializationKey, DeclarationId, SpecializationKeyHash>
       specializations_;
 
-  /** Registers the builtin error interface and its code and message methods. */
-  void registerIError() {
-    // Create IError interface with code() and message() methods.
-    // message() starts as static_ptr<u8> — the only string type that exists
-    // before any source is read. When the stdlib's String class is registered,
-    // the return type is retargeted to it (an owned clone of the message), so
-    // errors can carry text composed at runtime. Without the stdlib, message()
-    // stays literal-only.
-    auto id = declarations_.add(DeclarationKind::Interface, "IError");
-    declarations_.bindPortable(
-        id,
-        PortableDeclarationKey::original(
-            "4c7b23a9e50e3bb484c7f661e4700d156bac371ed9dd5d23c3d22e2fefc263c1",
-            1));
-    auto ierror =
-        nominalType<sun::types::InterfaceType>(id, DeclarationKind::Interface);
-    auto& code =
-        ierror->addMethod("code", sun::types::Types::Int32(), {}, true);
-    code.isConst = true;
-    code.declarationId =
-        declarations_.add(DeclarationKind::Function, "code", id);
-    auto& message =
-        ierror->addMethod("message", sun::types::Types::String(), {}, true);
-    message.isConst = true;
-    message.declarationId =
-        declarations_.add(DeclarationKind::Function, "message", id);
-    uint64_t ordinal = 2;
-    for (const auto& method : ierror->getMethods()) {
-      declarations_.bindPortable(
-          method.declarationId,
-          PortableDeclarationKey::original("4c7b23a9e50e3bb484c7f661e4700d156ba"
-                                           "c371ed9dd5d23c3d22e2fefc263c1",
-                                           ordinal++));
-    }
-    errorInterface = ierror;
-  }
-
-  /** Registers the builtin arithmetic error after its IError interface. */
+  /** Registers the concrete error returned by checked arithmetic. */
   void registerArithmeticError() {
     auto errorId = declarations_.add(DeclarationKind::Class, "ArithmeticError");
     declarations_.bindPortable(
@@ -130,29 +93,24 @@ class TypeRegistry {
             5));
     arithmeticError->addField("code_", sun::types::Types::Int32(), codeId);
     uint64_t methodOrdinal = 6;
-    for (const auto& requirement : errorInterface->getMethods()) {
-      auto methodId = declarations_.add(DeclarationKind::Function,
-                                        requirement.name, errorId);
+    for (const auto& name : {"code", "message"}) {
+      auto methodId = declarations_.add(DeclarationKind::Function, name, errorId);
       declarations_.bindPortable(
           methodId,
-          PortableDeclarationKey::original("4c7b23a9e50e3bb484c7f661e4700d156ba"
-                                           "c371ed9dd5d23c3d22e2fefc263c1",
-                                           methodOrdinal++));
-      auto& method = arithmeticError->addMethod(requirement.name,
-                                                requirement.returnType, {});
+          PortableDeclarationKey::original(
+              "4c7b23a9e50e3bb484c7f661e4700d156bac371ed9dd5d23c3d22e2fefc263c1",
+              methodOrdinal++));
+      auto& method = arithmeticError->addMethod(
+          name, std::string(name) == "code" ? sun::types::Types::Int32()
+                                           : sun::types::Types::String(), {});
       method.declarationId = methodId;
-      method.isConst = requirement.isConst;
+      method.isConst = true;
       method.visibility = Visibility::Public;
-      arithmeticError->bindInterfaceMethod(requirement.declarationId, methodId);
     }
-    arithmeticError->addImplementedInterface(*errorInterface);
   }
 
  public:
-  /** The builtin error interface shared throughout this analysis session. */
-  std::shared_ptr<sun::types::InterfaceType> errorInterface;
-
-  /** Builtin error thrown by invalid integer division and remainder. */
+  /** Concrete error returned by checked integer division and remainder. */
   std::shared_ptr<sun::types::ClassType> arithmeticError;
 
   /**
@@ -171,7 +129,6 @@ class TypeRegistry {
    * Option.
    */
   void registerBuiltins() {
-    registerIError();
     registerArithmeticError();
   }
 
@@ -181,7 +138,7 @@ class TypeRegistry {
    * parser already rejects a declared name that starts with `_`.
    */
   bool isBuiltinTypeName(const std::string& name) const {
-    return name == "IError" || name == "ArithmeticError";
+    return name == "ArithmeticError";
   }
 
   /**
@@ -321,7 +278,6 @@ class TypeRegistry {
   void clear() {
     nominalTypes_.clear();
     specializations_.clear();
-    errorInterface.reset();
   }
 };
 

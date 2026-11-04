@@ -72,16 +72,8 @@ bool BodyAnalyzer::tryAnalyzeStatement(ExprAST& expr, TypePtr expectedType) {
       analyzeMemberAssignment(static_cast<MemberAssignmentAST&>(expr));
       break;
 
-    case ASTNodeType::TRY_CATCH:
-      analyzeTryCatch(static_cast<sun::ast::TryCatchExprAST&>(expr));
-      break;
-
     case ASTNodeType::UNSAFE_BLOCK:
       analyzeUnsafeBlock(static_cast<sun::ast::UnsafeBlockAST&>(expr));
-      break;
-
-    case ASTNodeType::THROW:
-      analyzeThrowExpr(static_cast<sun::ast::ThrowExprAST&>(expr));
       break;
 
     case ASTNodeType::BREAK_STMT:

@@ -347,14 +347,6 @@ class ASTSerializer {
   void serializeMemberAccess(const sun::ast::MemberAccessAST& expr,
                              pbc::ASTNode* node) const;
 
-  /** Encodes a error handler and its child data in the protobuf syntax
-   * representation. */
-  void serializeTryCatch(const sun::ast::TryCatchExprAST& expr,
-                         pbc::ASTNode* node) const;
-  /** Encodes a throw expression and its child data in the protobuf syntax
-   * representation. */
-  void serializeThrow(const sun::ast::ThrowExprAST& expr,
-                      pbc::ASTNode* node) const;
   /**
    * Encodes a forward type declaration and its child data in the protobuf
    * syntax representation.

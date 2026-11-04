@@ -20,12 +20,10 @@ void nominal(pbc::TypeAnnotation& out, const sun::types::NominalType& type,
              const std::vector<sun::types::TypePtr>& args,
              const sun::semantic_analysis::DeclarationTable& declarations) {
   out.set_base_name(display);
-  if (display != "IError") {
-    out.set_declaration_key(
-        sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
-            type.sourceDeclaration(declarations), declarations)
-            .encoding());
-  }
+  out.set_declaration_key(
+      sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
+          type.sourceDeclaration(declarations), declarations)
+          .encoding());
   for (const auto& arg : args) {
     *out.add_type_arguments() = exportType(arg, declarations);
   }
@@ -62,7 +60,7 @@ void bindDeclarationTypes(google::protobuf::Message& message,
     if (!annotation.has_declaration_key() && !names.contains(name) &&
         !sun::types::Types::fromString(name) &&
         !sun::semantic_analysis::type_analysis::isTypeTrait(name) &&
-        name != "IError" && name != "_return_type_of" && name != "_params_of" &&
+        name != "_return_type_of" && name != "_params_of" &&
         name != "ref" && name != "raw_ptr" && name != "static_ptr" &&
         name != "array" && name != "fn" && name != "lambda") {
       sun::semantic_analysis::DeclarationId ref;

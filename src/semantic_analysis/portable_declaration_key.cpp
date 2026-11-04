@@ -148,12 +148,7 @@ void PortableDeclarationKey::assignOriginals(const ExprAST& root,
         }
       }
     }
-    if (auto* expression =
-            dynamic_cast<const sun::ast::TryCatchExprAST*>(&node)) {
-      for (const auto& clause : expression->getCatchClauses()) {
-        identity(clause.declaration);
-      }
-    }
+
     std::vector<const ExprAST*> children;
     sun::ast::forEachChild(
         node, [&](const ExprAST& child) { children.push_back(&child); });

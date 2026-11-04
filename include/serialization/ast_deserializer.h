@@ -285,11 +285,6 @@ class ASTDeserializer {
   std::unique_ptr<ExprAST> deserializeMemberAccess(
       const pbc::MemberAccess& proto) const;
 
-  /** Reconstructs a error handler and its child nodes from protobuf data. */
-  std::unique_ptr<ExprAST> deserializeTryCatch(
-      const pbc::TryCatch& proto) const;
-  /** Reconstructs a throw expression and its child nodes from protobuf data. */
-  std::unique_ptr<ExprAST> deserializeThrow(const pbc::ThrowExpr& proto) const;
   /** Reconstructs a forward type declaration and its child nodes from protobuf
    * data. */
   std::unique_ptr<ExprAST> deserializeDeclareType(

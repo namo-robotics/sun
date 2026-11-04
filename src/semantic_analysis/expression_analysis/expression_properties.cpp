@@ -39,7 +39,6 @@ bool isBorrowableLvalue(const ExprAST& target) {
 bool alwaysExits(const ExprAST& expr) {
   switch (expr.getType()) {
     case ASTNodeType::RETURN:
-    case ASTNodeType::THROW:
       return true;
     case ASTNodeType::BLOCK: {
       // One exiting statement is enough: nothing after it runs
@@ -80,21 +79,7 @@ bool alwaysExits(const ExprAST& expr) {
           sun::types::unwrapRef(matchExpr.getDiscriminant()->getResolvedType());
       return sawWildcard || (discType && discType->isEnum());
     }
-    case ASTNodeType::TRY_CATCH: {
-      // The body may stop part-way and land in a catch, so every clause has
-      // to exit as well
-      const auto& tryCatch =
-          static_cast<const sun::ast::TryCatchExprAST&>(expr);
-      if (!alwaysExits(tryCatch.getTryBlock())) {
-        return false;
-      }
-      for (const auto& clause : tryCatch.getCatchClauses()) {
-        if (!clause.body || !alwaysExits(*clause.body)) {
-          return false;
-        }
-      }
-      return true;
-    }
+
     default:
       return false;
   }

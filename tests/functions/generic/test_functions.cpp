@@ -277,10 +277,11 @@ TEST(Functions_Generic, mutually_ordered_specializations_share_one_symbol) {
 
 TEST(Functions_Generic, throwing_generic_is_catchable) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), Boom(Boom) }
 
-class Boom implements IError {
+class Boom {
   init() {}
   const method code() i32 {
     return 1;
@@ -295,7 +296,7 @@ function risky<T>(x: T) Outcome<i32> {
 function main() i32 {
   return match risky<i32>(1) {
     Outcome.Ok(value) => value,
-    (e: ref IError) => {
+    (e: ref Boom) => {
       return 42;
     }
   };
@@ -306,10 +307,11 @@ function main() i32 {
 
 TEST(Functions_Generic, throwing_generic_is_catchable_from_class_method) {
   auto value = executeString(R"(
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), Boom(Boom) }
 
-class Boom implements IError {
+class Boom {
   init() {}
   const method code() i32 {
     return 1;
@@ -326,7 +328,7 @@ class Box<T> {
   method get() i32 {
     return match risky<T>(this.v) {
       Outcome.Ok(value) => value,
-      (e: ref IError) => {
+      (e: ref Boom) => {
         return 42;
       }
     };

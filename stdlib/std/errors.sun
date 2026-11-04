@@ -26,6 +26,15 @@
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
 
+  /** Provides a common borrowed view of errors with owned diagnostic text. */
+  public interface IError {
+    /** Identifies the error within its originating subsystem. */
+    public const method code() i32;
+
+    /** Returns diagnostic text owned by the caller. */
+    public const method message() String;
+  }
+
   // ============================================================================
   // Generic Error - base error with custom message
   // ============================================================================

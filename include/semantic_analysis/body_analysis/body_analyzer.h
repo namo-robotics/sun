@@ -57,18 +57,6 @@ class BodyAnalyzer {
   void analyzeForInLoop(sun::ast::ForInExprAST &forInExpr);
 
   /**
-   * Resolves declarations and checks types in this try catch, recording the
-   * results on its syntax nodes.
-   */
-  void analyzeTryCatch(sun::ast::TryCatchExprAST &tryCatchExpr);
-
-  /**
-   * Resolves declarations and checks types in this throw expression, recording
-   * the results on its syntax nodes.
-   */
-  void analyzeThrowExpr(sun::ast::ThrowExprAST &throwExpr);
-
-  /**
    * Resolves declarations and checks types in this unsafe block, recording the
    * results on its syntax nodes.
    */

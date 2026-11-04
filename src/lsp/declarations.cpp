@@ -23,7 +23,6 @@ using sun::ast::ForInExprAST;
 using sun::ast::FunctionAST;
 using sun::ast::InterfaceDefinitionAST;
 using sun::ast::PrototypeAST;
-using sun::ast::TryCatchExprAST;
 using sun::ast::VariableCreationAST;
 using sun::ast::VariableReferenceAST;
 using sun::support::Position;
@@ -502,20 +501,6 @@ std::optional<Declaration> findLocalDeclaration(
           static_cast<const VariableCreationAST&>(*init).getName() == name) {
         return declarationOf(*init);
       }
-    } else if (ancestor.getType() == ASTNodeType::TRY_CATCH) {
-      // A catch binding is visible in its own handler's body
-      std::optional<Declaration> found;
-      forEachCatchBinding(
-          static_cast<const TryCatchExprAST&>(ancestor),
-          [&](const sun::ast::CatchClause& clause, const Position& header) {
-            if (!found && clause.bindingName == name &&
-                spanContains(clause.body->getLocation(), offset)) {
-              found = Declaration{header, "", &ancestor, name};
-            }
-          });
-      if (found) {
-        return found;
-      }
     } else if (ancestor.getType() == ASTNodeType::FUNCTION ||
                ancestor.getType() == ASTNodeType::LAMBDA) {
       // Parameters have no declaration of their own to document
@@ -801,15 +786,7 @@ void forEachAnnotation(const ExprAST& node, const AnnotationFn& fn) {
       }
       break;
     }
-    case ASTNodeType::TRY_CATCH: {
-      for (const auto& clause :
-           static_cast<const TryCatchExprAST&>(node).getCatchClauses()) {
-        if (clause.bindingType) {
-          fn(*clause.bindingType);
-        }
-      }
-      break;
-    }
+
     default:
       break;
   }
@@ -873,27 +850,6 @@ std::optional<Declaration> findParameter(
     }
   }
   return std::nullopt;
-}
-
-/** Visits the error bindings introduced by catch clauses. */
-void forEachCatchBinding(const TryCatchExprAST& tryCatch,
-                         const CatchBindingFn& fn) {
-  const Position* previous = &tryCatch.getTryBlock().getLocation();
-  for (const auto& clause : tryCatch.getCatchClauses()) {
-    if (!clause.body) {
-      continue;
-    }
-    const Position& body = clause.body->getLocation();
-    if (previous->endOffset) {
-      Position header = *previous;
-      header.offset = *previous->endOffset;
-      header.endOffset = body.offset;
-      header.line = body.line;
-      header.column = 1;
-      fn(clause, header);
-    }
-    previous = &body;
-  }
 }
 
 /** Keeps the implementation helpers in this file private to this translation
@@ -974,23 +930,7 @@ std::optional<Declaration> ownDeclaration(const ExprAST& node, int offset,
       }
       return std::nullopt;
     }
-    case ASTNodeType::TRY_CATCH: {
-      std::optional<Declaration> found;
-      forEachCatchBinding(
-          static_cast<const TryCatchExprAST&>(node),
-          [&](const sun::ast::CatchClause& clause, const Position& header) {
-            if (found || !spanContains(header, offset)) {
-              return;
-            }
-            int at = findWord(source, clause.bindingName, header.offset,
-                              *header.endOffset);
-            int length = static_cast<int>(clause.bindingName.size());
-            if (at >= 0 && at <= offset && offset < at + length) {
-              found = Declaration{header, "", &node, clause.bindingName};
-            }
-          });
-      return found;
-    }
+
     case ASTNodeType::VARIABLE_CREATION:
     case ASTNodeType::REFERENCE_CREATION:
     case ASTNodeType::DECLARE_TYPE:

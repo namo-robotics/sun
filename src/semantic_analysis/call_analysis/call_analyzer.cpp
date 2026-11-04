@@ -255,8 +255,7 @@ void CallAnalyzer::analyzeCall(CallExprAST& callExpr, TypePtr expectedType) {
           }
           auto error = std::dynamic_pointer_cast<sun::types::ClassType>(
               sun::types::unwrapRef(variants[i].payloadTypes.front()));
-          if (!error ||
-              !error->implementsInterface(*ctx.types()->errorInterface)) {
+          if (!error) {
             return false;
           }
         }
@@ -914,10 +913,9 @@ void CallAnalyzer::checkThrowPropagation(const CallExprAST& callExpr,
       calleeThrows = lambda->canThrow();
     }
   }
-  if (calleeThrows && !ctx_.isInTryBlock() && !ctx_.isInThrowingFunction()) {
-    logAndThrowError("Call to throwing function '" + funcName +
-                         "' must be in a try block or in a function declared "
-                         "with 'throws IError'",
+  if (calleeThrows) {
+    logAndThrowError("Call to legacy throwing function '" + funcName +
+                         "' is unsupported; rebuild it using result values",
                      callExpr.getLocation());
   }
 }

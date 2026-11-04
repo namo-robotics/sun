@@ -114,9 +114,7 @@ class MetadataLayouts {
           element.array_dimensions().empty()) {
         return sun::types::ArrayType::getArrayStructType(context_);
       }
-      if (returned && (interfaces_.contains(element.declaration_key()) ||
-                       (!element.has_declaration_key() &&
-                        element.base_name() == "IError"))) {
+      if (returned && interfaces_.contains(element.declaration_key())) {
         return sun::types::InterfaceType::getFatPointerType(context_);
       }
       // An unavailable nominal declaration may be an interface borrow returned
@@ -146,8 +144,7 @@ class MetadataLayouts {
       }
       return element;
     }
-    if (interfaces_.contains(annotation.declaration_key()) ||
-        (!annotation.has_declaration_key() && name == "IError")) {
+    if (interfaces_.contains(annotation.declaration_key())) {
       return sun::types::InterfaceType::getFatPointerType(context_);
     }
     if (const auto enumeration = enums_.find(annotation.declaration_key());

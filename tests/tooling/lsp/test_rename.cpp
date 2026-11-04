@@ -380,8 +380,16 @@ TEST(Tooling_Lsp_Rename, ClassMethodWithoutInterface) {
   EXPECT_TRUE(renames(kProgram, "sum() i32", {{"sum() i32"}, {"sum();"}}));
 }
 
-TEST(Tooling_Lsp_Rename, BuiltinInterfaceMemberRefused) {
+TEST(Tooling_Lsp_Rename, SourceErrorInterfaceMemberRenamed) {
   std::string source = R"(
+/** Groups literal-only errors used by this standalone fixture. */
+interface IError {
+  /** Returns the fixture error code. */
+  const method code() i32;
+  /** Returns the fixture diagnostic. */
+  const method message() static_ptr<u8>;
+}
+
 class Oops implements IError {
     init() {}
     const method code() i32 { return 1; }
@@ -394,8 +402,7 @@ function main() i32 {
 )";
   std::optional<Rename> rename = renameAt(source, "code() i32");
   ASSERT_TRUE(rename);
-  EXPECT_FALSE(rename->refusal.empty());
-  EXPECT_NE(rename->refusal.find("IError"), std::string::npos);
+  EXPECT_TRUE(rename->refusal.empty()) << rename->refusal;
   // The constructor is the class's own
   rename = renameAt(source, "init()");
   ASSERT_TRUE(rename);

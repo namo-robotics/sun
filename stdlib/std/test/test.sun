@@ -316,6 +316,17 @@ public module std.test {
     };
   }
 
+  /** Reports a checked arithmetic failure using its stable literal message. */
+  public function run_arithmetic(
+    name: static_ptr<u8>,
+    fn: function () _Result<void, ArithmeticError>
+  ) TestResult {
+    return match fn() {
+      _Result.Ok => TestResult(name, true, String("")),
+      _Result.Err(error) => TestResult(name, false, String(error.message()))
+    };
+  }
+
   /** Runs a structural result test and groups its concrete error payloads. */
   public function run_result<R>(name: static_ptr<u8>, fn: function () R) TestResult {
     return match fn() {

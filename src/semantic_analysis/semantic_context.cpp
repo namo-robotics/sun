@@ -46,7 +46,6 @@ SemanticContext::SemanticContext(
     std::shared_ptr<sun::semantic_analysis::AnalysisResults> results)
     : results_(std::move(results)) {
   rootScope_->accessContext = this;  // lookups filter by visibility
-  rootScope_->interfaces["IError"] = results_->types->errorInterface;
   rootScope_->classes["ArithmeticError"] = results_->types->arithmeticError;
   std::vector<sun::ast::EnumVariantDecl> variants;
   for (const auto& name : {"Ok", "Err"}) {
@@ -222,42 +221,6 @@ std::vector<std::string> SemanticContext::getCurrentScopePath() const {
     }
   }
   return {};
-}
-
-bool SemanticContext::isInThrowingFunction() const {
-  // Find the nearest enclosing function scope and check if it can throw
-  for (auto* s = currentScope_; s != nullptr; s = s->parent) {
-    if (auto* funcScope = s->asFunction()) {
-      return funcScope->functionCanThrow;
-    }
-  }
-  return false;
-}
-
-bool SemanticContext::isInTryBlock() const {
-  // Check if any scope in the chain has tryBlockDepth > 0
-  for (auto* s = currentScope_; s != nullptr; s = s->parent) {
-    if (s->tryBlockDepth > 0) {
-      return true;
-    }
-    // Stop at function boundary - try blocks don't cross functions
-    if (s->getType() == ScopeType::Function) {
-      break;
-    }
-  }
-  return false;
-}
-
-void SemanticContext::enterTryBlock() {
-  if (currentScope_) {
-    currentScope_->tryBlockDepth++;
-  }
-}
-
-void SemanticContext::exitTryBlock() {
-  if (currentScope_ && currentScope_->tryBlockDepth > 0) {
-    currentScope_->tryBlockDepth--;
-  }
 }
 
 bool SemanticContext::isInUnsafeBlock() const {
