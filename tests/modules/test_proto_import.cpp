@@ -8,6 +8,7 @@
 #include <fstream>
 
 #include "ast.h"
+#include "driver/driver.h"
 #include "driver/execution_utils.h"
 #include "driver/manifest_processor.h"
 #include "parsing/parser.h"

@@ -3,8 +3,10 @@
 
 #include <gtest/gtest.h>
 
+#include <filesystem>
 #include <fstream>
 
+#include "driver/driver.h"
 #include "driver/execution_utils.h"
 #include "moon_bundling/moon.h"
 #include "moon_bundling/moon_builder.h"

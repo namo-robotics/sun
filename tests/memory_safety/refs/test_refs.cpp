@@ -373,20 +373,6 @@ TEST(MemorySafety_Refs, two_refs_comparison) {
   EXPECT_EQ(value, 1);
 }
 
-TEST(MemorySafety_Refs, i32_ref_arg) {
-  auto value = executeString(R"(
-    function foo(x: ref i32) void {
-        x = 100;
-    };
-    function main() i32 {
-        var x: i32 = 0;
-        foo(x);
-        return x;
-    };
-  )");
-  EXPECT_EQ(value, 100);
-}
-
 TEST(MemorySafety_Refs, pass_i32_by_ref) {
   auto value = executeString(R"(
     function foo(x: ref i32) void {

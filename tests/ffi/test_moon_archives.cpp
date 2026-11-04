@@ -22,6 +22,7 @@
 #include <string>
 
 #include "driver/compiler.h"
+#include "driver/driver.h"
 #include "driver/execution_utils.h"
 #include "moon_bundling/archive_symbols.h"
 #include "moon_bundling/moon.h"

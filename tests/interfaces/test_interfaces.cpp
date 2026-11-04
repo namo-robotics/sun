@@ -10,6 +10,7 @@
 #include "driver/driver.h"
 #include "driver/execution_utils.h"
 
+using sun::driver::analyzeString;
 using sun::driver::executeString;
 using sun::driver::executeStringWithStdlib;
 
@@ -17,45 +18,38 @@ using sun::driver::executeStringWithStdlib;
 // Basic Interface Definition Tests
 // ============================================================================
 
+/** Accepts a method requirement without an implementing class. */
 TEST(Interfaces, simple_interface_definition) {
-  auto value = executeString(R"(
+  EXPECT_NO_THROW(analyzeString(R"(
+    /** Requires a printing method. */
     interface Printable {
+      /** Requires an implementation that prints the value. */
       method print() void;
     }
-
-    function main() i32 {
-        return 0;
-    }
-  )");
-  EXPECT_EQ(value, 0);
+  )"));
 }
 
+/** Accepts an interface field requirement. */
 TEST(Interfaces, interface_with_field) {
-  auto value = executeString(R"(
+  EXPECT_NO_THROW(analyzeString(R"(
+    /** Requires an integer name field. */
     interface Named {
       var name: i32;
     }
-
-    function main() i32 {
-        return 0;
-    }
-  )");
-  EXPECT_EQ(value, 0);
+  )"));
 }
 
+/** Accepts a default method body in an interface. */
 TEST(Interfaces, interface_with_default_implementation) {
-  auto value = executeString(R"(
+  EXPECT_NO_THROW(analyzeString(R"(
+    /** Supplies a default greeting value. */
     interface Greeter {
+      /** Returns the default greeting value. */
       method greet() i32 {
         return 42;
       }
     }
-
-    function main() i32 {
-        return 0;
-    }
-  )");
-  EXPECT_EQ(value, 0);
+  )"));
 }
 
 // ============================================================================

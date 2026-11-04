@@ -13,6 +13,7 @@
 
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
+#include "driver/driver.h"
 #include "driver/execution_utils.h"
 #include "driver/package.h"
 #include "moon_bundling/moon.h"

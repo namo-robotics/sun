@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <fstream>
 
+#include "driver/driver.h"
 #include "driver/execution_utils.h"
 
 using sun::driver::executeString;

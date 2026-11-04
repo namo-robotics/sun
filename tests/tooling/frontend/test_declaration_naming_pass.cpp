@@ -5,6 +5,7 @@
 #include "ast.h"
 #include "ast/ast_children.h"
 #include "driver/execution_utils.h"
+#include "semantic_analysis/semantic_analyzer.h"
 #include "parsing/parser.h"
 #include "semantic_analysis/analysis_results.h"
 #include "semantic_analysis/passes/declaration_naming_pass.h"

@@ -4,32 +4,28 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::analyzeString;
 using sun::driver::executeString;
 
+/** Accepts an interface field with a type parameter. */
 TEST(Interfaces_Generic, simple_generic_interface_definition) {
-  auto value = executeString(R"(
+  EXPECT_NO_THROW(analyzeString(R"(
+    /** Requires a field of the supplied type. */
     interface IBox<T> {
       var value: T;
     }
-
-    function main() i32 {
-        return 0;
-    }
-  )");
-  EXPECT_EQ(value, 0);
+  )"));
 }
 
+/** Accepts a method requirement returning a type parameter. */
 TEST(Interfaces_Generic, generic_interface_with_method) {
-  auto value = executeString(R"(
+  EXPECT_NO_THROW(analyzeString(R"(
+    /** Requires a getter for the supplied type. */
     interface IContainer<T> {
+      /** Returns the stored field. */
       method get() T;
     }
-
-    function main() i32 {
-        return 0;
-    }
-  )");
-  EXPECT_EQ(value, 0);
+  )"));
 }
 
 TEST(Interfaces_Generic, class_implements_generic_interface) {

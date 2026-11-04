@@ -11,6 +11,7 @@
 #include <sstream>
 #include <string>
 
+#include "driver/driver.h"
 #include "driver/execution_utils.h"
 
 /** Keeps test fixtures and helpers local to this source file. */
@@ -58,6 +59,7 @@ class Modules_GenericRegressions : public ::testing::Test {
     std::ofstream(dir / name) << fixture;
   }
 
+  /** Runs a compiler or program with a deadline and retains its diagnostics. */
   ::testing::AssertionResult run(const std::string& command,
                                  bool expectSuccess = true,
                                  const std::string& diagnostic = "") {
@@ -110,10 +112,26 @@ TEST_F(Modules_GenericRegressions, RawByteStringLiterals) {
     var value = String(alloc, "\xff\xfe\0\x80");
     if (value.length() != 4) { return 1; }
     if (true) {
-      if ((match value.at(0) { AccessResult.Ok(byte) => byte, AccessResult.OutOfBounds(_) => { return 6; } }) != 255u8) { return 2; }
-      if ((match value.at(1) { AccessResult.Ok(byte) => byte, AccessResult.OutOfBounds(_) => { return 6; } }) != 254u8) { return 3; }
-      if ((match value.at(2) { AccessResult.Ok(byte) => byte, AccessResult.OutOfBounds(_) => { return 6; } }) != 0u8) { return 4; }
-      if ((match value.at(3) { AccessResult.Ok(byte) => byte, AccessResult.OutOfBounds(_) => { return 6; } }) != 128u8) { return 5; }
+      var byte0 = match value.at(0) {
+        AccessResult.Ok(byte) => byte,
+        AccessResult.OutOfBounds(_) => { return 6; }
+      };
+      if (byte0 != 255u8) { return 2; }
+      var byte1 = match value.at(1) {
+        AccessResult.Ok(byte) => byte,
+        AccessResult.OutOfBounds(_) => { return 6; }
+      };
+      if (byte1 != 254u8) { return 3; }
+      var byte2 = match value.at(2) {
+        AccessResult.Ok(byte) => byte,
+        AccessResult.OutOfBounds(_) => { return 6; }
+      };
+      if (byte2 != 0u8) { return 4; }
+      var byte3 = match value.at(3) {
+        AccessResult.Ok(byte) => byte,
+        AccessResult.OutOfBounds(_) => { return 6; }
+      };
+      if (byte3 != 128u8) { return 5; }
     }
     return 0;
   )";
@@ -133,11 +151,13 @@ TEST_F(Modules_GenericRegressions, RawByteStringLiterals) {
     manifest { libraries: ["stdlib.moon", "lib.moon"] }
   )");
   for (const std::string name : {"direct.sun", "consumer.sun"}) {
+    SCOPED_TRACE(name);
     const auto source = (dir / name).string();
     const auto binary = (dir / "app").string();
     for (const auto& command :
          {"build/sun " + source, "build/sun -c -o " + binary + " " + source,
           binary}) {
+      SCOPED_TRACE(command);
       ASSERT_TRUE(run(command));
       EXPECT_EQ(readFile(dir / "log").find("libprotobuf"), std::string::npos)
           << readFile(dir / "log");

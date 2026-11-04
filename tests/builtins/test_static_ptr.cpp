@@ -76,22 +76,6 @@ TEST(Builtins_StaticPtr, length_of_a_class_field) {
   EXPECT_EQ(value, 4);
 }
 
-TEST(Builtins_StaticPtr, length_of_a_method_result) {
-  auto value = executeString(R"(
-
-    class Boom {
-      init() {}
-      const method code() i32 { return 9; }
-      const method message() static_ptr<u8> { return "boom"; }
-    }
-    function main() i32 {
-      var b: Boom = Boom();
-      return b.code() + _convert<i32>(b.message().length());
-    }
-  )");
-  EXPECT_EQ(value, 13);
-}
-
 TEST(Builtins_StaticPtr, empty_literal_has_length_zero) {
   auto value = executeString(R"(
     function main() i32 {

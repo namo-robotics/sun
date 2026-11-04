@@ -49,34 +49,6 @@ TEST(Lambdas_LifetimeSyntax, mixed_lifetime_and_type_params_accepted) {
   EXPECT_EQ(value, 42);
 }
 
-// A class declares a lifetime and uses it on a field and a method; a
-// second class binds it to its receiver with Bus<'this>.
-TEST(Lambdas_LifetimeSyntax, class_lifetime_and_this_application_accepted) {
-  auto value = executeString(R"(
-    class Bus<'a> {
-        var cb: <'a>(i32) => i32;
-        init() { this.cb = (x: i32) => i32 { return x; }; }
-        public method subscribe(cb: <'a>(i32) => i32) void { this.cb = cb; return; }
-        public method publish(x: i32) i32 { var f = this.cb; return f(x); }
-    }
-    class Node {
-        var total: i32;
-        init() { this.total = 0; }
-        public method onMsg(x: i32) i32 { this.total = this.total + x; return this.total; }
-        public method attach(bus: ref Bus<'this>) void { bus.subscribe(this.onMsg); return; }
-    }
-    function main() i32 {
-        var n = Node();
-        var bus = Bus();
-        n.attach(bus);
-        bus.publish(40);
-        bus.publish(2);
-        return n.total;
-    }
-  )");
-  EXPECT_EQ(value, 42);
-}
-
 // 'this on a method's own parameter, with a reference spelling ref 'a T.
 TEST(Lambdas_LifetimeSyntax, ref_lifetime_and_this_param_accepted) {
   auto value = executeString(R"(

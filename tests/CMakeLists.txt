@@ -11,13 +11,16 @@ endif()
 # set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 # (Only needed if mixing CRT types; usually not required with package managers)
 
-# One binary for every suite. Sources come from the group subdirectories
-# below; nothing is listed here. Suite names mirror the directory path
+# One binary for every suite. Shared support is listed here; suite sources
+# come from the group subdirectories below. Suite names mirror the directory path
 # (e.g. tests/functions/generic/test_constraints.cpp ->
 # Functions_Generic_Constraints), so --gtest_filter="Functions_*" selects a
 # whole group. The stdlib's own tests are Sun code (stdlib/std/**/*_tests.sun) and
 # run as the stdlib_sun_tests entry below, not through this binary.
-add_executable(sun_tests)
+add_executable(sun_tests
+    support/execution_utils.cpp
+    support/test_execution_utils.cpp
+)
 
 # Must come after add_executable: target_sources() needs the target to exist.
 # Order among the groups themselves does not matter.

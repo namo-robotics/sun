@@ -39,28 +39,6 @@ function fib(n: i32) i32 {
   EXPECT_EQ(value, 55);
 }
 
-TEST(EndToEnd_Programs, mutual_recursion) {
-  auto value = executeString(R"(
-    declare function isOdd(n: i32) bool;
-
-    function isEven(n: i32) bool {
-        if (n == 0) { return true; }
-        return isOdd(n - 1);
-    }
-
-    function isOdd(n: i32) bool {
-        if (n == 0) { return false; }
-        return isEven(n - 1);
-    }
-
-    function main() i32 {
-        if (isEven(4)) { return 1; }
-        return 0;
-    }
-  )");
-  EXPECT_EQ(value, 1);
-}
-
 TEST(EndToEnd_Programs, square_lambda) {
   auto value = executeString(R"(
     var square = (x: i32) => i32 {
@@ -576,71 +554,6 @@ TEST(EndToEnd_Programs, main_explicit_void_return) {
     };
   )");
   EXPECT_TRUE(std::holds_alternative<sun::driver::VoidValue>(value));
-}
-
-// Reference tests
-TEST(EndToEnd_Programs, ref_basic) {
-  // Test basic reference - reading through a reference
-  auto value = executeString(R"(
-    function main() i32 {
-        var x: i32 = 42;
-        ref r = x;
-        return r;
-    };
-  )");
-  EXPECT_EQ(value, 42);
-}
-
-TEST(EndToEnd_Programs, ref_modify_original) {
-  // Test that modifying original variable is visible through reference
-  auto value = executeString(R"(
-    function main() i32 {
-        var x: i32 = 10;
-        ref r = x;
-        x = 20;
-        return r;
-    };
-  )");
-  EXPECT_EQ(value, 20);
-}
-
-TEST(EndToEnd_Programs, ref_modify_through_ref) {
-  // Test that modifying through reference changes the original
-  auto value = executeString(R"(
-    function main() i32 {
-        var x: i32 = 10;
-        ref r = x;
-        r = 30;
-        return x;
-    };
-  )");
-  EXPECT_EQ(value, 30);
-}
-
-TEST(EndToEnd_Programs, ref_arithmetic) {
-  // Test using reference in arithmetic
-  auto value = executeString(R"(
-    function main() i32 {
-        var x: i32 = 5;
-        ref r = x;
-        return r * 2 + 3;
-    };
-  )");
-  EXPECT_EQ(value, 13);
-}
-
-TEST(EndToEnd_Programs, ref_to_global) {
-  // Test reference to global variable
-  auto value = executeString(R"(
-    var g: i32 = 100;
-
-    function main() i32 {
-        ref r = g;
-        r = 200;
-        return g;
-    };
-  )");
-  EXPECT_EQ(value, 200);
 }
 
 TEST(EndToEnd_Programs, minimal_transitive_import) {

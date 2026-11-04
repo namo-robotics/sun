@@ -11,6 +11,7 @@
 
 // Include your public headers
 #include "ast.h"  // Needed to inspect the parsed AST nodes
+#include "driver/driver.h"
 #include "driver/execution_utils.h"
 #include "parsing/lexer.h"  // If needed for Token checks
 #include "parsing/parser.h"  // This should be in include/ (or include/SunCompiler/)

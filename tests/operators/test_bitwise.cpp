@@ -7,6 +7,7 @@
 #include <sstream>
 #include <string>
 
+#include "driver/driver.h"
 #include "driver/execution_utils.h"
 
 using sun::driver::executeString;
@@ -22,15 +23,6 @@ TEST(Operators_Bitwise, and_i32) {
       }
     )");
   EXPECT_EQ(value, 10);  // 15 & 10 = 10
-}
-
-TEST(Operators_Bitwise, and_i32_decimal) {
-  auto value = executeString(R"(
-      function main() i32 {
-          return 15 & 10;
-      }
-    )");
-  EXPECT_EQ(value, 10);
 }
 
 TEST(Operators_Bitwise, and_i32_variables) {
@@ -85,15 +77,6 @@ TEST(Operators_Bitwise, or_i32) {
   EXPECT_EQ(value, 15);  // 12 | 3 = 15
 }
 
-TEST(Operators_Bitwise, or_i32_decimal) {
-  auto value = executeString(R"(
-      function main() i32 {
-          return 12 | 3;
-      }
-    )");
-  EXPECT_EQ(value, 15);
-}
-
 TEST(Operators_Bitwise, or_i32_variables) {
   auto value = executeString(R"(
       function main() i32 {
@@ -137,15 +120,6 @@ TEST(Operators_Bitwise, xor_i32) {
       }
     )");
   EXPECT_EQ(value, 6);  // 12 ^ 10 = 6
-}
-
-TEST(Operators_Bitwise, xor_i32_decimal) {
-  auto value = executeString(R"(
-      function main() i32 {
-          return 12 ^ 10;
-      }
-    )");
-  EXPECT_EQ(value, 6);
 }
 
 TEST(Operators_Bitwise, xor_i32_variables) {

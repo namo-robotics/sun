@@ -10,6 +10,7 @@
 
 #include <string>
 
+#include "driver/driver.h"
 #include "driver/execution_utils.h"
 
 using sun::driver::executeString;

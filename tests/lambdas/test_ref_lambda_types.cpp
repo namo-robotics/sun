@@ -476,6 +476,7 @@ TEST(Lambdas_RefLambdaTypes, local_bus_subscribes_local_bound_method) {
 
 // So does an object subscribing its own method through a ref parameter:
 // `this` outlives the whole frame, so `this.onMsg` is not frame-sourced.
+/** A declared class lifetime connects a callback field to Bus<'this>. */
 TEST(Lambdas_RefLambdaTypes, object_subscribes_its_own_method_via_ref_param) {
   auto value = executeString(R"(
     class Bus<'a> {

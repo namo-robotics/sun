@@ -9,6 +9,7 @@
 #include "driver/execution_utils.h"
 
 using sun::driver::compileString;
+using sun::driver::analyzeString;
 using sun::driver::executeString;
 using sun::driver::executeStringWithStdlib;
 using sun::support::SunError;
@@ -17,35 +18,30 @@ using sun::support::SunError;
 // Basic Class Definition Tests
 // ============================================================================
 
+/** Accepts an uninstantiated class with multiple fields. */
 TEST(Classes, simple_class_definition) {
-  auto value = executeString(R"(
+  EXPECT_NO_THROW(analyzeString(R"(
+    /** Declares independent integer fields. */
     class Point {
       var x: i32;
       var y: i32;
     }
-
-    function main() i32 {
-        return 0;
-    }
-  )");
-  EXPECT_EQ(value, 0);
+  )"));
 }
 
+/** Accepts an instance method without constructing the class. */
 TEST(Classes, class_with_method) {
-  auto value = executeString(R"(
+  EXPECT_NO_THROW(analyzeString(R"(
+    /** Provides a field for a getter. */
     class Counter {
       var value: i32;
 
+      /** Returns the stored field. */
       method get() i32 {
         return this.value;
       }
     }
-
-    function main() i32 {
-        return 0;
-    }
-  )");
-  EXPECT_EQ(value, 0);
+  )"));
 }
 
 // ============================================================================
@@ -1784,23 +1780,31 @@ TEST(Classes_FieldInitializers,
             11);
 }
 
-TEST(Classes_FieldInitializers,
-     invalid_types_and_missing_annotations_are_rejected) {
-  EXPECT_THROW(compileString(R"(
+/** A field default must have the declared field type. */
+TEST(Classes_FieldInitializers, incompatible_default_type_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(analyzeString(R"(
+    /** Contains a boolean default for an integer field. */
     class Foo { var x: i32 = true; }
-    function main() i32 { return 0; }
   )"),
-               SunError);
-  EXPECT_THROW(compileString(R"(
+                                "Cannot assign value of type 'bool' to field 'x' of type 'i32'");
+}
+
+/** A default does not replace the required field type annotation. */
+TEST(Classes_FieldInitializers, missing_type_annotation_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(analyzeString(R"(
+    /** Omits the required type of its initialized field. */
     class Foo { var x = 10; }
-    function main() i32 { return 0; }
   )"),
-               SunError);
-  EXPECT_THROW(compileString(R"(
+                                "type annotation required");
+}
+
+/** Interface fields specify requirements rather than default values. */
+TEST(Classes_FieldInitializers, interface_field_default_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(analyzeString(R"(
+    /** Attempts to supply storage initialization in an interface. */
     interface Foo { var x: i32 = 10; }
-    function main() i32 { return 0; }
   )"),
-               SunError);
+                                "expected ';' after field declaration");
 }
 
 TEST(Classes_FieldInitializers,
@@ -1904,29 +1908,49 @@ TEST(Classes, borrowed_class_constructor_argument_is_rejected) {
                SunError);
 }
 
+/** Duplicate ordinary methods fail before code generation. */
 TEST(Classes, duplicate_method_signatures_are_rejected_before_emission) {
-  EXPECT_THROW(compileString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(analyzeString(R"(
+    /** Declares competing implementations of the same method. */
     class Box {
+      /** Supplies the first implementation. */
       method value() i32 { return 1; }
+      /** Conflicts with the first implementation. */
       method value() i32 { return 2; }
     }
-    function main() i32 { return 0; }
   )"),
-               SunError);
-  EXPECT_THROW(compileString(R"(
+                                "already defined");
+}
+
+/** Instantiating a generic class cannot hide duplicate method signatures. */
+TEST(Classes, duplicate_generic_method_signatures_are_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(analyzeString(R"(
+    /** Declares competing implementations in a generic class. */
     class Box<T> {
+      /** Supplies the first implementation. */
       method value() i32 { return 1; }
+      /** Conflicts with the first implementation. */
       method value() i32 { return 2; }
     }
-    function main() i32 { var box = Box<i32>(); return box.value(); }
+    /** Forces the generic class to be instantiated. */
+    function main() i32 {
+      var box = Box<i32>();
+      return box.value();
+    }
   )"),
-               SunError);
-  EXPECT_THROW(compileString(R"(
+                                "already defined");
+}
+
+/** An interface cannot supply two defaults with the same signature. */
+TEST(Classes, duplicate_interface_method_signatures_are_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(analyzeString(R"(
+    /** Declares competing default implementations. */
     interface View {
+      /** Supplies the first default. */
       method value() i32 { return 1; }
+      /** Conflicts with the first default. */
       method value() i32 { return 2; }
     }
-    function main() i32 { return 0; }
   )"),
-               SunError);
+                                "already defined");
 }
