@@ -24,6 +24,13 @@ class DisplayPathScope {
   std::optional<std::filesystem::path> previous_;
 };
 
+/** Writes and flushes a progress message with one path or an input/output pair.
+ * Paths follow the active display policy; disabled levels produce no output.
+ */
+void logPathMessage(const std::string& level, const std::string& label,
+                    const std::filesystem::path& path,
+                    const std::optional<std::filesystem::path>& output = std::nullopt);
+
 /** Returns the display base for child build contexts, or the current directory.
  */
 std::filesystem::path displayPathBase();

@@ -24,6 +24,7 @@ A file for guiding coding agents.
 - Errors: `logError()` / `logAndThrowError()` for compilation errors.
 
 ## Code Comments (all code, including .sun files)
+
 - Write concise comments in plain English for a general audience of software engineers.
 - Every namespace, function, and type definition must have a documentation comment describing what it does or what it is for. This applies to all first-party source code, including C++ and `.sun` files, regardless of visibility.
 - Use `/** ... */` blocks in C++, Sun, and JavaScript/TypeScript. Use the language's native equivalent elsewhere, such as Python docstrings or a shell comment block.
@@ -34,9 +35,15 @@ A file for guiding coding agents.
 - Do not hard-code numeric values that are subject to change in comments.
 
 ## Commit messages
+
 - Subject: `<scope>: <description>` (scope = subsystem/package/area; imperative; no `feat`/`fix` types).
 - Body: blank line, then one concise bullet per key change if not already captured in the subject.
 - Do not add AI attribution to commits or PRs (no Co-Authored-By, Generated-with, tool names, or session links).
+
+## Testing
+
+- Unit tests should test one specific thing at a time
+- Avoid creating redundant tests
 
 ## Planning
 

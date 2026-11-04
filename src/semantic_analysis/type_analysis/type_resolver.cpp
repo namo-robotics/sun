@@ -36,13 +36,10 @@ namespace {
 std::optional<sun::support::Position> annotationLocation(
     const sun::support::Position& span,
     const std::optional<sun::support::Position>& enclosing) {
-  if (span.filePath || span.endOffset || span.offset != 0 ||
-      span.line != 1 || span.column != 1) {
+  if (span.hasSourceLocation()) {
     return span;
   }
-  if (enclosing && (enclosing->filePath || enclosing->endOffset ||
-                    enclosing->offset != 0 || enclosing->line != 1 ||
-                    enclosing->column != 1)) {
+  if (enclosing && enclosing->hasSourceLocation()) {
     return enclosing;
   }
   return std::nullopt;

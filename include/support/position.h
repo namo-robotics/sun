@@ -29,6 +29,16 @@ struct Position {
            std::optional<std::string> path = std::nullopt)
       : line(l), column(c), offset(o), filePath(std::move(path)) {}
 
+  /** Records a known source file when source coordinates are unavailable. */
+  static Position fileOnly(const std::string& path) {
+    return Position(0, 0, 0, path);
+  }
+
+  /** Distinguishes source information from a default synthesized position. */
+  bool hasSourceLocation() const {
+    return filePath || endOffset || offset != 0 || line != 1 || column != 1;
+  }
+
   /**
    * Set end position (for token/expression span)
    */

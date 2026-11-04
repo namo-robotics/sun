@@ -5,6 +5,7 @@
 #include <optional>
 #include <sstream>
 
+#include "ast/prototype_ast.h"
 #include "driver/driver.h"
 #include "parsing/parser.h"
 #include "semantic_analysis/semantic_analyzer.h"
@@ -184,4 +185,19 @@ TEST(Tooling_Diagnostics_Locations, anonymous_source_names_stay_synthetic) {
   sun::support::DisplayPathScope scope(std::filesystem::current_path() / "tmp");
   EXPECT_EQ(sun::support::displayPath("<string:7>"), "<string:7>");
   EXPECT_EQ(sun::support::displayPath(""), "");
+}
+
+/** Serialization retains byte offsets even without file or line information. */
+TEST(Tooling_Diagnostics_Locations, offset_only_annotation_round_trip) {
+  sun::ast::TypeAnnotation type;
+  type.baseName = "i32";
+  type.span = sun::support::Position(1, 1, 12);
+  sun::ast::PrototypeAST prototype("value", {}, type);
+  const auto encoded =
+      sun::serialization::ASTSerializer().serializePrototype(prototype);
+  ASSERT_TRUE(encoded.return_type().has_location());
+  auto decoded =
+      sun::serialization::ASTDeserializer().deserializePrototype(encoded);
+  ASSERT_TRUE(decoded->getReturnType());
+  EXPECT_EQ(decoded->getReturnType()->span.offset, 12);
 }

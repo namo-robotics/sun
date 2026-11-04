@@ -168,7 +168,7 @@ sun::ast::TypeAnnotation ASTDeserializer::deserializeTypeAnnotation(
   if (type.has_location()) {
     result.span = deserializePosition(type.location());
   } else if (!config_.default_file_path.empty()) {
-    result.span = Position(0, 0, 0, config_.default_file_path);
+    result.span = Position::fileOnly(config_.default_file_path);
   }
   if (type.has_declaration_key()) {
     result.declarationKey =
@@ -223,7 +223,7 @@ void ASTDeserializer::deserializeExprBase(const pbc::ASTNode& node,
   if (node.has_location()) {
     expr->setLocation(deserializePosition(node.location()));
   } else if (!config_.default_file_path.empty()) {
-    expr->setLocation(Position(0, 0, 0, config_.default_file_path));
+    expr->setLocation(Position::fileOnly(config_.default_file_path));
   }
   if (node.has_declaration_identity()) {
     deserializeIdentity(node.declaration_identity(),

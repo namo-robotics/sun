@@ -1011,8 +1011,7 @@ void Driver::applyTestHandling(BlockExprAST& blockAst) {
     std::ofstream runnerFile(runnerPath);
     if (runnerFile) {
       runnerFile << runnerSrc;
-      sun::support::messageStream("debug")
-          << "  Generated: " << sun::support::displayPath(runnerPath) << "\n";
+      sun::support::logPathMessage("debug", "  Generated: ", runnerPath);
     } else {
       sun::support::messageStream("warning")
           << "Could not write " << sun::support::displayPath(runnerPath)
@@ -1140,8 +1139,7 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
     std::ofstream dotFile(dotPath);
     if (dotFile) {
       dotFile << dot;
-      sun::support::messageStream("debug")
-          << "  Generated: " << sun::support::displayPath(dotPath) << "\n";
+      sun::support::logPathMessage("debug", "  Generated: ", dotPath);
     } else {
       sun::support::messageStream("warning")
           << "Could not write " << sun::support::displayPath(dotPath) << "\n";
@@ -1158,8 +1156,7 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
     std::ofstream scopeFile(scopePath);
     if (scopeFile) {
       scopeFile << html;
-      sun::support::messageStream("debug")
-          << "  Generated: " << sun::support::displayPath(scopePath) << "\n";
+      sun::support::logPathMessage("debug", "  Generated: ", scopePath);
     } else {
       sun::support::messageStream("warning")
           << "Could not write " << sun::support::displayPath(scopePath) << "\n";
@@ -1265,8 +1262,7 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
   if (debugMode_ && !debugFolder_.empty()) {
     std::string irPath = debugFolder_ + "/ir.ll";
     writeUserDefinedIR(irPath);
-    sun::support::messageStream("debug")
-        << "  Generated: " << sun::support::displayPath(irPath) << "\n";
+    sun::support::logPathMessage("debug", "  Generated: ", irPath);
   }
 
   // If not executing, handle AOT compilation specifics

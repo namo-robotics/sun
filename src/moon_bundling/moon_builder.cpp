@@ -401,9 +401,7 @@ void MoonBuilder::writeDebugJson(const std::filesystem::path& outputPath,
   if (!reader->writeDebugJson(jsonPath)) {
     sun::support::logAndThrowError(reader->getError());
   }
-  sun::support::messageStream("debug")
-      << "  Generated: " << sun::support::displayPath(jsonPath.string())
-      << "\n";
+  sun::support::logPathMessage("debug", "  Generated: ", jsonPath.string());
 }
 
 std::vector<std::string> MoonBuilder::writeBundle(
@@ -480,28 +478,21 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
       options.debugInfo, options.optimize, options.forceRebuild);
   auto inputs = loadInputs(entrypoint, options);
   if (isUpToDate(inputs.inputHash, outputPath, options)) {
-    sun::support::messageStream("info")
-        << "Up to date: " << sun::support::displayPath(outputPath.string())
-        << "\n";
-    llvm::outs().flush();
+    sun::support::logPathMessage("info", "Up to date: ", outputPath.string());
     return readExistingReport(outputPath, inputs.archiveSetHash,
                               std::move(inputs.report));
   }
 
-  sun::support::messageStream("info")
-      << "Building library: " << sun::support::displayPath(entrypoint) << " -> "
-      << sun::support::displayPath(outputPath.string()) << "\n";
-  llvm::outs().flush();
+  sun::support::logPathMessage(
+      "info", "Building library: ", entrypoint, outputPath.string());
 
   if (options.onBuildStart) {
     options.onBuildStart();
   }
   const auto symbols = prepareNativeSymbols(inputs);
   auto compiled = compile(inputs, symbols, entrypoint, options);
-  sun::support::messageStream("debug")
-      << "Writing library: " << sun::support::displayPath(outputPath.string())
-      << "\n";
-  llvm::outs().flush();
+  sun::support::logPathMessage(
+      "debug", "Writing library: ", outputPath.string());
   auto inheritedArchives =
       writeBundle(inputs, symbols, compiled, outputPath, options);
   // Release the compiler before invalidating bundles or transferring its
@@ -512,10 +503,8 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   auto report = std::move(inputs.report);
   report.modules = std::move(compiled.metadata.modules);
   report.inheritedArchives = std::move(inheritedArchives);
-  sun::support::messageStream("info")
-      << "Successfully created: "
-      << sun::support::displayPath(outputPath.string()) << "\n";
-  llvm::outs().flush();
+  sun::support::logPathMessage(
+      "info", "Successfully created: ", outputPath.string());
   return report;
 }
 

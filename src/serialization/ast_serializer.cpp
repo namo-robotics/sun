@@ -99,9 +99,7 @@ pbc::TypeAnnotation ASTSerializer::serializeTypeAnnotation(
     const sun::ast::TypeAnnotation& type) const {
   pbc::TypeAnnotation proto;
   proto.set_base_name(type.baseName);
-  if (config_.include_location &&
-      (type.span.filePath || type.span.endOffset || type.span.line != 1 ||
-       type.span.column != 1)) {
+  if (config_.include_location && type.span.hasSourceLocation()) {
     *proto.mutable_location() = serializePosition(type.span);
   }
   if (type.declarationKey) {

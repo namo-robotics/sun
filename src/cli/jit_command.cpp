@@ -68,9 +68,7 @@ int runJitCommand(const BuildRunOptions& options) {
     inputFile = *binary;
   }
 
-  sun::support::messageStream("info")
-      << "Compiling for JIT: " << sun::support::displayPath(inputFile) << "\n";
-  llvm::outs().flush();
+  sun::support::logPathMessage("info", "Compiling for JIT: ", inputFile);
 
   // argv[0] = script name, followed by the arguments after --
   ProgramArguments programArgs(inputFile, options.programArgs);

@@ -4,6 +4,8 @@
 
 #include <utility>
 
+#include "support/terminal.h"
+
 /** Renders paths for the current compiler invocation. */
 namespace sun::support {
 /** Isolates rendering policy between independent compiler threads. */
@@ -23,6 +25,21 @@ DisplayPathScope::DisplayPathScope(const std::filesystem::path& directory)
 }
 
 DisplayPathScope::~DisplayPathScope() { displayRoot = std::move(previous_); }
+
+void logPathMessage(const std::string& level, const std::string& label,
+                    const std::filesystem::path& path,
+                    const std::optional<std::filesystem::path>& output) {
+  if (!messageEnabled(level)) {
+    return;
+  }
+  auto& stream = messageStream(level);
+  stream << label << displayPath(path);
+  if (output) {
+    stream << " -> " << displayPath(*output);
+  }
+  stream << "\n";
+  stream.flush();
+}
 
 std::filesystem::path displayPathBase() {
   if (displayRoot) {
