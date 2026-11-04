@@ -6,6 +6,9 @@
 
 #include <gtest/gtest.h>
 
+#include <filesystem>
+
+#include "driver/driver.h"
 #include "driver/execution_utils.h"
 
 using sun::driver::executeTestsWithStdlib;

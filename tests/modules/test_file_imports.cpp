@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "driver/driver.h"
 #include "driver/execution_utils.h"
 #include "moon_bundling/library_cache.h"
 #include "moon_bundling/moon.h"

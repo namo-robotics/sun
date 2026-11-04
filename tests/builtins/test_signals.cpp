@@ -3,6 +3,7 @@
 #include <llvm/IR/Instructions.h>
 #include <signal.h>
 
+#include "driver/driver.h"
 #include "driver/execution_utils.h"
 
 /** Keep native signal fixtures private to this translation unit. */

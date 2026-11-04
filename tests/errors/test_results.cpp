@@ -7,6 +7,7 @@
 #include <sstream>
 
 #include "ast/ast_children.h"
+#include "driver/driver.h"
 #include "driver/execution_utils.h"
 #include "parsing/formatter.h"
 #include "serialization/ast_deserializer.h"

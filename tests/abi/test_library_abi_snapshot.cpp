@@ -7,6 +7,7 @@
 
 #include "abi/abi_compatibility_checker.h"
 #include "abi/library_abi_snapshot.h"
+#include "driver/driver.h"
 #include "driver/execution_utils.h"
 #include "moon_bundling/moon.h"
 #include "moon_bundling/moon_builder.h"

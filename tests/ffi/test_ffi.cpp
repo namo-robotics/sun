@@ -15,6 +15,7 @@
 #include "codegen/abi/c_abi.h"
 #include "codegen/abi/extern_c.h"
 #include "driver/compiler.h"
+#include "driver/driver.h"
 #include "driver/execution_utils.h"
 #include "moon_bundling/moon.h"
 #include "moon_bundling/moon_builder.h"

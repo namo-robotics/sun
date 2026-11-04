@@ -5,6 +5,7 @@
 
 #include <gtest/gtest.h>
 
+#include "driver/driver.h"
 #include "driver/execution_utils.h"
 
 using sun::driver::executeString;

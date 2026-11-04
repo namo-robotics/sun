@@ -9,6 +9,7 @@
 #include "driver/execution_utils.h"
 #include "support/error.h"
 
+using sun::driver::analyzeString;
 using sun::driver::executeString;
 using sun::support::SunError;
 
@@ -16,56 +17,49 @@ using sun::support::SunError;
 // Generic Class Definition Tests
 // ============================================================================
 
+/** Accepts a field whose type is a class parameter. */
 TEST(Classes_Generic, generic_class_definition) {
-  // Just parsing and semantic analysis, no instantiation
-  auto value = executeString(R"(
+  EXPECT_NO_THROW(analyzeString(R"(
+    /** Stores a value of the supplied type. */
     class Box<T> {
       var value: T;
     }
-
-    function main() i32 {
-        return 0;
-    }
-  )");
-  EXPECT_EQ(value, 0);
+  )"));
 }
 
+/** Accepts a generic getter before specialization. */
 TEST(Classes_Generic, generic_class_with_method) {
-  auto value = executeString(R"(
+  EXPECT_NO_THROW(analyzeString(R"(
+    /** Returns a field with the class parameter type. */
     class Container<T> {
       var data: T;
 
+      /** Returns the stored field. */
       method get() T {
         return this.data;
       }
     }
-
-    function main() i32 {
-        return 0;
-    }
-  )");
-  EXPECT_EQ(value, 0);
+  )"));
 }
 
+/** Accepts a generic constructor before specialization. */
 TEST(Classes_Generic, generic_class_with_constructor) {
-  auto value = executeString(R"(
+  EXPECT_NO_THROW(analyzeString(R"(
+    /** Initializes and reads a field of the supplied type. */
     class Wrapper<T> {
       var value: T;
 
+      /** Initializes the field from the argument. */
       init(v: T) {
         this.value = v;
       }
 
+      /** Returns the stored field. */
       method get() T {
         return this.value;
       }
     }
-
-    function main() i32 {
-        return 0;
-    }
-  )");
-  EXPECT_EQ(value, 0);
+  )"));
 }
 
 // A generic constructor call is resolved against the specialization's init

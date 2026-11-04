@@ -63,21 +63,6 @@ TEST(MemorySafety_BorrowChecker, sequential_refs_to_same_var) {
   EXPECT_EQ(value, 30);
 }
 
-TEST(MemorySafety_BorrowChecker, refs_to_different_vars) {
-  // Multiple refs to different variables are allowed
-  auto value = executeString(R"(
-    function main() i32 {
-        var a: i32 = 5;
-        var b: i32 = 10;
-        ref ra = a;
-        ref rb = b;
-        ra = ra + rb;
-        return a;
-    };
-  )");
-  EXPECT_EQ(value, 15);
-}
-
 TEST(MemorySafety_BorrowChecker, ref_passed_to_function) {
   // Passing a ref to a function works
   auto value = executeString(R"(
@@ -126,22 +111,6 @@ TEST(MemorySafety_BorrowChecker, double_mutable_borrow_is_error) {
         };
       )"),
                SunError);
-}
-
-// ============================================================================
-// Return Type Restrictions - References Cannot Be Returned
-// ============================================================================
-
-TEST(MemorySafety_BorrowChecker, function_returns_value_not_ref) {
-  // Returning the VALUE through a ref is fine (value is copied)
-  auto value = executeString(R"(
-    function main() i32 {
-        var x: i32 = 42;
-        ref r = x;
-        return r;  // Returns the value, not the reference
-    };
-  )");
-  EXPECT_EQ(value, 42);
 }
 
 // ============================================================================

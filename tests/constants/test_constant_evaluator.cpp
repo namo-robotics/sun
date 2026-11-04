@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 
+#include "driver/driver.h"
 #include "driver/execution_utils.h"
 #include "semantic_analysis/constants/global_init.h"
 #include "semantic_analysis/semantic_analyzer.h"

@@ -8,6 +8,7 @@
 
 #include <string>
 
+#include "driver/driver.h"
 #include "driver/execution_utils.h"
 
 /** Verifies actual vector arithmetic and conservative alignment in emitted IR.
