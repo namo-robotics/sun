@@ -584,7 +584,7 @@ fs::path buildConfigProducts(const ConfigGraph& workspace, SunConfig config,
     }
     plan.artifacts.push_back({name, artifact.string(), library});
     distributionArtifacts.push_back({entry->name, artifact.string(), library});
-    for (auto resource : entry->resources) {
+    for (auto resource : packageEntrypointResources(config, *entry)) {
       resource.path =
           ManifestProcessor::expandPathVariables(resource.path, &config);
       plan.resources.push_back(std::move(resource));

@@ -381,6 +381,129 @@ void addFile(Inventory& files, const fs::path& source,
   files.emplace(name, std::move(file));
 }
 
+/** Adds a resource tree to an inventory without following links. */
+void addResource(Inventory& files, const fs::path& source,
+                 const std::string& destination) {
+  payloadPath(destination);
+  noLinks(source);
+  if (fs::is_directory(source)) {
+    for (const auto& item : fs::recursive_directory_iterator(source)) {
+      if (item.is_symlink()) {
+        fail("symlink resource " + item.path().string());
+      }
+      if (!item.is_directory()) {
+        addFile(files, item.path(),
+                (fs::path(destination) / item.path().lexically_relative(source))
+                    .generic_string());
+      }
+    }
+  } else {
+    addFile(files, source, destination);
+  }
+}
+
+/** Returns the configured build directory or the standalone default. */
+fs::path resourceBuildDirectory(const SunConfig& config) {
+  const auto configured = config.pathVariables.find("SUN_BUILD");
+  return configured != config.pathVariables.end()
+             ? fs::path(configured->second)
+             : config.configDir / ".sun/build" /
+                   configTargetKey(config.targetTriple) / "release" /
+                   config.configDir.filename();
+}
+
+/** Copies declared build resources without replacing products or unchanged
+ * files. */
+void copyBuildResources(const SunConfig& config,
+                        const std::vector<PackagePlan>& plans) {
+  Inventory files;
+  std::vector<fs::path> protectedPaths;
+  const auto root = resourceBuildDirectory(config);
+  for (const auto& entry : config.entrypoints) {
+    if (entry.git.empty()) {
+      protectedPaths.push_back(
+          ManifestProcessor::expandPathVariables(entry.path, &config));
+    }
+    const auto name =
+        entry.name.empty() ? fs::path(entry.path).stem().string() : entry.name;
+    protectedPaths.push_back(
+        entry.outputName.empty()
+            ? root / (name + (entry.type == ConfigEntrypoint::Type::Library
+                                  ? ".moon"
+                                  : ""))
+            : fs::path(ManifestProcessor::expandPathVariables(entry.outputName,
+                                                              &config)));
+    protectedPaths.push_back(
+        entry.testBinaryName.empty()
+            ? root / (name + "_test")
+            : fs::path(ManifestProcessor::expandPathVariables(
+                  entry.testBinaryName, &config)));
+  }
+  protectedPaths.push_back(root / ".contexts");
+  for (const auto& plan : plans) {
+    protectedPaths.push_back(plan.output);
+    protectedPaths.push_back(plan.output.string() + ".tar.gz");
+    for (const auto& artifact : plan.artifacts) {
+      protectedPaths.push_back(artifact.path);
+      for (const auto& entry : config.entrypoints) {
+        const auto name = entry.name.empty()
+                              ? fs::path(entry.path).stem().string()
+                              : entry.name;
+        if (name != artifact.name) {
+          continue;
+        }
+        for (const auto& resource : entry.resources) {
+          const auto source =
+              ManifestProcessor::expandPathVariables(resource.path, &config);
+          protectedPaths.push_back(source);
+          addResource(files, source, resource.destination);
+        }
+      }
+    }
+    for (const auto& resource : plan.resources) {
+      auto source =
+          ManifestProcessor::expandPathVariables(resource.path, &config);
+      protectedPaths.push_back(source);
+    }
+  }
+  if (files.empty()) {
+    return;
+  }
+  noLinks(root);
+  for (const auto& [name, file] : files) {
+    const auto destination = root / name;
+    noLinks(destination);
+    if (fs::weakly_canonical(destination) ==
+        fs::weakly_canonical(file.source)) {
+      continue;
+    }
+    for (const auto& path : protectedPaths) {
+      if (beneath(destination, path) || beneath(path, destination)) {
+        fail("build resource destination overlaps input or product " +
+             destination.string());
+      }
+    }
+  }
+  Temporary tmp(root);
+  for (const auto& [name, file] : files) {
+    const auto destination = root / name;
+    if (fs::is_regular_file(destination) &&
+        packageFileHash(destination) == file.hash &&
+        executable(destination) == file.exec) {
+      continue;
+    }
+    const auto staged = tmp.path / name;
+    fs::create_directories(staged.parent_path());
+    fs::copy_file(file.source, staged);
+    permissions(staged, file.exec);
+    if (packageFileHash(staged) != file.hash) {
+      fail("input changed while copying " + file.source.string());
+    }
+    fs::create_directories(destination.parent_path());
+    fs::rename(staged, destination);
+  }
+}
+
 /** Writes a stable JSON document used as both inventory and packaging
  * fingerprint. */
 std::string metadata(const PackagePlan& plan, const std::string& target,
@@ -615,6 +738,19 @@ fs::path resolveConfigDependency(const SunConfig& config,
   return dest;
 }
 
+std::vector<ConfigResource> packageEntrypointResources(
+    const SunConfig& config, const ConfigEntrypoint& entry) {
+  auto resources = entry.resources;
+  for (auto& resource : resources) {
+    resource.path =
+        ManifestProcessor::expandPathVariables(resource.path, &config);
+    resource.destination =
+        (entry.type == ConfigEntrypoint::Type::Library ? "lib/" : "bin/") +
+        payloadPath(resource.destination);
+  }
+  return resources;
+}
+
 std::vector<PackagePlan> planPackages(
     const SunConfig& config, const std::vector<PackageArtifact>& artifacts) {
   std::vector<PackagePlan> result;
@@ -629,6 +765,8 @@ std::vector<PackagePlan> planPackages(
     plan.name = pkg.name;
     plan.output = pkg.outputName;
     plan.resources = pkg.resources;
+    plan.resources.insert(plan.resources.end(), config.exports.begin(),
+                          config.exports.end());
     std::set<std::string> members;
     for (const auto& name : pkg.entrypoints) {
       if (!members.insert(name).second) {
@@ -640,6 +778,13 @@ std::vector<PackagePlan> planPackages(
       }
       const auto index = found->second;
       plan.artifacts.push_back(artifacts.at(index));
+      for (const auto& entry : config.entrypoints) {
+        if (entry.name == name) {
+          auto resources = packageEntrypointResources(config, entry);
+          plan.resources.insert(plan.resources.end(), resources.begin(),
+                                resources.end());
+        }
+      }
     }
     if (plan.artifacts.empty()) {
       fail("package " + pkg.name + " has no active entrypoints");
@@ -649,13 +794,7 @@ std::vector<PackagePlan> planPackages(
   std::vector<fs::path> outputs;
   for (auto& plan : result) {
     if (plan.output.empty()) {
-      const auto configured = config.pathVariables.find("SUN_BUILD");
-      const auto build = configured != config.pathVariables.end()
-                             ? fs::path(configured->second)
-                             : config.configDir / ".sun/build" /
-                                   configTargetKey(config.targetTriple) /
-                                   "release" / config.configDir.filename();
-      plan.output = build / "packages" / plan.name;
+      plan.output = resourceBuildDirectory(config) / "packages" / plan.name;
     }
     plan.output = fs::absolute(
         ManifestProcessor::expandPathVariables(plan.output.string(), &config));
@@ -697,6 +836,7 @@ std::vector<PackagePlan> planPackages(
 
 void buildPackages(const SunConfig& config,
                    const std::vector<PackagePlan>& plans, bool archive) {
+  copyBuildResources(config, plans);
   const bool windows =
       sun::support::resolvedTargetTriple(config.targetTriple).isOSWindows();
   for (const auto& plan : plans) {
@@ -717,24 +857,7 @@ void buildPackages(const SunConfig& config,
                              {"path", path}});
     }
     for (const auto& resource : plan.resources) {
-      const fs::path source(resource.path);
-      noLinks(source);
-      if (fs::is_directory(source)) {
-        for (const auto& item : fs::recursive_directory_iterator(source)) {
-          if (item.is_symlink()) {
-            fail("symlink resource " + item.path().string());
-          }
-          if (item.is_directory()) {
-            continue;
-          }
-          addFile(files, item.path(),
-                  (fs::path(resource.destination) /
-                   item.path().lexically_relative(source))
-                      .generic_string());
-        }
-      } else {
-        addFile(files, source, resource.destination);
-      }
+      addResource(files, resource.path, resource.destination);
     }
     const auto description = metadata(plan, config.targetTriple, files,
                                       std::move(artifacts), config.packageId);

@@ -524,8 +524,25 @@ Resource paths start at the config directory. Destinations must stay inside the
 package. Sun rejects missing files, links, and conflicting destinations. Changing
 only resources repackages without recompiling unchanged code.
 
-Use package `resources` for distribution files. Entrypoint `resources` and
-config-wide `exports` can also add files to staged local products.
+Entrypoint `resources` are copied beside the executable or library in builds,
+installs, and packages. `path` is config-relative; `destination` is relative to
+that product's directory:
+
+```json
+{
+  "entrypoints": [
+    {
+      "name": "app",
+      "path": "main.sun",
+      "resources": [
+        { "path": "assets/icons", "destination": "app.icons" }
+      ]
+    }
+  ]
+}
+```
+
+Package `resources` and config-wide `exports` use package-relative destinations.
 
 ## Building only what changed
 

@@ -41,7 +41,8 @@
  */
 namespace sun::driver {
 
-/** A file or directory copied into a distribution at an explicit path. */
+/** A file or directory copied into a distribution and optionally the build
+ * directory. */
 struct ConfigResource {
   std::string path;
   std::string destination;

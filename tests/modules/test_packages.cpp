@@ -274,6 +274,66 @@ TEST_F(Packages, AcceptEntrypointResources) {
             "share/asset");
 }
 
+/** Packages include resources from selected entrypoints and shared exports. */
+TEST_F(Packages, InheritsRuntimeResources) {
+  put(dir / "app", "binary");
+  put(dir / "asset", "resource");
+  put(dir / "shared", "shared resource");
+  auto cfg = config(R"({"entrypoints":[{"name":"app","path":"main.sun",
+    "resources":[{"path":"asset","destination":"app.asset"}]},
+    {"name":"unused","path":"unused.sun","resources":[{"path":"missing","destination":"unused.asset"}]}],
+    "exports":[{"path":"shared","destination":"share/shared"}],
+    "packages":[{"name":"tools","entrypoints":["app"]}]})");
+  cfg.pathVariables["SUN_BUILD"] = (dir / "output").string();
+  auto plans =
+      sun::driver::planPackages(cfg, {{"app", (dir / "app").string(), false}});
+  sun::driver::buildPackages(cfg, plans);
+  EXPECT_TRUE(fs::is_regular_file(plans[0].output / "bin/app.asset"));
+  EXPECT_TRUE(fs::is_regular_file(plans[0].output / "share/shared"));
+
+}
+
+/** Generated library resources already beside their product need no build copy.
+ */
+TEST_F(Packages, LibraryResourcesAlreadyInBuildDirectory) {
+  put(dir / "output/native/helper.a", "native library");
+  put(dir / "output/helpers.moon", "library");
+  auto cfg = config(
+      R"({"entrypoints":[{"name":"helpers","path":"helpers.sun","type":"library",
+    "resources":[{"path":"${SUN_BUILD}/native/helper.a","destination":"native/helper.a"}]}],
+    "packages":[{"name":"tools","entrypoints":["helpers"]}]})");
+  cfg.pathVariables["SUN_BUILD"] = (dir / "output").string();
+  auto plans = sun::driver::planPackages(
+      cfg, {{"helpers", (dir / "output/helpers.moon").string(), true}});
+  const auto time = fs::last_write_time(dir / "output/native/helper.a");
+  sun::driver::buildPackages(cfg, plans);
+  EXPECT_EQ(fs::last_write_time(dir / "output/native/helper.a"), time);
+  EXPECT_TRUE(fs::is_regular_file(plans[0].output / "lib/native/helper.a"));
+}
+
+/** Build copies cannot overwrite products or follow output symlinks. */
+TEST_F(Packages, RejectsUnsafeBuildResources) {
+  put(dir / "app", "binary");
+  put(dir / "asset", "resource");
+  auto cfg = config(R"({"entrypoints":[{"name":"app","path":"main.sun",
+    "resources":[{"path":"asset","destination":"asset"}]}],
+    "packages":[{"name":"tools","entrypoints":["app"]}]})");
+  cfg.pathVariables["SUN_BUILD"] = (dir / "output").string();
+  auto plans =
+      sun::driver::planPackages(cfg, {{"app", (dir / "app").string(), false}});
+  for (const auto& destination :
+       {"app", "app_test", ".contexts/data"}) {
+    cfg.entrypoints[0].resources[0].destination = destination;
+    EXPECT_THROW(sun::driver::buildPackages(cfg, plans), SunError)
+        << destination;
+  }
+  fs::create_directories(dir / "output");
+  fs::create_directory_symlink(dir, dir / "output/link");
+  cfg.entrypoints[0].resources[0].destination = "link/copied";
+  EXPECT_THROW(sun::driver::buildPackages(cfg, plans), SunError);
+  EXPECT_FALSE(fs::exists(dir / "copied"));
+}
+
 /** Naming an entrypoint alone does not request a distribution. */
 TEST_F(Packages, NoImplicitPackages) {
   auto cfg = config(R"({"entrypoints":[{"name":"app","path":"main.sun"}]})");
