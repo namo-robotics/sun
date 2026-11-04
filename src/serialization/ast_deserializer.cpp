@@ -165,6 +165,11 @@ sun::ast::TypeAnnotation ASTDeserializer::deserializeTypeAnnotation(
     const pbc::TypeAnnotation& type) const {
   sun::ast::TypeAnnotation result;
   result.baseName = type.base_name();
+  if (type.has_location()) {
+    result.span = deserializePosition(type.location());
+  } else if (!config_.default_file_path.empty()) {
+    result.span = Position(0, 0, 0, config_.default_file_path);
+  }
   if (type.has_declaration_key()) {
     result.declarationKey =
         PortableDeclarationKey::fromString(type.declaration_key());
@@ -217,6 +222,8 @@ void ASTDeserializer::deserializeExprBase(const pbc::ASTNode& node,
                                           ExprAST* expr) const {
   if (node.has_location()) {
     expr->setLocation(deserializePosition(node.location()));
+  } else if (!config_.default_file_path.empty()) {
+    expr->setLocation(Position(0, 0, 0, config_.default_file_path));
   }
   if (node.has_declaration_identity()) {
     deserializeIdentity(node.declaration_identity(),
@@ -963,6 +970,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
   for (const auto& ifaceProto : proto.implemented_interfaces()) {
     sun::ast::ImplementedInterfaceAST iface;
     iface.name = ifaceProto.name();
+    if (ifaceProto.has_location()) {
+      iface.location = deserializePosition(ifaceProto.location());
+    }
     if (ifaceProto.has_declaration_key()) {
       iface.declarationKey =
           PortableDeclarationKey::fromString(ifaceProto.declaration_key());

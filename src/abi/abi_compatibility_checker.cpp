@@ -20,6 +20,7 @@
 #include "abi/semantic_requirements.h"
 #include "abi/support_inventory.h"
 #include "moon_bundling/moon.h"
+#include "support/display_path.h"
 #include "support/error.h"
 #include "support/terminal.h"
 
@@ -633,16 +634,17 @@ void AbiCompatibilityChecker::recordValidatedImport(
     if (found != supported.end() && rule.name() == "llvm.bitcode" &&
         rule.implementation() != found->second) {
       sun::support::messageStream("warning")
-          << "dependency " << bundle << " has a different bitcode contract hash for '"
-          << rule.name() << "'"
+          << "dependency " << sun::support::displayPath(bundle)
+          << " has a different bitcode contract hash for '" << rule.name()
+          << "'"
           << "\n  A hash difference does not establish incompatibility."
           << "\n  Payload and ABI checks passed; continuing\n";
     }
     if (found != supported.end() && rule.implementation() != found->second &&
         isExperimentalFingerprint(rule.name(), rule.implementation())) {
       sun::support::messageStream("warning")
-          << "dependency " << bundle << " has a different compiler fingerprint for '"
-          << rule.name() << "'"
+          << "dependency " << sun::support::displayPath(bundle)
+          << " has a different compiler fingerprint for '" << rule.name() << "'"
           << "\n  A fingerprint difference does not establish incompatibility."
           << "\n  Payload and ABI checks passed; continuing with unverified "
              "experimental behavior\n";
@@ -653,7 +655,7 @@ void AbiCompatibilityChecker::recordValidatedImport(
   if (!producerRuntime.empty() &&
       producerRuntime != current.runtime_fingerprint()) {
     sun::support::messageStream("warning")
-        << "dependency " << bundle
+        << "dependency " << sun::support::displayPath(bundle)
         << " was built by Sun using different compiler shared libraries than "
            "the current Sun process"
         << "\n  This compares compiler environments, not your application's "
@@ -665,7 +667,7 @@ void AbiCompatibilityChecker::recordValidatedImport(
        ordering == ProducerOrdering::Unknown) &&
       warnedBundles_.insert(bytesHash).second) {
     sun::support::messageStream("warning")
-        << "dependency " << bundle
+        << "dependency " << sun::support::displayPath(bundle)
         << (ordering == ProducerOrdering::Older
                 ? " was built by an older producer"
                 : " has unknown producer ordering")

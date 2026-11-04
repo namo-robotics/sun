@@ -6,12 +6,22 @@
 #include <string>
 #include <vector>
 
+#include "support/display_path.h"
 #include "support/position.h"
 #include "support/source_manager.h"
 #include "support/terminal.h"
 
 /** Provides source locations, diagnostics, and shared compiler utilities. */
 namespace sun::support {
+
+/** Formats a source location using display paths, preserving its stored value.
+ */
+inline std::string displayPosition(Position position) {
+  if (position.filePath) {
+    position.filePath = displayPath(*position.filePath);
+  }
+  return position.toString();
+}
 
 // ANSI color codes for terminal output
 
@@ -42,7 +52,7 @@ inline std::string formatDiagnostic(const std::string& label,
       messagePrefix(label == "Note" ? "note" : "error", llvm::errs()) +
       (colors ? labelColor : "") + label + reset;
   if (location) {
-    out += ": " + std::string(blue) + location->toString() + reset;
+    out += ": " + std::string(blue) + displayPosition(*location) + reset;
   }
   out += ": " + message;
 
@@ -140,6 +150,12 @@ class SunError : public std::exception {
     related_.push_back({message, location, level});
     buildFullMessage();
   }
+  /** Adds the operation being performed without discarding diagnostic notes. */
+  void addContext(const std::string& context) {
+    message_ += " (" + context + ")";
+    buildFullMessage();
+  }
+
   /** Returns the related diagnostic locations. */
   const std::vector<RelatedDiagnostic>& getRelated() const { return related_; }
 
@@ -257,7 +273,7 @@ class SunError : public std::exception {
 inline void logErrorNoThrow(const std::string& msg,
                             std::optional<Position> loc = std::nullopt) {
   if (loc) {
-    messageStream("error") << loc->toString() << ": " << msg << "\n";
+    messageStream("error") << displayPosition(*loc) << ": " << msg << "\n";
   } else {
     messageStream("error") << msg << "\n";
   }
@@ -269,7 +285,7 @@ inline void logErrorNoThrow(const std::string& msg,
 inline void logWarning(const std::string& msg,
                        std::optional<Position> loc = std::nullopt) {
   if (loc) {
-    messageStream("warning") << loc->toString() << ": " << msg << "\n";
+    messageStream("warning") << displayPosition(*loc) << ": " << msg << "\n";
   } else {
     messageStream("warning") << msg << "\n";
   }

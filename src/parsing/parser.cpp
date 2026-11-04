@@ -3874,6 +3874,9 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
       usingStub->setPrecompiled(true);
       stubs.push_back(std::move(usingStub));
     }
+    if (scopedMetadata.source_path().empty()) {
+      scopedMetadata.set_source_path(resolvedStr);
+    }
     createModuleStubs(scopedMetadata, stubs);
 
     // Get the original module name and apply remapping if configured
@@ -4214,6 +4217,7 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
     // Parse comma-separated list of interface names with optional type args
     while (curTok.kind == TokenKind::IDENTIFIER) {
       sun::ast::ImplementedInterfaceAST iface;
+      iface.location = captureStart();
       iface.name = curTok.getIdentifier().value();
       getNextToken();  // eat interface name
       parseQualifiedNameTail(iface.name);
@@ -4234,6 +4238,8 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
         consumeGreater("expected '>' after interface type arguments");
       }
 
+      iface.location->setEnd(prevTok_.end.line, prevTok_.end.column,
+                             prevTok_.end.offset);
       implementedInterfaces.push_back(std::move(iface));
 
       if (curTok.kind == TokenKind::COMMA) {

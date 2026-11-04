@@ -16,6 +16,7 @@
 #include "driver/manifest_processor.h"
 #include "llvm/Support/raw_ostream.h"
 #include "moon_bundling/proto_importer.h"
+#include "support/display_path.h"
 #include "support/terminal.h"
 
 using sun::driver::BuildRecord;
@@ -200,13 +201,15 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
   const std::string& inputFile = job.inputFiles[0];
   const std::string testOutput = getTestOutputName(job);
   sun::support::messageStream("info")
-      << "Building tests: " << inputFile << " -> " << testOutput << "\n";
+      << "Building tests: " << sun::support::displayPath(inputFile) << " -> "
+      << sun::support::displayPath(testOutput) << "\n";
   llvm::outs().flush();
 
   const std::string inputHash = computeJobInputHash(job, /*forTests=*/true);
   std::optional<BuildRecord> existing;
   if (maySkip(job) && isUpToDate(testOutput, inputHash, existing)) {
-    sun::support::messageStream("info") << "Up to date: " << testOutput << "\n";
+    sun::support::messageStream("info")
+        << "Up to date: " << sun::support::displayPath(testOutput) << "\n";
     return 0;
   }
 
@@ -236,7 +239,7 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
                                 {inputHash, /*hasTests=*/true, hasExecutable});
   std::string errorMsg;
   sun::support::messageStream("info")
-      << "Linking tests: " << testOutput << "\n";
+      << "Linking tests: " << sun::support::displayPath(testOutput) << "\n";
   llvm::outs().flush();
   if (!sun::driver::compileToExecutable(
           testDriver->getModule(), testOutput, errorMsg,
@@ -247,7 +250,8 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
     return 1;
   }
   sun::support::messageStream("info")
-      << "Successfully compiled test binary to: " << testOutput << "\n";
+      << "Successfully compiled test binary to: "
+      << sun::support::displayPath(testOutput) << "\n";
   return 0;
 }
 
@@ -260,7 +264,8 @@ int compileEntrypoint(const CompileJob& job) {
 
   try {
     sun::support::messageStream("info")
-        << "Building: " << inputFile << " -> " << job.outputFile << "\n";
+        << "Building: " << sun::support::displayPath(inputFile) << " -> "
+        << sun::support::displayPath(job.outputFile) << "\n";
     llvm::outs().flush();
     const bool wantTests = !job.noTest && !job.emitObjOnly;
     const std::string inputHash = computeJobInputHash(job, /*forTests=*/false);
@@ -272,7 +277,8 @@ int compileEntrypoint(const CompileJob& job) {
       std::optional<BuildRecord> built;
       if (isUpToDate(job.outputFile, inputHash, built)) {
         sun::support::messageStream("info")
-            << "Up to date: " << job.outputFile << "\n";
+            << "Up to date: " << sun::support::displayPath(job.outputFile)
+            << "\n";
         if (!wantTests || !built->hasTests) {
           return 0;
         }
@@ -289,7 +295,8 @@ int compileEntrypoint(const CompileJob& job) {
               "packaged entrypoint has no production executable: " + inputFile);
         }
         sun::support::messageStream("info")
-            << "Up to date: " << getTestOutputName(job) << "\n";
+            << "Up to date: "
+            << sun::support::displayPath(getTestOutputName(job)) << "\n";
         return 0;
       }
     }
@@ -333,7 +340,8 @@ int compileEntrypoint(const CompileJob& job) {
           << "No main() found; emitting only the test binary\n";
     } else if (job.emitLLVMOnly) {
       sun::support::messageStream("info")
-          << "Writing LLVM IR: " << job.outputFile << "\n";
+          << "Writing LLVM IR: " << sun::support::displayPath(job.outputFile)
+          << "\n";
       llvm::outs().flush();
       std::error_code ec;
       llvm::raw_fd_ostream output(job.outputFile, ec);
@@ -350,13 +358,15 @@ int compileEntrypoint(const CompileJob& job) {
       }
     } else if (job.emitObjOnly) {
       sun::support::messageStream("info")
-          << "Writing object: " << job.outputFile << "\n";
+          << "Writing object: " << sun::support::displayPath(job.outputFile)
+          << "\n";
       llvm::outs().flush();
       success = sun::driver::emitObjectFile(driver->getModule(), job.outputFile,
                                             errorMsg, job.optimize);
     } else {
       sun::support::messageStream("info")
-          << "Linking executable: " << job.outputFile << "\n";
+          << "Linking executable: " << sun::support::displayPath(job.outputFile)
+          << "\n";
       llvm::outs().flush();
       success = sun::driver::compileToExecutable(
           driver->getModule(), job.outputFile, errorMsg,
@@ -371,7 +381,8 @@ int compileEntrypoint(const CompileJob& job) {
     }
     if (emitProduction) {
       sun::support::messageStream("info")
-          << "Successfully compiled to: " << job.outputFile << "\n";
+          << "Successfully compiled to: "
+          << sun::support::displayPath(job.outputFile) << "\n";
     }
 
     // A program with tests also gets a test binary, so `sun -c` leaves

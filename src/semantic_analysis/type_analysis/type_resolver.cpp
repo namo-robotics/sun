@@ -32,6 +32,22 @@ using sun::types::unwrapRef;
  * unit. */
 namespace {
 
+/** Uses enclosing source context when a synthesized annotation has no span. */
+std::optional<sun::support::Position> annotationLocation(
+    const sun::support::Position& span,
+    const std::optional<sun::support::Position>& enclosing) {
+  if (span.filePath || span.endOffset || span.offset != 0 ||
+      span.line != 1 || span.column != 1) {
+    return span;
+  }
+  if (enclosing && (enclosing->filePath || enclosing->endOffset ||
+                    enclosing->offset != 0 || enclosing->line != 1 ||
+                    enclosing->column != 1)) {
+    return enclosing;
+  }
+  return std::nullopt;
+}
+
 /**
  * What `_return_type_of<F>` stands for once F is known. A lambda or function
  * answers with what it returns; a parameter that is still standing for itself
@@ -630,7 +646,7 @@ TypePtr TypeResolver::resolveAnnotation(const sun::ast::TypeAnnotation& annot) {
                          "'. No generic class, interface or enum by that name "
                          "is visible here — check the spelling, and that the "
                          "module declaring it is imported in this scope.",
-                     annot.span);
+                     annotationLocation(annot.span, ctx_.currentLocation()));
   }
 
   // Resolve the base name through using imports. A dotted name keeps its
@@ -683,7 +699,7 @@ TypePtr TypeResolver::resolveAnnotation(const sun::ast::TypeAnnotation& annot) {
                        "'. No class, interface or enum by that name is "
                        "visible here — check the spelling, and that the "
                        "module declaring it is imported in this scope.",
-                   annot.span);
+                   annotationLocation(annot.span, ctx_.currentLocation()));
 }
 
 // -------------------------------------------------------------------

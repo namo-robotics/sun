@@ -50,12 +50,16 @@ struct Position {
   bool hasEnd() const { return endLine.has_value() && endColumn.has_value(); }
 
   /**
-   * Format as "file:line:column" or "line:column" if no file
+   * Format as "file:line:column" or "line:column" if no file. A nonpositive
+   * line denotes a known file without source coordinates and prints only it.
    */
   std::string toString() const {
     std::string result;
     if (filePath) {
       result = *filePath + ":";
+    }
+    if (line <= 0) {
+      return filePath.value_or("");
     }
     result += std::to_string(line) + ":" + std::to_string(column);
     return result;

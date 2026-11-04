@@ -238,9 +238,8 @@ std::shared_ptr<ClassType> GenericSpecializer::instantiateGenericClass(
   std::vector<sun::ast::ImplementedInterfaceAST> interfacesClone;
   for (const auto& ifaceRef :
        genericClassInfo->AST->getImplementedInterfaces()) {
-    auto interfaceType = std::dynamic_pointer_cast<InterfaceType>(
-        sema_.typeResolver().typeAnnotationToType(ifaceRef.toAnnotation(),
-                                                  true));
+    auto interfaceType = sema_.interfaces().resolveImplementedInterface(
+        *genericClassInfo->AST, ifaceRef);
 
     if (interfaceType) {
       specializedClass->addImplementedInterface(*interfaceType);
@@ -249,6 +248,7 @@ std::shared_ptr<ClassType> GenericSpecializer::instantiateGenericClass(
     // Clone interface reference for specialized AST
     sun::ast::ImplementedInterfaceAST ifaceClone;
     ifaceClone.name = ifaceRef.name;
+    ifaceClone.location = ifaceRef.location;
     ifaceClone.declarationKey = ifaceRef.declarationKey;
     for (const auto& ta : ifaceRef.typeArguments) {
       ifaceClone.typeArguments.push_back(ta);

@@ -8,6 +8,7 @@
 #include "driver/driver.h"
 #include "driver/git_source.h"
 #include "llvm/Support/raw_ostream.h"
+#include "support/display_path.h"
 
 /** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
@@ -61,6 +62,8 @@ int runTestEntrypoint(const std::string& inputFile, const TestOptions& options,
  * only when every suite passes.
  */
 int runConfigTests(const TestOptions& options) {
+  sun::support::DisplayPathScope displayPaths(
+      std::filesystem::absolute(options.inputFile).parent_path());
   try {
     sun::driver::SunConfig config = loadConfigInput(options.inputFile);
     int failures = 0;
@@ -68,7 +71,8 @@ int runConfigTests(const TestOptions& options) {
       DependencyPathVariables dependencyVariables(config, entry);
       if (config.entrypoints.size() > 1) {
         // Flushed so the header lands before the runner's own stdout.
-        llvm::outs() << "== " << entry.path << " ==\n";
+        llvm::outs() << "== " << sun::support::displayPath(entry.path)
+                     << " ==\n";
         llvm::outs().flush();
       }
       if (runTestEntrypoint(entry.path, options,
