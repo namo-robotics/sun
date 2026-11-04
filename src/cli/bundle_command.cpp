@@ -5,6 +5,7 @@
 #include "cli/command_support.h"
 #include "driver/git_source.h"
 #include "llvm/Support/raw_ostream.h"
+#include "support/display_path.h"
 #include "support/error.h"
 #include "support/terminal.h"
 
@@ -24,14 +25,13 @@ int buildMoonBundle(const std::string& entrypoint,
       return 0;
     }
     for (const auto& f : report.sunFiles) {
-      sun::support::messageStream("info") << "  Including: " << f << "\n";
+      sun::support::logPathMessage("debug", "  Including: ", f);
     }
     for (const auto& p : report.protoFiles) {
-      sun::support::messageStream("info") << "  Including proto: " << p << "\n";
+      sun::support::logPathMessage("debug", "  Including proto: ", p);
     }
     for (const auto& m : report.moonImports) {
-      sun::support::messageStream("info")
-          << "  Moon import: " << m.path << "\n";
+      sun::support::logPathMessage("debug", "  Moon import: ", m.path);
     }
     return 0;
   } catch (const sun::support::SunError& e) {

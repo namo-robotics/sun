@@ -626,6 +626,7 @@ message ClassMethod {
  * Implemented interface with type arguments
  */
 message ImplementedInterface {
+  optional Position location = 4;
   optional string declaration_key = 3;
   string name = 1;
   repeated TypeAnnotation type_arguments = 2;

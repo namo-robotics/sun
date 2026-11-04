@@ -69,6 +69,12 @@ class InterfaceAnalyzer {
       const sun::ast::ClassDefinitionAST &classDef,
       std::shared_ptr<sun::types::ClassType> classType);
 
+  /** Resolves an implemented interface with its owning class as error context.
+   */
+  std::shared_ptr<sun::types::InterfaceType> resolveImplementedInterface(
+      const sun::ast::ClassDefinitionAST &owner,
+      const sun::ast::ImplementedInterfaceAST &reference);
+
   /** Resolve the receiver member and enforce access rules. */
   sun::types::TypePtr resolveInterfaceMemberType(
       const sun::ast::MemberAccessAST &expr,

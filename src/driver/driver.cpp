@@ -33,6 +33,7 @@
 #include "semantic_analysis/semantic_pipeline.h"
 #include "semantic_analysis/type_registry.h"
 #include "serialization/ast_serializer.h"
+#include "support/display_path.h"
 #include "support/error.h"
 #include "support/source_manager.h"
 #include "support/stage_timer.h"
@@ -394,7 +395,8 @@ void Driver::setDebugMode(bool enable, const std::string& inputFile) {
     }
     std::filesystem::create_directories(debugFolder_);
     sun::support::messageStream("info")
-        << "Debug output folder: " << debugFolder_ << "/\n";
+        << "Debug output folder: " << sun::support::displayPath(debugFolder_)
+        << "/\n";
   }
 }
 
@@ -536,7 +538,8 @@ void Driver::writeUserDefinedIR(const std::string& path) {
   llvm::raw_fd_ostream OS(path, EC);
   if (EC) {
     sun::support::messageStream("warning")
-        << "Could not write " << path << ": " << EC.message() << "\n";
+        << "Could not write " << sun::support::displayPath(path) << ": "
+        << EC.message() << "\n";
     return;
   }
 
@@ -773,7 +776,8 @@ static void warnAboutArchiveSet(const std::vector<std::string>& archives,
         << " will be linked, each bound to the code that came with "
            "it:\n";
     for (const auto& path : paths) {
-      sun::support::messageStream("warning") << "  " << path << "\n";
+      sun::support::messageStream("warning")
+          << "  " << sun::support::displayPath(path) << "\n";
     }
   }
 
@@ -1007,11 +1011,11 @@ void Driver::applyTestHandling(BlockExprAST& blockAst) {
     std::ofstream runnerFile(runnerPath);
     if (runnerFile) {
       runnerFile << runnerSrc;
-      sun::support::messageStream("info")
-          << "  Generated: " << runnerPath << "\n";
+      sun::support::logPathMessage("debug", "  Generated: ", runnerPath);
     } else {
       sun::support::messageStream("warning")
-          << "Could not write " << runnerPath << "\n";
+          << "Could not write " << sun::support::displayPath(runnerPath)
+          << "\n";
     }
   }
 
@@ -1135,10 +1139,10 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
     std::ofstream dotFile(dotPath);
     if (dotFile) {
       dotFile << dot;
-      sun::support::messageStream("info") << "  Generated: " << dotPath << "\n";
+      sun::support::logPathMessage("debug", "  Generated: ", dotPath);
     } else {
       sun::support::messageStream("warning")
-          << "Could not write " << dotPath << "\n";
+          << "Could not write " << sun::support::displayPath(dotPath) << "\n";
     }
   }
 
@@ -1152,11 +1156,10 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
     std::ofstream scopeFile(scopePath);
     if (scopeFile) {
       scopeFile << html;
-      sun::support::messageStream("info")
-          << "  Generated: " << scopePath << "\n";
+      sun::support::logPathMessage("debug", "  Generated: ", scopePath);
     } else {
       sun::support::messageStream("warning")
-          << "Could not write " << scopePath << "\n";
+          << "Could not write " << sun::support::displayPath(scopePath) << "\n";
     }
   }
 
@@ -1259,7 +1262,7 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
   if (debugMode_ && !debugFolder_.empty()) {
     std::string irPath = debugFolder_ + "/ir.ll";
     writeUserDefinedIR(irPath);
-    sun::support::messageStream("info") << "  Generated: " << irPath << "\n";
+    sun::support::logPathMessage("debug", "  Generated: ", irPath);
   }
 
   // If not executing, handle AOT compilation specifics
@@ -1569,7 +1572,8 @@ SunValue Driver::executeFile(const std::string& filename, int argc,
   std::ifstream file(filename);
   if (!file.is_open()) {
     sun::support::messageStream("error")
-        << "Could not open file '" << filename << "'\n";
+        << "Could not open file '" << sun::support::displayPath(filename)
+        << "'\n";
     return VoidValue{};
   }
   std::stringstream buffer;
@@ -1698,7 +1702,8 @@ void Driver::compileFile(const std::string& filename) {
   std::ifstream file(filename);
   if (!file.is_open()) {
     sun::support::messageStream("error")
-        << "Could not open file '" << filename << "'\n";
+        << "Could not open file '" << sun::support::displayPath(filename)
+        << "'\n";
     return;
   }
   std::stringstream buffer;

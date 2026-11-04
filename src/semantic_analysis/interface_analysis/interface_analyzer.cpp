@@ -91,6 +91,20 @@ bool sameInterfaceLifetimes(const TypePtr& left, const TypePtr& right) {
 }
 }  // namespace
 
+std::shared_ptr<InterfaceType> InterfaceAnalyzer::resolveImplementedInterface(
+    const sun::ast::ClassDefinitionAST& owner,
+    const sun::ast::ImplementedInterfaceAST& reference) {
+  try {
+    return std::dynamic_pointer_cast<InterfaceType>(
+        resolver_.typeAnnotationToType(
+            reference.toAnnotation(owner.getLocation()), true));
+  } catch (sun::support::SunError& error) {
+    error.addContext("resolving interface '" + reference.name +
+                     "' implemented by class '" + owner.getName() + "'");
+    throw;
+  }
+}
+
 void InterfaceAnalyzer::ensureClassInterfaces(DeclarationId declaration) {
   if (preparedTypes_.contains(declaration) ||
       preparingTypes_.contains(declaration)) {
@@ -108,8 +122,8 @@ void InterfaceAnalyzer::ensureClassInterfaces(DeclarationId declaration) {
     auto classType = ctx_.types()->getClass(declaration);
     for (const auto& reference :
          found->second.node->getImplementedInterfaces()) {
-      auto interfaceType = std::dynamic_pointer_cast<InterfaceType>(
-          resolver_.typeAnnotationToType(reference.toAnnotation(), true));
+      auto interfaceType =
+          resolveImplementedInterface(*found->second.node, reference);
       if (!interfaceType) {
         logAndThrowError("Class '" + found->second.node->getName() +
                              "' implements unknown interface '" +
@@ -283,8 +297,7 @@ void InterfaceAnalyzer::inheritInterfaceFields(
     const sun::ast::ClassDefinitionAST& classDef,
     std::shared_ptr<ClassType> classType) {
   for (const auto& ifaceRef : classDef.getImplementedInterfaces()) {
-    auto interfaceType = std::dynamic_pointer_cast<InterfaceType>(
-        resolver_.typeAnnotationToType(ifaceRef.toAnnotation(), true));
+    auto interfaceType = resolveImplementedInterface(classDef, ifaceRef);
     if (!interfaceType) {
       logAndThrowError("Class '" + classDef.getName() +
                            "' implements unknown interface '" + ifaceRef.name +
@@ -333,8 +346,7 @@ void InterfaceAnalyzer::validateInterfaceImplementation(
     std::shared_ptr<ClassType> classType) {
   std::vector<std::shared_ptr<InterfaceType>> interfaces;
   for (const auto& reference : classDef.getImplementedInterfaces()) {
-    auto type = std::dynamic_pointer_cast<InterfaceType>(
-        resolver_.typeAnnotationToType(reference.toAnnotation(), true));
+    auto type = resolveImplementedInterface(classDef, reference);
     if (type) {
       interfaces.push_back(type);
     }

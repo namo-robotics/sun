@@ -216,7 +216,7 @@ manifest { source_files: ["util.sun"] }
   EXPECT_TRUE(
       contains(initialLog, "Building library: " + scratch.path("lib.sun")))
       << initialLog;
-  EXPECT_TRUE(contains(initialLog, "Writing library: " + moon)) << initialLog;
+  EXPECT_FALSE(contains(initialLog, "Writing library: " + moon)) << initialLog;
   EXPECT_TRUE(contains(initialLog, "Successfully created: " + moon))
       << initialLog;
   const auto firstHash = sun::driver::readMoonInputHash(moon);
@@ -225,6 +225,7 @@ manifest { source_files: ["util.sun"] }
   const auto written = std::filesystem::last_write_time(moon);
   const auto cachedLog = scratch.runSun(build);
   EXPECT_TRUE(contains(cachedLog, "Up to date: " + moon)) << cachedLog;
+  EXPECT_FALSE(contains(cachedLog, "Building library:")) << cachedLog;
   EXPECT_FALSE(contains(cachedLog, "Writing library:")) << cachedLog;
   EXPECT_EQ(std::filesystem::last_write_time(moon), written);
 
@@ -296,8 +297,8 @@ manifest {
 
   std::string log = scratch.runSun(build);
   EXPECT_TRUE(contains(log, "Building: " + scratch.path("app.sun"))) << log;
-  EXPECT_TRUE(contains(log, "Linking executable: " + app)) << log;
-  EXPECT_TRUE(contains(log, "Linking tests: " + app + "_test")) << log;
+  EXPECT_FALSE(contains(log, "Linking executable: " + app)) << log;
+  EXPECT_FALSE(contains(log, "Linking tests: " + app + "_test")) << log;
   EXPECT_TRUE(contains(log, "Successfully compiled to: " + app)) << log;
   EXPECT_TRUE(contains(log, "Successfully compiled test binary to")) << log;
 
@@ -312,6 +313,8 @@ manifest {
   log = scratch.runSun(build);
   EXPECT_TRUE(contains(log, "Up to date: " + app + "\n")) << log;
   EXPECT_TRUE(contains(log, "Up to date: " + app + "_test")) << log;
+  EXPECT_FALSE(contains(log, "Building:")) << log;
+  EXPECT_FALSE(contains(log, "Building tests:")) << log;
   EXPECT_FALSE(contains(log, "Successfully compiled")) << log;
   EXPECT_FALSE(contains(log, "Linking executable:")) << log;
   EXPECT_FALSE(contains(log, "Linking tests:")) << log;

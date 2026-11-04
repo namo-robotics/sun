@@ -14,6 +14,7 @@
 #include "llvm/Support/GlobPattern.h"
 #include "llvm/Support/raw_ostream.h"
 #include "parsing/formatter.h"
+#include "support/display_path.h"
 #include "support/error.h"
 #include "support/terminal.h"
 
@@ -159,14 +160,16 @@ bool collectSunFiles(const std::string& dir, std::vector<std::string>& out,
   std::filesystem::recursive_directory_iterator it(dir, ec), end;
   if (ec) {
     sun::support::messageStream("error")
-        << dir << ": cannot read directory: " << ec.message() << "\n";
+        << sun::support::displayPath(dir)
+        << ": cannot read directory: " << ec.message() << "\n";
     return false;
   }
   size_t firstNew = out.size();
   for (; it != end; it.increment(ec)) {
     if (ec) {
       sun::support::messageStream("error")
-          << dir << ": error while scanning: " << ec.message() << "\n";
+          << sun::support::displayPath(dir)
+          << ": error while scanning: " << ec.message() << "\n";
       return false;
     }
     const std::filesystem::path& path = it->path();
@@ -204,18 +207,18 @@ bool expandInputs(const std::vector<std::string>& inputs,
     if (std::filesystem::exists(input, ec) &&
         ignores.ignores(input, directory)) {
       sun::support::messageStream("info")
-          << input << ": skipped (sun_fmt.ignore)\n";
+          << sun::support::displayPath(input) << ": skipped (sun_fmt.ignore)\n";
     } else if (directory) {
       if (!collectSunFiles(input, files, ignores)) {
         ok = false;
       }
     } else if (!std::filesystem::exists(input, ec)) {
-      sun::support::messageStream("error")
-          << input << ": no such file or directory\n";
+      sun::support::messageStream("error") << sun::support::displayPath(input)
+                                           << ": no such file or directory\n";
       ok = false;
     } else if (std::filesystem::path(input).extension() != ".sun") {
-      sun::support::messageStream("warning")
-          << input << ": skipped (not a .sun file)\n";
+      sun::support::messageStream("warning") << sun::support::displayPath(input)
+                                             << ": skipped (not a .sun file)\n";
     } else {
       files.push_back(input);
     }
@@ -233,7 +236,8 @@ bool rewriteFile(const std::string& file, const std::string& contents) {
     std::ofstream out(tmpPath, std::ios::trunc);
     if (!out) {
       sun::support::messageStream("error")
-          << file << ": cannot write " << tmpPath << "\n";
+          << sun::support::displayPath(file) << ": cannot write "
+          << sun::support::displayPath(tmpPath) << "\n";
       return false;
     }
     out << contents;
@@ -242,7 +246,8 @@ bool rewriteFile(const std::string& file, const std::string& contents) {
   std::filesystem::rename(tmpPath, file, ec);
   if (ec) {
     sun::support::messageStream("error")
-        << file << ": rename failed: " << ec.message() << "\n";
+        << sun::support::displayPath(file)
+        << ": rename failed: " << ec.message() << "\n";
     std::filesystem::remove(tmpPath, ec);
     return false;
   }
@@ -255,7 +260,8 @@ bool rewriteFile(const std::string& file, const std::string& contents) {
 FormatOutcome formatFile(const std::string& file, bool checkMode) {
   std::ifstream in(file);
   if (!in) {
-    sun::support::messageStream("error") << file << ": cannot open file\n";
+    sun::support::messageStream("error")
+        << sun::support::displayPath(file) << ": cannot open file\n";
     return FormatOutcome::Failed;
   }
   std::stringstream buffer;
@@ -267,7 +273,8 @@ FormatOutcome formatFile(const std::string& file, bool checkMode) {
   try {
     formatted = sun::parsing::formatSource(source, file);
   } catch (const sun::support::SunError& e) {
-    sun::support::messageStream("error") << file << ": " << e.what() << "\n";
+    sun::support::messageStream("error")
+        << sun::support::displayPath(file) << ": " << e.what() << "\n";
     return FormatOutcome::Failed;
   }
 
@@ -275,7 +282,7 @@ FormatOutcome formatFile(const std::string& file, bool checkMode) {
     return FormatOutcome::Unchanged;
   }
   if (checkMode) {
-    llvm::outs() << file << ": needs formatting\n";
+    llvm::outs() << sun::support::displayPath(file) << ": needs formatting\n";
     return FormatOutcome::Changed;
   }
   return rewriteFile(file, formatted) ? FormatOutcome::Changed

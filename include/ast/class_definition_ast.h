@@ -48,8 +48,10 @@ struct ClassMethodDecl {
  */
 struct ImplementedInterfaceAST {
   /** Represent an implemented interface using ordinary type syntax. */
-  TypeAnnotation toAnnotation() const {
+  TypeAnnotation toAnnotation(
+      const sun::support::Position& fallback = {}) const {
     TypeAnnotation result(name);
+    result.span = location.value_or(fallback);
     result.declarationKey = declarationKey;
     for (const auto& argument : typeArguments) {
       result.typeArguments.push_back(
@@ -60,6 +62,7 @@ struct ImplementedInterfaceAST {
   std::string name;
   std::vector<TypeAnnotation> typeArguments;
   std::optional<sun::semantic_analysis::PortableDeclarationKey> declarationKey;
+  std::optional<sun::support::Position> location;
 };
 
 /**

@@ -99,6 +99,9 @@ pbc::TypeAnnotation ASTSerializer::serializeTypeAnnotation(
     const sun::ast::TypeAnnotation& type) const {
   pbc::TypeAnnotation proto;
   proto.set_base_name(type.baseName);
+  if (config_.include_location && type.span.hasSourceLocation()) {
+    *proto.mutable_location() = serializePosition(type.span);
+  }
   if (type.declarationKey) {
     proto.set_declaration_key(type.declarationKey->encoding());
   }
@@ -919,6 +922,9 @@ void ASTSerializer::serializeClassDef(const sun::ast::ClassDefinitionAST& expr,
   for (const auto& iface : expr.getImplementedInterfaces()) {
     auto* ifaceProto = cls->add_implemented_interfaces();
     ifaceProto->set_name(iface.name);
+    if (config_.include_location && iface.location) {
+      *ifaceProto->mutable_location() = serializePosition(*iface.location);
+    }
     if (iface.declarationKey) {
       ifaceProto->set_declaration_key(iface.declarationKey->encoding());
     }

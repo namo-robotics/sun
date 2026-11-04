@@ -346,3 +346,41 @@ TEST_F(CustomBuild, TargetOnlyBinaryNeedsNoHostVariant) {
 }
 
 }  // namespace
+
+
+/** Build scripts keep the workspace display base despite changing directories. */
+TEST_F(CustomBuild, WorkspaceRelativeBuildPaths) {
+  ASSERT_EQ(command("build"), 0) << diagnostics();
+  const auto log = diagnostics();
+  EXPECT_NE(log.find("Building library: lib/helper.sun ->"), std::string::npos) << log;
+  EXPECT_NE(log.find("Building: app/main.sun ->"), std::string::npos) << log;
+  EXPECT_EQ(log.find(root.string()), std::string::npos) << log;
+  auto selected = describe();
+  const fs::path buildRoot(selected.getString("build_root")->str());
+  EXPECT_TRUE(buildRoot.is_absolute());
+  auto context = document(read(buildRoot / ".contexts/app.json"));
+  ASSERT_TRUE(context.getString("display_root"));
+  EXPECT_EQ(context.getString("display_root")->str(), root.string());
+}
+
+/** Diagnostics from custom compiler children use the selected config base. */
+TEST_F(CustomBuild, WorkspaceRelativeErrorPaths) {
+  write("app/main.sun", "/** Requires an unavailable interface. */\n"
+                        "class Broken implements Missing {}\n");
+  EXPECT_NE(command("build"), 0);
+  const auto log = diagnostics();
+  EXPECT_NE(log.find("app/main.sun:2:25"), std::string::npos) << log;
+  EXPECT_NE(log.find("class 'Broken'"), std::string::npos) << log;
+  EXPECT_EQ(log.find((root / "app/main.sun").string()), std::string::npos) << log;
+}
+
+/** A direct source command displays files relative to its invocation directory. */
+TEST_F(CustomBuild, DirectSourceUsesInvocationDirectory) {
+  write("broken.sun", "/** Requires an unavailable interface. */\n"
+                      "class Broken implements Missing {}\n");
+  EXPECT_NE(invoke(compiler, {"-c", (root / "broken.sun").string(), "--no-test"}), 0);
+  const auto expected = (root / "broken.sun").lexically_relative(fs::current_path()).string();
+  const auto log = diagnostics();
+  EXPECT_NE(log.find(expected + ":2:25"), std::string::npos) << log;
+  EXPECT_EQ(log.find((root / "broken.sun").string()), std::string::npos) << log;
+}

@@ -86,8 +86,7 @@ struct TypeAnnotation {
   // type arguments); empty for an unannotated application
   std::vector<std::string> lifetimeArguments;
 
-  // Source span (includes the "throws IError" suffix when present); not
-  // serialized
+  // Source span, retained when serialization includes diagnostic locations.
   sun::support::Position span{};
 
   /** Creates a type annotation from a name or an existing annotation. */

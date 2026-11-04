@@ -10,6 +10,7 @@
 #include "driver/driver.h"
 #include "driver/git_source.h"
 #include "llvm/Support/raw_ostream.h"
+#include "support/display_path.h"
 #include "support/terminal.h"
 
 /** Parses command-line options and runs the selected compiler command. */
@@ -35,7 +36,8 @@ std::optional<std::string> findConfigBinary(const std::string& configFile) {
     }
     if (binaries.size() != 1) {
       sun::support::messageStream("error")
-          << configFile << " declares " << binaries.size()
+          << sun::support::displayPath(configFile) << " declares "
+          << binaries.size()
           << " binary entrypoints; name the .sun file to run\n";
       return std::nullopt;
     }
@@ -50,6 +52,10 @@ std::optional<std::string> findConfigBinary(const std::string& configFile) {
 
 /** Runs the jit command and returns its process exit status. */
 int runJitCommand(const BuildRunOptions& options) {
+  sun::support::DisplayPathScope displayPaths(
+      options.configInput
+          ? std::filesystem::absolute(options.inputFiles.at(0)).parent_path()
+          : std::filesystem::path{});
   sun::driver::GitDependencyBuildScope dependencyScope(
       options.shared.debugInfo, options.shared.optimize, options.forceRebuild,
       options.refreshSources);
@@ -62,9 +68,7 @@ int runJitCommand(const BuildRunOptions& options) {
     inputFile = *binary;
   }
 
-  sun::support::messageStream("info")
-      << "Compiling for JIT: " << inputFile << "\n";
-  llvm::outs().flush();
+  sun::support::logPathMessage("info", "Compiling for JIT: ", inputFile);
 
   // argv[0] = script name, followed by the arguments after --
   ProgramArguments programArgs(inputFile, options.programArgs);

@@ -25,6 +25,7 @@
 #include "driver/git_source.h"
 #include "driver/manifest_processor.h"
 #include "driver/package.h"
+#include "support/display_path.h"
 
 /** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
@@ -194,6 +195,7 @@ void runCustomBuild(const BuildRunOptions& options,
   file << llvm::json::Value(llvm::json::Object{
       {"version", 1},
       {"config", config.configFile.string()},
+      {"display_root", sun::support::displayPathBase().string()},
       {"target", config.targetTriple},
       {"source", source},
       {"output", output.string()},
@@ -260,6 +262,8 @@ void runCustomBuild(const BuildRunOptions& options,
 
 /** Runs the config build command and returns its process exit status. */
 int runConfigBuildCommand(const BuildRunOptions& options) {
+  sun::support::DisplayPathScope displayPaths(
+      std::filesystem::absolute(options.inputFiles.at(0)).parent_path());
   sun::driver::GitDependencyBuildScope dependencyScope(
       options.shared.debugInfo, options.shared.optimize, options.forceRebuild,
       options.refreshSources);
@@ -402,7 +406,8 @@ void configureProductCompiler(const BuildRunOptions& options) {
         entry.type == sun::driver::ConfigEntrypoint::Type::Library;
     const auto status = library ? buildLibrary(job) : compileEntrypoint(job);
     if (status != 0) {
-      sun::support::logAndThrowError("config build failed: " + entry.path);
+      sun::support::logAndThrowError("config build failed: " +
+                                     sun::support::displayPath(entry.path));
     }
   });
 }
@@ -598,6 +603,8 @@ int runDependencyPathCommand(const std::vector<std::string>& args) {
 int runBuildCompileCommand(const std::vector<std::string>& args) {
   try {
     auto context = sun::driver::readBuildContext();
+    sun::support::DisplayPathScope displayPaths(
+        std::string(context.getString("display_root").value_or("")));
     auto config = sun::driver::buildContextConfig();
     auto* inherited = context.getArray("flags");
     auto source = context.getString("source"),

@@ -4,6 +4,7 @@
 // lives in its own file under src/cli/; the rules of the command line itself
 // are in option_parser.cpp.
 
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -16,6 +17,7 @@
 #include "cli/jit_command.h"
 #include "cli/option_parser.h"
 #include "cli/test_command.h"
+#include "support/display_path.h"
 
 using namespace sun::cli;
 
@@ -51,6 +53,7 @@ static int runDefaultCommand(const std::string& programName,
 /** Parses process arguments and dispatches the selected Sun compiler command.
  */
 int main(int argc, char* argv[]) {
+  sun::support::DisplayPathScope displayPaths(std::filesystem::current_path());
   const std::string programName = argc > 0 ? argv[0] : "sun";
   std::vector<std::string> args;
   if (argc > 1) {

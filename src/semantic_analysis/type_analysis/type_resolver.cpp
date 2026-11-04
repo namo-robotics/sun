@@ -32,6 +32,19 @@ using sun::types::unwrapRef;
  * unit. */
 namespace {
 
+/** Uses enclosing source context when a synthesized annotation has no span. */
+std::optional<sun::support::Position> annotationLocation(
+    const sun::support::Position& span,
+    const std::optional<sun::support::Position>& enclosing) {
+  if (span.hasSourceLocation()) {
+    return span;
+  }
+  if (enclosing && enclosing->hasSourceLocation()) {
+    return enclosing;
+  }
+  return std::nullopt;
+}
+
 /**
  * What `_return_type_of<F>` stands for once F is known. A lambda or function
  * answers with what it returns; a parameter that is still standing for itself
@@ -630,7 +643,7 @@ TypePtr TypeResolver::resolveAnnotation(const sun::ast::TypeAnnotation& annot) {
                          "'. No generic class, interface or enum by that name "
                          "is visible here — check the spelling, and that the "
                          "module declaring it is imported in this scope.",
-                     annot.span);
+                     annotationLocation(annot.span, ctx_.currentLocation()));
   }
 
   // Resolve the base name through using imports. A dotted name keeps its
@@ -683,7 +696,7 @@ TypePtr TypeResolver::resolveAnnotation(const sun::ast::TypeAnnotation& annot) {
                        "'. No class, interface or enum by that name is "
                        "visible here — check the spelling, and that the "
                        "module declaring it is imported in this scope.",
-                   annot.span);
+                   annotationLocation(annot.span, ctx_.currentLocation()));
 }
 
 // -------------------------------------------------------------------

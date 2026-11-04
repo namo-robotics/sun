@@ -23,6 +23,7 @@
 #include "moon_bundling/moon.h"
 #include "moon_bundling/proto_importer.h"
 #include "serialization/source_file_ids.h"
+#include "support/display_path.h"
 #include "support/error.h"
 #include "support/terminal.h"
 
@@ -46,7 +47,8 @@ namespace fs = std::filesystem;
 std::string readWholeFile(const std::string& path, const char* what) {
   std::ifstream in(path, std::ios::binary);
   if (!in) {
-    fail(std::string("Cannot read ") + what + ": " + path);
+    fail(std::string("Cannot read ") + what + ": " +
+         sun::support::displayPath(path));
   }
   return std::string((std::istreambuf_iterator<char>(in)),
                      std::istreambuf_iterator<char>());
@@ -399,8 +401,7 @@ void MoonBuilder::writeDebugJson(const std::filesystem::path& outputPath,
   if (!reader->writeDebugJson(jsonPath)) {
     sun::support::logAndThrowError(reader->getError());
   }
-  sun::support::messageStream("info")
-      << "  Generated: " << jsonPath.string() << "\n";
+  sun::support::logPathMessage("debug", "  Generated: ", jsonPath.string());
 }
 
 std::vector<std::string> MoonBuilder::writeBundle(
@@ -475,26 +476,23 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
                                          options.debugInfo, options.optimize});
   sun::driver::GitDependencyBuildScope dependencyScope(
       options.debugInfo, options.optimize, options.forceRebuild);
-  sun::support::messageStream("info") << "Building library: " << entrypoint
-                                      << " -> " << outputPath.string() << "\n";
-  llvm::outs().flush();
   auto inputs = loadInputs(entrypoint, options);
   if (isUpToDate(inputs.inputHash, outputPath, options)) {
-    sun::support::messageStream("info")
-        << "Up to date: " << outputPath.string() << "\n";
-    llvm::outs().flush();
+    sun::support::logPathMessage("info", "Up to date: ", outputPath.string());
     return readExistingReport(outputPath, inputs.archiveSetHash,
                               std::move(inputs.report));
   }
+
+  sun::support::logPathMessage(
+      "info", "Building library: ", entrypoint, outputPath.string());
 
   if (options.onBuildStart) {
     options.onBuildStart();
   }
   const auto symbols = prepareNativeSymbols(inputs);
   auto compiled = compile(inputs, symbols, entrypoint, options);
-  sun::support::messageStream("info")
-      << "Writing library: " << outputPath.string() << "\n";
-  llvm::outs().flush();
+  sun::support::logPathMessage(
+      "debug", "Writing library: ", outputPath.string());
   auto inheritedArchives =
       writeBundle(inputs, symbols, compiled, outputPath, options);
   // Release the compiler before invalidating bundles or transferring its
@@ -505,9 +503,8 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   auto report = std::move(inputs.report);
   report.modules = std::move(compiled.metadata.modules);
   report.inheritedArchives = std::move(inheritedArchives);
-  sun::support::messageStream("info")
-      << "Successfully created: " << outputPath.string() << "\n";
-  llvm::outs().flush();
+  sun::support::logPathMessage(
+      "info", "Successfully created: ", outputPath.string());
   return report;
 }
 

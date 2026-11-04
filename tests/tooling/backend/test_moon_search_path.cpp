@@ -87,7 +87,7 @@ public module library {
   /** Enables import logs for path assertions and executes the fixture program.
    */
   int run(const std::string& command) {
-    return std::system(("env SUN_PATH= SUN_LOG_LEVEL=info " + command + " > " +
+    return std::system(("env SUN_PATH= SUN_LOG_LEVEL=debug " + command + " > " +
                         quote(dir / "log") + " 2>&1")
                            .c_str());
   }
@@ -113,9 +113,16 @@ public module library {
     EXPECT_TRUE(fs::exists(arguments.find("--emit-moon") != std::string::npos
                                ? dir / "project/library.moon"
                                : configuredOutput(target) / "library.moon"));
-    // The build names each bundle it imported
-    EXPECT_NE(readFile(dir / "log").find(dependencyPath.string()),
-              std::string::npos);
+    // Direct builds display paths relative to the working directory. Config
+    // builds keep this dependency absolute because it is outside the project.
+    const auto displayedDependency =
+        arguments.find("--emit-moon") != std::string::npos
+            ? dependencyPath.lexically_relative(fs::current_path())
+            : dependencyPath;
+    EXPECT_NE(readFile(dir / "log").find("Moon import: " +
+                                        displayedDependency.string()),
+              std::string::npos)
+        << readFile(dir / "log");
   }
 };
 
@@ -304,8 +311,9 @@ TEST_P(MoonSearchPath, config_target_selects_outputs_and_dependencies) {
   EXPECT_TRUE(
       fs::exists(configuredOutput("aarch64-linux-gnu") / "cross-library.moon"));
   EXPECT_FALSE(fs::exists(configuredOutput() / "native-library.moon"));
-  EXPECT_NE(readFile(dir / "log").find(dependencyPath.string()),
-            std::string::npos);
+  EXPECT_NE(readFile(dir / "log").find("Moon import: " + dependencyPath.string()),
+            std::string::npos)
+      << readFile(dir / "log");
 }
 
 INSTANTIATE_TEST_SUITE_P(Tooling_Backend, MoonSearchPath,
