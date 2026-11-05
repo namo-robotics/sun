@@ -113,13 +113,19 @@ void BodyAnalyzer::analyzeMatchExpr(sun::ast::MatchExprAST& matchExpr,
         const sun::types::EnumVariant* destination = nullptr;
         const sun::types::EnumVariant* wrapper = nullptr;
         std::shared_ptr<sun::types::EnumType> wrapperType;
+        std::string rejectedTransfer;
         if (source->equals(*target)) {
           destination = &target->getVariants()[i];
         } else {
           for (size_t j = 1; j < target->getVariants().size(); ++j) {
             const auto& candidate = target->getVariants()[j];
-            if (!candidate.payloadTypes.front()->equals(
-                    *variant.payloadTypes.front())) {
+            if (!sun::types::ownedTransferAccepts(
+                    variant.payloadTypes.front(),
+                    candidate.payloadTypes.front())) {
+              if (rejectedTransfer.empty() || candidate.name == variant.name) {
+                rejectedTransfer = sun::types::ownedTransferHint(
+                    variant.payloadTypes.front(), candidate.payloadTypes.front());
+              }
               continue;
             }
             if (destination) {
@@ -140,9 +146,16 @@ void BodyAnalyzer::analyzeMatchExpr(sun::ast::MatchExprAST& matchExpr,
                 continue;
               }
               for (const auto& nestedVariant : nested->getVariants()) {
-                if (nestedVariant.payloadTypes.size() != 1 ||
-                    !nestedVariant.payloadTypes.front()->equals(
-                        *variant.payloadTypes.front())) {
+                if (nestedVariant.payloadTypes.size() != 1) {
+                  continue;
+                }
+                if (!sun::types::ownedTransferAccepts(
+                        variant.payloadTypes.front(),
+                        nestedVariant.payloadTypes.front())) {
+                  if (rejectedTransfer.empty() || nestedVariant.name == variant.name) {
+                    rejectedTransfer = sun::types::ownedTransferHint(
+                        variant.payloadTypes.front(), nestedVariant.payloadTypes.front());
+                  }
                   continue;
                 }
                 if (destination) {
@@ -160,7 +173,10 @@ void BodyAnalyzer::analyzeMatchExpr(sun::ast::MatchExprAST& matchExpr,
         }
         if (!destination) {
           logAndThrowError("Cannot propagate error variant '" + variant.name +
-                               "' into the enclosing enum return type",
+                               "' into the enclosing enum return type" +
+                               (rejectedTransfer.empty()
+                                    ? "; no safe owned transfer is established; use an explicit conversion"
+                                    : rejectedTransfer),
                            location);
         }
         if (wrapper) {
@@ -494,12 +510,15 @@ void BodyAnalyzer::analyzeReturnExpr(sun::ast::ReturnExprAST& returnExpr) {
     sema_.analyzeExpr(const_cast<ExprAST&>(*returnExpr.getValue()),
                       declaredReturn);
     TypePtr valueType = requireResolvedType(*returnExpr.getValue());
-    if (declaredReturn && declaredReturn->isEnum() &&
-        !declaredReturn->equals(*valueType)) {
-      logAndThrowError("Return value has type '" +
-                           valueType->toDisplayString() + "', expected '" +
-                           declaredReturn->toDisplayString() + "'",
-                       returnExpr.getLocation());
+    if (declaredReturn &&
+        (declaredReturn->isEnum() ||
+         (declaredReturn->isClass() && valueType->isClass())) &&
+        !sun::types::ownedTransferAccepts(valueType, declaredReturn)) {
+      logAndThrowError(
+          "Return value has type '" + valueType->toDisplayString() +
+              "', expected '" + declaredReturn->toDisplayString() + "'" +
+              sun::types::ownedTransferHint(valueType, declaredReturn),
+          returnExpr.getLocation());
     }
     // Returning by value out of a borrow would hand the caller a second
     // value backed by the borrowed storage.

@@ -13,6 +13,8 @@ namespace sun::abi {
 /** Canonically encodes semantic metadata, excluding diagnostic and container
  * fields. */
 std::string describeSemantics(const moon::ModuleMetadata& metadata);
+/** Canonically encodes retained proof inputs using the semantic field rules. */
+std::string describeCorrespondenceInputs(const google::protobuf::Message& message);
 /** Checks declaration ownership and retained references against bundle and
  * compiler-provided identities before import. Complete import sets also reject
  * unresolved external references and allow identical embedded records. */

@@ -76,6 +76,7 @@ void AbiCompatibilityChecker::beginCompilation(const std::string& targetTriple,
   warnedBundles_.clear();
   importedContracts_.clear();
   validatedBundles_.clear();
+  correspondenceEvidence_ = {};
   revisions_.clear();
   compatibleRevisions_.clear();
 }
@@ -141,6 +142,14 @@ void AbiCompatibilityChecker::validateImports(
   }
   collectCompatibleRevisions(readers);
   for (auto* reader : readers) {
+    for (const auto& key : reader->listModules()) {
+      const auto& module = *reader->getMetadata(key);
+      const auto revision = revisions_.find(module.content_hash());
+      correspondenceEvidence_.add(module, revision == revisions_.end()
+          ? module.content_hash() : revision->second.library_id());
+    }
+  }
+  for (auto* reader : readers) {
     recordValidatedImport(reader->getLibrary().bundle_contract(),
                           bytesHash(*reader), reader->getPath().string());
   }
@@ -196,9 +205,10 @@ void AbiCompatibilityChecker::collectCompatibleRevisions(
   }
 }
 
-bool AbiCompatibilityChecker::acceptsNominalBorrow(
+bool AbiCompatibilityChecker::hasCompatibleNominalCorrespondence(
     const sun::semantic_analysis::QualifiedName& source,
-    const sun::semantic_analysis::QualifiedName& target, NominalKind kind) const {
+    const sun::semantic_analysis::QualifiedName& target,
+    NominalKind kind) const {
   const auto sourceHash = source.bundleHash();
   const auto targetHash = target.bundleHash();
   if (!compatibleRevisions_.count({sourceHash, targetHash})) {
@@ -223,6 +233,30 @@ bool AbiCompatibilityChecker::acceptsNominalBorrow(
     });
   };
   return declared(from) && declared(to);
+}
+
+CorrespondenceResult AbiCompatibilityChecker::compareNominalImplementation(
+    const sun::semantic_analysis::QualifiedName& source,
+    const sun::semantic_analysis::QualifiedName& target,
+    NominalKind kind, bool plain) const {
+  /** Finds the exact declaration already authorized by nominal correspondence. */
+  const auto key = [&](const auto& name) -> std::string {
+    const auto revision = revisions_.find(name.bundleHash());
+    if (revision == revisions_.end() || name.scopePath.empty()) {
+      return {};
+    }
+    auto path = name.scopePath;
+    path.erase(path.begin());
+    path.push_back(name.baseName);
+    const auto identity = NominalIdentity(revision->second.library_id(), kind, path).encoding();
+    for (const auto& declaration : revision->second.declarations()) {
+      if (declaration.identity() == identity) {
+        return declaration.key();
+      }
+    }
+    return {};
+  };
+  return correspondenceEvidence_.compare(key(source), key(target), plain);
 }
 
 ValidatedBundle AbiCompatibilityChecker::validateImpl(
@@ -258,6 +292,29 @@ ValidatedBundle AbiCompatibilityChecker::validateImpl(
           "Dependency '" + reader.getPath().string() + "', contract " +
           contract.compatibility_hash() +
           ": missing moon.metadata requirement");
+    }
+    std::map<std::pair<uint64_t, uint64_t>, std::string> proofPayloads;
+    for (const auto& entry : reader.getLibrary().modules()) {
+      const auto& metadata = entry.metadata();
+      if (!metadata.has_correspondence_proof()) {
+        continue;
+      }
+      const auto& proof = metadata.correspondence_proof();
+      const auto& bytes = *reader.getBytes();
+      const auto offset = entry.bitcode_offset();
+      const auto size = entry.bitcode_size();
+      if (offset > bytes.size() || size > bytes.size() - offset) {
+        sun::support::logAndThrowError("Correspondence proof payload is out of bounds");
+      }
+      auto [binding, inserted] = proofPayloads.try_emplace({offset, size});
+      if (inserted) {
+        binding->second = moon_bundling::computeSha256Hex(
+            llvm::StringRef(bytes.data() + offset, size));
+      }
+      if (proof.payload_digest() != binding->second) {
+        sun::support::logAndThrowError(
+            "Correspondence proof does not match its compiled payload");
+      }
     }
     std::vector<const moon::ModuleMetadata*> declarationModules;
     std::map<std::string, std::vector<const moon::ModuleMetadata*>>

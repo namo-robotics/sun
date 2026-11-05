@@ -1,7 +1,11 @@
 // ast_serializer.cpp — Implementation of AST to protobuf serialization
 
 #include "serialization/ast_serializer.h"
+#include "moon_bundling/metadata_types.h"
+#include "semantic_analysis/type_registry.h"
 
+#include <set>
+#include <functional>
 #include "ast.h"
 #include "ast.pb.h"
 #include "serialization/token_kind_proto_map.h"
@@ -143,6 +147,35 @@ pbc::TypeAnnotation ASTSerializer::serializeTypeAnnotation(
 
 void ASTSerializer::serializeExprBase(const ExprAST& expr,
                                       pbc::ASTNode* node) const {
+  if (config_.include_proof_bindings && config_.declarations) {
+    const auto& declarations = *config_.declarations;
+    auto target = expr.getTargetDeclarationId();
+    std::set<sun::semantic_analysis::DeclarationId> visited;
+    while (target && visited.insert(target).second) {
+      const auto& record = declarations.get(target);
+      if (record.specialization) {
+        for (const auto& argument : record.specialization->arguments) {
+          *node->add_proof_type_arguments() =
+              sun::moon_bundling::exportType(argument, declarations);
+        }
+        target = record.specialization->source;
+      } else if (record.origin) {
+        target = record.origin;
+      } else {
+        break;
+      }
+    }
+    if (target) {
+      node->set_resolved_declaration_key(
+          sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(target, declarations).encoding());
+    }
+    if (expr.getResolvedType() && expr.getType() != ASTNodeType::FUNCTION &&
+        expr.getType() != ASTNodeType::CLASS_DEFINITION &&
+        expr.getType() != ASTNodeType::ENUM_DEFINITION) {
+      *node->mutable_proof_resolved_type() =
+          sun::moon_bundling::exportType(expr.getResolvedType(), declarations);
+    }
+  }
   if (config_.include_location) {
     *node->mutable_location() = serializePosition(expr.getLocation());
   }
@@ -254,6 +287,46 @@ pbc::Prototype ASTSerializer::serializePrototype(
 
   if (config_.include_location) {
     *result.mutable_location() = serializePosition(proto.getLocation());
+  }
+
+  if (config_.include_proof_bindings && config_.declarations &&
+      !proto.getTypeBindings().empty()) {
+    std::set<std::string> localParameters;
+    for (const auto& parameter : proto.getTypeParameters()) {
+      localParameters.insert(parameter.name);
+    }
+    /** Resolves inherited interface binders without rewriting source strings. */
+    const std::function<void(google::protobuf::Message&)> bind =
+        [&](google::protobuf::Message& message) {
+      if (message.GetDescriptor() == pbc::TypeAnnotation::descriptor()) {
+        auto& annotation = static_cast<pbc::TypeAnnotation&>(message);
+        for (const auto& [name, type] : proto.getTypeBindings()) {
+          if (!annotation.has_declaration_key() && !localParameters.contains(name) &&
+              annotation.base_name() == name) {
+            auto resolved = sun::moon_bundling::exportType(type, *config_.declarations);
+            resolved.set_can_error(resolved.can_error() || annotation.can_error());
+            annotation = std::move(resolved);
+            return;
+          }
+        }
+      }
+      const auto* reflection = message.GetReflection();
+      std::vector<const google::protobuf::FieldDescriptor*> fields;
+      reflection->ListFields(message, &fields);
+      for (const auto* field : fields) {
+        if (field->cpp_type() != google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
+          continue;
+        }
+        if (field->is_repeated()) {
+          for (int i = 0; i < reflection->FieldSize(message, field); ++i) {
+            bind(*reflection->MutableRepeatedMessage(&message, field, i));
+          }
+        } else {
+          bind(*reflection->MutableMessage(&message, field));
+        }
+      }
+    };
+    bind(result);
   }
 
   return result;
@@ -792,6 +865,9 @@ void ASTSerializer::serializeFunction(const FunctionAST& expr,
 void ASTSerializer::serializeMethodFunction(const FunctionAST& function,
                                             pbc::FunctionDef* proto) const {
   *proto->mutable_proto() = serializePrototype(function.getProto());
+  if (config_.include_proof_bindings) {
+    proto->set_body_present(function.hasBody());
+  }
   if (function.hasBody()) {
     serializeBlockInto(function.getBody(), proto->mutable_body());
   }

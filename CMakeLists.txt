@@ -360,6 +360,8 @@ add_library(sun_lib
     src/abi/lowering_descriptors.cpp
     src/abi/boundary_requirements.cpp
     src/abi/producer_identity.cpp
+    src/abi/correspondence_evidence.cpp
+    src/abi/correspondence_checker.cpp
     src/abi/abi_compatibility_checker.cpp
     src/abi/abi_validation_scope.cpp
     # Precompiled library support (moon format)
