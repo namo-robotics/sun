@@ -287,6 +287,34 @@ TEST_F(BuildGraph, TracksPreparationAndPreservesPublishedProducts) {
             second);
 }
 
+/** Direct builds copy resources and refresh only changed files. */
+TEST_F(BuildGraph, CopiesRuntimeResourcesToBuildAndInstall) {
+  put("sun-config.json", R"({"package_id":"example/app",
+    "entrypoints":[{"name":"app","path":"main.sun","export":true,
+    "resources":[{"path":"icons","destination":"app.icons"}]}]})");
+  put("icons/home.svg", "first");
+  auto graph = sun::driver::loadConfigGraph(dir / "sun-config.json");
+  auto config = SunConfig::loadFile(dir / "sun-config.json");
+  sun::driver::setProductCompiler(
+      [&](const auto&, const auto&, const fs::path& output) {
+        std::ofstream(output) << "binary";
+      });
+  auto installed = sun::driver::buildConfigProducts(graph, config);
+  auto selected = sun::driver::configureBuildPaths(graph, config);
+  const fs::path build = selected.pathVariables.at("SUN_BUILD");
+  const auto icon = build / "app.icons/home.svg";
+  ASSERT_TRUE(fs::is_regular_file(icon));
+  EXPECT_EQ(sun::driver::packageFileHash(icon),
+            sun::driver::packageFileHash(installed / "bin/app.icons/home.svg"));
+  const auto time = fs::last_write_time(icon);
+  sun::driver::buildConfigProducts(graph, config);
+  EXPECT_EQ(fs::last_write_time(icon), time);
+  put("icons/home.svg", "changed");
+  sun::driver::buildConfigProducts(graph, config);
+  EXPECT_EQ(sun::driver::packageFileHash(icon),
+            sun::driver::packageFileHash(dir / "icons/home.svg"));
+}
+
 /** Build-step tool references select host products even for a foreign target.
  */
 TEST_F(BuildGraph, SelectsHostGeneratorFromUsage) {

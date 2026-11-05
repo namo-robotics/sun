@@ -32,6 +32,10 @@ std::filesystem::path resolveConfigDependency(
     const SunConfig& config, const std::string& name,
     const std::string& relativePath = "");
 
+/** Resolves entrypoint-relative resources for an install or package layout. */
+std::vector<ConfigResource> packageEntrypointResources(
+    const SunConfig& config, const ConfigEntrypoint& entry);
+
 /** Checks membership and output locations before compiling production files. */
 std::vector<PackagePlan> planPackages(
     const SunConfig& config, const std::vector<PackageArtifact>& artifacts);
