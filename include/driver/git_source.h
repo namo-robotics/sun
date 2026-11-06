@@ -27,10 +27,13 @@ class GitDependencyBuildScope {
   bool previousRefresh_;
 };
 
-/** Builds a direct source file or configured library in an isolated directory.
- * Direct source builds use the consumer config; named builds use the library
- * config. The directory exposes the library's output filename and excludes its
- * tests. Reports missing or ambiguous entrypoints and dependency cycles. */
+/** Borrows the active Git dependency settings, or returns null outside a build. */
+const sun::moon_bundling::MoonBuildOptions* gitDependencyBuildOptions();
+
+/** Builds a direct source file or configured product in an isolated directory.
+ * Direct source builds use the consumer config; configured products run their
+ * build graph and stage resources outside the checkout. Tests are excluded.
+ * Reports missing or ambiguous entrypoints and dependency cycles. */
 std::filesystem::path resolveGitDependency(const SunConfig& consumer,
                                            const std::string& name);
 

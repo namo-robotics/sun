@@ -439,7 +439,10 @@ fs::path buildConfigProducts(const ConfigGraph& workspace, SunConfig config,
                                ? config.configDir.filename().string()
                                : config.packageId;
   const auto target = configTargetKey(config.targetTriple);
-  BuildGuard guard(projectName + "@" + target);
+  const auto projectFile =
+      config.configFile.empty() ? config.configDir : config.configFile;
+  BuildGuard guard(workspace.root.string() + "@" + projectFile.string() +
+                   "@" + target);
   const fs::path output = config.pathVariables.at("SUN_BUILD");
   const fs::path install = config.pathVariables.at("SUN_INSTALL");
   std::map<std::string, std::vector<const ConfigEntrypoint*>> ids;

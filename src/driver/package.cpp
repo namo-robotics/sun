@@ -628,11 +628,17 @@ fs::path resolveConfigDependency(const SunConfig& config,
     fs::create_directory(stage);
     for (const auto& root : roots) {
       for (const auto& item : fs::recursive_directory_iterator(root)) {
-        if (!item.is_regular_file()) {
+        // A composed view has no single producer inventory. Shared resources
+        // and prerequisites are safe to reuse only when their contents agree.
+        if (!item.is_regular_file() || item.path() == root / "package.json") {
           continue;
         }
         auto destination = stage / item.path().lexically_relative(root);
         if (fs::exists(destination)) {
+          if (packageFileHash(destination) == packageFileHash(item.path()) &&
+              executable(destination) == executable(item.path())) {
+            continue;
+          }
           fail("dependency output collision: " + destination.string());
         }
         fs::create_directories(destination.parent_path());

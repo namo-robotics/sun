@@ -323,11 +323,17 @@ void configureProductCompiler(const BuildRunOptions& options) {
         sun::driver::ManifestProcessor::exchangeSourceConfig(previous);
       }
     } guard(config);
+    auto selectedOptions = options;
+    if (const auto* dependency = sun::driver::gitDependencyBuildOptions()) {
+      selectedOptions.shared.debugInfo = dependency->debugInfo;
+      selectedOptions.shared.optimize = dependency->optimize;
+      selectedOptions.forceRebuild = dependency->forceRebuild;
+      selectedOptions.noTest = true;
+    }
     if (!entry.build.empty()) {
-      runCustomBuild(options, config, entry, output);
+      runCustomBuild(selectedOptions, config, entry, output);
       return;
     }
-    auto selectedOptions = options;
     if (!entry.compileArgs.empty() || !entry.pkgConfig.empty()) {
       std::vector<std::string> args;
       for (const auto& arg : entry.compileArgs) {
@@ -368,13 +374,14 @@ void configureProductCompiler(const BuildRunOptions& options) {
       if (!config.targetTriple.empty()) {
         args.insert(args.end(), {"--target", config.targetTriple});
       }
+      const bool forceRebuild = selectedOptions.forceRebuild;
       if (auto error =
               parseBuildRunArguments("sun build", args, selectedOptions)) {
         reportEarlyExit(*error);
         sun::support::logAndThrowError("invalid compile_args for " +
                                        entry.path);
       }
-      selectedOptions.forceRebuild = options.forceRebuild;
+      selectedOptions.forceRebuild = forceRebuild;
     }
     auto job = makeCompileJob(selectedOptions);
     job.inputFiles = {
@@ -398,7 +405,7 @@ void configureProductCompiler(const BuildRunOptions& options) {
           sun::driver::ManifestProcessor::expandPathVariables(argument,
                                                               &config));
     }
-    job.noTest = options.noTest;
+    job.noTest = options.noTest || sun::driver::gitDependencyBuildOptions();
     job.testBinaryName = sun::driver::ManifestProcessor::expandPathVariables(
         entry.testBinaryName, &config);
     job.requireProductionArtifact = entry.exported;
