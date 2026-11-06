@@ -4,6 +4,7 @@
 
 #include "driver/sun_config.h"
 #include "moon_bundling/moon_builder.h"
+#include "support/save_and_restore.h"
 
 /** Coordinates compilation, dependency loading, linking, and program execution.
  */
@@ -23,9 +24,12 @@ class GitDependencyBuildScope {
   GitDependencyBuildScope& operator=(const GitDependencyBuildScope&) = delete;
 
  private:
-  sun::moon_bundling::MoonBuildOptions previous_;
-  bool previousRefresh_;
+  sun::support::SaveAndRestore<sun::moon_bundling::MoonBuildOptions> settings_;
+  sun::support::SaveAndRestore<bool> refresh_;
 };
+
+/** Reports whether a Git dependency build is currently active. */
+bool isCurrentlyBuildingGitDependency();
 
 /** Borrows the active Git dependency settings, or returns null outside a build. */
 const sun::moon_bundling::MoonBuildOptions* gitDependencyBuildOptions();

@@ -176,19 +176,17 @@ std::string resolveGitEntrypoint(const ConfigEntrypoint& entry, bool refresh) {
 GitDependencyBuildScope::GitDependencyBuildScope(bool debugInfo, bool optimize,
                                                  bool forceRebuild,
                                                  bool refresh)
-    : previous_(dependencyOptions), previousRefresh_(refreshDependencies) {
+    : settings_(dependencyOptions),
+      refresh_(refreshDependencies, refresh || refreshDependencies) {
   if (buildDepth++ == 0) {
     refreshedDependencies.clear();
   }
   dependencyOptions.debugInfo = debugInfo;
   dependencyOptions.optimize = optimize;
   dependencyOptions.forceRebuild = forceRebuild;
-  refreshDependencies = refresh || previousRefresh_;
 }
 
 GitDependencyBuildScope::~GitDependencyBuildScope() {
-  dependencyOptions = previous_;
-  refreshDependencies = previousRefresh_;
   --buildDepth;
 }
 
@@ -206,7 +204,7 @@ class DependencyBuildGuard {
     if (activeDependencies.count(key_)) {
       sun::support::logAndThrowError("cyclic Git library dependency");
     }
-    if (activeDependencies.empty()) {
+    if (!isCurrentlyBuildingGitDependency()) {
       const auto cache = cacheDirectory();
       std::filesystem::create_directories(cache);
       lock_ = open((cache / ".build.lock").c_str(),
@@ -248,8 +246,12 @@ class SourceConfigScope {
 };
 }  // namespace
 
+bool isCurrentlyBuildingGitDependency() {
+  return !activeDependencies.empty();
+}
+
 const sun::moon_bundling::MoonBuildOptions* gitDependencyBuildOptions() {
-  return activeDependencies.empty() ? nullptr : &dependencyOptions;
+  return isCurrentlyBuildingGitDependency() ? &dependencyOptions : nullptr;
 }
 
 std::filesystem::path resolveGitDependency(const SunConfig& consumer,

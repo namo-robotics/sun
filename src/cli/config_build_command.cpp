@@ -328,8 +328,9 @@ void configureProductCompiler(const BuildRunOptions& options) {
       selectedOptions.shared.debugInfo = dependency->debugInfo;
       selectedOptions.shared.optimize = dependency->optimize;
       selectedOptions.forceRebuild = dependency->forceRebuild;
-      selectedOptions.noTest = true;
     }
+    selectedOptions.noTest =
+        options.noTest || sun::driver::isCurrentlyBuildingDependency();
     if (!entry.build.empty()) {
       runCustomBuild(selectedOptions, config, entry, output);
       return;
@@ -405,7 +406,8 @@ void configureProductCompiler(const BuildRunOptions& options) {
           sun::driver::ManifestProcessor::expandPathVariables(argument,
                                                               &config));
     }
-    job.noTest = options.noTest || sun::driver::gitDependencyBuildOptions();
+    job.noTest =
+        options.noTest || sun::driver::isCurrentlyBuildingDependency();
     job.testBinaryName = sun::driver::ManifestProcessor::expandPathVariables(
         entry.testBinaryName, &config);
     job.requireProductionArtifact = entry.exported;

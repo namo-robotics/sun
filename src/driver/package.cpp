@@ -25,6 +25,7 @@
 #include "moon_bundling/moon.h"
 #include "moon_bundling/moon_cache.h"
 #include "support/error.h"
+#include "support/save_and_restore.h"
 #include "support/target_os.h"
 
 /** Downloads configured inputs and assembles distributable artifacts. */
@@ -33,6 +34,9 @@ namespace sun::driver {
 namespace {
 /** Shortens filesystem operations on package paths. */
 namespace fs = std::filesystem;
+/** Tracks nested dependency resolution separately from direct project builds. */
+thread_local bool buildingDependency = false;
+
 /** Reports dependency and packaging failures through compiler diagnostics. */
 [[noreturn]] void fail(const std::string& message) {
   sun::support::logAndThrowError("package: " + message);
@@ -579,9 +583,12 @@ std::string packageFileHash(const fs::path& path) {
   return sun::moon_bundling::computeSha256Hex(read(path));
 }
 
+bool isCurrentlyBuildingDependency() { return buildingDependency; }
+
 fs::path resolveConfigDependency(const SunConfig& config,
                                  const std::string& name,
                                  const std::string& relativePath) {
+  sun::support::SaveAndRestore<bool> dependencyScope(buildingDependency, true);
   const auto found = config.dependencies.find(name);
   if (found == config.dependencies.end()) {
     fail("dependency " + name + " is unavailable for " + config.targetTriple);
