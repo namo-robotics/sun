@@ -19,7 +19,7 @@
       "package": "SUN_SERVE",
       "git": "https://github.com/namo-robotics/sun_serve.git",
       "version": "c36daff597868fe9771c7cc5aa9ce475f74387fc",
-      "config": "sun-config.json"
+      "path": "src/sun_serve.sun"
     }
   ]
 }

@@ -1,0 +1,20 @@
+{
+  "dependencies": [
+    {
+      "git": "git@example.com:workspace.git",
+      "version": "v1",
+      "packages": {
+        "example/core": {
+          "entrypoints": [
+            "core"
+          ]
+        },
+        "example/ui": {
+          "entrypoints": [
+            "ui"
+          ]
+        }
+      }
+    }
+  ]
+}

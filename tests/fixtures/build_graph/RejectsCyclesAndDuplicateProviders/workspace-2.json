@@ -1,0 +1,6 @@
+{
+  "package_id": "example/duplicate",
+  "projects": [
+    "child/sun-config.json"
+  ]
+}

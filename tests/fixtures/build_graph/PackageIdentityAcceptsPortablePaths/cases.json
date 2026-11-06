@@ -1,0 +1,11 @@
+{
+  "nested": {
+    "package_id": "org/tools/sun_v1.2"
+  },
+  "plain": {
+    "package_id": "sun"
+  },
+  "scoped": {
+    "package_id": "namo-robotics/sun"
+  }
+}

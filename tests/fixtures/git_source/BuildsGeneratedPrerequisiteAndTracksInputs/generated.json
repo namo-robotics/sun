@@ -1,0 +1,37 @@
+{
+  "package_id": "LIB",
+  "steps": [
+    {
+      "name": "generate",
+      "command": [
+        "/bin/cp",
+        "input.sun",
+        "${SUN_BUILD}/generated.sun"
+      ],
+      "inputs": [
+        "input.sun"
+      ],
+      "outputs": [
+        "${SUN_BUILD}/generated.sun"
+      ]
+    }
+  ],
+  "entrypoints": [
+    {
+      "name": "generated",
+      "path": "${SUN_BUILD}/generated.sun",
+      "type": "library",
+      "steps": [
+        "generate"
+      ]
+    },
+    {
+      "name": "api",
+      "path": "api.sun",
+      "type": "library",
+      "requires": [
+        "generated"
+      ]
+    }
+  ]
+}

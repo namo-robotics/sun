@@ -1,0 +1,20 @@
+{
+  "root": true,
+  "dependencies": [
+    {
+      "target": {
+        "aarch64-linux-gnu": {
+          "git": "git@example.com:library.git",
+          "version": "v1",
+          "packages": {
+            "LIB": {
+              "entrypoints": [
+                "lib"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

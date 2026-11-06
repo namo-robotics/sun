@@ -66,6 +66,8 @@ struct ConfigDependency {
   std::string library;
   std::string binary;
   std::vector<ConfigDependency> selections;
+  // Package IDs mapped to the entrypoints requested from this repository.
+  std::map<std::string, std::vector<std::string>> gitPackages;
   std::string path;  // local artifact, or repository-relative Git source file
   std::string url;
   std::string hash;
@@ -73,7 +75,7 @@ struct ConfigDependency {
   std::string git;
   std::string version;
   std::string config = "sun-config.json";
-  std::string entrypoint;  // empty selects the only library in the config
+  std::vector<std::string> entrypoints;
 };
 
 /** A tracked external build action with declared inputs and outputs. */

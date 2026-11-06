@@ -1,0 +1,10 @@
+{
+  "package_id": "example/core",
+  "entrypoints": [
+    {
+      "name": "core",
+      "path": "core.sun",
+      "type": "library"
+    }
+  ]
+}

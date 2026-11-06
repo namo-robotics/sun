@@ -1,0 +1,22 @@
+{
+  "root": true,
+  "target": {
+    "aarch64-linux-gnu": {
+      "sun_path": [
+        "build"
+      ],
+      "path_variables": {
+        "EXTRAS": "extras"
+      },
+      "entrypoints": [
+        {
+          "git": "ssh://git@example.com/team/library.git",
+          "version": "v1",
+          "path": "src/lib.sun",
+          "type": "library",
+          "name": "lib"
+        }
+      ]
+    }
+  }
+}

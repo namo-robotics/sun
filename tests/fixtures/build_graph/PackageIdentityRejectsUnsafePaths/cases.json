@@ -1,0 +1,62 @@
+{
+  "absolute": {
+    "package_id": "/org/sun"
+  },
+  "backslash": {
+    "package_id": "org\\sun"
+  },
+  "current-component": {
+    "package_id": "org/./sun"
+  },
+  "current-directory": {
+    "package_id": "."
+  },
+  "drive": {
+    "package_id": "C:/sun"
+  },
+  "empty-component": {
+    "package_id": "org//sun"
+  },
+  "empty": {
+    "package_id": ""
+  },
+  "leading-space": {
+    "package_id": " org/sun"
+  },
+  "newline": {
+    "package_id": "org/\nsun"
+  },
+  "null": {
+    "package_id": "org/\u0000sun"
+  },
+  "parent-component": {
+    "package_id": "org/../sun"
+  },
+  "parent-directory": {
+    "package_id": ".."
+  },
+  "parent-prefix": {
+    "package_id": "../sun"
+  },
+  "question": {
+    "package_id": "org/sun?"
+  },
+  "space": {
+    "package_id": "org/my package"
+  },
+  "star": {
+    "package_id": "org/sun*"
+  },
+  "tab": {
+    "package_id": "org/\tsun"
+  },
+  "trailing-slash": {
+    "package_id": "org/sun/"
+  },
+  "trailing-space": {
+    "package_id": "org/sun "
+  },
+  "variable": {
+    "package_id": "org/$SUN_BUILD"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "root": true,
+  "sun_path": [
+    "vendor"
+  ],
+  "path_variables": {
+    "SOURCES": "src"
+  },
+  "entrypoints": [
+    {
+      "name": "api",
+      "path": "$SOURCES/lib.sun",
+      "type": "library"
+    },
+    {
+      "name": "private_api",
+      "path": "missing.sun",
+      "type": "library"
+    },
+    {
+      "path": "also-missing.sun",
+      "type": "binary"
+    }
+  ],
+  "package_id": "LIB"
+}

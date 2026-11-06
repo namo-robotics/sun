@@ -1,0 +1,43 @@
+{
+  "package_id": "example/consumer",
+  "dependencies": [
+    {
+      "git": "git@example.com:tools.git",
+      "version": "v1",
+      "packages": {
+        "TOOLS": {
+          "entrypoints": [
+            "tool"
+          ]
+        }
+      }
+    }
+  ],
+  "steps": [
+    {
+      "name": "generate",
+      "command": [
+        "${TOOLS}/bin/tool",
+        "input.sun",
+        "${SUN_BUILD}/generated.sun"
+      ],
+      "inputs": [
+        "input.sun"
+      ],
+      "outputs": [
+        "${SUN_BUILD}/generated.sun"
+      ]
+    }
+  ],
+  "entrypoints": [
+    {
+      "name": "consumer",
+      "path": "${SUN_BUILD}/generated.sun",
+      "type": "library",
+      "export": true,
+      "steps": [
+        "generate"
+      ]
+    }
+  ]
+}

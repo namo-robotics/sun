@@ -74,15 +74,24 @@ std::filesystem::path configWorkspaceRoot(const SunConfig& config);
 std::optional<SunConfig> configForBuildDirectory(
     const std::filesystem::path& directory, const std::string& target);
 
-/** Reads an entrypoint's manifest identity without resolving its dependencies.
- */
-std::string entrypointIdentity(const ConfigEntrypoint& entry);
+/** Returns exported product names, or all names for an unnamed project. */
+std::vector<std::string> defaultConfigEntrypoints(const SunConfig& config);
 
-/** Builds selected project products, returning their installed package root. */
+/** Finds products by config name, reporting unknown names without reading
+ * sources. Returned pointers borrow the config's entrypoints. */
+std::vector<const ConfigEntrypoint*> findConfigEntrypoints(
+    const SunConfig& config, const std::vector<std::string>& names);
+
+/** Builds named products and their prerequisites, then installs their outputs.
+ */
 std::filesystem::path buildConfigProducts(
     const ConfigGraph& workspace, SunConfig config,
-    const std::vector<ConfigDependency>& selections = {},
-    const std::string& entrypoint = "");
+    const std::vector<std::string>& entrypoints);
+
+/** Creates the config's declared packages from products that were already
+ * built. */
+void packageConfigProducts(const ConfigGraph& workspace, SunConfig config,
+                           const std::vector<std::string>& entrypoints);
 
 /** Prefers a matching local provider; an absent provider permits external
  * resolution. */

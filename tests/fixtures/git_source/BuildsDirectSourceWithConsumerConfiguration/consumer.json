@@ -1,0 +1,14 @@
+{
+  "root": true,
+  "path_variables": {
+    "EXTRAS": "extras"
+  },
+  "dependencies": [
+    {
+      "package": "LIB",
+      "git": "git@example.com:team/library.git",
+      "version": "v1",
+      "path": "src/lib.sun"
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "projects": [
+    "core/sun-config.json",
+    "ui/sun-config.json"
+  ]
+}

@@ -327,41 +327,52 @@ sun test sun-config.json
 Unchanged builds skip compilation. Use `--target` to select another compilation
 target and `--no-test` to omit test binaries from a build.
 
-Build a library dependency from its repository's configuration:
+Build selected products from a Git repository:
 
 ```json
 {
     "dependencies": [
         {
-            "package": "example/mylib",
-            "library": "example/mylib",
-            "git": "git@github.com:example/mylib.git",
+            "git": "git@github.com:example/toolkit.git",
             "version": "v1.2.3",
-            "config": "sun-config.json",
-            "entrypoint": "mylib"
+            "packages": {
+                "example/core": {"entrypoints": ["core"]},
+                "example/ui": {"entrypoints": ["widgets", "viewc"]}
+            }
         }
     ]
 }
 ```
 
-Import `"${example/mylib}/lib/mylib.moon"` in the consumer's manifest. `config`
-defaults to `sun-config.json` and is relative to the repository. `entrypoint`
-selects a named product; omit it when the requested library identity matches
-exactly one entrypoint. Sun runs the product's configured preparation steps,
-entrypoint prerequisites, and custom build scripts, then stages its output and
-resources in `.sun/cache/git/builds` beneath the directory where Sun is run
-(or beneath `SUN_GIT_CACHE` when set), outside the checkout. Dependency tests are
-skipped.
+Each config owns at most one `package_id`. A repository root can instead list
+`projects` whose configs own different packages. Package IDs must be unique in
+that graph. The dependency's `packages` dictionary selects those IDs and names
+the library or binary entrypoints to build. Lists must be nonempty and contain
+unique names. An optional `config` selects the repository-relative root config;
+it defaults to `sun-config.json`.
 
-For a build tool, select its manifest identity with `"binary"` instead of
-`"library"`. A build step whose command starts with
-`"${example/tools}/bin/generator"` resolves that tool for the host, even when the
-consumer targets another platform.
+Import `"${example/core}/lib/core.moon"` in the consumer's manifest. Sun builds
+selected products and their prerequisites with a shared repository build root,
+runs their preparation steps and custom scripts, and stages each package in its
+own directory. Dependency tests are skipped. Generated artifacts stay outside
+the checkout, under `.sun/cache/git/builds` (or `SUN_GIT_CACHE`).
 
-To build a source file with your project's settings instead, replace `config`
-and `entrypoint` with `"path": "src/mylib.sun"`. This form ignores the repository's
-config and exposes `lib/mylib.moon` under `${example/mylib}`. The two forms are
-mutually exclusive.
+For host tools, a build step starting with `"${example/ui}/bin/viewc"` resolves
+that dependency for the host even when the consumer targets another platform.
+
+The top-level `packages` array still defines distribution archives. It is
+separate from a Git dependency's nested `packages` dictionary.
+
+Configured dependencies select products by entrypoint name, not by manifest ID.
+The former Git `package` / `library` / `binary` / `entrypoint` selection form is
+not supported. A local dependency can use
+`{"package": "example/core", "entrypoints": ["core"]}` to select products from
+an included project.
+
+To build one source file with the consumer's settings, use `package`, `git`,
+`version`, and `"path": "src/mylib.sun"`. This separate form ignores the
+repository's config and exposes `lib/mylib.moon` under `${example/mylib}`.
+It cannot be combined with `config` or `packages`.
 
 `version` is a branch, tag, or commit. HTTPS, `ssh://` URLs, and `git@host:path`
 SSH addresses are supported, using Git's normal authentication. Sources stay

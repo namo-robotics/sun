@@ -1,0 +1,39 @@
+{
+  "package_id": "example/app",
+  "dependencies": [
+    {
+      "package": "example/tools",
+      "path": "missing",
+      "entrypoints": [
+        "tool"
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "name": "generate",
+      "command": [
+        "${example/tools}/bin/tool",
+        "input.txt",
+        "${SUN_BUILD}/generated.txt"
+      ],
+      "inputs": [
+        "input.txt"
+      ],
+      "outputs": [
+        "${SUN_BUILD}/generated.txt"
+      ]
+    }
+  ],
+  "entrypoints": [
+    {
+      "name": "app",
+      "path": "main.sun",
+      "type": "library",
+      "export": true,
+      "steps": [
+        "generate"
+      ]
+    }
+  ]
+}

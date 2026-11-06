@@ -1,0 +1,13 @@
+{
+  "package_id": "TOOLS",
+  "entrypoints": [
+    {
+      "name": "tool",
+      "path": "tool.sun",
+      "type": "binary",
+      "build": [
+        "build.py"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "UI": {
+      "moon": {
+        "path": "ui.moon"
+      }
+    }
+  }
+}

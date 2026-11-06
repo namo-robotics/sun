@@ -1,0 +1,16 @@
+{
+  "dependencies": [
+    {
+      "git": "git@example.com:pair.git",
+      "version": "v1",
+      "packages": {
+        "LIB": {
+          "entrypoints": [
+            "first",
+            "second"
+          ]
+        }
+      }
+    }
+  ]
+}

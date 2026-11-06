@@ -31,13 +31,17 @@ class GitDependencyBuildScope {
 /** Reports whether a Git dependency build is currently active. */
 bool isCurrentlyBuildingGitDependency();
 
-/** Borrows the active Git dependency settings, or returns null outside a build. */
+/** Borrows the active Git dependency settings, or returns null outside a build.
+ */
 const sun::moon_bundling::MoonBuildOptions* gitDependencyBuildOptions();
 
-/** Builds a direct source file or configured product in an isolated directory.
- * Direct source builds use the consumer config; configured products run their
- * build graph and stage resources outside the checkout. Tests are excluded.
- * Reports missing or ambiguous entrypoints and dependency cycles. */
+/** Checks out a Git dependency, builds it, and returns its install directory.
+ * A source-file dependency uses the consumer's compiler settings. A dependency
+ * with package selections builds the named libraries and executables together,
+ * including their prerequisites, without running tests. Generated files and
+ * compiled products go in the build cache, outside the checkout.
+ * Fails if a selected package or product is missing or dependencies form a
+ * cycle. */
 std::filesystem::path resolveGitDependency(const SunConfig& consumer,
                                            const std::string& name);
 
@@ -45,10 +49,10 @@ std::filesystem::path resolveGitDependency(const SunConfig& consumer,
 void validateGitSource(const ConfigEntrypoint& entry);
 
 /** Fetches a versioned checkout once and returns its entrypoint's absolute
- * path. Uses SUN_GIT_CACHE or .sun/cache/git beneath the current working directory
- * and Git's normal authentication.
- * Refresh fetches a new snapshot while preserving previous checkouts.
- * Reports fetch failures and paths escaping the checkout as compiler errors. */
+ * path. Uses SUN_GIT_CACHE or .sun/cache/git beneath the current working
+ * directory and Git's normal authentication. Refresh fetches a new snapshot
+ * while preserving previous checkouts. Reports fetch failures and paths
+ * escaping the checkout as compiler errors. */
 std::string resolveGitEntrypoint(const ConfigEntrypoint& entry,
                                  bool refresh = false);
 

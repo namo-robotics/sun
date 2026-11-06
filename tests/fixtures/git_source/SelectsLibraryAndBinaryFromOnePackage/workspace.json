@@ -1,0 +1,15 @@
+{
+  "package_id": "example/tools",
+  "entrypoints": [
+    {
+      "name": "core",
+      "path": "core.sun",
+      "type": "library"
+    },
+    {
+      "name": "tool",
+      "path": "tool.sun",
+      "type": "binary"
+    }
+  ]
+}

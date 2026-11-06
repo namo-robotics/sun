@@ -1,0 +1,9 @@
+{
+  "package_id": "example/a",
+  "projects": [
+    "../../shared/sun-config.json"
+  ],
+  "path_variables": {
+    "VALUE": "a"
+  }
+}

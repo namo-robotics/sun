@@ -34,7 +34,8 @@ namespace sun::driver {
 namespace {
 /** Shortens filesystem operations on package paths. */
 namespace fs = std::filesystem;
-/** Tracks nested dependency resolution separately from direct project builds. */
+/** Tracks nested dependency resolution separately from direct project builds.
+ */
 thread_local bool buildingDependency = false;
 
 /** Reports dependency and packaging failures through compiler diagnostics. */
@@ -594,6 +595,12 @@ fs::path resolveConfigDependency(const SunConfig& config,
     fail("dependency " + name + " is unavailable for " + config.targetTriple);
   }
   const auto& dep = found->second;
+  if (!dep.gitPackages.empty()) {
+    if (auto local = resolveLocalDependency(config, name)) {
+      return *local;
+    }
+    return resolveGitDependency(config, name);
+  }
   if (!relativePath.empty() && dep.selections.size() > 1) {
     std::vector<ConfigDependency> matching;
     for (const auto& selection : dep.selections) {
@@ -623,7 +630,7 @@ fs::path resolveConfigDependency(const SunConfig& config,
       roots.push_back(root);
       fingerprint += root.string() + "\n";
     }
-    if (dep.selections.size() == 1) {
+    if (roots.size() == 1) {
       return roots.front();
     }
     const auto digest = sun::moon_bundling::computeSha256Hex(fingerprint);
@@ -663,6 +670,9 @@ fs::path resolveConfigDependency(const SunConfig& config,
   }
   if (!dep.git.empty()) {
     return resolveGitDependency(config, name);
+  }
+  if (dep.path.empty() && dep.url.empty()) {
+    fail("no local package provider for " + name);
   }
   fs::path cache;
   if (const char* env = std::getenv("SUN_DEPENDENCY_CACHE")) {

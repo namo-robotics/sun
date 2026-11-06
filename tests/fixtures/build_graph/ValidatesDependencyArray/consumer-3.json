@@ -1,0 +1,10 @@
+{
+  "dependencies": [
+    {
+      "package": "example/ui",
+      "library": "example/ui",
+      "binary": "example/ui",
+      "path": "ui"
+    }
+  ]
+}

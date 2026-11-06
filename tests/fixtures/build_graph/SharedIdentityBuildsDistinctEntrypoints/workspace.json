@@ -1,0 +1,17 @@
+{
+  "entrypoints": [
+    {
+      "name": "second",
+      "path": "api.sun",
+      "type": "library",
+      "requires": [
+        "first"
+      ]
+    },
+    {
+      "name": "first",
+      "path": "api.sun",
+      "type": "library"
+    }
+  ]
+}

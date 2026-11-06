@@ -1,0 +1,49 @@
+{
+  "package_id": "LIB",
+  "steps": [
+    {
+      "name": "compile",
+      "command": [
+        "/usr/bin/cc",
+        "-c",
+        "native.c",
+        "-o",
+        "${SUN_BUILD}/native.o"
+      ],
+      "inputs": [
+        "native.c"
+      ],
+      "outputs": [
+        "${SUN_BUILD}/native.o"
+      ]
+    },
+    {
+      "name": "native",
+      "requires": [
+        "compile"
+      ],
+      "command": [
+        "/usr/bin/ar",
+        "rcs",
+        "${SUN_BUILD}/native.a",
+        "${SUN_BUILD}/native.o"
+      ],
+      "inputs": [
+        "${SUN_BUILD}/native.o"
+      ],
+      "outputs": [
+        "${SUN_BUILD}/native.a"
+      ]
+    }
+  ],
+  "entrypoints": [
+    {
+      "name": "api",
+      "path": "api.sun",
+      "type": "library",
+      "steps": [
+        "native"
+      ]
+    }
+  ]
+}

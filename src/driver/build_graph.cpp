@@ -17,7 +17,6 @@
 #include "driver/manifest_processor.h"
 #include "driver/package.h"
 #include "moon_bundling/moon.h"
-#include "parsing/parser.h"
 #include "support/error.h"
 
 /** Discovers local package providers and coordinates their staged products. */
@@ -306,17 +305,29 @@ fs::path configWorkspaceRoot(const SunConfig& config) {
   return currentGraph ? currentGraph->root : config.configDir;
 }
 
-std::string entrypointIdentity(const ConfigEntrypoint& entry) {
-  std::ifstream input(entry.path);
-  if (!input) {
-    fail("cannot read entrypoint " + entry.path);
+std::vector<std::string> defaultConfigEntrypoints(const SunConfig& config) {
+  std::vector<std::string> names;
+  for (const auto& entry : config.entrypoints) {
+    if (entry.exported || config.packageId.empty()) {
+      names.push_back(entry.name);
+    }
   }
-  sun::parsing::Parser parser(input);
-  parser.setFilePath(entry.path);
-  parser.getNextToken();
-  auto program = parser.parseProgram();
-  const auto* manifest = ManifestProcessor::findManifest(*program);
-  return manifest && manifest->getId() ? *manifest->getId() : std::string();
+  return names;
+}
+
+std::vector<const ConfigEntrypoint*> findConfigEntrypoints(
+    const SunConfig& config, const std::vector<std::string>& names) {
+  std::vector<const ConfigEntrypoint*> entries;
+  for (const auto& name : names) {
+    auto found =
+        std::find_if(config.entrypoints.begin(), config.entrypoints.end(),
+                     [&](const auto& entry) { return entry.name == name; });
+    if (found == config.entrypoints.end()) {
+      fail("unknown entrypoint " + name);
+    }
+    entries.push_back(&*found);
+  }
+  return entries;
 }
 
 llvm::json::Object readBuildContext() {
@@ -431,78 +442,89 @@ std::optional<SunConfig> configForBuildDirectory(const fs::path& directory,
   return result;
 }
 
+/** Keeps build ordering and output paths private to this file. */
+namespace {
+/** Orders the selected products after their prerequisites and rejects cycles.
+ */
+std::vector<const ConfigEntrypoint*> orderPrerequisites(
+    const SunConfig& config,
+    const std::vector<const ConfigEntrypoint*>& entries) {
+  std::vector<const ConfigEntrypoint*> ordered;
+  std::set<std::string> visitingEntries, builtEntries;
+  std::function<void(const ConfigEntrypoint*)> order =
+      [&](const ConfigEntrypoint* entry) {
+        if (builtEntries.count(entry->name)) {
+          return;
+        }
+        if (!visitingEntries.insert(entry->name).second) {
+          fail("entrypoint dependency cycle: " + entry->name);
+        }
+        for (const auto* dependency :
+             findConfigEntrypoints(config, entry->prerequisites)) {
+          order(dependency);
+        }
+        visitingEntries.erase(entry->name);
+        builtEntries.insert(entry->name);
+        ordered.push_back(entry);
+      };
+  for (const auto* entry : entries) {
+    order(entry);
+  }
+  return ordered;
+}
+
+/** Computes the compiler output path for a configured library or executable. */
+fs::path productOutput(const SunConfig& config, const ConfigEntrypoint& entry) {
+  auto output =
+      entry.outputName.empty()
+          ? fs::path(config.pathVariables.at("SUN_BUILD")) /
+                (entry.name +
+                 (entry.type == ConfigEntrypoint::Type::Library ? ".moon" : ""))
+          : fs::path(ManifestProcessor::expandPathVariables(entry.outputName,
+                                                            &config));
+  if (entry.type == ConfigEntrypoint::Type::Library &&
+      output.extension() != ".moon") {
+    output += ".moon";
+  }
+  return output;
+}
+/** Runs preparation and compilation; returns false for a test-only product. */
+bool compileProduct(const SunConfig& config, const ConfigEntrypoint& entry,
+                    const fs::path& artifact) {
+  const fs::path output = config.pathVariables.at("SUN_BUILD");
+  fs::create_directories(output);
+  fs::create_directories(artifact.parent_path());
+  runSteps(config, entry, output);
+  compiler(config, entry, artifact);
+  if (fs::is_regular_file(artifact)) {
+    return true;
+  }
+  const auto testOutput = entry.testBinaryName.empty()
+                              ? artifact.string() + "_test"
+                              : ManifestProcessor::expandPathVariables(
+                                    entry.testBinaryName, &config);
+  if (!entry.exported && !isCurrentlyBuildingDependency() &&
+      fs::is_regular_file(testOutput)) {
+    return false;
+  }
+  fail("build did not produce " + artifact.string());
+}
+}  // namespace
+
 fs::path buildConfigProducts(const ConfigGraph& workspace, SunConfig config,
-                             const std::vector<ConfigDependency>& selections,
-                             const std::string& selectedEntry) {
+                             const std::vector<std::string>& names) {
   config = configureBuildPaths(workspace, std::move(config));
   const auto projectName = config.packageId.empty()
                                ? config.configDir.filename().string()
                                : config.packageId;
-  const auto target = configTargetKey(config.targetTriple);
   const auto projectFile =
       config.configFile.empty() ? config.configDir : config.configFile;
-  BuildGuard guard(workspace.root.string() + "@" + projectFile.string() +
-                   "@" + target);
-  const fs::path output = config.pathVariables.at("SUN_BUILD");
+  BuildGuard guard(workspace.root.string() + "@" + projectFile.string() + "@" +
+                   configTargetKey(config.targetTriple));
   const fs::path install = config.pathVariables.at("SUN_INSTALL");
-  std::map<std::string, std::vector<const ConfigEntrypoint*>> ids;
-  for (const auto& entry : config.entrypoints) {
-    auto source = entry;
-    source.path = ManifestProcessor::expandPathVariables(entry.path, &config);
-    if (!fs::is_regular_file(source.path)) {
-      continue;
-    }
-    auto id = entrypointIdentity(source);
-    if (!id.empty()) {
-      ids[id].push_back(&entry);
-    }
-  }
-  std::vector<const ConfigEntrypoint*> entries;
-  if (!selectedEntry.empty()) {
-    for (const auto& entry : config.entrypoints) {
-      if (entry.name == selectedEntry) {
-        entries.push_back(&entry);
-      }
-    }
-    if (entries.empty()) {
-      fail("unknown entrypoint " + selectedEntry);
-    }
-  } else if (!selections.empty() && !selections.front().package) {
-    for (const auto& dep : selections) {
-      auto id = dep.binary.empty() ? dep.library : dep.binary;
-      auto found = ids.find(id);
-      if (found == ids.end()) {
-        fail("local package " + config.packageId + " does not provide " + id);
-      }
-      const ConfigEntrypoint* selected = nullptr;
-      for (const auto* candidate : found->second) {
-        const bool library = candidate->type == ConfigEntrypoint::Type::Library;
-        if (library != dep.binary.empty()) {
-          continue;
-        }
-        if (selected) {
-          fail("ambiguous product id: " + id + " matches entrypoints " +
-               selected->name + " and " + candidate->name);
-        }
-        selected = candidate;
-      }
-      if (!selected) {
-        fail("wrong product kind for " + id);
-      }
-      entries.push_back(selected);
-    }
-  } else {
-    for (const auto& entry : config.entrypoints) {
-      if (entry.exported || (selections.empty() && config.packageId.empty())) {
-        entries.push_back(&entry);
-      }
-    }
-  }
-  if (entries.empty() && selections.empty() && selectedEntry.empty()) {
-    return install;
-  }
+  auto entries = findConfigEntrypoints(config, names);
   if (entries.empty()) {
-    fail("no exported products in " + config.packageId);
+    return install;
   }
   auto& accumulated = selectedProducts[guard.key];
   for (const auto* entry : entries) {
@@ -514,34 +536,7 @@ fs::path buildConfigProducts(const ConfigGraph& workspace, SunConfig config,
       entries.push_back(&entry);
     }
   }
-  std::vector<const ConfigEntrypoint*> ordered;
-  std::set<std::string> visitingEntries, builtEntries;
-  std::function<void(const ConfigEntrypoint*)> order =
-      [&](const ConfigEntrypoint* entry) {
-        if (builtEntries.count(entry->name)) {
-          return;
-        }
-        if (!visitingEntries.insert(entry->name).second) {
-          fail("entrypoint dependency cycle: " + entry->name);
-        }
-        for (const auto& name : entry->prerequisites) {
-          auto dependency = std::find_if(
-              config.entrypoints.begin(), config.entrypoints.end(),
-              [&](const auto& candidate) { return candidate.name == name; });
-          if (dependency == config.entrypoints.end()) {
-            fail("unknown entrypoint prerequisite: " + name);
-          }
-          order(&*dependency);
-        }
-        visitingEntries.erase(entry->name);
-        builtEntries.insert(entry->name);
-        ordered.push_back(entry);
-      };
-  for (const auto* entry : entries) {
-    order(entry);
-  }
-  entries = std::move(ordered);
-  std::vector<PackageArtifact> distributionArtifacts;
+  entries = orderPrerequisites(config, entries);
   PackagePlan plan;
   plan.name = fs::path(projectName).filename().string();
   plan.output = install;
@@ -555,13 +550,7 @@ fs::path buildConfigProducts(const ConfigGraph& workspace, SunConfig config,
     const auto name = entry->name.empty()
                           ? fs::path(entry->path).stem().string()
                           : entry->name;
-    auto artifact = entry->outputName.empty()
-                        ? output / (name + (library ? ".moon" : ""))
-                        : fs::path(ManifestProcessor::expandPathVariables(
-                              entry->outputName, &config));
-    if (library && artifact.extension() != ".moon") {
-      artifact += ".moon";
-    }
+    auto artifact = productOutput(config, *entry);
     auto dest =
         install / (library ? "lib" : "bin") / (name + (library ? ".moon" : ""));
     if (!compiler) {
@@ -570,23 +559,10 @@ fs::path buildConfigProducts(const ConfigGraph& workspace, SunConfig config,
       }
       continue;
     }
-    fs::create_directories(output);
-    fs::create_directories(artifact.parent_path());
-    runSteps(config, *entry, output);
-    compiler(config, *entry, artifact);
-    if (!fs::is_regular_file(artifact)) {
-      const auto testOutput = entry->testBinaryName.empty()
-                                  ? artifact.string() + "_test"
-                                  : ManifestProcessor::expandPathVariables(
-                                        entry->testBinaryName, &config);
-      if (!entry->exported && selections.empty() &&
-          fs::is_regular_file(testOutput)) {
-        continue;
-      }
-      fail("build did not produce " + artifact.string());
+    if (!compileProduct(config, *entry, artifact)) {
+      continue;
     }
     plan.artifacts.push_back({name, artifact.string(), library});
-    distributionArtifacts.push_back({entry->name, artifact.string(), library});
     for (auto resource : packageEntrypointResources(config, *entry)) {
       resource.path =
           ManifestProcessor::expandPathVariables(resource.path, &config);
@@ -595,12 +571,23 @@ fs::path buildConfigProducts(const ConfigGraph& workspace, SunConfig config,
   }
   if (compiler) {
     buildPackages(config, {plan}, false);
-    if (selections.empty() && selectedEntry.empty() &&
-        !config.packages.empty()) {
-      buildPackages(config, planPackages(config, distributionArtifacts));
-    }
   }
   return install;
+}
+
+void packageConfigProducts(const ConfigGraph& workspace, SunConfig config,
+                           const std::vector<std::string>& names) {
+  if (config.packages.empty()) {
+    return;
+  }
+  config = configureBuildPaths(workspace, std::move(config));
+  std::vector<PackageArtifact> artifacts;
+  for (const auto* entry :
+       orderPrerequisites(config, findConfigEntrypoints(config, names))) {
+    artifacts.push_back({entry->name, productOutput(config, *entry).string(),
+                         entry->type == ConfigEntrypoint::Type::Library});
+  }
+  buildPackages(config, planPackages(config, artifacts));
 }
 
 std::optional<fs::path> resolveLocalDependency(const SunConfig& consumer,
@@ -636,8 +623,9 @@ std::optional<fs::path> resolveLocalDependency(const SunConfig& consumer,
   ConfigGraphScope scope(graph);
   std::string key = graph.root.string() + "\n" + name + "\n" +
                     configTargetKey(consumer.targetTriple);
-  for (const auto& selection : consumer.dependencies.at(name).selections) {
-    key += "\n" + selection.library + ":" + selection.binary;
+  const auto& requested = consumer.dependencies.at(name).entrypoints;
+  for (const auto& entrypoint : requested) {
+    key += "\n" + entrypoint;
   }
   if (auto cached = resolvedProducts.find(key);
       cached != resolvedProducts.end()) {
@@ -648,8 +636,9 @@ std::optional<fs::path> resolveLocalDependency(const SunConfig& consumer,
     if (config.packageId != name) {
       continue;
     }
-    auto installed = buildConfigProducts(
-        graph, std::move(config), consumer.dependencies.at(name).selections);
+    auto names =
+        requested.empty() ? defaultConfigEntrypoints(config) : requested;
+    auto installed = buildConfigProducts(graph, std::move(config), names);
     resolvedProducts.emplace(key, installed);
     return installed;
   }
