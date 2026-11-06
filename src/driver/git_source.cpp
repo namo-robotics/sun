@@ -72,11 +72,7 @@ std::filesystem::path cacheDirectory() {
       return std::filesystem::absolute(cache);
     }
   }
-  if (const char* home = std::getenv("HOME")) {
-    return std::filesystem::path(home) / ".sun/cache/git";
-  }
-  sun::support::logAndThrowError(
-      "set SUN_GIT_CACHE or HOME to cache Git sources");
+  return std::filesystem::current_path() / ".sun/cache/git";
 }
 }  // namespace
 

@@ -16,6 +16,7 @@
 #include "driver/package.h"
 #include "driver/sun_config.h"
 #include "moon_bundling/moon_builder.h"
+#include "moon_bundling/moon_cache.h"
 #include "support/error.h"
 #include "support/sun_path.h"
 
@@ -26,6 +27,7 @@ namespace {
 class GitSourceTest : public testing::Test {
  protected:
   std::filesystem::path dir;
+  std::filesystem::path originalDirectory;
   std::map<std::string, std::optional<std::string>> environment;
   std::vector<std::filesystem::path> searchPaths;
 
@@ -47,6 +49,7 @@ class GitSourceTest : public testing::Test {
   /** Installs a fake Git that records arguments and materializes fixture
    * source. */
   void SetUp() override {
+    originalDirectory = std::filesystem::current_path();
     sun::cli::BuildRunOptions options;
     options.noTest = true;
     sun::cli::configureProductCompiler(options);
@@ -97,11 +100,14 @@ if 'checkout' in args:
                                  std::filesystem::perms::owner_all);
     setEnvironment("SUN_FAKE_GIT_ROOT", dir.string());
     setEnvironment("SUN_GIT_CACHE", (dir / "cache").string());
-    setEnvironment("PATH", (dir / "bin").string());
+    const char* path = std::getenv("PATH");
+    setEnvironment("PATH", (dir / "bin").string() +
+                               (path ? ":" + std::string(path) : ""));
   }
 
   /** Restores process settings after each test. */
   void TearDown() override {
+    std::filesystem::current_path(originalDirectory);
     sun::driver::setProductCompiler({});
     sun::support::SunPath::extraPaths() = searchPaths;
     sun::driver::ManifestProcessor::clearPathVariables();
@@ -124,6 +130,30 @@ if 'checkout' in args:
     return result;
   }
 };
+
+/** Default Git storage follows the invocation directory, independent of HOME. */
+TEST_F(GitSourceTest, DefaultsToWorkingDirectoryCache) {
+  unsetenv("SUN_GIT_CACHE");
+  setEnvironment("HOME", (dir / "home").string());
+  std::filesystem::current_path(dir);
+  const auto source = sun::driver::resolveGitEntrypoint(entry());
+  const auto relative = std::filesystem::path(source).lexically_relative(
+      dir / ".sun/cache/git");
+  EXPECT_FALSE(relative.empty());
+  EXPECT_NE(*relative.begin(), "..");
+  EXPECT_TRUE(std::filesystem::is_regular_file(source));
+  EXPECT_FALSE(std::filesystem::exists(dir / "home"));
+}
+
+/** Default Moon storage follows the invocation directory, independent of HOME. */
+TEST_F(GitSourceTest, DefaultsMoonCacheToWorkingDirectory) {
+  setEnvironment("SUN_MOON_CACHE", "");
+  unsetenv("SUN_MOON_CACHE");
+  setEnvironment("HOME", (dir / "home").string());
+  std::filesystem::current_path(dir);
+  EXPECT_EQ(sun::moon_bundling::MoonCache::defaultCacheDir(),
+            dir / ".sun/cache/moons");
+}
 
 /** Checks SSH, HTTPS, commit, tag, and branch declarations without fetching. */
 TEST_F(GitSourceTest, ParsesGitVersionsAndKeepsOutputInProject) {

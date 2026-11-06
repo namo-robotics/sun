@@ -41,7 +41,8 @@ std::filesystem::path resolveGitDependency(const SunConfig& consumer,
 void validateGitSource(const ConfigEntrypoint& entry);
 
 /** Fetches a versioned checkout once and returns its entrypoint's absolute
- * path. Uses SUN_GIT_CACHE or ~/.sun/cache/git and Git's normal authentication.
+ * path. Uses SUN_GIT_CACHE or .sun/cache/git beneath the current working directory
+ * and Git's normal authentication.
  * Refresh fetches a new snapshot while preserving previous checkouts.
  * Reports fetch failures and paths escaping the checkout as compiler errors. */
 std::string resolveGitEntrypoint(const ConfigEntrypoint& entry,

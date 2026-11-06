@@ -349,7 +349,9 @@ defaults to `sun-config.json` and is relative to the repository. `entrypoint`
 selects a named product; omit it when the requested library identity matches
 exactly one entrypoint. Sun runs the product's configured preparation steps,
 entrypoint prerequisites, and custom build scripts, then stages its output and
-resources in an isolated cache outside the checkout. Dependency tests are skipped.
+resources in `.sun/cache/git/builds` beneath the directory where Sun is run
+(or beneath `SUN_GIT_CACHE` when set), outside the checkout. Dependency tests are
+skipped.
 
 For a build tool, select its manifest identity with `"binary"` instead of
 `"library"`. A build step whose command starts with

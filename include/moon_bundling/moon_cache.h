@@ -20,8 +20,8 @@ namespace sun::moon_bundling {
 class MoonCache {
  public:
   /**
-   * ~/.sun/cache/moons, or $SUN_MOON_CACHE when set; /tmp/sun-cache/moons
-   * when HOME is unset.
+   * .sun/cache/moons beneath the current working directory, or
+   * $SUN_MOON_CACHE when set.
    */
   static std::filesystem::path defaultCacheDir();
 

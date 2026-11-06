@@ -23,10 +23,7 @@ std::filesystem::path MoonCache::defaultCacheDir() {
   if (const char* override = std::getenv("SUN_MOON_CACHE")) {
     return override;
   }
-  if (const char* home = std::getenv("HOME")) {
-    return std::filesystem::path(home) / ".sun" / "cache" / "moons";
-  }
-  return "/tmp/sun-cache/moons";
+  return std::filesystem::current_path() / ".sun/cache/moons";
 }
 
 std::string MoonCache::computeSha256Hex(const std::string& content) {
