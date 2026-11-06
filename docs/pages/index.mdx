@@ -237,148 +237,55 @@ See [Modules and Manifests](/modules) for more options.
 
 ## Sun Config
 
-Use `sun-config.json` to set library search paths, path variables, and the
-entrypoints to build:
+Use `sun-config.json` to name your package and its build products. Paths are
+relative to the config file.
 
 ```json filename="sun-config.json"
 {
     "root": true,
-    "sun_path": ["build"],
-    "path_variables": { "LIBS": "libs" },
+    "package_id": "example/app",
     "entrypoints": [
-        {
-            "path": "mylib.sun",
-            "type": "library",
-            "output_name": "build/mylib"
-        },
-        {
-            "path": "main.sun",
-            "type": "binary",
-            "output_name": "build/app"
-        }
+        {"name": "app", "path": "src/main.sun", "type": "binary", "export": true}
     ]
 }
 ```
 
-Paths are relative to the config file. Sun looks for configs beside the source
-and in parent folders; `root: true` stops that search. Explicit `--path-var`
-arguments override configured variables.
-
-The optional `c_bindings` setting writes Sun binding files from selected C header
-declarations before compilation. List those files explicitly in the manifest. See [C header binding generation](/c-ffi#optional-header-binding-generation)
-for configuration and dependencies.
-
-Each setting can choose a value independently for each target. An ordinary
-value is an unconditional default; a wrapper supplies replacements:
-
-```json
-{
-  "sun_path": {
-    "default": ["build"],
-    "target": { "aarch64-linux-gnu": ["build/arm64"] }
-  },
-  "path_variables": {
-    "OPENSSL_LIBS": {
-      "default": "vendor/openssl",
-      "target": { "aarch64-linux-gnu": "vendor/openssl/arm64" }
-    }
-  },
-  "entrypoints": [
-    {
-      "name": "app",
-      "path": "app/main.sun",
-      "type": "binary",
-      "output_name": {
-        "default": "build/app",
-        "target": { "aarch64-linux-gnu": "build/arm64/app" }
-      }
-    },
-    {
-      "name": "helper",
-      "enabled": {
-        "default": false,
-        "target": { "aarch64-linux-gnu": true }
-      },
-      "path": "app/helper.sun"
-    }
-  ]
-}
-```
-
-A matching target replaces the default, including entire arrays. Without a
-match, the default applies; a wrapper with neither is an error when needed.
-Entrypoints and packages default to enabled. Disabled entries skip resolution
-of their other settings. Names stay fixed; other entrypoint and package fields
-can use wrappers, including resource lists. Do not wrap the structural
-`entrypoints`, `packages`, or `dependencies` collections.
-
-Legacy top-level `target` blocks remain supported, but cannot overlap wrappers
-for the same setting. Prefer per-setting values to avoid repeating entrypoints.
-See [dependencies and distributions](/modules#downloaded-dependencies) for
-config-owned downloads and compressed packages.
-
-Build entrypoints in their listed order, or run their tests:
+Build the project or run its tests:
 
 ```bash
-sun -c sun-config.json
+sun build
 sun test sun-config.json
 ```
 
-Unchanged builds skip compilation. Use `--target` to select another compilation
-target and `--no-test` to omit test binaries from a build.
-
-Build selected products from a Git repository:
+A workspace can include several projects, each with its own config:
 
 ```json
 {
-    "dependencies": [
-        {
-            "git": "git@github.com:example/toolkit.git",
-            "version": "v1.2.3",
-            "packages": {
-                "example/core": {"entrypoints": ["core"]},
-                "example/ui": {"entrypoints": ["widgets", "viewc"]}
-            }
-        }
-    ]
+    "projects": ["core/sun-config.json", "ui/sun-config.json"]
 }
 ```
 
-Each config owns at most one `package_id`. A repository root can instead list
-`projects` whose configs own different packages. Package IDs must be unique in
-that graph. The dependency's `packages` dictionary selects those IDs and names
-the library or binary entrypoints to build. Lists must be nonempty and contain
-unique names. An optional `config` selects the repository-relative root config;
-it defaults to `sun-config.json`.
+Select packages and products from a Git repository:
 
-Import `"${example/core}/lib/core.moon"` in the consumer's manifest. Sun builds
-selected products and their prerequisites with a shared repository build root,
-runs their preparation steps and custom scripts, and stages each package in its
-own directory. Dependency tests are skipped. Generated artifacts stay outside
-the checkout, under `.sun/cache/git/builds` (or `SUN_GIT_CACHE`).
+```json
+{
+    "dependencies": [{
+        "git": "git@github.com:example/toolkit.git",
+        "version": "v1.2.3",
+        "packages": {
+            "example/core": {"entrypoints": ["core"]},
+            "example/ui": {"entrypoints": ["widgets", "viewc"]}
+        }
+    }]
+}
+```
 
-For host tools, a build step starting with `"${example/ui}/bin/viewc"` resolves
-that dependency for the host even when the consumer targets another platform.
+Import built libraries with paths such as `"${example/core}/lib/core.moon"`.
+Add `"config": "build/sun-config.json"` to select another config in the repository.
 
-The top-level `packages` array still defines distribution archives. It is
-separate from a Git dependency's nested `packages` dictionary.
-
-Configured dependencies select products by entrypoint name, not by manifest ID.
-The former Git `package` / `library` / `binary` / `entrypoint` selection form is
-not supported. A local dependency can use
-`{"package": "example/core", "entrypoints": ["core"]}` to select products from
-an included project.
-
-To build one source file with the consumer's settings, use `package`, `git`,
-`version`, and `"path": "src/mylib.sun"`. This separate form ignores the
-repository's config and exposes `lib/mylib.moon` under `${example/mylib}`.
-It cannot be combined with `config` or `packages`.
-
-`version` is a branch, tag, or commit. HTTPS, `ssh://` URLs, and `git@host:path`
-SSH addresses are supported, using Git's normal authentication. Sources stay
-cached until a build uses `--refresh-sources`. See the
-[Git library example](https://github.com/namo-robotics/sun/tree/main/examples/100-git_library)
-for a complete project building `sun_serve` from scratch.
+See [config builds](/modules#composed-config-builds),
+[Git dependencies](/modules#git-repositories), and
+[target-specific settings](/modules#target-specific-settings) for more options.
 
 ## Moons
 

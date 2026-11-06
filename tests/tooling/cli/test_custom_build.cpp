@@ -209,7 +209,7 @@ printf '#!/bin/sh\nprintf "%%s\\n" "%s"\n' "$SUN_TARGET" > "$SUN_OUTPUT"
     fs::permissions(root / "lib/make_tool.sh", fs::perms::owner_all);
     config["dependencies"] =
         llvm::json::Array{llvm::json::Object{{"package", "example/helper"},
-                                             {"binary", "example/helper"},
+                                             {"entrypoints", llvm::json::Array{"helper"}},
                                              {"path", "missing.moon"}}};
     entry()["type"] = "library";
     save();
