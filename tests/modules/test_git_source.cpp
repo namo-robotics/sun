@@ -134,15 +134,18 @@ if 'checkout' in args:
 /** Default Git storage follows the invocation directory, independent of HOME. */
 TEST_F(GitSourceTest, DefaultsToWorkingDirectoryCache) {
   unsetenv("SUN_GIT_CACHE");
-  setEnvironment("HOME", (dir / "home").string());
+  const auto home = dir / "home";
+  std::filesystem::create_directories(home);
+  setEnvironment("HOME", home.string());
   std::filesystem::current_path(dir);
   const auto source = sun::driver::resolveGitEntrypoint(entry());
   const auto relative = std::filesystem::path(source).lexically_relative(
       dir / ".sun/cache/git");
-  EXPECT_FALSE(relative.empty());
+  ASSERT_FALSE(relative.empty());
   EXPECT_NE(*relative.begin(), "..");
   EXPECT_TRUE(std::filesystem::is_regular_file(source));
-  EXPECT_FALSE(std::filesystem::exists(dir / "home"));
+  /** Subprocesses may use HOME, but Sun must keep its cache in the workspace. */
+  EXPECT_FALSE(std::filesystem::exists(home / ".sun/cache"));
 }
 
 /** Default Moon storage follows the invocation directory, independent of HOME. */
