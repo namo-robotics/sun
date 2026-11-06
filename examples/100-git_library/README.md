@@ -48,7 +48,8 @@ until refreshed:
 examples/100-git_library/build.sh --refresh-sources
 ```
 
-Sources are cached in `~/.sun/cache/git`, overridable with `SUN_GIT_CACHE`.
+Sources are cached in `.sun/cache/git` beneath the directory where Sun is run,
+overridable with `SUN_GIT_CACHE`.
 For SSH, set `git` to `git@github.com:namo-robotics/sun_serve.git` or
 `ssh://git@github.com/namo-robotics/sun_serve.git`; both use Git's normal SSH credentials.
 To use a precompiled Moon, replace the `SUN_SERVE` dependency with a `moon`

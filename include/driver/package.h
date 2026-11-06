@@ -27,7 +27,11 @@ struct PackagePlan {
 /** Returns the SHA-256 digest of a file, reporting unreadable inputs. */
 std::string packageFileHash(const std::filesystem::path& path);
 
-/** Resolves a configured dependency to a verified local directory on demand. */
+/** Reports whether configured dependency resolution is active on this thread. */
+bool isCurrentlyBuildingDependency();
+
+/** Resolves a configured dependency to a verified local directory on demand,
+ * without building its tests. */
 std::filesystem::path resolveConfigDependency(
     const SunConfig& config, const std::string& name,
     const std::string& relativePath = "");

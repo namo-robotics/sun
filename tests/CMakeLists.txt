@@ -20,6 +20,7 @@ endif()
 add_executable(sun_tests
     support/execution_utils.cpp
     support/test_execution_utils.cpp
+    support/test_save_and_restore.cpp
 )
 
 # Must come after add_executable: target_sources() needs the target to exist.

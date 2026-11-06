@@ -4,6 +4,7 @@
 
 #include "driver/sun_config.h"
 #include "moon_bundling/moon_builder.h"
+#include "support/save_and_restore.h"
 
 /** Coordinates compilation, dependency loading, linking, and program execution.
  */
@@ -23,14 +24,20 @@ class GitDependencyBuildScope {
   GitDependencyBuildScope& operator=(const GitDependencyBuildScope&) = delete;
 
  private:
-  sun::moon_bundling::MoonBuildOptions previous_;
-  bool previousRefresh_;
+  sun::support::SaveAndRestore<sun::moon_bundling::MoonBuildOptions> settings_;
+  sun::support::SaveAndRestore<bool> refresh_;
 };
 
-/** Builds a direct source file or configured library in an isolated directory.
- * Direct source builds use the consumer config; named builds use the library
- * config. The directory exposes the library's output filename and excludes its
- * tests. Reports missing or ambiguous entrypoints and dependency cycles. */
+/** Reports whether a Git dependency build is currently active. */
+bool isCurrentlyBuildingGitDependency();
+
+/** Borrows the active Git dependency settings, or returns null outside a build. */
+const sun::moon_bundling::MoonBuildOptions* gitDependencyBuildOptions();
+
+/** Builds a direct source file or configured product in an isolated directory.
+ * Direct source builds use the consumer config; configured products run their
+ * build graph and stage resources outside the checkout. Tests are excluded.
+ * Reports missing or ambiguous entrypoints and dependency cycles. */
 std::filesystem::path resolveGitDependency(const SunConfig& consumer,
                                            const std::string& name);
 
@@ -38,7 +45,8 @@ std::filesystem::path resolveGitDependency(const SunConfig& consumer,
 void validateGitSource(const ConfigEntrypoint& entry);
 
 /** Fetches a versioned checkout once and returns its entrypoint's absolute
- * path. Uses SUN_GIT_CACHE or ~/.sun/cache/git and Git's normal authentication.
+ * path. Uses SUN_GIT_CACHE or .sun/cache/git beneath the current working directory
+ * and Git's normal authentication.
  * Refresh fetches a new snapshot while preserving previous checkouts.
  * Reports fetch failures and paths escaping the checkout as compiler errors. */
 std::string resolveGitEntrypoint(const ConfigEntrypoint& entry,

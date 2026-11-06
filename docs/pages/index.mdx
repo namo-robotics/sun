@@ -331,26 +331,37 @@ Build a library dependency from its repository's configuration:
 
 ```json
 {
-    "dependencies": {
-        "MYLIB": {
+    "dependencies": [
+        {
+            "package": "example/mylib",
+            "library": "example/mylib",
             "git": "git@github.com:example/mylib.git",
             "version": "v1.2.3",
             "config": "sun-config.json",
             "entrypoint": "mylib"
         }
-    }
+    ]
 }
 ```
 
-Import `"$MYLIB/mylib.moon"` in the consumer's manifest. `config` defaults to
-`sun-config.json` and is relative to the repository. `entrypoint` selects a
-named library; omit it when the config declares exactly one library. The library
-owns its source path and output filename. Sun builds it on demand in an isolated
-cache without running its tests or building its other entrypoints.
+Import `"${example/mylib}/lib/mylib.moon"` in the consumer's manifest. `config`
+defaults to `sun-config.json` and is relative to the repository. `entrypoint`
+selects a named product; omit it when the requested library identity matches
+exactly one entrypoint. Sun runs the product's configured preparation steps,
+entrypoint prerequisites, and custom build scripts, then stages its output and
+resources in `.sun/cache/git/builds` beneath the directory where Sun is run
+(or beneath `SUN_GIT_CACHE` when set), outside the checkout. Dependency tests are
+skipped.
+
+For a build tool, select its manifest identity with `"binary"` instead of
+`"library"`. A build step whose command starts with
+`"${example/tools}/bin/generator"` resolves that tool for the host, even when the
+consumer targets another platform.
 
 To build a source file with your project's settings instead, replace `config`
 and `entrypoint` with `"path": "src/mylib.sun"`. This form ignores the repository's
-config and exposes `mylib.moon` under `$MYLIB`. The two forms are mutually exclusive.
+config and exposes `lib/mylib.moon` under `${example/mylib}`. The two forms are
+mutually exclusive.
 
 `version` is a branch, tag, or commit. HTTPS, `ssh://` URLs, and `git@host:path`
 SSH addresses are supported, using Git's normal authentication. Sources stay

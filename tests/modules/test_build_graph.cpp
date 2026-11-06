@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 
+#include "cli/config_build_command.h"
 #include "driver/build_graph.h"
 #include "driver/manifest_processor.h"
 #include "driver/package.h"
@@ -223,6 +224,7 @@ TEST_F(BuildGraph, LocalProductWinsAndMissingSelectionsDoNotFallBack) {
       "example/missing";
   EXPECT_THROW(sun::driver::resolveConfigDependency(consumer, "example/tools"),
                SunError);
+  EXPECT_FALSE(sun::driver::isCurrentlyBuildingDependency());
 }
 
 /** Dependencies are a uniform array with mutually exclusive product selectors.
@@ -355,6 +357,134 @@ TEST_F(BuildGraph, SelectsHostGeneratorFromUsage) {
   auto config = SunConfig::loadFile(dir / "app/sun-config.json", target);
   sun::driver::buildConfigProducts(graph, config);
   EXPECT_TRUE(builtHost);
+}
+
+/** Local dependency builds skip test sources while direct builds still use them. */
+TEST_F(BuildGraph, SkipsLocalDependencyTestsOnlyDuringResolution) {
+  put("sun-config.json", R"({
+    "projects": [
+      "producer/sun-config.json",
+      "consumer/sun-config.json"
+    ]
+  })");
+
+  put("producer/sun-config.json", R"({
+    "package_id": "example/library",
+    "entrypoints": [
+      {
+        "name": "api",
+        "path": "api.sun",
+        "type": "library",
+        "export": true,
+        "compile_args": ["-O0"]
+      }
+    ]
+  })");
+
+  // The missing test source makes it observable whether tests are processed.
+  put("producer/api.sun", R"(
+    manifest {
+      id: "example/api",
+      test_files: ["missing_test.sun"]
+    }
+
+    /** Supplies a dependency fixture. */
+    public module api {}
+  )");
+
+  put("consumer/sun-config.json", R"({
+    "dependencies": [
+      {
+        "package": "example/library",
+        "library": "example/api",
+        "path": "missing.moon"
+      }
+    ]
+  })");
+
+  auto graph = sun::driver::loadConfigGraph(dir / "sun-config.json");
+  sun::driver::ConfigGraphScope scope(graph);
+  sun::cli::BuildRunOptions options;
+  options.forceRebuild = true;
+  sun::cli::configureProductCompiler(options);
+
+  // Resolving the local library must succeed without reading its test source.
+  auto consumer = SunConfig::loadFile(dir / "consumer/sun-config.json");
+  const auto installed =
+      sun::driver::resolveConfigDependency(consumer, "example/library");
+
+  EXPECT_TRUE(fs::is_regular_file(installed / "lib/api.moon"));
+  EXPECT_FALSE(sun::driver::isCurrentlyBuildingDependency());
+
+  // Building the producer directly must still attempt to compile its tests.
+  auto producer = SunConfig::loadFile(dir / "producer/sun-config.json");
+  EXPECT_THROW(sun::driver::buildConfigProducts(graph, producer, {}, "api"),
+               SunError);
+}
+
+/** Custom local dependency builds receive the same test policy as compilation. */
+TEST_F(BuildGraph, SkipsTestsInLocalDependencyCustomBuilds) {
+  put("sun-config.json", R"({
+    "projects": [
+      "producer/sun-config.json",
+      "consumer/sun-config.json"
+    ]
+  })");
+
+  put("producer/sun-config.json", R"({
+    "package_id": "example/tools",
+    "entrypoints": [
+      {
+        "name": "tool",
+        "path": "tool.sun",
+        "type": "binary",
+        "export": true,
+        "build": ["build.py"]
+      }
+    ]
+  })");
+
+  put("producer/tool.sun", R"(
+    manifest {
+      id: "example/tool"
+    }
+  )");
+
+  put("producer/build.py", R"PY(#!/usr/bin/python3
+"""Require dependency test suppression before producing the tool."""
+import json
+import os
+import pathlib
+
+context_path = pathlib.Path(os.environ["SUN_BUILD_CONTEXT"])
+context = json.loads(context_path.read_text())
+assert "--no-test" in context["flags"]
+
+output_path = pathlib.Path(os.environ["SUN_OUTPUT"])
+output_path.write_text("#!/bin/sh\nexit 0\n")
+)PY");
+  fs::permissions(dir / "producer/build.py", fs::perms::owner_all);
+
+  put("consumer/sun-config.json", R"({
+    "dependencies": [
+      {
+        "package": "example/tools",
+        "binary": "example/tool",
+        "path": "missing"
+      }
+    ]
+  })");
+
+  auto graph = sun::driver::loadConfigGraph(dir / "sun-config.json");
+  sun::driver::ConfigGraphScope scope(graph);
+  sun::cli::configureProductCompiler({});
+
+  // The script fails unless dependency resolution passes --no-test.
+  auto consumer = SunConfig::loadFile(dir / "consumer/sun-config.json");
+  const auto installed =
+      sun::driver::resolveConfigDependency(consumer, "example/tools");
+
+  EXPECT_TRUE(fs::is_regular_file(installed / "bin/tool"));
 }
 
 }  // namespace

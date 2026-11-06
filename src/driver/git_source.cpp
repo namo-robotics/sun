@@ -72,11 +72,7 @@ std::filesystem::path cacheDirectory() {
       return std::filesystem::absolute(cache);
     }
   }
-  if (const char* home = std::getenv("HOME")) {
-    return std::filesystem::path(home) / ".sun/cache/git";
-  }
-  sun::support::logAndThrowError(
-      "set SUN_GIT_CACHE or HOME to cache Git sources");
+  return std::filesystem::current_path() / ".sun/cache/git";
 }
 }  // namespace
 
@@ -180,19 +176,17 @@ std::string resolveGitEntrypoint(const ConfigEntrypoint& entry, bool refresh) {
 GitDependencyBuildScope::GitDependencyBuildScope(bool debugInfo, bool optimize,
                                                  bool forceRebuild,
                                                  bool refresh)
-    : previous_(dependencyOptions), previousRefresh_(refreshDependencies) {
+    : settings_(dependencyOptions),
+      refresh_(refreshDependencies, refresh || refreshDependencies) {
   if (buildDepth++ == 0) {
     refreshedDependencies.clear();
   }
   dependencyOptions.debugInfo = debugInfo;
   dependencyOptions.optimize = optimize;
   dependencyOptions.forceRebuild = forceRebuild;
-  refreshDependencies = refresh || previousRefresh_;
 }
 
 GitDependencyBuildScope::~GitDependencyBuildScope() {
-  dependencyOptions = previous_;
-  refreshDependencies = previousRefresh_;
   --buildDepth;
 }
 
@@ -210,7 +204,7 @@ class DependencyBuildGuard {
     if (activeDependencies.count(key_)) {
       sun::support::logAndThrowError("cyclic Git library dependency");
     }
-    if (activeDependencies.empty()) {
+    if (!isCurrentlyBuildingGitDependency()) {
       const auto cache = cacheDirectory();
       std::filesystem::create_directories(cache);
       lock_ = open((cache / ".build.lock").c_str(),
@@ -252,6 +246,14 @@ class SourceConfigScope {
 };
 }  // namespace
 
+bool isCurrentlyBuildingGitDependency() {
+  return !activeDependencies.empty();
+}
+
+const sun::moon_bundling::MoonBuildOptions* gitDependencyBuildOptions() {
+  return isCurrentlyBuildingGitDependency() ? &dependencyOptions : nullptr;
+}
+
 std::filesystem::path resolveGitDependency(const SunConfig& consumer,
                                            const std::string& name) {
   /** Shortens filesystem operations within the dependency build. */
@@ -261,7 +263,8 @@ std::filesystem::path resolveGitDependency(const SunConfig& consumer,
   const bool direct = !dep.path.empty();
   const auto selection =
       repository + (direct ? "\nsource\n" + dep.path
-                           : "\nconfig\n" + dep.config + "\n" + dep.entrypoint);
+                           : "\nconfig\n" + dep.config + "\n" + dep.entrypoint +
+                                 "\n" + dep.library + "\n" + dep.binary);
   DependencyBuildGuard guard(selection);
   ConfigEntrypoint source;
   source.git = dep.git;
@@ -289,35 +292,52 @@ std::filesystem::path resolveGitDependency(const SunConfig& consumer,
   }
   config.sunPath.insert(config.sunPath.begin(), consumerPaths.begin(),
                         consumerPaths.end());
+  const auto settings =
+      std::string(dependencyOptions.debugInfo ? "debug" : "release") +
+      (dependencyOptions.optimize ? "-optimized" : "-unoptimized");
+  const auto output = cacheDirectory() / "builds" /
+                      sun::moon_bundling::computeSha256Hex(
+                          selection + "\n" + inputFile.string() + "\n" +
+                          consumer.configDir.string()) /
+                      configTargetKey(consumer.targetTriple) / settings;
+  std::optional<ConfigGraph> graph;
+  if (!direct) {
+    graph = loadConfigGraph(inputFile, consumer.targetTriple);
+    graph->root = output;
+    config = configureBuildPaths(*graph, std::move(config));
+  }
   ConfigEntrypoint directEntry;
   directEntry.path = inputFile.string();
   directEntry.type = ConfigEntrypoint::Type::Library;
   const ConfigEntrypoint* selected = direct ? &directEntry : nullptr;
   if (!direct) {
     for (const auto& entry : config.entrypoints) {
-      if (!dep.library.empty() && entrypointIdentity(entry) != dep.library) {
-        continue;
-      }
       if (!dep.entrypoint.empty() && entry.name != dep.entrypoint) {
         continue;
       }
-      if (entry.type != ConfigEntrypoint::Type::Library) {
-        if (!dep.entrypoint.empty()) {
-          sun::support::logAndThrowError(
-              "Git dependency entrypoint must be a library: " + dep.entrypoint);
-        }
+      const bool library = entry.type == ConfigEntrypoint::Type::Library;
+      if ((!dep.binary.empty() && library) ||
+          ((!dep.library.empty() || dep.entrypoint.empty()) &&
+           dep.binary.empty() && !library)) {
+        continue;
+      }
+      const auto identity = dep.binary.empty() ? dep.library : dep.binary;
+      auto expanded = entry;
+      expanded.path =
+          ManifestProcessor::expandPathVariables(entry.path, &config);
+      if (!identity.empty() && entrypointIdentity(expanded) != identity) {
         continue;
       }
       if (selected) {
-        sun::support::logAndThrowError("ambiguous Git library dependency " +
-                                       name + "; specify entrypoint");
+        sun::support::logAndThrowError("ambiguous Git dependency " + name +
+                                       "; specify entrypoint");
       }
       selected = &entry;
     }
   }
   if (!selected) {
     sun::support::logAndThrowError("Git dependency " + name +
-                                   " has no matching library entrypoint");
+                                   " has no matching entrypoint");
   }
   if (!selected->git.empty()) {
     sun::support::logAndThrowError(
@@ -336,9 +356,18 @@ std::filesystem::path resolveGitDependency(const SunConfig& consumer,
   }
   const auto relative = entrypoint.lexically_relative(checkout);
   if (relative.empty() || *relative.begin() == ".." ||
-      !fs::is_regular_file(entrypoint)) {
-    sun::support::logAndThrowError(
-        "dependency library is missing or escapes its checkout");
+      (direct && !fs::is_regular_file(entrypoint))) {
+    const auto generated = direct ? fs::path()
+                                  : entrypoint.lexically_relative(fs::path(
+                                        config.pathVariables.at("SUN_BUILD")));
+    if (direct || generated.empty() || *generated.begin() == "..") {
+      sun::support::logAndThrowError(
+          "dependency library is missing or escapes its checkout");
+    }
+  }
+  if (graph) {
+    ConfigGraphScope graphScope(*graph);
+    return buildConfigProducts(*graph, config, {}, selected->name);
   }
   fs::path filename =
       selected->name.empty() ? entrypoint.stem() : fs::path(selected->name);
@@ -349,14 +378,6 @@ std::filesystem::path resolveGitDependency(const SunConfig& consumer,
     sun::support::logAndThrowError(
         "dependency library output filename must be fixed");
   }
-  const auto settings =
-      std::string(dependencyOptions.debugInfo ? "debug" : "release") +
-      (dependencyOptions.optimize ? "-optimized" : "-unoptimized");
-  const auto output = cacheDirectory() / "builds" /
-                      sun::moon_bundling::computeSha256Hex(
-                          selection + "\n" + inputFile.string() + "\n" +
-                          consumer.configDir.string()) /
-                      configTargetKey(consumer.targetTriple) / settings;
   fs::create_directories(output / "lib");
   auto options = dependencyOptions;
   options.targetTriple = consumer.targetTriple;

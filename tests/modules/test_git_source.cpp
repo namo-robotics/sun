@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <llvm/TargetParser/Host.h>
 
 #include <cstdlib>
 #include <filesystem>
@@ -15,6 +16,7 @@
 #include "driver/package.h"
 #include "driver/sun_config.h"
 #include "moon_bundling/moon_builder.h"
+#include "moon_bundling/moon_cache.h"
 #include "support/error.h"
 #include "support/sun_path.h"
 
@@ -25,6 +27,7 @@ namespace {
 class GitSourceTest : public testing::Test {
  protected:
   std::filesystem::path dir;
+  std::filesystem::path originalDirectory;
   std::map<std::string, std::optional<std::string>> environment;
   std::vector<std::filesystem::path> searchPaths;
 
@@ -46,6 +49,10 @@ class GitSourceTest : public testing::Test {
   /** Installs a fake Git that records arguments and materializes fixture
    * source. */
   void SetUp() override {
+    originalDirectory = std::filesystem::current_path();
+    sun::cli::BuildRunOptions options;
+    options.noTest = true;
+    sun::cli::configureProductCompiler(options);
     searchPaths = sun::support::SunPath::extraPaths();
     dir = std::filesystem::current_path() / "tmp/git-source-tests" /
           testing::UnitTest::GetInstance()->current_test_info()->name();
@@ -93,11 +100,15 @@ if 'checkout' in args:
                                  std::filesystem::perms::owner_all);
     setEnvironment("SUN_FAKE_GIT_ROOT", dir.string());
     setEnvironment("SUN_GIT_CACHE", (dir / "cache").string());
-    setEnvironment("PATH", (dir / "bin").string());
+    const char* path = std::getenv("PATH");
+    setEnvironment("PATH", (dir / "bin").string() +
+                               (path ? ":" + std::string(path) : ""));
   }
 
   /** Restores process settings after each test. */
   void TearDown() override {
+    std::filesystem::current_path(originalDirectory);
+    sun::driver::setProductCompiler({});
     sun::support::SunPath::extraPaths() = searchPaths;
     sun::driver::ManifestProcessor::clearPathVariables();
     for (const auto& [name, value] : environment) {
@@ -119,6 +130,33 @@ if 'checkout' in args:
     return result;
   }
 };
+
+/** Default Git storage follows the invocation directory, independent of HOME. */
+TEST_F(GitSourceTest, DefaultsToWorkingDirectoryCache) {
+  unsetenv("SUN_GIT_CACHE");
+  const auto home = dir / "home";
+  std::filesystem::create_directories(home);
+  setEnvironment("HOME", home.string());
+  std::filesystem::current_path(dir);
+  const auto source = sun::driver::resolveGitEntrypoint(entry());
+  const auto relative = std::filesystem::path(source).lexically_relative(
+      dir / ".sun/cache/git");
+  ASSERT_FALSE(relative.empty());
+  EXPECT_NE(*relative.begin(), "..");
+  EXPECT_TRUE(std::filesystem::is_regular_file(source));
+  /** Subprocesses may use HOME, but Sun must keep its cache in the workspace. */
+  EXPECT_FALSE(std::filesystem::exists(home / ".sun/cache"));
+}
+
+/** Default Moon storage follows the invocation directory, independent of HOME. */
+TEST_F(GitSourceTest, DefaultsMoonCacheToWorkingDirectory) {
+  setEnvironment("SUN_MOON_CACHE", "");
+  unsetenv("SUN_MOON_CACHE");
+  setEnvironment("HOME", (dir / "home").string());
+  std::filesystem::current_path(dir);
+  EXPECT_EQ(sun::moon_bundling::MoonCache::defaultCacheDir(),
+            dir / ".sun/cache/moons");
+}
 
 /** Checks SSH, HTTPS, commit, tag, and branch declarations without fetching. */
 TEST_F(GitSourceTest, ParsesGitVersionsAndKeepsOutputInProject) {
@@ -363,7 +401,7 @@ TEST_F(GitSourceTest, BuildsSelectedLibraryFromCustomConfigAndImportsIt) {
 }
 
 /** Selection errors and cycles fail clearly, then allow a corrected build. */
-TEST_F(GitSourceTest, RejectsAmbiguousMissingBinaryAndCyclicSelections) {
+TEST_F(GitSourceTest, RejectsAmbiguousMissingAndCyclicSelections) {
   write(dir / "repo-config", R"({"root":true,"entrypoints":[
     {"name":"first","path":"src/lib.sun","type":"library"},
     {"name":"second","path":"src/lib.sun","type":"library"},
@@ -390,13 +428,12 @@ TEST_F(GitSourceTest, RejectsAmbiguousMissingBinaryAndCyclicSelections) {
   config.dependencies.at("LIB").selections.front().git =
       "git@example.com:cycle.git";
   config.dependencies.at("LIB").selections.front().entrypoint.clear();
-  try {
-    sun::driver::resolveConfigDependency(config, "LIB");
-    FAIL() << "expected cycle error";
-  } catch (const sun::support::SunError& error) {
-    EXPECT_NE(std::string(error.what()).find("cyclic Git library dependency"),
-              std::string::npos);
-  }
+  testing::internal::CaptureStderr();
+  EXPECT_THROW(sun::driver::resolveConfigDependency(config, "LIB"),
+               sun::support::SunError);
+  EXPECT_NE(testing::internal::GetCapturedStderr().find(
+                "cyclic Git library dependency"),
+            std::string::npos);
   config.dependencies.at("LIB").selections.front().git =
       "git@example.com:team/library.git";
   config.dependencies.at("LIB").selections.front().entrypoint = "first";
@@ -516,5 +553,169 @@ TEST_F(GitSourceTest, RejectsConflictingOrEscapingDirectSelections) {
                  sun::support::SunError);
   }
   EXPECT_FALSE(std::filesystem::exists(dir / "calls"));
+}
+
+/** Preparation generates sources before prerequisites and preserves installs on
+ * failure. */
+TEST_F(GitSourceTest, BuildsGeneratedPrerequisiteAndTracksInputs) {
+  write(dir / "sun-config.json", R"({"dependencies":[{"package":"LIB",
+    "git":"git@example.com:generated.git","version":"v1","entrypoint":"api"}]})");
+  write(dir / "repos/generated.git/sun-config.json",
+        R"({"package_id":"example/generated",
+    "steps":[{"name":"generate","command":["/bin/cp","input.sun","${SUN_BUILD}/generated.sun"],
+      "inputs":["input.sun"],"outputs":["${SUN_BUILD}/generated.sun"]}],
+    "entrypoints":[
+      {"name":"generated","path":"${SUN_BUILD}/generated.sun","type":"library","steps":["generate"]},
+      {"name":"api","path":"api.sun","type":"library","requires":["generated"]}]})");
+  write(dir / "repos/generated.git/input.sun",
+        "/** Generated module. */ public module generated { /** Returns a "
+        "value. */ public function value() i32 { return 42; } }");
+  write(dir / "repos/generated.git/api.sun",
+        "manifest { libraries: [\"${SUN_BUILD}/generated.moon\"] }\n"
+        "/** Public API. */ public module api { /** Reads generated code. */ "
+        "public function value() i32 { return generated.value(); } }");
+  auto config = sun::driver::SunConfig::loadFile(dir / "sun-config.json");
+  auto installed = sun::driver::resolveConfigDependency(config, "LIB");
+  const auto artifact = installed / "lib/api.moon";
+  ASSERT_TRUE(std::filesystem::exists(artifact));
+  const auto timestamp = std::filesystem::last_write_time(artifact);
+  EXPECT_EQ(sun::driver::resolveConfigDependency(config, "LIB"), installed);
+  EXPECT_EQ(std::filesystem::last_write_time(artifact), timestamp);
+  auto source = entry();
+  source.git = "git@example.com:generated.git";
+  source.version = "v1";
+  source.path = "input.sun";
+  const auto input = sun::driver::resolveGitEntrypoint(source);
+  const auto hash = sun::driver::packageFileHash(artifact);
+  write(input,
+        "/** Changed module. */ public module generated { /** Returns a value. "
+        "*/ public function value() i32 { return 43; } }");
+  sun::driver::resolveConfigDependency(config, "LIB");
+  EXPECT_NE(sun::driver::packageFileHash(artifact), hash);
+  const auto updated = sun::driver::packageFileHash(artifact);
+  std::filesystem::remove(input);
+  EXPECT_THROW(sun::driver::resolveConfigDependency(config, "LIB"),
+               sun::support::SunError);
+  EXPECT_EQ(sun::driver::packageFileHash(artifact), updated);
+  EXPECT_FALSE(std::filesystem::exists(
+      std::filesystem::path(input).parent_path() / ".sun"));
+}
+
+/** Native preparation runs before the Moon loader embeds its archive. */
+TEST_F(GitSourceTest, BuildsAndEmbedsNativeArchiveFromEmptyCache) {
+  write(dir / "sun-config.json", R"({"dependencies":[{"package":"LIB",
+    "git":"git@example.com:native.git","version":"v1","entrypoint":"api"}]})");
+  write(dir / "repos/native.git/sun-config.json",
+        R"({"package_id":"example/native",
+    "steps":[
+      {"name":"compile","command":["/usr/bin/cc","-c","native.c","-o","${SUN_BUILD}/native.o"],
+       "inputs":["native.c"],"outputs":["${SUN_BUILD}/native.o"]},
+      {"name":"native","requires":["compile"],"command":["/usr/bin/ar","rcs","${SUN_BUILD}/native.a","${SUN_BUILD}/native.o"],
+       "inputs":["${SUN_BUILD}/native.o"],"outputs":["${SUN_BUILD}/native.a"]}],
+    "entrypoints":[{"name":"api","path":"api.sun","type":"library","steps":["native"]}]})");
+  write(dir / "repos/native.git/native.c",
+        "/** Supplies a native archive member. */ int native_value(void) { "
+        "return 42; }\n");
+  write(
+      dir / "repos/native.git/api.sun",
+      "manifest { archives: [\"${SUN_BUILD}/native.a\"] }\n"
+      "/** Native fixture. */ public module native_fixture {\n"
+      "/** Calls the C archive. */ extern \"C\" function native_value() i32;\n"
+      "/** Exposes the native value. */ public function value() i32 { return "
+      "unsafe { native_value(); }; } }");
+  auto config = sun::driver::SunConfig::loadFile(dir / "sun-config.json");
+  auto installed = sun::driver::resolveConfigDependency(config, "LIB");
+  ASSERT_TRUE(std::filesystem::exists(installed / "lib/api.moon"));
+  write(dir / "main.sun",
+        "manifest { libraries: [\"$LIB/lib/api.moon\"] }\n/** Consumer. */ "
+        "function main() i32 { return native_fixture.value(); }");
+  auto driver = sun::driver::Driver::createForAOT("git_native_consumer");
+  driver->compileFile((dir / "main.sun").string());
+  EXPECT_EQ(driver->getNativeArchivePaths().size(), 1u);
+}
+
+/** Custom scripts receive build context and stage their declared resources. */
+TEST_F(GitSourceTest, RunsCustomScriptAndStagesResources) {
+  write(dir / "sun-config.json",
+        R"({"dependencies":[{"package":"TOOL",
+    "git":"git@example.com:custom.git","version":"v1","entrypoint":"tool"}]})");
+  write(dir / "repos/custom.git/sun-config.json",
+        R"({"package_id":"example/tools",
+    "entrypoints":[{"name":"tool","path":"tool.sun","type":"binary","build":["build.py"],
+      "resources":[{"path":"data","destination":"tool.data"}]}]})");
+  write(dir / "repos/custom.git/tool.sun", "manifest { id: \"example/tool\" }");
+  write(dir / "repos/custom.git/data/value.txt", "resource");
+  write(dir / "repos/custom.git/build.py", R"PY(#!/usr/bin/python3
+"""Validate custom context and emit a host generator."""
+import json, os, pathlib
+context = json.loads(pathlib.Path(os.environ['SUN_BUILD_CONTEXT']).read_text())
+assert context['output'] == os.environ['SUN_OUTPUT']
+assert context['source'] == os.environ['SUN_SOURCE']
+pathlib.Path(os.environ['SUN_OUTPUT']).write_text('#!/bin/sh\n/bin/cp "$1" "$2"\n')
+)PY");
+  std::filesystem::permissions(dir / "repos/custom.git/build.py",
+                               std::filesystem::perms::owner_all);
+  auto config = sun::driver::SunConfig::loadFile(dir / "sun-config.json");
+  auto installed = sun::driver::resolveConfigDependency(config, "TOOL");
+  EXPECT_TRUE(std::filesystem::exists(installed / "bin/tool"));
+  EXPECT_TRUE(std::filesystem::exists(installed / "bin/tool.data/value.txt"));
+}
+/** Git generators use host settings while their consumer builds for another
+ * target. */
+TEST_F(GitSourceTest, UsesHostGitGeneratorForForeignTarget) {
+  const auto host = llvm::sys::getDefaultTargetTriple();
+  const auto target =
+      sun::driver::configTargetKey(host) == "x86_64-unknown-linux-gnu"
+          ? "aarch64-linux-gnu"
+          : "x86_64-linux-gnu";
+  write(dir / "sun-config.json", R"({"package_id":"example/consumer",
+    "dependencies":[{"package":"TOOLS","binary":"example/tool","git":"git@example.com:tools.git","version":"v1"}],
+    "steps":[{"name":"generate","command":["${TOOLS}/bin/tool","input.sun","${SUN_BUILD}/generated.sun"],
+      "inputs":["input.sun"],"outputs":["${SUN_BUILD}/generated.sun"]}],
+    "entrypoints":[{"name":"consumer","path":"${SUN_BUILD}/generated.sun","type":"library","export":true,"steps":["generate"]}]})");
+  setEnvironment("EXPECTED_HOST",
+                 sun::driver::SunConfig::loadFile(dir / "sun-config.json", host)
+                     .targetTriple);
+  write(dir / "input.sun",
+        "/** Generated consumer. */ public module consumer {}");
+  write(dir / "repos/tools.git/sun-config.json",
+        R"({"package_id":"example/tools",
+    "entrypoints":[{"name":"tool","path":"tool.sun","type":"binary","build":["build.py"]}]})");
+  write(dir / "repos/tools.git/tool.sun", "manifest { id: \"example/tool\" }");
+  write(dir / "repos/tools.git/build.py", R"PY(#!/usr/bin/python3
+"""Emit a generator only when built for the requested host."""
+import os, pathlib
+assert os.environ['SUN_TARGET'] == os.environ['EXPECTED_HOST']
+pathlib.Path(os.environ['SUN_OUTPUT']).write_text('#!/bin/sh\n/bin/cp "$1" "$2"\n')
+)PY");
+  std::filesystem::permissions(dir / "repos/tools.git/build.py",
+                               std::filesystem::perms::owner_all);
+  sun::cli::BuildRunOptions options;
+  options.inputFiles = {(dir / "sun-config.json").string()};
+  options.targetTriple = target;
+  options.noTest = true;
+  EXPECT_EQ(sun::cli::runConfigBuildCommand(options), 0);
+}
+/** Distinct Git selections do not publish each other's accumulated products. */
+TEST_F(GitSourceTest, CombinesSelectionsFromOneRepository) {
+  write(dir / "sun-config.json", R"({"dependencies":[
+    {"package":"LIB","library":"example/first","git":"git@example.com:pair.git","version":"v1"},
+    {"package":"LIB","library":"example/second","git":"git@example.com:pair.git","version":"v1"}]})");
+  write(
+      dir / "repos/pair.git/sun-config.json",
+      R"({"package_id":"example/pair","exports":[{"path":"NOTICE","destination":"share/NOTICE"}],"entrypoints":[
+    {"name":"first","path":"first.sun","type":"library"},
+    {"name":"second","path":"second.sun","type":"library"}]})");
+  write(dir / "repos/pair.git/NOTICE", "shared notice");
+  write(dir / "repos/pair.git/first.sun", "manifest { id: \"example/first\" }");
+  write(dir / "repos/pair.git/second.sun",
+        "manifest { id: \"example/second\" }");
+  auto graph = sun::driver::loadConfigGraph(dir / "sun-config.json");
+  sun::driver::ConfigGraphScope scope(graph);
+  auto config = sun::driver::SunConfig::loadFile(dir / "sun-config.json");
+  const auto installed = sun::driver::resolveConfigDependency(config, "LIB");
+  EXPECT_TRUE(std::filesystem::exists(installed / "lib/first.moon"));
+  EXPECT_TRUE(std::filesystem::exists(installed / "lib/second.moon"));
+  EXPECT_TRUE(std::filesystem::exists(installed / "share/NOTICE"));
 }
 }  // namespace
