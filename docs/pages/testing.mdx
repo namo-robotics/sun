@@ -223,12 +223,12 @@ discovered through the `entrypoints` list of your `sun-config.json` (the
 `sun.sun_configs` setting names the config files; the workspace root's is
 found by default), so the whole tree appears without opening a file.
 
-Running a selection passes `--test-filter` for each chosen test. When the
-config names a `test_binary_name` and that binary is newer than every
-source, the extension runs it directly; otherwise it JIT-compiles via
-`sun test <entrypoint>`. A failed assertion's message appears on the test.
-Point `sun.compiler_path` at your `sun` binary if it is not on PATH (the
-extension also tries the one next to `sun-lsp`).
+Running a selection passes `--test-filter` for each chosen test. The extension
+runs only the compiled binary named by `test_binary_name` in `sun-config.json`,
+and checks that it is at least as new as every source. Build tests before running
+them in the editor. If the binary is unconfigured, missing, or out of date, the
+selected tests show an error asking you to build or rebuild them. The extension
+does not JIT-compile tests. A failed assertion's message appears on the test.
 
 ## Debugging the runner
 

@@ -213,7 +213,7 @@ async function startLanguageServices(): Promise<void> {
       return;
     }
     activateTestExplorer(
-      { subscriptions: serviceSubscriptions }, client, env, workspaceFolder, command,
+      { subscriptions: serviceSubscriptions }, client, env, workspaceFolder,
       () => sendConfigurationToLSP(workspaceFolder),
       () => getSunConfigs(workspaceFolder)
     );

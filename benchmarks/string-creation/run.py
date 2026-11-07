@@ -120,14 +120,16 @@ def main():
             if len(checks) != len(entries) or any(int(x) != 8192 for x in checks):
                 raise RuntimeError(f"incorrect retained string lengths for {label}: {checks}")
     rows.sort(key=lambda row: row["ns_per_string"])
+    implementation_files = [ROOT / "stdlib/std/string.sun", ROOT / "include/codegen/codegen.h"]
+    implementation_files.extend(path for path in sorted((ROOT / "src/driver/pipeline").iterdir())
+                                if path.suffix in {".cpp", ".h"})
     metadata = {"measured_at_utc": datetime.now(timezone.utc).isoformat(),
                 "upstream_commit": UPSTREAM, "benchmark_sha256": hashes,
                 "sun_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
                 "sun_source_sha256": hashlib.sha256((SOURCE / "bench.sun").read_bytes()).hexdigest(),
-                "implementation_sha256": {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
-                                          for name in ["stdlib/std/string.sun", "include/codegen/codegen.h",
-                                                       "src/driver/driver.cpp"]},
-                "worktree_modified": bool(subprocess.check_output(["git", "diff", "--name-only"], text=True).strip()),
+                "implementation_sha256": {str(file.relative_to(ROOT)): hashlib.sha256(file.read_bytes()).hexdigest()
+                                          for file in implementation_files},
+                "worktree_modified": bool(subprocess.check_output(["git", "diff", "HEAD", "--name-only"], text=True).strip()),
                 "platform": platform.platform(), "cpu": args.cpu, "versions": versions,
                 "commands": commands, "results": rows}
     if Path("/proc/cpuinfo").exists():

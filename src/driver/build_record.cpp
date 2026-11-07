@@ -35,7 +35,7 @@ std::string renderRecord(const BuildRecord& record) {
   text += "\nhash=" + record.inputHash;
   text += std::string("\ntests=") + (record.hasTests ? "1" : "0");
   text += std::string("\nexecutable=") + (record.hasExecutable ? "1" : "0");
-  text += "\n";
+  text += "\nlisting=" + std::to_string(record.testListingVersion) + "\n";
   return text;
 }
 
@@ -59,6 +59,9 @@ std::optional<BuildRecord> parseRecord(const std::string& text) {
     }
     if (key == "tests") {
       record.hasTests = value == "1";
+    }
+    if (key == "listing" && value == "1") {
+      record.testListingVersion = 1;
     }
     if (key == "executable") {
       record.hasExecutable = value == "1";

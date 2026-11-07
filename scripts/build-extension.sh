@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Builds the language server and packages and installs the VS Code extension.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -25,6 +26,17 @@ install_vsix() {
   "$cli" --install-extension "$VSIX_PATH" --force
 }
 
+if ! command -v node >/dev/null 2>&1; then
+  echo "Error: Node.js 22 or newer is required to package the extension." >&2
+  exit 1
+fi
+
+if ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)'; then
+  echo "Error: Node.js 22 or newer is required to package the extension (found $(node --version))." >&2
+  echo "With nvm, run: nvm install 24 && nvm use 24; then rerun this script." >&2
+  exit 1
+fi
+
 if ! command -v cmake >/dev/null 2>&1; then
   echo "Error: cmake is not installed or not on PATH." >&2
   exit 1
@@ -37,7 +49,11 @@ fi
 
 echo "==> Building sun-lsp"
 cmake -B "$BUILD_DIR"
-cmake --build "$BUILD_DIR" -j"$(nproc)" --target sun-lsp
+BUILD_JOBS=$(( $(nproc) / 2 ))
+if (( BUILD_JOBS < 1 )); then
+  BUILD_JOBS=1
+fi
+cmake --build "$BUILD_DIR" -j"$BUILD_JOBS" --target sun-lsp
 
 echo "==> Installing extension dependencies"
 npm --prefix "$EXT_DIR" install

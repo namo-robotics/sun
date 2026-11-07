@@ -3,7 +3,7 @@
   "displayName": "Sun Language",
   "description": "Syntax highlighting, diagnostics, formatting, hover type information, go-to-definition, find references, rename symbol and Test Explorer for Sun",
   "icon": "images/sun-logo.png",
-  "version": "0.1.44",
+  "version": "0.1.49",
   "publisher": "namo-robotics",
   "license": "MIT",
   "repository": {
@@ -119,11 +119,6 @@
           "type": "string",
           "default": "sun-lsp",
           "description": "Path to the sun-lsp executable"
-        },
-        "sun.compiler_path": {
-          "type": "string",
-          "default": "sun",
-          "description": "Path to the sun compiler, used by the Test Explorer to run tests (sun test <entrypoint>). Absolute, workspace-relative (for example build/sun), or a command on PATH; when unset the extension also tries the sun binary next to sun-lsp."
         },
         "sun.sun_configs": {
           "type": "array",
