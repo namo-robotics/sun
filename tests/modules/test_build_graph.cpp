@@ -58,7 +58,8 @@ class BuildGraph : public testing::Test {
 /** Package identities form relative paths with nonempty portable components. */
 TEST_F(BuildGraph, PackageIdentityAcceptsPortablePaths) {
   auto fixture = llvm::json::parse(readConfigFixture("cases.json"));
-  ASSERT_TRUE(fixture);
+  ASSERT_TRUE(static_cast<bool>(fixture))
+      << llvm::toString(fixture.takeError());
   ASSERT_NE(fixture->getAsObject(), nullptr);
   for (const auto& [name, config] : *fixture->getAsObject()) {
     SCOPED_TRACE(name.str());
@@ -71,7 +72,8 @@ TEST_F(BuildGraph, PackageIdentityAcceptsPortablePaths) {
 /** Unsafe paths and whitespace cannot become package output directories. */
 TEST_F(BuildGraph, PackageIdentityRejectsUnsafePaths) {
   auto fixture = llvm::json::parse(readConfigFixture("cases.json"));
-  ASSERT_TRUE(fixture);
+  ASSERT_TRUE(static_cast<bool>(fixture))
+      << llvm::toString(fixture.takeError());
   ASSERT_NE(fixture->getAsObject(), nullptr);
   for (const auto& [name, config] : *fixture->getAsObject()) {
     SCOPED_TRACE(name.str());
