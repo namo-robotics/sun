@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     tags:
-      - 'v[0-9]*'
+      - "v[0-9]*"
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -79,23 +79,23 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: '3.14.4'
+          python-version: "3.14.4"
 
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: '24.21.0'
+          node-version: "24.21.0"
 
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.24.3'
+          go-version: "1.24.3"
           cache: false
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: "8.0.x"
 
       - name: Set up Rust
         run: |
@@ -293,7 +293,7 @@ jobs:
         continue-on-error: true
         uses: actions/setup-python@v6
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Install GPU comparison frameworks
         id: gpu-frameworks
@@ -694,7 +694,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           ref: ${{ env.BUILD_SHA }}
-          fetch-depth: 0  # Full history and tags for version detection
+          fetch-depth: 0 # Full history and tags for version detection
 
       # The build scripts read the version from an exact-match tag on HEAD,
       # so use the same check for both push and manual runs.
@@ -1051,7 +1051,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           ref: ${{ env.BUILD_SHA }}
-          fetch-depth: 0  # Full history and tags for version detection
+          fetch-depth: 0 # Full history and tags for version detection
 
       # The build scripts read the version from an exact-match tag on HEAD,
       # so use the same check for both push and manual runs.
@@ -1100,7 +1100,7 @@ jobs:
 
   # Publish after macOS compiler tests and package installation pass.
   publish-macos:
-    needs: [build-macos, build-and-test-macos, test-install-macos]
+    needs: [build-macos, test-install-macos]
     permissions:
       contents: write
     runs-on: ubuntu-24.04
@@ -1229,7 +1229,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           ref: ${{ env.BUILD_SHA }}
-          fetch-depth: 0  # Full history and tags for version detection
+          fetch-depth: 0 # Full history and tags for version detection
 
       # Writing to another repository needs a token of its own; the built-in
       # GITHUB_TOKEN is scoped to this one. Without the secret the job says so
@@ -1321,8 +1321,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: '24'
-          cache: 'npm'
+          node-version: "24"
+          cache: "npm"
           cache-dependency-path: docs/package-lock.json
 
       - name: Install Doxygen

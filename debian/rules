@@ -62,5 +62,8 @@ override_dh_auto_install:
 	install -d debian/sun/usr/share/sun/tls
 	install -m 644 tls/*.sun debian/sun/usr/share/sun/tls/
 
+# Debug symbols are not shipped; avoid dwz's size limit before dh_strip removes them.
+override_dh_dwz: ;
+
 override_dh_shlibdeps:
 	dh_shlibdeps --dpkg-shlibdeps-params=--ignore-missing-info
