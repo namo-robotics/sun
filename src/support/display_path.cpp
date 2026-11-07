@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "support/terminal.h"
+#include "support/terminal_format.h"
 
 /** Renders paths for the current compiler invocation. */
 namespace sun::support {
@@ -25,6 +26,25 @@ DisplayPathScope::DisplayPathScope(const std::filesystem::path& directory)
 }
 
 DisplayPathScope::~DisplayPathScope() { displayRoot = std::move(previous_); }
+
+void logBuildProgress(const std::string& label,
+                      const std::filesystem::path& output,
+                      const std::optional<std::filesystem::path>& source) {
+  if (messageEnabled("info")) {
+    auto& stream = messageStream("info");
+    stream << label << terminalFileLabel(output, stream) << "\n";
+    stream.flush();
+  }
+  if (messageEnabled("debug")) {
+    auto& stream = messageStream("debug");
+    stream << label;
+    if (source) {
+      stream << std::filesystem::absolute(*source).string() << " -> ";
+    }
+    stream << std::filesystem::absolute(output).string() << "\n";
+    stream.flush();
+  }
+}
 
 void logPathMessage(const std::string& level, const std::string& label,
                     const std::filesystem::path& path,

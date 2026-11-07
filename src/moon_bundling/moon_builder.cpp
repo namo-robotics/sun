@@ -478,13 +478,13 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
       options.debugInfo, options.optimize, options.forceRebuild);
   auto inputs = loadInputs(entrypoint, options);
   if (isUpToDate(inputs.inputHash, outputPath, options)) {
-    sun::support::logPathMessage("info", "Up to date: ", outputPath.string());
+    sun::support::logBuildProgress("Up to date: ", outputPath.string());
     return readExistingReport(outputPath, inputs.archiveSetHash,
                               std::move(inputs.report));
   }
 
-  sun::support::logPathMessage(
-      "info", "Building library: ", entrypoint, outputPath.string());
+  sun::support::logBuildProgress(
+      "Building ", outputPath, entrypoint);
 
   if (options.onBuildStart) {
     options.onBuildStart();
@@ -503,8 +503,7 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   auto report = std::move(inputs.report);
   report.modules = std::move(compiled.metadata.modules);
   report.inheritedArchives = std::move(inheritedArchives);
-  sun::support::logPathMessage(
-      "info", "Successfully created: ", outputPath.string());
+  sun::support::logBuildProgress("Built ", outputPath);
   return report;
 }
 

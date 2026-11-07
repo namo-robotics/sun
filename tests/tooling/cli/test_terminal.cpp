@@ -8,6 +8,7 @@
 #include <string>
 
 #include "driver/compiler.h"
+#include "support/display_path.h"
 #include "support/error.h"
 #include "support/terminal.h"
 #include "support/terminal_format.h"
@@ -164,6 +165,22 @@ TEST(Tooling_Cli_Terminal, multiline_warnings_are_prefixed) {
   llvm::errs().flush();
   EXPECT_EQ(testing::internal::GetCapturedStderr(),
             "[sun][warning]: first\n[sun][warning]: second\n");
+}
+
+/** Build progress stays short while debug messages retain both absolute paths. */
+TEST(Tooling_Cli_Terminal, build_progress_keeps_paths_in_debug_output) {
+  ScopedEnvironment level("SUN_LOG_LEVEL", "debug");
+  ScopedEnvironment noColor("NO_COLOR", "1");
+  const auto source = std::filesystem::absolute("src/main.sun");
+  const auto output = std::filesystem::absolute("build/cache/app");
+  captureStdout();
+  testing::internal::CaptureStderr();
+  sun::support::logBuildProgress("Building ", output, source);
+  EXPECT_EQ(testing::internal::GetCapturedStdout(),
+            "[sun][info]: Building app\n");
+  EXPECT_EQ(testing::internal::GetCapturedStderr(),
+            "[sun][debug]: Building " + source.string() + " -> " +
+                output.string() + "\n");
 }
 
 /** Default logging shows build progress and compiler diagnostics. */

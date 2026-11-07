@@ -31,6 +31,13 @@ void logPathMessage(const std::string& level, const std::string& label,
                     const std::filesystem::path& path,
                     const std::optional<std::filesystem::path>& output = std::nullopt);
 
+/** Logs an artifact's basename, linking existing files in formatted terminals.
+ * Debug logging includes full artifact and optional source paths.
+ */
+void logBuildProgress(const std::string& label,
+                      const std::filesystem::path& output,
+                      const std::optional<std::filesystem::path>& source = std::nullopt);
+
 /** Returns the display base for child build contexts, or the current directory.
  */
 std::filesystem::path displayPathBase();
