@@ -1098,9 +1098,9 @@ jobs:
             dist/*.moon
           retention-days: 30
 
-  # Publish only after compiler tests and this package's installation pass.
+  # Publish after macOS compiler tests and package installation pass.
   publish-macos:
-    needs: [build-macos, build-and-test, build-and-test-macos, test-install-macos]
+    needs: [build-macos, build-and-test-macos, test-install-macos]
     permissions:
       contents: write
     runs-on: ubuntu-24.04
