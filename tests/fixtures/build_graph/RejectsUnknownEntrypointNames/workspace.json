@@ -1,0 +1,9 @@
+{
+  "entrypoints": [
+    {
+      "name": "api",
+      "path": "api.sun",
+      "type": "library"
+    }
+  ]
+}

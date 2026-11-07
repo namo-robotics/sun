@@ -1,0 +1,16 @@
+{
+  "root": true,
+  "dependencies": [
+    {
+      "git": "ssh://git@example.com/top.git",
+      "version": "main",
+      "packages": {
+        "LIB": {
+          "entrypoints": [
+            "top"
+          ]
+        }
+      }
+    }
+  ]
+}

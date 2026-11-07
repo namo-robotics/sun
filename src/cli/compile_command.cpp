@@ -203,12 +203,12 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
   const std::string inputHash = computeJobInputHash(job, /*forTests=*/true);
   std::optional<BuildRecord> existing;
   if (maySkip(job) && isUpToDate(testOutput, inputHash, existing)) {
-    sun::support::logPathMessage("info", "Up to date: ", testOutput);
+    sun::support::logBuildProgress("Up to date: ", testOutput);
     return 0;
   }
 
-  sun::support::logPathMessage(
-      "info", "Building tests: ", inputFile, testOutput);
+  sun::support::logBuildProgress(
+      "Building tests: ", testOutput, inputFile);
 
   // Tests inherit production optimization and always carry debug info.
   auto testDriver = Driver::createForAOT("test_module", job.targetTriple,
@@ -244,8 +244,7 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
         << "Test compilation failed: " << errorMsg << "\n";
     return 1;
   }
-  sun::support::logPathMessage(
-      "info", "Successfully compiled test binary to: ", testOutput);
+  sun::support::logBuildProgress("Built ", testOutput);
   return 0;
 }
 
@@ -266,7 +265,7 @@ int compileEntrypoint(const CompileJob& job) {
     if (maySkip(job)) {
       std::optional<BuildRecord> built;
       if (isUpToDate(job.outputFile, inputHash, built)) {
-        sun::support::logPathMessage("info", "Up to date: ", job.outputFile);
+        sun::support::logBuildProgress("Up to date: ", job.outputFile);
         if (!wantTests || !built->hasTests) {
           return 0;
         }
@@ -282,14 +281,14 @@ int compileEntrypoint(const CompileJob& job) {
           sun::support::logAndThrowError(
               "packaged entrypoint has no production executable: " + inputFile);
         }
-        sun::support::logPathMessage(
-            "info", "Up to date: ", getTestOutputName(job));
+        sun::support::logBuildProgress(
+            "Up to date: ", getTestOutputName(job));
         return 0;
       }
     }
 
-    sun::support::logPathMessage(
-        "info", "Building: ", inputFile, job.outputFile);
+    sun::support::logBuildProgress(
+        "Building ", job.outputFile, inputFile);
 
     auto driver = Driver::createForAOT("main_module", job.targetTriple,
                                        job.debugInfo, job.optimize);
@@ -363,8 +362,7 @@ int compileEntrypoint(const CompileJob& job) {
       return 1;
     }
     if (emitProduction) {
-      sun::support::logPathMessage(
-          "info", "Successfully compiled to: ", job.outputFile);
+      sun::support::logBuildProgress("Built ", job.outputFile);
     }
 
     // A program with tests also gets a test binary, so `sun -c` leaves

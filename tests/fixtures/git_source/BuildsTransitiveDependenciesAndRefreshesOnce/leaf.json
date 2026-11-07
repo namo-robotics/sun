@@ -1,0 +1,10 @@
+{
+  "root": true,
+  "entrypoints": [
+    {
+      "path": "leaf.sun",
+      "type": "library"
+    }
+  ],
+  "package_id": "LEAF"
+}

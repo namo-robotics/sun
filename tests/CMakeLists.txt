@@ -117,8 +117,9 @@ if(NOT SUN_TEST_SHARDS MATCHES "^[1-9][0-9]*$")
 endif()
 set(sun_individual_test_filter "*")
 if(SUN_TEST_SHARDS GREATER 1)
-    # Stateful FFI tests need fresh processes. Slow integration tests stay
-    # separate so CTest can schedule them without holding up an entire shard.
+    # FFI and signal tests change process-wide state and need fresh processes.
+    # Slow integration tests stay separate so CTest can schedule them without
+    # holding up an entire shard.
     set(sun_isolated_tests
         "ABI_Compatibility.*" "ABI_LibraryAbiSnapshot.*"
         "*Modules_NestedTypeArguments*.*" "*Errors_Arithmetic*.*"
@@ -126,6 +127,7 @@ if(SUN_TEST_SHARDS GREATER 1)
         "Ffi_Link.*" "Tooling_Backend_InputHash.*" "Modules_ProtoImport.*"
         "Tooling_Backend_DebugInfo.*" "Ffi_Abi_StaticLink.*"
         "Ffi_Abi_CrossTargetDarwin.*"
+        "Builtins_Signals.*"
         "*DISABLED_*"
     )
     list(JOIN sun_isolated_tests ":" sun_individual_test_filter)

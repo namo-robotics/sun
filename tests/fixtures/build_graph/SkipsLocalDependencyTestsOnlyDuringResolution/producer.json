@@ -1,0 +1,14 @@
+{
+  "package_id": "example/library",
+  "entrypoints": [
+    {
+      "name": "api",
+      "path": "api.sun",
+      "type": "library",
+      "export": true,
+      "compile_args": [
+        "-O0"
+      ]
+    }
+  ]
+}

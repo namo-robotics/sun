@@ -213,23 +213,20 @@ manifest { source_files: ["util.sun"] }
   const std::string forced = "--force-rebuild " + always;
 
   const auto initialLog = scratch.runSun(build);
-  EXPECT_TRUE(
-      contains(initialLog, "Building library: " + scratch.path("lib.sun")))
-      << initialLog;
+  EXPECT_TRUE(contains(initialLog, "Building lib.moon")) << initialLog;
   EXPECT_FALSE(contains(initialLog, "Writing library: " + moon)) << initialLog;
-  EXPECT_TRUE(contains(initialLog, "Successfully created: " + moon))
-      << initialLog;
+  EXPECT_TRUE(contains(initialLog, "Built lib.moon")) << initialLog;
   const auto firstHash = sun::driver::readMoonInputHash(moon);
   ASSERT_TRUE(firstHash.has_value());
 
   const auto written = std::filesystem::last_write_time(moon);
   const auto cachedLog = scratch.runSun(build);
-  EXPECT_TRUE(contains(cachedLog, "Up to date: " + moon)) << cachedLog;
-  EXPECT_FALSE(contains(cachedLog, "Building library:")) << cachedLog;
+  EXPECT_TRUE(contains(cachedLog, "Up to date: lib.moon")) << cachedLog;
+  EXPECT_FALSE(contains(cachedLog, "Building ")) << cachedLog;
   EXPECT_FALSE(contains(cachedLog, "Writing library:")) << cachedLog;
   EXPECT_EQ(std::filesystem::last_write_time(moon), written);
 
-  EXPECT_TRUE(contains(scratch.runSun(forced), "Successfully created"));
+  EXPECT_TRUE(contains(scratch.runSun(forced), "Built lib.moon"));
   EXPECT_EQ(sun::driver::readMoonInputHash(moon), firstHash);
 
   writeFile(scratch.path("util.sun"), R"(
@@ -237,7 +234,7 @@ public module input_hash_lib {
   public function two() i32 { return 22; }
 }
 )");
-  EXPECT_TRUE(contains(scratch.runSun(build), "Successfully created"));
+  EXPECT_TRUE(contains(scratch.runSun(build), "Built lib.moon"));
   EXPECT_NE(sun::driver::readMoonInputHash(moon), firstHash);
 }
 
@@ -255,7 +252,7 @@ public module input_hash_flags {
   const std::string build = "--emit-moon -o " + scratch.path("lib.moon") + " " +
                             scratch.path("lib.sun");
   scratch.runSun(build);
-  EXPECT_TRUE(contains(scratch.runSun("-g " + build), "Successfully created"));
+  EXPECT_TRUE(contains(scratch.runSun("-g " + build), "Built lib.moon"));
   EXPECT_TRUE(contains(scratch.runSun("-g " + build), "Up to date"));
 }
 
@@ -296,11 +293,11 @@ manifest {
       "-c --lib-path build -o " + app + " " + scratch.path("app.sun");
 
   std::string log = scratch.runSun(build);
-  EXPECT_TRUE(contains(log, "Building: " + scratch.path("app.sun"))) << log;
+  EXPECT_TRUE(contains(log, "Building app")) << log;
   EXPECT_FALSE(contains(log, "Linking executable: " + app)) << log;
   EXPECT_FALSE(contains(log, "Linking tests: " + app + "_test")) << log;
-  EXPECT_TRUE(contains(log, "Successfully compiled to: " + app)) << log;
-  EXPECT_TRUE(contains(log, "Successfully compiled test binary to")) << log;
+  EXPECT_TRUE(contains(log, "Built app")) << log;
+  EXPECT_TRUE(contains(log, "Built app_test")) << log;
 
   auto record = sun::driver::readBuildRecord(app);
   ASSERT_TRUE(record.has_value());
@@ -311,23 +308,23 @@ manifest {
   EXPECT_NE(record->inputHash, testRecord->inputHash);
 
   log = scratch.runSun(build);
-  EXPECT_TRUE(contains(log, "Up to date: " + app + "\n")) << log;
-  EXPECT_TRUE(contains(log, "Up to date: " + app + "_test")) << log;
-  EXPECT_FALSE(contains(log, "Building:")) << log;
+  EXPECT_TRUE(contains(log, "Up to date: app\n")) << log;
+  EXPECT_TRUE(contains(log, "Up to date: app_test")) << log;
+  EXPECT_FALSE(contains(log, "Building ")) << log;
   EXPECT_FALSE(contains(log, "Building tests:")) << log;
-  EXPECT_FALSE(contains(log, "Successfully compiled")) << log;
+  EXPECT_FALSE(contains(log, "Built ")) << log;
   EXPECT_FALSE(contains(log, "Linking executable:")) << log;
   EXPECT_FALSE(contains(log, "Linking tests:")) << log;
 
   writeFile(scratch.path("app_tests.sun"), tests + "// edited\n");
   log = scratch.runSun(build);
-  EXPECT_TRUE(contains(log, "Up to date: " + app + "\n")) << log;
-  EXPECT_TRUE(contains(log, "Successfully compiled test binary to")) << log;
+  EXPECT_TRUE(contains(log, "Up to date: app\n")) << log;
+  EXPECT_TRUE(contains(log, "Built app_test")) << log;
 
   writeFile(scratch.path("app.sun"), program + "// edited\n");
   log = scratch.runSun(build);
-  EXPECT_TRUE(contains(log, "Successfully compiled to: " + app)) << log;
-  EXPECT_TRUE(contains(log, "Successfully compiled test binary to")) << log;
+  EXPECT_TRUE(contains(log, "Built app")) << log;
+  EXPECT_TRUE(contains(log, "Built app_test")) << log;
 
   // The rebuilt executable still runs
   int status = std::system(app.c_str());
@@ -353,12 +350,12 @@ TEST(Tooling_Backend_InputHash, program_without_tests_is_skipped) {
   EXPECT_FALSE(record->hasTests);
 
   const std::string log = scratch.runSun(build);
-  EXPECT_TRUE(contains(log, "Up to date: " + app)) << log;
+  EXPECT_TRUE(contains(log, "Up to date: app")) << log;
   EXPECT_FALSE(contains(log, "Compiling:")) << log;
 
   // A deleted artifact is rebuilt even though nothing else changed
   std::filesystem::remove(app);
-  EXPECT_TRUE(contains(scratch.runSun(build), "Successfully compiled to"));
+  EXPECT_TRUE(contains(scratch.runSun(build), "Built "));
 }
 
 // Skipping is the default: the second identical build does nothing, and
@@ -373,16 +370,16 @@ TEST(Tooling_Backend_InputHash, force_rebuild_builds_and_still_records) {
   const std::string app = scratch.path("app");
   const std::string build = "-c -o " + app + " " + scratch.path("app.sun");
 
-  EXPECT_TRUE(contains(scratch.runSun(build), "Successfully compiled to"));
+  EXPECT_TRUE(contains(scratch.runSun(build), "Built "));
   ASSERT_TRUE(sun::driver::readBuildRecord(app).has_value());
-  EXPECT_TRUE(contains(scratch.runSun(build), "Up to date: " + app));
+  EXPECT_TRUE(contains(scratch.runSun(build), "Up to date: app"));
 
   const std::string forced = "--force-rebuild " + build;
   std::string log = scratch.runSun(forced);
-  EXPECT_TRUE(contains(log, "Successfully compiled to")) << log;
+  EXPECT_TRUE(contains(log, "Built ")) << log;
   EXPECT_FALSE(contains(log, "Up to date")) << log;
   EXPECT_TRUE(sun::driver::readBuildRecord(app).has_value());
-  EXPECT_TRUE(contains(scratch.runSun(build), "Up to date: " + app));
+  EXPECT_TRUE(contains(scratch.runSun(build), "Up to date: app"));
 }
 
 // The flag is about built artifacts, so it has nothing to say about a JIT

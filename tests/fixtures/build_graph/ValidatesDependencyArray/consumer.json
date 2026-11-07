@@ -1,0 +1,14 @@
+{
+  "dependencies": [
+    {
+      "package": "example/ui",
+      "library": "example/ui",
+      "path": "ui.moon"
+    },
+    {
+      "package": "example/ui",
+      "binary": "example/viewc",
+      "path": "viewc"
+    }
+  ]
+}

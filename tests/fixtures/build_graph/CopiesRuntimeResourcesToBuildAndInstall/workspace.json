@@ -1,0 +1,16 @@
+{
+  "package_id": "example/app",
+  "entrypoints": [
+    {
+      "name": "app",
+      "path": "main.sun",
+      "export": true,
+      "resources": [
+        {
+          "path": "icons",
+          "destination": "app.icons"
+        }
+      ]
+    }
+  ]
+}

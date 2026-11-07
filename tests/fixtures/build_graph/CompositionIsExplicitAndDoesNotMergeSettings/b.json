@@ -1,0 +1,6 @@
+{
+  "package_id": "example/b",
+  "projects": [
+    "../../shared/sun-config.json"
+  ]
+}

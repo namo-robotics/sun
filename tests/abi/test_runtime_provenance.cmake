@@ -22,7 +22,7 @@ function(check_runtime expected_warning)
         message(FATAL_ERROR "Unrelated runtime produced a warning: ${output}")
     endif()
     # Cache validation can warn before the build milestone is emitted.
-    string(FIND "${output}" "Building library:" context)
+    string(FIND "${output}" "[sun][info]: Building consumer.moon" context)
     if(context EQUAL -1)
         message(FATAL_ERROR "Missing artifact context: ${output}")
     endif()

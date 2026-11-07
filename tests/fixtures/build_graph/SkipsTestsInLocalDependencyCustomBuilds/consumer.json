@@ -1,0 +1,11 @@
+{
+  "dependencies": [
+    {
+      "package": "example/tools",
+      "path": "missing",
+      "entrypoints": [
+        "tool"
+      ]
+    }
+  ]
+}

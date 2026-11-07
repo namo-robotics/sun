@@ -105,7 +105,8 @@ void runCustomBuild(const BuildRunOptions& options,
     dependencies[name] = root;
     if (native) {
       hostDependencies[name] = root;
-    } else if (std::any_of(
+    } else if (!descriptor.gitPackages.empty() ||
+               std::any_of(
                    descriptor.selections.begin(), descriptor.selections.end(),
                    [](const auto& selected) {
                      return selected.package || !selected.binary.empty();
@@ -284,8 +285,13 @@ int runConfigBuildCommand(const BuildRunOptions& options) {
         continue;
       }
       matched = true;
-      sun::driver::buildConfigProducts(graph, std::move(config), {},
-                                       options.buildEntrypoint);
+      auto names = options.buildEntrypoint.empty()
+                       ? sun::driver::defaultConfigEntrypoints(config)
+                       : std::vector<std::string>{options.buildEntrypoint};
+      sun::driver::buildConfigProducts(graph, config, names);
+      if (options.buildEntrypoint.empty()) {
+        sun::driver::packageConfigProducts(graph, std::move(config), names);
+      }
     }
     if (!matched) {
       sun::support::logAndThrowError(
@@ -406,8 +412,7 @@ void configureProductCompiler(const BuildRunOptions& options) {
           sun::driver::ManifestProcessor::expandPathVariables(argument,
                                                               &config));
     }
-    job.noTest =
-        options.noTest || sun::driver::isCurrentlyBuildingDependency();
+    job.noTest = options.noTest || sun::driver::isCurrentlyBuildingDependency();
     job.testBinaryName = sun::driver::ManifestProcessor::expandPathVariables(
         entry.testBinaryName, &config);
     job.requireProductionArtifact = entry.exported;
@@ -504,11 +509,11 @@ static int runConfigCommand(const std::vector<std::string>& args,
       config = sun::driver::configureBuildPaths(graph, std::move(config));
       if (action == ConfigAction::Describe) {
         if (!field.empty()) {
-          const auto& value = field == "package_id"
-                                  ? config.packageId
-                                  : config.pathVariables.at(
-                                        field == "build_root" ? "SUN_BUILD"
-                                                              : "SUN_INSTALL");
+          const auto& value =
+              field == "package_id"
+                  ? config.packageId
+                  : config.pathVariables.at(
+                        field == "build_root" ? "SUN_BUILD" : "SUN_INSTALL");
           llvm::outs() << value << "\n";
           return 0;
         }

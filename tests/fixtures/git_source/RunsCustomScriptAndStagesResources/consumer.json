@@ -1,0 +1,15 @@
+{
+  "dependencies": [
+    {
+      "git": "git@example.com:custom.git",
+      "version": "v1",
+      "packages": {
+        "TOOL": {
+          "entrypoints": [
+            "tool"
+          ]
+        }
+      }
+    }
+  ]
+}

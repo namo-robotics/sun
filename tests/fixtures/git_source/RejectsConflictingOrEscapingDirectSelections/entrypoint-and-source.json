@@ -1,0 +1,11 @@
+{
+  "dependencies": [
+    {
+      "package": "LIB",
+      "git": "ssh://git@example.com/library.git",
+      "version": "v1",
+      "path": "src/lib.sun",
+      "entrypoint": "library"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "dependencies": [
+    {
+      "package": "example/library",
+      "git": "git@example.com:team/library.git",
+      "version": "v1",
+      "entrypoint": "api"
+    }
+  ]
+}

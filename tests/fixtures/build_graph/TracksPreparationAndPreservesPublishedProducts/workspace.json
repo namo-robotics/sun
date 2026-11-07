@@ -1,0 +1,30 @@
+{
+  "package_id": "example/generated",
+  "steps": [
+    {
+      "name": "generate",
+      "command": [
+        "/bin/cp",
+        "input.txt",
+        "${SUN_BUILD}/generated.txt"
+      ],
+      "inputs": [
+        "input.txt"
+      ],
+      "outputs": [
+        "${SUN_BUILD}/generated.txt"
+      ]
+    }
+  ],
+  "entrypoints": [
+    {
+      "name": "generated",
+      "path": "main.sun",
+      "type": "library",
+      "export": true,
+      "steps": [
+        "generate"
+      ]
+    }
+  ]
+}

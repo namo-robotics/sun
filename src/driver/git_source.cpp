@@ -31,6 +31,10 @@ thread_local bool refreshDependencies = false;
 thread_local unsigned buildDepth = 0;
 /** Repository revisions already refreshed during the current command. */
 thread_local std::set<std::string> refreshedDependencies;
+/** Completed explicit repository builds reused within one compiler command. */
+thread_local std::map<std::filesystem::path,
+                      std::map<std::string, std::filesystem::path>>
+    repositoryProducts;
 /** Repository/config selections currently being built, for cycle detection. */
 thread_local std::set<std::string> activeDependencies;
 
@@ -180,15 +184,14 @@ GitDependencyBuildScope::GitDependencyBuildScope(bool debugInfo, bool optimize,
       refresh_(refreshDependencies, refresh || refreshDependencies) {
   if (buildDepth++ == 0) {
     refreshedDependencies.clear();
+    repositoryProducts.clear();
   }
   dependencyOptions.debugInfo = debugInfo;
   dependencyOptions.optimize = optimize;
   dependencyOptions.forceRebuild = forceRebuild;
 }
 
-GitDependencyBuildScope::~GitDependencyBuildScope() {
-  --buildDepth;
-}
+GitDependencyBuildScope::~GitDependencyBuildScope() { --buildDepth; }
 
 /** Keeps dependency lifetime guards private to this file. */
 namespace {
@@ -244,11 +247,31 @@ class SourceConfigScope {
     ManifestProcessor::exchangeDependencyPathVariables(std::move(variables_));
   }
 };
+
+/** Checks that named products use sources in the checkout or build directory.
+ */
+void validateGitProducts(const SunConfig& config,
+                         const std::vector<std::string>& names,
+                         const std::filesystem::path& checkout) {
+  for (const auto* entry : findConfigEntrypoints(config, names)) {
+    if (!entry->git.empty()) {
+      sun::support::logAndThrowError(
+          "selected product must belong to its dependency repository");
+    }
+    const auto source = std::filesystem::weakly_canonical(
+        ManifestProcessor::expandPathVariables(entry->path, &config));
+    const auto relative = source.lexically_relative(checkout);
+    const auto generated = source.lexically_relative(
+        std::filesystem::path(config.pathVariables.at("SUN_BUILD")));
+    if ((relative.empty() || *relative.begin() == "..") &&
+        (generated.empty() || *generated.begin() == "..")) {
+      sun::support::logAndThrowError("dependency source escapes its checkout");
+    }
+  }
+}
 }  // namespace
 
-bool isCurrentlyBuildingGitDependency() {
-  return !activeDependencies.empty();
-}
+bool isCurrentlyBuildingGitDependency() { return !activeDependencies.empty(); }
 
 const sun::moon_bundling::MoonBuildOptions* gitDependencyBuildOptions() {
   return isCurrentlyBuildingGitDependency() ? &dependencyOptions : nullptr;
@@ -261,10 +284,14 @@ std::filesystem::path resolveGitDependency(const SunConfig& consumer,
   const auto& dep = consumer.dependencies.at(name);
   const auto repository = dep.git + "\n" + dep.version;
   const bool direct = !dep.path.empty();
-  const auto selection =
-      repository + (direct ? "\nsource\n" + dep.path
-                           : "\nconfig\n" + dep.config + "\n" + dep.entrypoint +
-                                 "\n" + dep.library + "\n" + dep.binary);
+  auto selection = repository + (direct ? "\nsource\n" + dep.path
+                                        : "\nconfig\n" + dep.config);
+  for (const auto& [id, entries] : dep.gitPackages) {
+    selection += "\npackage\n" + id;
+    for (const auto& entry : entries) {
+      selection += "\nentrypoint\n" + entry;
+    }
+  }
   DependencyBuildGuard guard(selection);
   ConfigEntrypoint source;
   source.git = dep.git;
@@ -277,21 +304,12 @@ std::filesystem::path resolveGitDependency(const SunConfig& consumer,
   if (refresh) {
     refreshedDependencies.insert(repository);
   }
-  // Direct source builds use the consumer's settings without loading the
-  // repository's project config; config selections use library-owned defaults.
-  auto config =
-      direct ? consumer : SunConfig::loadFile(inputFile, consumer.targetTriple);
   // Keep the consumer and its dependencies on the same local libraries.
   std::vector<std::string> consumerPaths;
   for (const auto& path : consumer.sunPath) {
     consumerPaths.push_back(
         ManifestProcessor::expandPathVariables(path, &consumer));
   }
-  if (direct) {
-    config.sunPath.clear();
-  }
-  config.sunPath.insert(config.sunPath.begin(), consumerPaths.begin(),
-                        consumerPaths.end());
   const auto settings =
       std::string(dependencyOptions.debugInfo ? "debug" : "release") +
       (dependencyOptions.optimize ? "-optimized" : "-unoptimized");
@@ -300,53 +318,6 @@ std::filesystem::path resolveGitDependency(const SunConfig& consumer,
                           selection + "\n" + inputFile.string() + "\n" +
                           consumer.configDir.string()) /
                       configTargetKey(consumer.targetTriple) / settings;
-  std::optional<ConfigGraph> graph;
-  if (!direct) {
-    graph = loadConfigGraph(inputFile, consumer.targetTriple);
-    graph->root = output;
-    config = configureBuildPaths(*graph, std::move(config));
-  }
-  ConfigEntrypoint directEntry;
-  directEntry.path = inputFile.string();
-  directEntry.type = ConfigEntrypoint::Type::Library;
-  const ConfigEntrypoint* selected = direct ? &directEntry : nullptr;
-  if (!direct) {
-    for (const auto& entry : config.entrypoints) {
-      if (!dep.entrypoint.empty() && entry.name != dep.entrypoint) {
-        continue;
-      }
-      const bool library = entry.type == ConfigEntrypoint::Type::Library;
-      if ((!dep.binary.empty() && library) ||
-          ((!dep.library.empty() || dep.entrypoint.empty()) &&
-           dep.binary.empty() && !library)) {
-        continue;
-      }
-      const auto identity = dep.binary.empty() ? dep.library : dep.binary;
-      auto expanded = entry;
-      expanded.path =
-          ManifestProcessor::expandPathVariables(entry.path, &config);
-      if (!identity.empty() && entrypointIdentity(expanded) != identity) {
-        continue;
-      }
-      if (selected) {
-        sun::support::logAndThrowError("ambiguous Git dependency " + name +
-                                       "; specify entrypoint");
-      }
-      selected = &entry;
-    }
-  }
-  if (!selected) {
-    sun::support::logAndThrowError("Git dependency " + name +
-                                   " has no matching entrypoint");
-  }
-  if (!selected->git.empty()) {
-    sun::support::logAndThrowError(
-        "selected library must belong to its dependency repository");
-  }
-
-  SourceConfigScope configScope(config);
-  const fs::path entrypoint = fs::weakly_canonical(
-      ManifestProcessor::expandPathVariables(selected->path, &config));
   auto checkout = inputFile.parent_path();
   while (!fs::is_directory(checkout / ".sun-git-source")) {
     if (checkout == checkout.parent_path()) {
@@ -354,23 +325,57 @@ std::filesystem::path resolveGitDependency(const SunConfig& consumer,
     }
     checkout = checkout.parent_path();
   }
+  if (!direct) {
+    auto graph = loadConfigGraph(inputFile, consumer.targetTriple);
+    graph.root = output;
+    if (buildDepth && repositoryProducts.count(output)) {
+      return repositoryProducts.at(output).at(name);
+    }
+    ConfigGraphScope graphScope(graph);
+    std::map<std::string, SunConfig> providers;
+    for (const auto& file : graph.projects) {
+      auto relative = fs::weakly_canonical(file).lexically_relative(checkout);
+      if (relative.empty() || *relative.begin() == "..") {
+        sun::support::logAndThrowError(
+            "dependency config escapes its checkout");
+      }
+      auto project = configureBuildPaths(
+          graph, SunConfig::loadFile(file, consumer.targetTriple));
+      if (dep.gitPackages.count(project.packageId)) {
+        providers.emplace(project.packageId, std::move(project));
+      }
+    }
+    for (const auto& [id, entries] : dep.gitPackages) {
+      if (!providers.count(id)) {
+        sun::support::logAndThrowError("Git repository has no package " + id);
+      }
+    }
+    // The graph resolves sibling packages locally and shares their build roots.
+    std::map<std::string, fs::path> installedProducts;
+    for (auto& [id, project] : providers) {
+      project.sunPath.insert(project.sunPath.begin(), consumerPaths.begin(),
+                             consumerPaths.end());
+      SourceConfigScope scope(project);
+      const auto& names = dep.gitPackages.at(id);
+      validateGitProducts(project, names, checkout);
+      installedProducts[id] = buildConfigProducts(graph, project, names);
+    }
+    if (buildDepth) {
+      repositoryProducts[output] = installedProducts;
+    }
+    return installedProducts.at(name);
+  }
+  auto config = consumer;
+  config.sunPath = std::move(consumerPaths);
+  SourceConfigScope configScope(config);
+  const auto entrypoint = fs::weakly_canonical(inputFile);
   const auto relative = entrypoint.lexically_relative(checkout);
   if (relative.empty() || *relative.begin() == ".." ||
-      (direct && !fs::is_regular_file(entrypoint))) {
-    const auto generated = direct ? fs::path()
-                                  : entrypoint.lexically_relative(fs::path(
-                                        config.pathVariables.at("SUN_BUILD")));
-    if (direct || generated.empty() || *generated.begin() == "..") {
-      sun::support::logAndThrowError(
-          "dependency library is missing or escapes its checkout");
-    }
+      !fs::is_regular_file(entrypoint)) {
+    sun::support::logAndThrowError(
+        "dependency library is missing or escapes its checkout");
   }
-  if (graph) {
-    ConfigGraphScope graphScope(*graph);
-    return buildConfigProducts(*graph, config, {}, selected->name);
-  }
-  fs::path filename =
-      selected->name.empty() ? entrypoint.stem() : fs::path(selected->name);
+  fs::path filename = entrypoint.stem();
   if (filename.extension() != ".moon") {
     filename += ".moon";
   }

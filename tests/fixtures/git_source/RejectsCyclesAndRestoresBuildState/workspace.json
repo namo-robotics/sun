@@ -1,0 +1,23 @@
+{
+  "package_id": "example/library",
+  "dependencies": [
+    {
+      "git": "git@example.com:workspace.git",
+      "version": "v1",
+      "packages": {
+        "example/library": {
+          "entrypoints": [
+            "api"
+          ]
+        }
+      }
+    }
+  ],
+  "entrypoints": [
+    {
+      "name": "api",
+      "path": "api.sun",
+      "type": "library"
+    }
+  ]
+}

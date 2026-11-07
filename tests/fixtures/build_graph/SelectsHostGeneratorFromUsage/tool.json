@@ -1,0 +1,11 @@
+{
+  "package_id": "example/tools",
+  "entrypoints": [
+    {
+      "name": "tool",
+      "path": "main.sun",
+      "type": "binary",
+      "export": true
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "dependencies": [
+    {
+      "git": "git@example.com:native.git",
+      "version": "v1",
+      "packages": {
+        "LIB": {
+          "entrypoints": [
+            "api"
+          ]
+        }
+      }
+    }
+  ]
+}

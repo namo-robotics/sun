@@ -46,6 +46,40 @@ class GitSourceTest : public testing::Test {
     std::ofstream(path) << text;
   }
 
+  /** Writes the consumer config used to request repository products. */
+  void writeRepositoryDependency(const std::string& config) {
+    write(dir / "sun-config.json", config);
+  }
+
+  /** Checks the parser's diagnostic so unrelated errors cannot pass the test.
+   */
+  void expectInvalidPackages(const std::string& packages,
+                             const std::string& message) {
+    writeRepositoryDependency(packages);
+    try {
+      sun::driver::SunConfig::loadFile(dir / "sun-config.json");
+      FAIL() << "Expected configuration error: " << message;
+    } catch (const std::exception& error) {
+      EXPECT_NE(std::string(error.what()).find(message), std::string::npos)
+          << error.what();
+    }
+  }
+
+  /** Reads this test's JSON fixture from the source tree. */
+  std::string readConfigFixture(const std::string& filename) {
+    const auto path =
+        std::filesystem::path(__FILE__).parent_path().parent_path() /
+        "fixtures/git_source" /
+        testing::UnitTest::GetInstance()->current_test_info()->name() /
+        filename;
+    std::ifstream input(path);
+    if (!input) {
+      sun::support::logAndThrowError("cannot read test config " +
+                                     path.string());
+    }
+    return std::string(std::istreambuf_iterator<char>(input), {});
+  }
+
   /** Installs a fake Git that records arguments and materializes fixture
    * source. */
   void SetUp() override {
@@ -101,8 +135,8 @@ if 'checkout' in args:
     setEnvironment("SUN_FAKE_GIT_ROOT", dir.string());
     setEnvironment("SUN_GIT_CACHE", (dir / "cache").string());
     const char* path = std::getenv("PATH");
-    setEnvironment("PATH", (dir / "bin").string() +
-                               (path ? ":" + std::string(path) : ""));
+    setEnvironment(
+        "PATH", (dir / "bin").string() + (path ? ":" + std::string(path) : ""));
   }
 
   /** Restores process settings after each test. */
@@ -131,7 +165,8 @@ if 'checkout' in args:
   }
 };
 
-/** Default Git storage follows the invocation directory, independent of HOME. */
+/** Default Git storage follows the invocation directory, independent of HOME.
+ */
 TEST_F(GitSourceTest, DefaultsToWorkingDirectoryCache) {
   unsetenv("SUN_GIT_CACHE");
   const auto home = dir / "home";
@@ -139,16 +174,18 @@ TEST_F(GitSourceTest, DefaultsToWorkingDirectoryCache) {
   setEnvironment("HOME", home.string());
   std::filesystem::current_path(dir);
   const auto source = sun::driver::resolveGitEntrypoint(entry());
-  const auto relative = std::filesystem::path(source).lexically_relative(
-      dir / ".sun/cache/git");
+  const auto relative =
+      std::filesystem::path(source).lexically_relative(dir / ".sun/cache/git");
   ASSERT_FALSE(relative.empty());
   EXPECT_NE(*relative.begin(), "..");
   EXPECT_TRUE(std::filesystem::is_regular_file(source));
-  /** Subprocesses may use HOME, but Sun must keep its cache in the workspace. */
+  /** Subprocesses may use HOME, but Sun must keep its cache in the workspace.
+   */
   EXPECT_FALSE(std::filesystem::exists(home / ".sun/cache"));
 }
 
-/** Default Moon storage follows the invocation directory, independent of HOME. */
+/** Default Moon storage follows the invocation directory, independent of HOME.
+ */
 TEST_F(GitSourceTest, DefaultsMoonCacheToWorkingDirectory) {
   setEnvironment("SUN_MOON_CACHE", "");
   unsetenv("SUN_MOON_CACHE");
@@ -253,18 +290,8 @@ TEST_F(GitSourceTest, RefreshesOnlyWhenRequestedAndPreservesOldCheckout) {
  * behavior. */
 TEST_F(GitSourceTest,
        BuildsConfiguredGitLibraryAndRefreshesWithoutRecompiling) {
-  write(dir / "sun-config.json", R"({
-    "root": true,
-    "target": {"aarch64-linux-gnu": {
-      "sun_path": ["build"],
-      "path_variables": {"EXTRAS": "extras"},
-      "entrypoints": [{"git": "ssh://git@example.com/team/library.git",
-        "version": "v1", "path": "src/lib.sun", "type": "library",
-        "name": "lib"}]
-    }}
-  })");
-  write(dir / "repo-config",
-        R"({"root":true,"path_variables":{"EXTRAS":"missing"}})");
+  write(dir / "sun-config.json", readConfigFixture("workspace.json"));
+  write(dir / "repo-config", readConfigFixture("repository.json"));
   write(dir / "manifest",
         "manifest { source_files: [\"$EXTRAS/helper.sun\"] }\n");
   write(dir / "extras/helper.sun",
@@ -317,49 +344,32 @@ TEST_F(GitSourceTest, ReusesBundleUntilBuildSettingsChange) {
       sun::moon_bundling::MoonBuilder::build(source, output, options).upToDate);
 }
 
-/** Source descriptors accept all supported SSH forms without fetching. */
+/** Repository declarations preserve a custom config path without fetching. */
 TEST_F(GitSourceTest, ParsesConfigDependenciesWithoutFetching) {
-  for (const auto& url : {"git@example.com:team/library.git",
-                          "ssh://git@example.com:2222/team/library.git",
-                          "https://example.com/library.git"}) {
-    write(dir / "sun-config.json",
-          std::string(
-              R"({"root":true,"dependencies":[{"package":"LIB","git":")") +
-              url + R"(","version":"v1","entrypoint":"library"}]})");
-    auto config = sun::driver::SunConfig::loadFile(dir / "sun-config.json");
-    EXPECT_EQ(config.dependencies.at("LIB").selections.front().git, url);
-    EXPECT_EQ(config.dependencies.at("LIB").selections.front().config,
-              "sun-config.json");
-    EXPECT_EQ(config.dependencies.at("LIB").selections.front().entrypoint,
-              "library");
-  }
+  write(dir / "sun-config.json", readConfigFixture("consumer.json"));
+  auto config = sun::driver::SunConfig::loadFile(dir / "sun-config.json");
+  const auto& dependency = config.dependencies.at("example/library");
+  EXPECT_EQ(dependency.git, "git@example.com:team/library.git");
+  EXPECT_EQ(dependency.config, "build/sun-config.json");
+  EXPECT_EQ(dependency.entrypoints, (std::vector<std::string>{"api"}));
   EXPECT_FALSE(std::filesystem::exists(dir / "calls"));
-  for (
-      const auto& descriptor :
-      {R"({"git":"--bad","version":"v1"})",
-       R"({"git":"git@example.com:lib.git"})",
-       R"({"git":"git@example.com:lib.git","version":"v1","config":"../escape.json"})",
-       R"({"git":"git@example.com:lib.git","version":"v1","moon":{}})"}) {
-    write(dir / "sun-config.json",
-          std::string(R"({"dependencies":[)") + descriptor + "]}");
-    EXPECT_THROW(sun::driver::SunConfig::loadFile(dir / "sun-config.json"),
-                 sun::support::SunError);
-  }
+}
+
+/** Configured dependencies must use the repository's packages dictionary. */
+TEST_F(GitSourceTest, RejectsRemovedGitSelectionSyntax) {
+  write(dir / "sun-config.json", readConfigFixture("consumer.json"));
+  EXPECT_THROW(sun::driver::SunConfig::loadFile(dir / "sun-config.json"),
+               sun::support::SunError);
 }
 
 /** A fresh config dependency uses its selected config and skips other products.
  */
 TEST_F(GitSourceTest, BuildsSelectedLibraryFromCustomConfigAndImportsIt) {
-  write(
-      dir / "sun-config.json",
-      R"({"root":true,"sun_path":["local"],"dependencies":[{"package":"LIB","git":"git@example.com:team/library.git","version":"v1","config":"library-config.json","entrypoint":"api"}]})");
+  write(dir / "sun-config.json", readConfigFixture("consumer.json"));
   write(dir / "repos/library.git/library-config.json",
-        R"({"root":true,"sun_path":["vendor"],
-    "path_variables":{"SOURCES":"src"},"entrypoints":[
-      {"name":"api","path":"$SOURCES/lib.sun","type":"library"},
-      {"name":"private_api","path":"missing.sun","type":"library"},
-      {"path":"also-missing.sun","type":"binary"}]})");
-  write(dir / "repos/library.git/sun-config.json", "invalid default config");
+        readConfigFixture("library-config.json"));
+  write(dir / "repos/library.git/sun-config.json",
+        readConfigFixture("invalid.json"));
   for (const auto& [folder, answer] :
        std::vector<std::pair<std::string, std::string>>{
            {"local", "42"}, {"repos/library.git/vendor", "7"}}) {
@@ -400,62 +410,30 @@ TEST_F(GitSourceTest, BuildsSelectedLibraryFromCustomConfigAndImportsIt) {
   EXPECT_FALSE(std::filesystem::exists(output / "lib/api_test"));
 }
 
-/** Selection errors and cycles fail clearly, then allow a corrected build. */
-TEST_F(GitSourceTest, RejectsAmbiguousMissingAndCyclicSelections) {
-  write(dir / "repo-config", R"({"root":true,"entrypoints":[
-    {"name":"first","path":"src/lib.sun","type":"library"},
-    {"name":"second","path":"src/lib.sun","type":"library"},
-    {"name":"app","path":"app.sun","type":"binary"}]})");
-  write(
-      dir / "sun-config.json",
-      R"({"root":true,"dependencies":[{"package":"LIB","git":"git@example.com:team/library.git","version":"v1"}]})");
+/** A dependency cycle fails without leaving the next build in a cycle. */
+TEST_F(GitSourceTest, RejectsCyclesAndRestoresBuildState) {
+  writeRepositoryDependency(readConfigFixture("consumer.json"));
+  write(dir / "repos/workspace.git/sun-config.json",
+        readConfigFixture("workspace.json"));
+  write(dir / "repos/workspace.git/api.sun", R"sun(
+    manifest { libraries: ["${example/library}/lib/api.moon"] }
+  )sun");
   auto config = sun::driver::SunConfig::loadFile(dir / "sun-config.json");
-  sun::driver::GitDependencyBuildScope scope(false, true);
-  for (const auto& selection : {"", "missing", "app"}) {
-    config.dependencies.at("LIB").selections.front().entrypoint = selection;
-    EXPECT_THROW(sun::driver::resolveConfigDependency(config, "LIB"),
-                 sun::support::SunError);
-  }
-  config.dependencies.at("LIB").selections.front().entrypoint = "first";
-  EXPECT_TRUE(std::filesystem::exists(
-      sun::driver::resolveConfigDependency(config, "LIB") / "lib/first.moon"));
-
-  write(
-      dir / "repos/cycle.git/sun-config.json",
-      R"({"root":true,"dependencies":[{"package":"SELF","git":"git@example.com:cycle.git","version":"v1"}],"entrypoints":[{"path":"lib.sun","type":"library"}]})");
-  write(dir / "repos/cycle.git/lib.sun",
-        "manifest { libraries: [\"$SELF/lib.moon\"] }\n");
-  config.dependencies.at("LIB").selections.front().git =
-      "git@example.com:cycle.git";
-  config.dependencies.at("LIB").selections.front().entrypoint.clear();
-  testing::internal::CaptureStderr();
-  EXPECT_THROW(sun::driver::resolveConfigDependency(config, "LIB"),
+  EXPECT_THROW(sun::driver::resolveConfigDependency(config, "example/library"),
                sun::support::SunError);
-  EXPECT_NE(testing::internal::GetCapturedStderr().find(
-                "cyclic Git library dependency"),
-            std::string::npos);
-  config.dependencies.at("LIB").selections.front().git =
-      "git@example.com:team/library.git";
-  config.dependencies.at("LIB").selections.front().entrypoint = "first";
-  EXPECT_TRUE(std::filesystem::exists(
-      sun::driver::resolveConfigDependency(config, "LIB") / "lib/first.moon"));
+  EXPECT_FALSE(sun::driver::isCurrentlyBuildingGitDependency());
 }
 
 /** Transitive libraries inherit the target, build settings, and refresh scope.
  */
 TEST_F(GitSourceTest, BuildsTransitiveDependenciesAndRefreshesOnce) {
-  write(
-      dir / "sun-config.json",
-      R"({"root":true,"dependencies":[{"package":"LIB","git":"ssh://git@example.com/top.git","version":"main"}]})");
-  write(
-      dir / "repos/top.git/sun-config.json",
-      R"({"root":true,"dependencies":[{"package":"LEAF","git":"git@example.com:leaf.git","version":"v1"}],"entrypoints":[{"path":"top.sun","type":"library"}]})");
+  write(dir / "sun-config.json", readConfigFixture("consumer.json"));
+  write(dir / "repos/top.git/sun-config.json", readConfigFixture("top.json"));
   write(dir / "repos/top.git/top.sun",
         "manifest { libraries: [\"$LEAF/lib/leaf.moon\"] }\n"
         "/** Top library. */ public module top { /** Uses its dependency. */\n"
         "public function answer() i32 { return leaf.answer(); } }\n");
-  write(dir / "repos/leaf.git/sun-config.json", R"({"root":true,"entrypoints":[
-    {"path":"leaf.sun","type":"library"}]})");
+  write(dir / "repos/leaf.git/sun-config.json", readConfigFixture("leaf.json"));
   write(dir / "repos/leaf.git/leaf.sun",
         "/** Leaf library. */ public module leaf {\n"
         "/** Returns an answer. */ public function answer() i32 { return 42; } "
@@ -482,9 +460,7 @@ TEST_F(GitSourceTest, BuildsTransitiveDependenciesAndRefreshesOnce) {
 /** Unavailable target descriptors stay lazy and cannot silently use host
  * sources. */
 TEST_F(GitSourceTest, KeepsUnavailableSourceDependenciesLazy) {
-  write(
-      dir / "sun-config.json",
-      R"({"root":true,"dependencies":[{"target":{"aarch64-linux-gnu":{"package":"LIB","git":"git@example.com:library.git","version":"v1"}}}]})");
+  write(dir / "sun-config.json", readConfigFixture("consumer.json"));
   auto config = sun::driver::SunConfig::loadFile(dir / "sun-config.json",
                                                  "x86_64-linux-gnu");
   EXPECT_EQ(config.dependencies.count("LIB"), 0u);
@@ -495,11 +471,8 @@ TEST_F(GitSourceTest, KeepsUnavailableSourceDependenciesLazy) {
 
 /** Config-file containment also applies to the selected library's source. */
 TEST_F(GitSourceTest, RejectsEscapingSelectedLibrary) {
-  write(
-      dir / "sun-config.json",
-      R"({"root":true,"dependencies":[{"package":"LIB","git":"git@example.com:library.git","version":"v1"}]})");
-  write(dir / "repo-config", R"({"root":true,"entrypoints":[
-    {"path":"../../outside.sun","type":"library"}]})");
+  write(dir / "sun-config.json", readConfigFixture("consumer.json"));
+  write(dir / "repo-config", readConfigFixture("repository.json"));
   auto config = sun::driver::SunConfig::loadFile(dir / "sun-config.json");
   EXPECT_THROW(sun::driver::resolveConfigDependency(config, "LIB"),
                sun::support::SunError);
@@ -508,10 +481,8 @@ TEST_F(GitSourceTest, RejectsEscapingSelectedLibrary) {
 /** Direct source dependencies need no repository config and use consumer
  * settings. */
 TEST_F(GitSourceTest, BuildsDirectSourceWithConsumerConfiguration) {
-  write(
-      dir / "sun-config.json",
-      R"({"root":true,"path_variables":{"EXTRAS":"extras"},"dependencies":[{"package":"LIB","git":"git@example.com:team/library.git","version":"v1","path":"src/lib.sun"}]})");
-  write(dir / "repo-config", "not a valid project config");
+  write(dir / "sun-config.json", readConfigFixture("consumer.json"));
+  write(dir / "repo-config", readConfigFixture("invalid.json"));
   write(dir / "manifest",
         "manifest { source_files: [\"$EXTRAS/helper.sun\"] }\n");
   write(dir / "extras/helper.sun",
@@ -541,14 +512,11 @@ TEST_F(GitSourceTest, BuildsDirectSourceWithConsumerConfiguration) {
 /** A source selection cannot also select a config, and must stay in the
  * repository. */
 TEST_F(GitSourceTest, RejectsConflictingOrEscapingDirectSelections) {
-  for (const auto& fields :
-       {R"("path":"src/lib.sun","config":"sun-config.json")",
-        R"("path":"src/lib.sun","entrypoint":"library")",
-        R"("path":"../lib.sun")", R"("path":"/lib.sun")", R"("path":"")"}) {
-    write(dir / "sun-config.json",
-          std::string(R"({"dependencies":[{"package":"LIB",
-      "git":"ssh://git@example.com/library.git","version":"v1",)") +
-              fields + "}]}");
+  for (const auto* filename :
+       {"config-and-source.json", "entrypoint-and-source.json",
+        "parent-source.json", "absolute-source.json", "empty-source.json"}) {
+    SCOPED_TRACE(filename);
+    write(dir / "sun-config.json", readConfigFixture(filename));
     EXPECT_THROW(sun::driver::SunConfig::loadFile(dir / "sun-config.json"),
                  sun::support::SunError);
   }
@@ -558,15 +526,9 @@ TEST_F(GitSourceTest, RejectsConflictingOrEscapingDirectSelections) {
 /** Preparation generates sources before prerequisites and preserves installs on
  * failure. */
 TEST_F(GitSourceTest, BuildsGeneratedPrerequisiteAndTracksInputs) {
-  write(dir / "sun-config.json", R"({"dependencies":[{"package":"LIB",
-    "git":"git@example.com:generated.git","version":"v1","entrypoint":"api"}]})");
+  write(dir / "sun-config.json", readConfigFixture("consumer.json"));
   write(dir / "repos/generated.git/sun-config.json",
-        R"({"package_id":"example/generated",
-    "steps":[{"name":"generate","command":["/bin/cp","input.sun","${SUN_BUILD}/generated.sun"],
-      "inputs":["input.sun"],"outputs":["${SUN_BUILD}/generated.sun"]}],
-    "entrypoints":[
-      {"name":"generated","path":"${SUN_BUILD}/generated.sun","type":"library","steps":["generate"]},
-      {"name":"api","path":"api.sun","type":"library","requires":["generated"]}]})");
+        readConfigFixture("generated.json"));
   write(dir / "repos/generated.git/input.sun",
         "/** Generated module. */ public module generated { /** Returns a "
         "value. */ public function value() i32 { return 42; } }");
@@ -603,16 +565,9 @@ TEST_F(GitSourceTest, BuildsGeneratedPrerequisiteAndTracksInputs) {
 
 /** Native preparation runs before the Moon loader embeds its archive. */
 TEST_F(GitSourceTest, BuildsAndEmbedsNativeArchiveFromEmptyCache) {
-  write(dir / "sun-config.json", R"({"dependencies":[{"package":"LIB",
-    "git":"git@example.com:native.git","version":"v1","entrypoint":"api"}]})");
+  write(dir / "sun-config.json", readConfigFixture("consumer.json"));
   write(dir / "repos/native.git/sun-config.json",
-        R"({"package_id":"example/native",
-    "steps":[
-      {"name":"compile","command":["/usr/bin/cc","-c","native.c","-o","${SUN_BUILD}/native.o"],
-       "inputs":["native.c"],"outputs":["${SUN_BUILD}/native.o"]},
-      {"name":"native","requires":["compile"],"command":["/usr/bin/ar","rcs","${SUN_BUILD}/native.a","${SUN_BUILD}/native.o"],
-       "inputs":["${SUN_BUILD}/native.o"],"outputs":["${SUN_BUILD}/native.a"]}],
-    "entrypoints":[{"name":"api","path":"api.sun","type":"library","steps":["native"]}]})");
+        readConfigFixture("native.json"));
   write(dir / "repos/native.git/native.c",
         "/** Supplies a native archive member. */ int native_value(void) { "
         "return 42; }\n");
@@ -636,13 +591,9 @@ TEST_F(GitSourceTest, BuildsAndEmbedsNativeArchiveFromEmptyCache) {
 
 /** Custom scripts receive build context and stage their declared resources. */
 TEST_F(GitSourceTest, RunsCustomScriptAndStagesResources) {
-  write(dir / "sun-config.json",
-        R"({"dependencies":[{"package":"TOOL",
-    "git":"git@example.com:custom.git","version":"v1","entrypoint":"tool"}]})");
+  write(dir / "sun-config.json", readConfigFixture("consumer.json"));
   write(dir / "repos/custom.git/sun-config.json",
-        R"({"package_id":"example/tools",
-    "entrypoints":[{"name":"tool","path":"tool.sun","type":"binary","build":["build.py"],
-      "resources":[{"path":"data","destination":"tool.data"}]}]})");
+        readConfigFixture("custom.json"));
   write(dir / "repos/custom.git/tool.sun", "manifest { id: \"example/tool\" }");
   write(dir / "repos/custom.git/data/value.txt", "resource");
   write(dir / "repos/custom.git/build.py", R"PY(#!/usr/bin/python3
@@ -668,19 +619,14 @@ TEST_F(GitSourceTest, UsesHostGitGeneratorForForeignTarget) {
       sun::driver::configTargetKey(host) == "x86_64-unknown-linux-gnu"
           ? "aarch64-linux-gnu"
           : "x86_64-linux-gnu";
-  write(dir / "sun-config.json", R"({"package_id":"example/consumer",
-    "dependencies":[{"package":"TOOLS","binary":"example/tool","git":"git@example.com:tools.git","version":"v1"}],
-    "steps":[{"name":"generate","command":["${TOOLS}/bin/tool","input.sun","${SUN_BUILD}/generated.sun"],
-      "inputs":["input.sun"],"outputs":["${SUN_BUILD}/generated.sun"]}],
-    "entrypoints":[{"name":"consumer","path":"${SUN_BUILD}/generated.sun","type":"library","export":true,"steps":["generate"]}]})");
+  write(dir / "sun-config.json", readConfigFixture("consumer.json"));
   setEnvironment("EXPECTED_HOST",
                  sun::driver::SunConfig::loadFile(dir / "sun-config.json", host)
                      .targetTriple);
   write(dir / "input.sun",
         "/** Generated consumer. */ public module consumer {}");
   write(dir / "repos/tools.git/sun-config.json",
-        R"({"package_id":"example/tools",
-    "entrypoints":[{"name":"tool","path":"tool.sun","type":"binary","build":["build.py"]}]})");
+        readConfigFixture("tools.json"));
   write(dir / "repos/tools.git/tool.sun", "manifest { id: \"example/tool\" }");
   write(dir / "repos/tools.git/build.py", R"PY(#!/usr/bin/python3
 """Emit a generator only when built for the requested host."""
@@ -698,14 +644,8 @@ pathlib.Path(os.environ['SUN_OUTPUT']).write_text('#!/bin/sh\n/bin/cp "$1" "$2"\
 }
 /** Distinct Git selections do not publish each other's accumulated products. */
 TEST_F(GitSourceTest, CombinesSelectionsFromOneRepository) {
-  write(dir / "sun-config.json", R"({"dependencies":[
-    {"package":"LIB","library":"example/first","git":"git@example.com:pair.git","version":"v1"},
-    {"package":"LIB","library":"example/second","git":"git@example.com:pair.git","version":"v1"}]})");
-  write(
-      dir / "repos/pair.git/sun-config.json",
-      R"({"package_id":"example/pair","exports":[{"path":"NOTICE","destination":"share/NOTICE"}],"entrypoints":[
-    {"name":"first","path":"first.sun","type":"library"},
-    {"name":"second","path":"second.sun","type":"library"}]})");
+  write(dir / "sun-config.json", readConfigFixture("consumer.json"));
+  write(dir / "repos/pair.git/sun-config.json", readConfigFixture("pair.json"));
   write(dir / "repos/pair.git/NOTICE", "shared notice");
   write(dir / "repos/pair.git/first.sun", "manifest { id: \"example/first\" }");
   write(dir / "repos/pair.git/second.sun",
@@ -717,5 +657,154 @@ TEST_F(GitSourceTest, CombinesSelectionsFromOneRepository) {
   EXPECT_TRUE(std::filesystem::exists(installed / "lib/first.moon"));
   EXPECT_TRUE(std::filesystem::exists(installed / "lib/second.moon"));
   EXPECT_TRUE(std::filesystem::exists(installed / "share/NOTICE"));
+}
+/** Selecting a library and its dependent reuses the generated declarations. */
+TEST_F(GitSourceTest, SharesGeneratedPrerequisitesAcrossSelections) {
+  const auto repository = dir / "repos/workspace.git";
+  writeRepositoryDependency(readConfigFixture("consumer.json"));
+  write(repository / "sun-config.json", readConfigFixture("workspace.json"));
+  write(repository / "input.sun",
+        "/** Generated declarations. */ public module generated {}");
+  write(repository / "core.sun", R"sun(
+    manifest {
+      id: "example/core"
+      source_files: ["${SUN_BUILD}/generated.sun"]
+    }
+  )sun");
+  write(repository / "ui.sun", R"sun(
+    manifest {
+      id: "example/ui"
+      libraries: ["core.moon"]
+    }
+  )sun");
+
+  auto config = sun::driver::SunConfig::loadFile(dir / "sun-config.json");
+  const auto installed =
+      sun::driver::resolveConfigDependency(config, "example/shared");
+
+  EXPECT_TRUE(std::filesystem::exists(installed / "lib/core.moon"));
+  EXPECT_TRUE(std::filesystem::exists(installed / "lib/ui.moon"));
+  size_t generatedFiles = 0;
+  for (const auto& file :
+       std::filesystem::recursive_directory_iterator(dir / "cache/builds")) {
+    if (file.path().filename() == "generated.sun") {
+      ++generatedFiles;
+    }
+  }
+  EXPECT_EQ(generatedFiles, 1u);
+}
+
+/** Packages in one repository share a build root and keep separate installs. */
+TEST_F(GitSourceTest, SelectsPackagesFromRepositoryDictionary) {
+  const auto repository = dir / "repos/workspace.git";
+  writeRepositoryDependency(readConfigFixture("consumer.json"));
+  write(repository / "sun-config.json", readConfigFixture("workspace.json"));
+  write(repository / "core/sun-config.json", readConfigFixture("core.json"));
+  write(repository / "core/core.sun", R"sun(
+    manifest { id: "example/core" }
+  )sun");
+  write(repository / "ui/sun-config.json", readConfigFixture("ui.json"));
+  write(repository / "ui/ui.sun", R"sun(
+    manifest {
+      id: "example/ui"
+      libraries: ["${example/core}/lib/core.moon"]
+    }
+  )sun");
+
+  sun::driver::GitDependencyBuildScope buildScope(false, true);
+  auto config = sun::driver::SunConfig::loadFile(dir / "sun-config.json");
+  auto core = sun::driver::resolveConfigDependency(config, "example/core");
+  auto ui = sun::driver::resolveConfigDependency(config, "example/ui");
+
+  EXPECT_TRUE(std::filesystem::exists(core / "lib/core.moon"));
+  EXPECT_TRUE(std::filesystem::exists(ui / "lib/ui.moon"));
+  EXPECT_EQ(core.parent_path(), ui.parent_path());
+  size_t buildDirectories = 0;
+  for (const auto& directory :
+       std::filesystem::directory_iterator(dir / "cache/builds")) {
+    if (directory.is_directory()) {
+      ++buildDirectories;
+    }
+  }
+  EXPECT_EQ(buildDirectories, 1u);
+}
+
+/** A package selection can contain both libraries and executable tools. */
+TEST_F(GitSourceTest, SelectsLibraryAndBinaryFromOnePackage) {
+  const auto repository = dir / "repos/workspace.git";
+  writeRepositoryDependency(readConfigFixture("consumer.json"));
+  write(repository / "sun-config.json", readConfigFixture("workspace.json"));
+  write(repository / "core.sun", R"sun(
+    manifest { id: "example/core" }
+  )sun");
+  write(repository / "tool.sun", R"sun(
+    /** Runs the fixture tool. */
+    function main() i32 { return 0; }
+  )sun");
+
+  auto config = sun::driver::SunConfig::loadFile(dir / "sun-config.json");
+  auto installed =
+      sun::driver::resolveConfigDependency(config, "example/tools");
+
+  EXPECT_TRUE(std::filesystem::exists(installed / "lib/core.moon"));
+  EXPECT_TRUE(std::filesystem::exists(installed / "bin/tool"));
+}
+
+/** A repository dependency must select a package. */
+TEST_F(GitSourceTest, RejectsEmptyRepositoryPackages) {
+  expectInvalidPackages(readConfigFixture("consumer.json"),
+                        "dependency packages must not be empty");
+}
+
+/** Each selected package must name a product to build. */
+TEST_F(GitSourceTest, RejectsEmptyRepositoryEntrypoints) {
+  expectInvalidPackages(readConfigFixture("consumer.json"),
+                        "dependency entrypoints must not be empty");
+}
+
+/** Repeating a product name is a configuration error. */
+TEST_F(GitSourceTest, RejectsDuplicateRepositoryEntrypoints) {
+  expectInvalidPackages(readConfigFixture("consumer.json"),
+                        "dependency entrypoints must be nonempty and unique");
+}
+
+/** Omitting entrypoints must not silently select every product. */
+TEST_F(GitSourceTest, RejectsMissingRepositoryEntrypoints) {
+  expectInvalidPackages(readConfigFixture("consumer.json"),
+                        "package selection requires entrypoints");
+}
+
+/** A selected product must exist in the selected package. */
+TEST_F(GitSourceTest, RejectsUnknownRepositoryEntrypoint) {
+  writeRepositoryDependency(readConfigFixture("consumer.json"));
+  write(dir / "repos/workspace.git/sun-config.json",
+        readConfigFixture("../shared/empty-core-package.json"));
+  auto config = sun::driver::SunConfig::loadFile(dir / "sun-config.json");
+
+  try {
+    sun::driver::resolveConfigDependency(config, "example/core");
+    FAIL() << "Expected the missing entrypoint to be rejected";
+  } catch (const std::exception& error) {
+    EXPECT_NE(std::string(error.what()).find("unknown entrypoint missing"),
+              std::string::npos)
+        << error.what();
+  }
+}
+
+/** A selected package must exist in the repository's project graph. */
+TEST_F(GitSourceTest, RejectsUnknownRepositoryPackage) {
+  writeRepositoryDependency(readConfigFixture("consumer.json"));
+  write(dir / "repos/workspace.git/sun-config.json",
+        readConfigFixture("../shared/empty-core-package.json"));
+  auto config = sun::driver::SunConfig::loadFile(dir / "sun-config.json");
+
+  try {
+    sun::driver::resolveConfigDependency(config, "example/absent");
+    FAIL() << "Expected the missing package to be rejected";
+  } catch (const std::exception& error) {
+    EXPECT_NE(std::string(error.what()).find("no package example/absent"),
+              std::string::npos)
+        << error.what();
+  }
 }
 }  // namespace

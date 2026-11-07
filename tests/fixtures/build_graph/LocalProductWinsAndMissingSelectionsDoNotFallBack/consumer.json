@@ -1,0 +1,11 @@
+{
+  "dependencies": [
+    {
+      "package": "example/tools",
+      "entrypoints": [
+        "generator"
+      ],
+      "path": "does-not-exist"
+    }
+  ]
+}

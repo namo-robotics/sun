@@ -1,0 +1,6 @@
+{
+  "projects": [
+    "producer/sun-config.json",
+    "consumer/sun-config.json"
+  ]
+}

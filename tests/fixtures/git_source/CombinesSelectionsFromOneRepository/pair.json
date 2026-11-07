@@ -1,0 +1,21 @@
+{
+  "package_id": "LIB",
+  "exports": [
+    {
+      "path": "NOTICE",
+      "destination": "share/NOTICE"
+    }
+  ],
+  "entrypoints": [
+    {
+      "name": "first",
+      "path": "first.sun",
+      "type": "library"
+    },
+    {
+      "name": "second",
+      "path": "second.sun",
+      "type": "library"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "dependencies": [
+    {
+      "git": "git@example.com:workspace.git",
+      "version": "v1",
+      "packages": {
+        "example/core": {}
+      }
+    }
+  ]
+}

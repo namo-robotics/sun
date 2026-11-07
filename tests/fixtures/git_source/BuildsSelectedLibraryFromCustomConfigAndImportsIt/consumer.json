@@ -1,0 +1,20 @@
+{
+  "root": true,
+  "sun_path": [
+    "local"
+  ],
+  "dependencies": [
+    {
+      "git": "git@example.com:team/library.git",
+      "version": "v1",
+      "config": "library-config.json",
+      "packages": {
+        "LIB": {
+          "entrypoints": [
+            "api"
+          ]
+        }
+      }
+    }
+  ]
+}

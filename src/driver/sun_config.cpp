@@ -300,12 +300,80 @@ void identityValue(const llvm::json::Value& value) {
   }
 }
 
+/** Requires a nonempty list of distinct entrypoint names. */
+void entrypointNamesValue(const llvm::json::Value& value) {
+  stringsValue(value);
+  const auto& entries = *value.getAsArray();
+  if (entries.empty()) {
+    invalid("dependency entrypoints must not be empty");
+  }
+  std::set<std::string> names;
+  for (const auto& entry : entries) {
+    auto name = entry.getAsString()->str();
+    if (name.empty() || !names.insert(name).second) {
+      invalid("dependency entrypoints must be nonempty and unique");
+    }
+  }
+}
+
 /** Validates an artifact selection and its external fallback without
  * downloading. */
 void dependencyValue(const llvm::json::Value& value) {
   const auto& obj = object(value);
-  keys(obj, {"package", "library", "binary", "url", "path", "hash", "git",
-             "version", "config", "entrypoint"});
+  if (obj.get("packages")) {
+    keys(obj, {"git", "version", "config", "packages"});
+    if (!obj.get("git")) {
+      invalid("dependency packages require git");
+    }
+    ConfigEntrypoint source;
+    source.type = ConfigEntrypoint::Type::Library;
+    stringValue(*obj.get("git"));
+    source.git = obj.getString("git")->str();
+    for (const auto* key : {"version", "config"}) {
+      if (auto* value = obj.get(key)) {
+        stringValue(*value);
+      }
+    }
+    source.version = obj.getString("version").value_or("").str();
+    source.path = obj.getString("config").value_or("sun-config.json").str();
+    validateGitSource(source);
+    const auto& packages = object(*obj.get("packages"));
+    if (packages.empty()) {
+      invalid("dependency packages must not be empty");
+    }
+    for (const auto& [id, value] : packages) {
+      identityValue(llvm::json::Value(id.str()));
+      const auto& selection = object(value);
+      keys(selection, {"entrypoints"});
+      if (!selection.get("entrypoints")) {
+        invalid("package selection requires entrypoints");
+      }
+      entrypointNamesValue(*selection.get("entrypoints"));
+    }
+    return;
+  }
+  if (obj.get("git")) {
+    if (!obj.get("path")) {
+      invalid("configured Git dependencies require a packages dictionary");
+    }
+    keys(obj, {"package", "git", "version", "path"});
+    if (!obj.get("package")) {
+      invalid("source dependency requires package identity");
+    }
+    identityValue(*obj.get("package"));
+    for (const auto& [key, value] : obj) {
+      stringValue(value);
+    }
+    ConfigEntrypoint source;
+    source.type = ConfigEntrypoint::Type::Library;
+    source.git = obj.getString("git")->str();
+    source.version = obj.getString("version").value_or("").str();
+    source.path = obj.getString("path")->str();
+    validateGitSource(source);
+    return;
+  }
+  keys(obj,
+       {"package", "library", "binary", "url", "path", "hash", "entrypoints"});
   if (!obj.get("package")) {
     invalid("dependency requires package identity");
   }
@@ -314,34 +382,19 @@ void dependencyValue(const llvm::json::Value& value) {
     invalid("dependency cannot select both library and binary");
   }
   for (const auto* key : {"library", "binary"}) {
-    if (auto* v = obj.get(key)) {
-      identityValue(*v);
+    if (auto* value = obj.get(key)) {
+      identityValue(*value);
     }
   }
-  for (const auto& [key, v] : obj) {
-    stringValue(v);
+  for (const auto& [key, value] : obj) {
+    if (key == "entrypoints") {
+      entrypointNamesValue(value);
+    } else {
+      stringValue(value);
+    }
   }
-  if (obj.get("git")) {
-    if (obj.get("url") || obj.get("hash")) {
-      invalid("Git dependency cannot also specify url or hash");
-    }
-    ConfigEntrypoint source;
-    source.git = obj.getString("git")->str();
-    source.version = obj.getString("version").value_or("").str();
-    source.path =
-        obj.getString("path")
-            .value_or(obj.getString("config").value_or("sun-config.json"))
-            .str();
-    source.type = ConfigEntrypoint::Type::Library;
-    validateGitSource(source);
-    if (obj.get("path") && (obj.get("config") || obj.get("entrypoint"))) {
-      invalid(
-          "Git dependency path cannot be combined with config or entrypoint");
-    }
+  if (!obj.get("url") && !obj.get("path") && obj.get("entrypoints")) {
     return;
-  }
-  if (obj.get("version") || obj.get("config") || obj.get("entrypoint")) {
-    invalid("version, config and entrypoint require git");
   }
   if (bool(obj.get("url")) == bool(obj.get("path"))) {
     invalid("dependency requires exactly one of url or path");
@@ -551,6 +604,29 @@ SunConfig parse(const Object& root, const std::filesystem::path& file,
         continue;
       }
       const auto& obj = object(*selected);
+      if (auto* packages = obj.getObject("packages")) {
+        ConfigDependency repository;
+        repository.git = obj.getString("git")->str();
+        repository.version = obj.getString("version").value_or("").str();
+        repository.config =
+            obj.getString("config").value_or("sun-config.json").str();
+        for (const auto& [id, value] : *packages) {
+          for (const auto& entry :
+               *value.getAsObject()->getArray("entrypoints")) {
+            repository.gitPackages[id.str()].push_back(
+                entry.getAsString()->str());
+          }
+        }
+        for (const auto& [id, entries] : repository.gitPackages) {
+          if (config.dependencies.count(id) || config.pathVariables.count(id)) {
+            invalid("duplicate dependency or path variable: " + id);
+          }
+          auto dependency = repository;
+          dependency.entrypoints = entries;
+          config.dependencies.emplace(id, std::move(dependency));
+        }
+        continue;
+      }
       const auto name = obj.getString("package")->str();
       if (config.pathVariables.count(name)) {
         invalid("dependency and path variable collide: " + name);
@@ -571,7 +647,11 @@ SunConfig parse(const Object& root, const std::filesystem::path& file,
       dep.git = obj.getString("git").value_or("").str();
       dep.version = obj.getString("version").value_or("").str();
       dep.config = obj.getString("config").value_or("sun-config.json").str();
-      dep.entrypoint = obj.getString("entrypoint").value_or("").str();
+      if (const auto* entries = obj.getArray("entrypoints")) {
+        for (const auto& entry : *entries) {
+          dep.entrypoints.push_back(entry.getAsString()->str());
+        }
+      }
       if (auto path = obj.getString("path")) {
         dep.path = dep.git.empty() ? anchor(path->str(), config.configDir)
                                    : path->str();
@@ -586,11 +666,16 @@ SunConfig parse(const Object& root, const std::filesystem::path& file,
         }
       }
       auto& group = config.dependencies[name];
+      if (!group.gitPackages.empty()) {
+        invalid("duplicate dependency: " + name);
+      }
       if (!group.selections.empty() &&
           (dep.package || group.selections.front().package)) {
         invalid("whole package and individual selections cannot be mixed: " +
                 name);
       }
+      group.entrypoints.insert(group.entrypoints.end(), dep.entrypoints.begin(),
+                               dep.entrypoints.end());
       group.selections.push_back(std::move(dep));
     }
   }

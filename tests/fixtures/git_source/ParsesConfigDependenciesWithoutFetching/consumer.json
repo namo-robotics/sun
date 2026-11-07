@@ -1,0 +1,16 @@
+{
+  "dependencies": [
+    {
+      "git": "git@example.com:team/library.git",
+      "version": "v1",
+      "config": "build/sun-config.json",
+      "packages": {
+        "example/library": {
+          "entrypoints": [
+            "api"
+          ]
+        }
+      }
+    }
+  ]
+}

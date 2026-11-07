@@ -336,6 +336,61 @@ extracted package with a verified `package.json`.
 
 For source dependencies, see [Git dependencies](/#sun-config).
 
+### Git repositories
+
+Build selected products from a Git repository:
+
+```json
+{
+    "dependencies": [
+        {
+            "git": "git@github.com:example/toolkit.git",
+            "version": "v1.2.3",
+            "packages": {
+                "example/core": {"entrypoints": ["core"]},
+                "example/ui": {"entrypoints": ["widgets", "viewc"]}
+            }
+        }
+    ]
+}
+```
+
+Each config owns at most one `package_id`. A repository root can instead list
+`projects` whose configs own different packages. Package IDs must be unique in
+that graph. The dependency's `packages` dictionary selects those IDs and names
+the library or binary entrypoints to build. Lists must be nonempty and contain
+unique names. An optional `config` selects the repository-relative root config;
+it defaults to `sun-config.json`.
+
+Import `"${example/core}/lib/core.moon"` in the consumer's manifest. Sun builds
+selected products and their prerequisites with a shared repository build root,
+runs their preparation steps and custom scripts, and stages each package in its
+own directory. Dependency tests are skipped. Generated artifacts stay outside
+the checkout, under `.sun/cache/git/builds` (or `SUN_GIT_CACHE`).
+
+For host tools, a build step starting with `"${example/ui}/bin/viewc"` resolves
+that dependency for the host even when the consumer targets another platform.
+
+The top-level `packages` array still defines distribution archives. It is
+separate from a Git dependency's nested `packages` dictionary.
+
+Configured dependencies select products by entrypoint name, not by manifest ID.
+A local dependency can use
+`{"package": "example/core", "entrypoints": ["core"]}` to select products from
+an included project.
+
+To build one source file with the consumer's settings, use `package`, `git`,
+`version`, and `"path": "src/mylib.sun"`. This separate form ignores the
+repository's config and exposes `lib/mylib.moon` under `${example/mylib}`.
+It cannot be combined with `config` or `packages`.
+
+`version` is a branch, tag, or commit. HTTPS, `ssh://` URLs, and `git@host:path`
+SSH addresses are supported, using Git's normal authentication. Sources stay
+cached until a build uses `--refresh-sources`. See the
+[Git library example](https://github.com/namo-robotics/sun/tree/main/examples/100-git_library)
+for a complete project building `sun_serve` from scratch.
+
+
 ### Dependency cache
 
 ```text
@@ -354,6 +409,10 @@ SUN_DEPENDENCY_CACHE=/path/to/shared-cache sun build
 ```
 
 ## Composed config builds
+
+Sun discovers `sun-config.json` beside source files and in parent directories;
+`"root": true` stops the parent search. Paths are relative to the declaring
+config, and explicit `--path-var` arguments override configured variables.
 
 ```json filename="sun-config.json"
 {
@@ -389,6 +448,59 @@ sun build --package example/shapes --entrypoint shapes
 
 These build the workspace, one package, or one product. `sun -c sun-config.json`
 also builds a config.
+
+### Target-specific settings
+
+Each setting can choose a value independently for each target. An ordinary
+value is an unconditional default; a wrapper supplies replacements:
+
+```json
+{
+  "sun_path": {
+    "default": ["build"],
+    "target": { "aarch64-linux-gnu": ["build/arm64"] }
+  },
+  "path_variables": {
+    "OPENSSL_LIBS": {
+      "default": "vendor/openssl",
+      "target": { "aarch64-linux-gnu": "vendor/openssl/arm64" }
+    }
+  },
+  "entrypoints": [
+    {
+      "name": "app",
+      "path": "app/main.sun",
+      "type": "binary",
+      "output_name": {
+        "default": "build/app",
+        "target": { "aarch64-linux-gnu": "build/arm64/app" }
+      }
+    },
+    {
+      "name": "helper",
+      "enabled": {
+        "default": false,
+        "target": { "aarch64-linux-gnu": true }
+      },
+      "path": "app/helper.sun"
+    }
+  ]
+}
+```
+
+A matching target replaces the default, including entire arrays. Without a
+match, the default applies; a wrapper with neither is an error when needed.
+Entrypoints and packages default to enabled. Disabled entries skip resolution
+of their other settings. Names stay fixed; other entrypoint and package fields
+can use wrappers, including resource lists. Do not wrap the structural
+`entrypoints`, `packages`, or `dependencies` collections.
+
+Legacy top-level `target` blocks remain supported, but cannot overlap wrappers
+for the same setting. Prefer per-setting values to avoid repeating entrypoints.
+
+Use `--target` to select a compilation target and `--no-test` to omit test
+binaries. `c_bindings` can generate sources from C headers before compilation;
+see [C header binding generation](/c-ffi#optional-header-binding-generation).
 
 ### Output paths
 
@@ -581,7 +693,7 @@ Use bundles built for the requested target and a compatible compiler. Sun reject
 wrong-target bundles. Installation directories are searched for target-specific
 subdirectories automatically; custom search paths must name the right directory.
 
-See [cross-compiling configured entrypoints](/#cross-compiling-configured-entrypoints)
+See [target-specific settings](#target-specific-settings)
 for config builds.
 
 ## Exporting complete LLVM IR

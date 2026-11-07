@@ -1,0 +1,19 @@
+{
+  "package_id": "example/ui",
+  "dependencies": [
+    {
+      "package": "example/core",
+      "path": "missing.moon",
+      "entrypoints": [
+        "core"
+      ]
+    }
+  ],
+  "entrypoints": [
+    {
+      "name": "ui",
+      "path": "ui.sun",
+      "type": "library"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "dependencies": [
+    {
+      "package": "example/library",
+      "path": "missing.moon",
+      "entrypoints": [
+        "api"
+      ]
+    }
+  ]
+}

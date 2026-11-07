@@ -1,0 +1,37 @@
+{
+  "package_id": "example/shared",
+  "steps": [
+    {
+      "name": "generate",
+      "command": [
+        "/bin/cp",
+        "input.sun",
+        "${SUN_BUILD}/generated.sun"
+      ],
+      "inputs": [
+        "input.sun"
+      ],
+      "outputs": [
+        "${SUN_BUILD}/generated.sun"
+      ]
+    }
+  ],
+  "entrypoints": [
+    {
+      "name": "core",
+      "path": "core.sun",
+      "type": "library",
+      "steps": [
+        "generate"
+      ]
+    },
+    {
+      "name": "ui",
+      "path": "ui.sun",
+      "type": "library",
+      "requires": [
+        "core"
+      ]
+    }
+  ]
+}

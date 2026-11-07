@@ -209,7 +209,7 @@ printf '#!/bin/sh\nprintf "%%s\\n" "%s"\n' "$SUN_TARGET" > "$SUN_OUTPUT"
     fs::permissions(root / "lib/make_tool.sh", fs::perms::owner_all);
     config["dependencies"] =
         llvm::json::Array{llvm::json::Object{{"package", "example/helper"},
-                                             {"binary", "example/helper"},
+                                             {"entrypoints", llvm::json::Array{"helper"}},
                                              {"path", "missing.moon"}}};
     entry()["type"] = "library";
     save();
@@ -348,12 +348,12 @@ TEST_F(CustomBuild, TargetOnlyBinaryNeedsNoHostVariant) {
 }  // namespace
 
 
-/** Build scripts keep the workspace display base despite changing directories. */
+/** Custom builds keep short progress labels and the workspace display base. */
 TEST_F(CustomBuild, WorkspaceRelativeBuildPaths) {
   ASSERT_EQ(command("build"), 0) << diagnostics();
   const auto log = diagnostics();
-  EXPECT_NE(log.find("Building library: lib/helper.sun ->"), std::string::npos) << log;
-  EXPECT_NE(log.find("Building: app/main.sun ->"), std::string::npos) << log;
+  EXPECT_NE(log.find("Building helper.moon"), std::string::npos) << log;
+  EXPECT_NE(log.find("Building app"), std::string::npos) << log;
   EXPECT_EQ(log.find(root.string()), std::string::npos) << log;
   auto selected = describe();
   const fs::path buildRoot(selected.getString("build_root")->str());

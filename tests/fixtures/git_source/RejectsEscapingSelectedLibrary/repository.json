@@ -1,0 +1,11 @@
+{
+  "root": true,
+  "entrypoints": [
+    {
+      "path": "../../outside.sun",
+      "type": "library",
+      "name": "lib"
+    }
+  ],
+  "package_id": "LIB"
+}

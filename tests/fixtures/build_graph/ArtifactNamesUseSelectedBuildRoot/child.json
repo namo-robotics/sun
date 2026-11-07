@@ -1,0 +1,9 @@
+{
+  "package_id": "example/child",
+  "entrypoints": [
+    {
+      "path": "main.sun",
+      "name": "tool"
+    }
+  ]
+}

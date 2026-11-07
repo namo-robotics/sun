@@ -1,0 +1,8 @@
+{
+  "projects": [
+    "projects/*/sun-config.json"
+  ],
+  "path_variables": {
+    "ROOT": "root"
+  }
+}
