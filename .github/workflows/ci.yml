@@ -759,15 +759,23 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  # Own the release metadata; platform jobs upload assets after their checks pass.
+  # Publish validated artifacts together after all platform checks finish.
   release:
-    needs: changes
-    if: needs.changes.outputs.code == 'true' && github.event_name != 'pull_request'
+    needs: [build-deb, build-and-test, test-install, cuda-gpu, build-macos, build-and-test-macos, test-install-macos]
+    if: >-
+      always() && !cancelled() && github.event_name != 'pull_request' &&
+      ((needs.build-deb.result == 'success' && needs.build-and-test.result == 'success' && needs.test-install.result == 'success') ||
+       (needs.build-deb.result == 'success' && needs.cuda-gpu.result == 'success') ||
+       (needs.build-macos.result == 'success' && needs.build-and-test-macos.result == 'success' && needs.test-install-macos.result == 'success'))
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+    env:
+      RELEASE_DEB: ${{ needs.build-deb.result == 'success' && needs.build-and-test.result == 'success' && needs.test-install.result == 'success' }}
+      RELEASE_CUDA: ${{ needs.build-deb.result == 'success' && needs.cuda-gpu.result == 'success' }}
+      RELEASE_MACOS: ${{ needs.build-macos.result == 'success' && needs.build-and-test-macos.result == 'success' && needs.test-install-macos.result == 'success' }}
     outputs:
-      tag: ${{ steps.release.outputs.tag }}
+      macos-published: ${{ steps.publish.outcome == 'success' && env.RELEASE_MACOS == 'true' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -784,17 +792,48 @@ jobs:
             *)       echo "tag=dev" >> "$GITHUB_OUTPUT" ;;
           esac
 
-      - name: Create or update release
+      - name: Download validated Debian assets
+        if: env.RELEASE_DEB == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: sun-deb-package-${{ env.BUILD_SHA }}
+          path: dist/
+
+      - name: Download validated CUDA assets
+        if: env.RELEASE_CUDA == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: sun-cuda-package-${{ env.BUILD_SHA }}
+          path: dist/
+
+      - name: Download validated macOS assets
+        if: env.RELEASE_MACOS == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: sun-macos-${{ env.BUILD_SHA }}
+          path: dist/
+
+      - name: Publish validated assets and release notes
+        id: publish
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release.outputs.tag }}
           target_commitish: ${{ env.BUILD_SHA }}
           name: ${{ steps.release.outputs.tag == 'dev' && 'Development Build' || steps.release.outputs.tag }}
           prerelease: ${{ steps.release.outputs.tag == 'dev' }}
+          files: dist/*
+          fail_on_unmatched_files: true
           body: |
             Commit: ${{ env.BUILD_SHA }}
 
-            Platform assets are uploaded independently after their build and test checks pass.
+            Assets validated for this commit:
+            - Linux Debian: ${{ env.RELEASE_DEB }}
+            - CUDA: ${{ env.RELEASE_CUDA }}
+            - macOS: ${{ env.RELEASE_MACOS }}
+
+            A false entry means that platform was not updated by this run. On an
+            existing release, its older assets may remain; they are not builds of
+            the commit above.
 
             On Linux, download the matching `sun_*.deb` asset and install it with
             `sudo apt install ./sun_*.deb`. The package includes the compiler, stdlib,
@@ -810,44 +849,6 @@ jobs:
 
             CUDA programs require the CUDA runtime, cuBLAS, and an NVIDIA driver
             at execution time. Installing Sun does not require a GPU.
-
-  # Publish Debian packages after Linux checks, independently of macOS and GPU tests.
-  publish-deb:
-    needs: [release, build-deb, build-and-test, test-install]
-    permissions:
-      contents: write
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: sun-deb-package-${{ env.BUILD_SHA }}
-          path: dist/
-
-      - name: Upload Debian assets
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ needs.release.outputs.tag }}
-        run: gh release upload "$RELEASE_TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
-
-  # CUDA assets require GPU validation; regular releases do not wait for this job.
-  publish-cuda:
-    needs: [release, build-deb, cuda-gpu]
-    permissions:
-      contents: write
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Download CUDA package and bundle
-        uses: actions/download-artifact@v4
-        with:
-          name: sun-cuda-package-${{ env.BUILD_SHA }}
-          path: dist/
-
-      - name: Upload CUDA assets
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ needs.release.outputs.tag }}
-        run: gh release upload "$RELEASE_TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
 
   test-install:
     needs: build-deb
@@ -1020,26 +1021,6 @@ jobs:
             dist/*.moon
           retention-days: 30
 
-  # Publish after macOS compiler tests and package installation pass.
-  publish-macos:
-    needs: [release, build-macos, test-install-macos]
-    permissions:
-      contents: write
-    runs-on: ubuntu-24.04
-
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: sun-macos-${{ env.BUILD_SHA }}
-          path: dist/
-
-      - name: Upload macOS assets
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ needs.release.outputs.tag }}
-        run: gh release upload "$RELEASE_TAG" dist/*.tar.gz dist/*.moon --clobber --repo "$GITHUB_REPOSITORY"
-
   test-install-macos:
     needs: build-macos
     runs-on: macos-latest
@@ -1122,7 +1103,8 @@ jobs:
   # every push, so the formula is re-rendered from homebrew/sun.rb.in and
   # pushed each time rather than edited by hand in the tap.
   update-tap:
-    needs: publish-macos
+    needs: release
+    if: always() && !cancelled() && needs.release.result == 'success' && needs.release.outputs.macos-published == 'true'
     runs-on: ubuntu-24.04
 
     steps:
@@ -1195,7 +1177,7 @@ jobs:
 
   # Wait for packaging, but allow docs-only runs where those jobs are skipped.
   docs:
-    needs: [publish-deb, publish-macos, update-tap]
+    needs: [release, update-tap]
     if: >-
       always() && !failure() && !cancelled() &&
       github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
