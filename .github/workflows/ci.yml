@@ -759,21 +759,38 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  # Default success gating makes each readiness job represent its platform checks.
+  ready-linux:
+    needs: [build-and-test, test-install]
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo 'Linux artifacts are ready to publish.'
+
+  ready-cuda:
+    needs: cuda-gpu
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo 'CUDA artifacts are ready to publish.'
+
+  ready-macos:
+    needs: [build-and-test-macos, test-install-macos]
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo 'macOS artifacts are ready to publish.'
+
   # Publish validated artifacts together after all platform checks finish.
   release:
-    needs: [build-deb, build-and-test, test-install, cuda-gpu, build-macos, build-and-test-macos, test-install-macos]
+    needs: [ready-linux, ready-cuda, ready-macos]
     if: >-
       always() && !cancelled() && github.event_name != 'pull_request' &&
-      ((needs.build-deb.result == 'success' && needs.build-and-test.result == 'success' && needs.test-install.result == 'success') ||
-       (needs.build-deb.result == 'success' && needs.cuda-gpu.result == 'success') ||
-       (needs.build-macos.result == 'success' && needs.build-and-test-macos.result == 'success' && needs.test-install-macos.result == 'success'))
+      contains(needs.*.result, 'success')
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     env:
-      RELEASE_DEB: ${{ needs.build-deb.result == 'success' && needs.build-and-test.result == 'success' && needs.test-install.result == 'success' }}
-      RELEASE_CUDA: ${{ needs.build-deb.result == 'success' && needs.cuda-gpu.result == 'success' }}
-      RELEASE_MACOS: ${{ needs.build-macos.result == 'success' && needs.build-and-test-macos.result == 'success' && needs.test-install-macos.result == 'success' }}
+      RELEASE_DEB: ${{ needs.ready-linux.result == 'success' }}
+      RELEASE_CUDA: ${{ needs.ready-cuda.result == 'success' }}
+      RELEASE_MACOS: ${{ needs.ready-macos.result == 'success' }}
     outputs:
       macos-published: ${{ steps.publish.outcome == 'success' && env.RELEASE_MACOS == 'true' }}
     steps:
@@ -1177,7 +1194,7 @@ jobs:
 
   # Wait for packaging, but allow docs-only runs where those jobs are skipped.
   docs:
-    needs: [release, update-tap]
+    needs: update-tap
     if: >-
       always() && !failure() && !cancelled() &&
       github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
