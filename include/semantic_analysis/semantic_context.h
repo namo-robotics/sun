@@ -216,11 +216,13 @@ class SemanticContext : public AccessContext {
    * Enter a function scope with the function's signature for nested function
    * qualified names. The signature should be "funcName(paramType1,paramType2)".
    * funcName is the qualified name of the function.
+   * Generic specializations may contain typed match arms absent from their result type.
    */
   void enterFunctionScope(const std::string &funcSig,
                           const sun::semantic_analysis::QualifiedName &funcName,
                           bool canThrow = false,
-                          sun::types::TypePtr returnType = nullptr);
+                          sun::types::TypePtr returnType = nullptr,
+                          bool isGenericSpecialization = false);
 
   /**
    * Make the parent scope current again. The scope itself stays in the tree

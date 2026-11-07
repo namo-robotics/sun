@@ -349,6 +349,22 @@ TEST(EndToEnd_Testing, custom_result_failure_exits_one) {
   EXPECT_EQ(executeTestsWithStdlib(program, 2, const_cast<char**>(argv)), 1);
 }
 
+/** Custom results report builtin arithmetic failures in both runner modes. */
+TEST(EndToEnd_Testing, custom_result_arithmetic_failure_exits_one) {
+  const std::string program = R"(
+    using std;
+    /** Combines ordinary assertions with checked arithmetic failures. */
+    enum Outcome { Passed, Assertion(std.test.AssertionError), Arithmetic(ArithmeticError) }
+    /** Accepts the standard result's arithmetic variant on a successful test. */
+    test_function succeeds() Result<void> { return; }
+    /** Reports checked division failure through a custom result. */
+    test_function fails() Outcome { var value = try checked_div(10, 0); }
+  )";
+  EXPECT_EQ(executeTestsWithStdlib(program), 1);
+  const char* argv[] = {"program", "--test-sequential", nullptr};
+  EXPECT_EQ(executeTestsWithStdlib(program, 2, const_cast<char**>(argv)), 1);
+}
+
 /** Failure payloads cannot silently evade the test runner's error matching. */
 TEST(EndToEnd_Testing, rejects_non_error_test_payload) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(

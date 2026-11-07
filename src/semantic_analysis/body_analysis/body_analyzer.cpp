@@ -275,7 +275,8 @@ void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
                                payload.front())
                          : nullptr;
         auto reportable = ctx_.lookupInterface("std.IError");
-        if (!error || !reportable || !error->implementsInterface(*reportable)) {
+        if (error != ctx_.types()->arithmeticError &&
+            (!error || !reportable || !error->implementsInterface(*reportable))) {
           logAndThrowError(
               "Test failure variants must own a concrete std.IError payload",
               func.getLocation());

@@ -555,7 +555,8 @@ void GenericSpecializer::analyzeCallableBody(
   }
   ctx_.enterFunctionScope(
       formatFunctionSignature(proto.getQualifiedName().display(), paramTypes),
-      proto.getQualifiedName(), proto.canThrow(), returnType);
+      proto.getQualifiedName(), proto.canThrow(), returnType,
+      /*isGenericSpecialization=*/true);
   declareVariadicPack(proto);
   if (isMethod) {
     ctx_.currentScope().declareVariable("this", classType, true,
