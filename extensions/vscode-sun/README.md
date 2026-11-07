@@ -35,13 +35,30 @@ The extension talks to the Sun language server, `sun-lsp`, which ships with the 
 By default it is looked up on your `PATH`; set `sun.lsp_path` to point at it if it lives
 elsewhere (for example a local build at `build/sun-lsp`).
 
+## Building from source
+
+Packaging requires Node.js 22 or newer, npm, and the Sun compiler build
+dependencies. With nvm, select Node.js 24 before building:
+
+```sh
+nvm install 24
+nvm use 24
+./scripts/build-extension.sh
+```
+
+Run the script from the Sun repository root. It builds `sun-lsp`, compiles the
+extension, creates `extensions/vscode-sun/sun-language.vsix`, and installs it
+when a VS Code command-line tool is available.
+
+If packaging fails with `ReferenceError: File is not defined` in `undici`, check
+`node --version` in the build terminal and switch to a supported version.
+
 ## Settings
 
 | Setting | Description |
 | --- | --- |
 | `sun.syntaxOnly` | Keep only syntax highlighting; disable the language server and Test Explorer. Defaults to `false`. |
 | `sun.lsp_path` | Path to the `sun-lsp` executable. Defaults to `sun-lsp` on `PATH`. Relative paths resolve against the workspace folder. |
-| `sun.compiler_path` | Path to the `sun` compiler, used by the Test Explorer to run tests. Defaults to `sun` on `PATH`; the binary next to `sun-lsp` is tried as a fallback. |
 | `sun.sun_configs` | `sun-config.json` files whose `entrypoints` lists describe the project. Defaults to the workspace root's. Test discovery and cross-file analysis use their declared entrypoints. |
 | `sun.sun_path` | Extra directories added to `SUN_PATH` for module resolution. Defaults to the workspace folder. |
 | `sun.entrypoints` | Entrypoint files containing a `manifest` block. Combined with entrypoints declared by `sun.sun_configs`. |
@@ -59,6 +76,11 @@ Test Explorer discovers tests only through configured entrypoints, even when no
 files are open. Without configured entrypoints, the tree is empty. Opening a file
 never adds a test suite. Config file changes and saved Sun source changes refresh
 the tree automatically; config files may be created after the server starts.
+
+Test Explorer runs only compiled test binaries configured by `test_binary_name`
+in `sun-config.json`. Build tests before running them. Missing, unconfigured, or
+outdated binaries produce errors on the selected tests; Test Explorer never
+JIT-compiles tests. Rebuild after source changes, then run the tests again.
 
 ## Learn more
 

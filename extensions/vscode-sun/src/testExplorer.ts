@@ -1,15 +1,8 @@
-// testExplorer.ts — Test Explorer integration for Sun's test_function tests.
-//
-// Discovery is workspace-wide: the language server's custom
-// "sun/workspaceTests" request lists every test of every configured
-// entrypoint from sun.entrypoints, sun.sun_configs, and open manifest files.
-// The tree groups tests by entrypoint, then by file.
-//
-// Running prefers the entrypoint's configured test binary
-// (test_binary_name in sun-config.json) when it is newer than every source;
-// otherwise it JIT-compiles via `sun test <entrypoint>`. Either way,
-// selections travel as --test-filter arguments, and the runner's PASS/FAIL
-// lines map back onto the test items.
+/**
+ * Discovers tests through configured workspace entrypoints and groups them by file.
+ * Runs only fresh configured test binaries, passing selections as --test-filter
+ * arguments and mapping runner PASS/FAIL lines back onto the test items.
+ */
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -49,48 +42,28 @@ interface EntrypointRun {
   sources: string[];
 }
 
-/** Resolve the `sun` compiler like the server command: absolute path,
- *  workspace-relative path, then PATH. Falls back to a `sun` binary sitting
- *  next to the resolved sun-lsp, which is where the build puts both. */
-function resolveSunBinary(serverCommand: string): string {
-  const configured = vscode.workspace
-    .getConfiguration('sun')
-    .get<string>('compiler_path', 'sun');
-
-  if (path.isAbsolute(configured) && fs.existsSync(configured)) {
-    return configured;
+/** Explains why tests need a build, or returns undefined for a fresh binary. */
+function testBuildError(run: EntrypointRun | undefined): string | undefined {
+  if (!run?.testBinary) {
+    return 'No compiled test binary is configured. Build this entrypoint with tests enabled '
+      + 'and configure test_binary_name in sun-config.json before running tests.';
   }
-  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  if (workspaceFolder) {
-    const local = path.join(workspaceFolder, configured);
-    if (fs.existsSync(local)) {
-      return local;
-    }
-  }
-  if (path.isAbsolute(serverCommand)) {
-    const sibling = path.join(path.dirname(serverCommand), 'sun');
-    if (fs.existsSync(sibling)) {
-      return sibling;
-    }
-  }
-  return configured;
-}
-
-/** True when the prebuilt test binary exists and is at least as new as
- *  every source of its entrypoint, so running it tests the current code. */
-function binaryIsFresh(run: EntrypointRun): boolean {
-  if (!run.testBinary) return false;
+  let binaryTime: number;
   try {
-    const binaryTime = fs.statSync(run.testBinary).mtimeMs;
+    binaryTime = fs.statSync(run.testBinary).mtimeMs;
+  } catch {
+    return `Compiled test binary is missing or inaccessible: ${run.testBinary}. Build tests before running them.`;
+  }
+  try {
     for (const source of run.sources) {
       if (fs.statSync(source).mtimeMs > binaryTime) {
-        return false;
+        return `Compiled test binary is out of date: ${run.testBinary}. Rebuild tests before running them.`;
       }
     }
-    return true;
   } catch {
-    return false;
+    return `Cannot verify sources for compiled test binary: ${run.testBinary}. Refresh discovery and rebuild tests before running them.`;
   }
+  return undefined;
 }
 
 /** Discover and run tests through configured workspace entrypoints. */
@@ -99,7 +72,6 @@ export function activateTestExplorer(
   client: LanguageClient,
   env: NodeJS.ProcessEnv,
   workspaceFolder: string | undefined,
-  serverCommand: string,
   synchronizeConfiguration: () => Promise<void>,
   getConfigPaths: () => string[]
 ): void {
@@ -282,8 +254,6 @@ export function activateTestExplorer(
     if (disposed) return;
     const run = controller.createTestRun(request);
     try {
-      const sunBinary = resolveSunBinary(serverCommand);
-
       // Collect the requested leaves, grouped by entrypoint.
       const requested: vscode.TestItem[] = [];
       if (request.include) {
@@ -322,18 +292,19 @@ export function activateTestExplorer(
           }
         }
 
-        // A fresh prebuilt test binary (declared in sun-config.json) runs
-        // instantly; anything else JIT-compiles the current sources.
         const runInfo = entrypointRuns.get(entrypoint);
-        let command: string;
-        let args: string[];
-        if (runInfo && binaryIsFresh(runInfo)) {
-          command = runInfo.testBinary!;
-          args = filterArgs;
-        } else {
-          command = sunBinary;
-          args = ['test', entrypoint, ...filterArgs];
+        const buildError = testBuildError(runInfo);
+        if (buildError) {
+          const message = `${entrypointLabel(entrypoint)}: ${buildError}`;
+          output.appendLine(message);
+          run.appendOutput(message + '\r\n');
+          for (const item of items) {
+            run.errored(item, new vscode.TestMessage(message));
+          }
+          continue;
         }
+        const command = runInfo!.testBinary!;
+        const args = filterArgs;
 
         for (const item of items) run.started(item);
         const byName = new Map<string, vscode.TestItem>();
@@ -450,8 +421,8 @@ export function activateTestExplorer(
               finish(skipOutstanding);
               return;
             }
-            // A requested test the runner never reported: a compile failure,
-            // a crash, or a name the filter did not match. A signal or a
+            // A requested test the runner never reported: a crash
+            // or a name the filter did not match. A signal or a
             // non-zero exit is the most useful thing to say about it, since
             // a crashed runner usually leaves no output at all.
             let why: string;

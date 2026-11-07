@@ -92,7 +92,7 @@ function harness(fileSystem = fs) {
   const context = { subscriptions: [] };
   const activate = load('testExplorer', mocks).activateTestExplorer;
   const start = (sync = async () => { calls.push('settings'); }) => activate(
-    context, client, {}, '/workspace', '/missing/sun-lsp', sync,
+    context, client, {}, '/workspace', sync,
     () => settings.sun_configs ?? ['/outside/custom.json']
   );
   return { saved, settingsChanged, watchers, settings, calls, commands, controller, uri,
@@ -108,8 +108,9 @@ const listing = (...entries) => ({ entrypoints: entries.map((entrypoint) => ({
 })) });
 
 test('startup and saves use workspace discovery; shared files retain both suites', async () => {
-  const h = harness();
+  const h = harness({ statSync: () => ({ mtimeMs: 10 }) });
   h.client.response = listing('/workspace/one.sun', '/workspace/two.sun');
+  for (const entry of h.client.response.entrypoints) entry.test_binary = entry.entrypoint + '_test';
   h.start(); await flush();
   assert.deepEqual(h.calls, ['settings', 'sun/workspaceTests']);
   assert.equal(h.controller.items.size, 2);
@@ -122,7 +123,7 @@ test('startup and saves use workspace discovery; shared files retain both suites
   await h.controller.run({ include: [leaf] }, {
     isCancellationRequested: false, onCancellationRequested: () => ({ dispose() {} }),
   });
-  assert.deepEqual(h.commands, [{ command: 'sun', args: ['test', '/workspace/one.sun', '--test-filter', 'suite.first'] }]);
+  assert.deepEqual(h.commands, [{ command: '/workspace/one.sun_test', args: ['--test-filter', 'suite.first'] }]);
   h.dispose();
 });
 
@@ -331,7 +332,7 @@ test('syntax-only mode requested during server startup stops it before discovery
 
 /** Disabling test integration cancels its runner and does not start later suites. */
 test('disposing test explorer cancels active tests and stops queued suites', async () => {
-  const h = harness();
+  const h = harness({ statSync: () => ({ mtimeMs: 10 }) });
   const signals = [];
   let spawned = 0;
   let skipped = 0;
@@ -352,6 +353,7 @@ test('disposing test explorer cancels active tests and stops queued suites', asy
     return child;
   };
   h.client.response = listing('/workspace/one.sun', '/workspace/two.sun');
+  for (const entry of h.client.response.entrypoints) entry.test_binary = entry.entrypoint + '_test';
   h.start(); await flush();
   const running = h.controller.run({}, {
     isCancellationRequested: false, onCancellationRequested: () => ({ dispose() {} }),
@@ -361,4 +363,65 @@ test('disposing test explorer cancels active tests and stops queued suites', asy
   assert.deepEqual(signals, ['SIGTERM']);
   assert.equal(spawned, 1);
   assert.equal(skipped, 2);
+});
+
+/** Unbuilt or unverifiable suites report actionable errors without starting a runner. */
+test('unavailable compiled tests never fall back to JIT', async () => {
+  for (const scenario of ['unconfigured', 'missing', 'stale', 'missing source']) {
+    const h = harness({
+      /** Models binary and source timestamps and missing build inputs. */
+      statSync(file) {
+        if (scenario === 'missing' || (scenario === 'missing source' && file.endsWith('.sun'))) {
+          throw new Error('ENOENT');
+        }
+        return { mtimeMs: file.endsWith('_test') ? 10 : scenario === 'stale' ? 20 : 10 };
+      },
+    });
+    const errors = [];
+    let started = 0;
+    let ended = 0;
+    h.mocks.vscode.TestMessage = class {
+      /** Preserves the message shown by Test Explorer for assertions. */
+      constructor(message) { this.message = message; }
+    };
+    h.controller.createTestRun = () => ({
+      /** Records unexpected execution of an unbuilt test. */
+      started() { started++; },
+      /** Records build errors on the selected tests. */
+      errored(item, message) { errors.push({ item, message: message.message }); },
+      /** Accepts build diagnostics without an actual output pane. */
+      appendOutput() {},
+      /** Records that blocked runs settle instead of leaving a spinner. */
+      end() { ended++; },
+    });
+    h.client.response = listing('/workspace/main.sun');
+    if (scenario !== 'unconfigured') h.client.response.entrypoints[0].test_binary = '/workspace/suite_test';
+    h.start(); await flush();
+    await h.controller.run({}, { isCancellationRequested: false });
+    assert.equal(h.commands.length, 0, scenario);
+    assert.equal(started, 0, scenario);
+    assert.equal(ended, 1, scenario);
+    assert.equal(errors.length, 2, scenario);
+    const expected = {
+      unconfigured: /No compiled test binary is configured/,
+      missing: /missing or inaccessible/,
+      stale: /out of date/,
+      'missing source': /Cannot verify sources/,
+    }[scenario];
+    for (const error of errors) assert.match(error.message, expected, scenario);
+    h.dispose();
+  }
+});
+
+/** A blocked suite does not prevent a later compiled suite from running. */
+test('run all continues with fresh compiled suites after an unbuilt suite', async () => {
+  const h = harness({ statSync: () => ({ mtimeMs: 10 }) });
+  h.client.response = listing('/workspace/unbuilt.sun', '/workspace/built.sun');
+  h.client.response.entrypoints[1].test_binary = '/workspace/built_test';
+  h.start(); await flush();
+  await h.controller.run({}, {
+    isCancellationRequested: false, onCancellationRequested: () => ({ dispose() {} }),
+  });
+  assert.deepEqual(h.commands, [{ command: '/workspace/built_test', args: [] }]);
+  h.dispose();
 });
