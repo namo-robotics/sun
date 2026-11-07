@@ -679,7 +679,6 @@ jobs:
     runs-on: ubuntu-24.04
 
     outputs:
-      release-tag: ${{ steps.release.outputs.tag }}
       package-name: ${{ steps.deb.outputs.name }}
 
     env:
@@ -695,17 +694,6 @@ jobs:
         with:
           ref: ${{ env.BUILD_SHA }}
           fetch-depth: 0 # Full history and tags for version detection
-
-      # The build scripts read the version from an exact-match tag on HEAD,
-      # so use the same check for both push and manual runs.
-      - name: Detect release tag
-        id: release
-        run: |
-          tag=$(git describe --tags --exact-match HEAD 2>/dev/null || true)
-          case "$tag" in
-            v[0-9]*) echo "tag=$tag" >> "$GITHUB_OUTPUT" ;;
-            *)       echo "tag=" >> "$GITHUB_OUTPUT" ;;
-          esac
 
       - name: Install LLVM 20 and build dependencies
         run: |
@@ -771,13 +759,64 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  # Own the release metadata; platform jobs upload assets after their checks pass.
+  release:
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.BUILD_SHA }}
+          fetch-depth: 0
+
+      - name: Select release tag
+        id: release
+        run: |
+          tag=$(git describe --tags --exact-match HEAD 2>/dev/null || true)
+          case "$tag" in
+            v[0-9]*) echo "tag=$tag" >> "$GITHUB_OUTPUT" ;;
+            *)       echo "tag=dev" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Create or update release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          target_commitish: ${{ env.BUILD_SHA }}
+          name: ${{ steps.release.outputs.tag == 'dev' && 'Development Build' || steps.release.outputs.tag }}
+          prerelease: ${{ steps.release.outputs.tag == 'dev' }}
+          body: |
+            Commit: ${{ env.BUILD_SHA }}
+
+            Platform assets are uploaded independently after their build and test checks pass.
+
+            On Linux, download the matching `sun_*.deb` asset and install it with
+            `sudo apt install ./sun_*.deb`. The package includes the compiler, stdlib,
+            and TLS. The optional `sun-cuda` package and standalone CUDA bundle are
+            uploaded after GPU tests pass; use the matching compiler version.
+
+            On macOS, install with `brew install namo-robotics/sun/sun`.
+            Homebrew installs the compiler, stdlib, TLS, and required native libraries.
+
+            Standalone `.moon` bundles are named for their target. Install them under
+            their canonical names (`stdlib.moon`, `tls.moon`, or `cuda.moon`) in a
+            bundle search directory. A bundle for another architecture is rejected.
+
+            CUDA programs require the CUDA runtime, cuBLAS, and an NVIDIA driver
+            at execution time. Installing Sun does not require a GPU.
+
   # Publish Debian packages after Linux checks, independently of macOS and GPU tests.
   publish-deb:
-    needs: [build-deb, build-and-test, test-install]
+    needs: [release, build-deb, build-and-test, test-install]
     permissions:
       contents: write
     runs-on: ubuntu-24.04
-
     steps:
       - name: Download artifact
         uses: actions/download-artifact@v4
@@ -785,116 +824,15 @@ jobs:
           name: sun-deb-package-${{ env.BUILD_SHA }}
           path: dist/
 
-      - name: Upload to release
-        if: needs.build-deb.outputs.release-tag != ''
-        uses: softprops/action-gh-release@v2
-        with:
-          # Use the detected tag, including for manual runs on a branch.
-          tag_name: ${{ needs.build-deb.outputs.release-tag }}
-          files: dist/*
-          body: |
-            Install the Linux package:
-
-            ```bash
-            curl -fL "https://github.com/${{ github.repository }}/releases/download/${{ needs.build-deb.outputs.release-tag }}/${{ needs.build-deb.outputs.package-name }}" -o "/tmp/${{ needs.build-deb.outputs.package-name }}" && chmod 0644 "/tmp/${{ needs.build-deb.outputs.package-name }}"
-            sudo apt install "/tmp/${{ needs.build-deb.outputs.package-name }}" && rm -f "/tmp/${{ needs.build-deb.outputs.package-name }}"
-            ```
-
-            The temporary path is reachable by APT's restricted `_apt` user, and mode `0644` handles restrictive user umasks.
-
-            The `sun` .deb installs the compiler, stdlib, and TLS on Linux.
-            The optional `sun-cuda` .deb and standalone CUDA bundle are published
-            separately after GPU tests pass; install `sun-cuda` alongside the matching `sun` version.
-            On macOS, `brew install namo-robotics/sun/sun` installs the compiler,
-            stdlib, and TLS from the `.tar.gz` here. The `.moon` files are the bundles on
-            their own, for dropping next to an existing compiler; each is
-            named for the target it was built for. Install one under its
-            canonical name in a bundle search directory:
-
-            ```bash
-            # Linux
-            mv stdlib-x86_64-linux-gnu.moon /usr/lib/sun/stdlib.moon
-            mv tls-x86_64-linux-gnu.moon    /usr/lib/sun/tls.moon
-            mv cuda-x86_64-linux-gnu.moon   /usr/lib/sun/cuda.moon
-            # macOS
-            mv stdlib-arm64-apple-darwin.moon "$(brew --prefix)/lib/sun/stdlib.moon"
-            mv tls-arm64-apple-darwin.moon    "$(brew --prefix)/lib/sun/tls.moon"
-            ```
-
-            CUDA programs require CUDA runtime and cuBLAS shared libraries and
-            an NVIDIA driver at execution time. Installing Sun does not require a GPU.
-
-            A bundle built for another architecture is rejected at link time,
-            so take the one matching your target.
-
-            On an Apple Silicon Mac, Homebrew is the whole install — it
-            pulls in `llvm@20`, the compiler's one runtime dependency:
-
-            ```bash
-            brew install namo-robotics/sun/sun
-            ```
+      - name: Upload Debian assets
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Update dev release
-        if: needs.build-deb.outputs.release-tag == ''
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: dev
-          name: Development Build
-          prerelease: true
-          files: dist/*
-          body: |
-            Latest development build from main branch.
-
-            Commit: ${{ env.BUILD_SHA }}
-
-            Install the Linux package:
-
-            ```bash
-            curl -fL "https://github.com/${{ github.repository }}/releases/download/dev/${{ needs.build-deb.outputs.package-name }}" -o "/tmp/${{ needs.build-deb.outputs.package-name }}" && chmod 0644 "/tmp/${{ needs.build-deb.outputs.package-name }}"
-            sudo apt install "/tmp/${{ needs.build-deb.outputs.package-name }}" && rm -f "/tmp/${{ needs.build-deb.outputs.package-name }}"
-            ```
-
-            The temporary path is reachable by APT's restricted `_apt` user, and mode `0644` handles restrictive user umasks.
-
-            The `sun` .deb installs the compiler, stdlib, and TLS on Linux.
-            The optional `sun-cuda` .deb and standalone CUDA bundle are published
-            separately after GPU tests pass; install `sun-cuda` alongside the matching `sun` version.
-            On macOS, `brew install namo-robotics/sun/sun` installs the compiler,
-            stdlib, and TLS from the `.tar.gz` here. The `.moon` files are the bundles on
-            their own, for dropping next to an existing compiler; each is
-            named for the target it was built for. Install one under its
-            canonical name in a bundle search directory:
-
-            ```bash
-            # Linux
-            mv stdlib-x86_64-linux-gnu.moon /usr/lib/sun/stdlib.moon
-            mv tls-x86_64-linux-gnu.moon    /usr/lib/sun/tls.moon
-            mv cuda-x86_64-linux-gnu.moon   /usr/lib/sun/cuda.moon
-            # macOS
-            mv stdlib-arm64-apple-darwin.moon "$(brew --prefix)/lib/sun/stdlib.moon"
-            mv tls-arm64-apple-darwin.moon    "$(brew --prefix)/lib/sun/tls.moon"
-            ```
-
-            CUDA programs require CUDA runtime and cuBLAS shared libraries and
-            an NVIDIA driver at execution time. Installing Sun does not require a GPU.
-
-            A bundle built for another architecture is rejected at link time,
-            so take the one matching your target.
-
-            On an Apple Silicon Mac, Homebrew is the whole install — it
-            pulls in `llvm@20`, the compiler's one runtime dependency:
-
-            ```bash
-            brew install namo-robotics/sun/sun
-            ```
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.release.outputs.tag }}
+        run: gh release upload "$RELEASE_TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
 
   # CUDA assets require GPU validation; regular releases do not wait for this job.
   publish-cuda:
-    needs: [build-deb, publish-deb, cuda-gpu]
+    needs: [release, build-deb, cuda-gpu]
     permissions:
       contents: write
     runs-on: ubuntu-24.04
@@ -905,13 +843,11 @@ jobs:
           name: sun-cuda-package-${{ env.BUILD_SHA }}
           path: dist/
 
-      # publish-deb owns the release notes and creates the release first.
       - name: Upload CUDA assets
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.build-deb.outputs.release-tag || 'dev' }}
-          files: dist/*
-          fail_on_unmatched_files: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.release.outputs.tag }}
+        run: gh release upload "$RELEASE_TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
 
   test-install:
     needs: build-deb
@@ -1040,9 +976,6 @@ jobs:
     if: needs.changes.outputs.code == 'true' && github.event_name != 'pull_request'
     runs-on: macos-latest
 
-    outputs:
-      release-tag: ${{ steps.release.outputs.tag }}
-
     env:
       CCACHE_SLOPPINESS: pch_defines,time_macros
 
@@ -1052,17 +985,6 @@ jobs:
         with:
           ref: ${{ env.BUILD_SHA }}
           fetch-depth: 0 # Full history and tags for version detection
-
-      # The build scripts read the version from an exact-match tag on HEAD,
-      # so use the same check for both push and manual runs.
-      - name: Detect release tag
-        id: release
-        run: |
-          tag=$(git describe --tags --exact-match HEAD 2>/dev/null || true)
-          case "$tag" in
-            v[0-9]*) echo "tag=$tag" >> "$GITHUB_OUTPUT" ;;
-            *)       echo "tag=" >> "$GITHUB_OUTPUT" ;;
-          esac
 
       - name: Install dependencies
         run: brew install llvm@20 libarchive ninja ccache
@@ -1100,7 +1022,7 @@ jobs:
 
   # Publish after macOS compiler tests and package installation pass.
   publish-macos:
-    needs: [build-macos, test-install-macos]
+    needs: [release, build-macos, test-install-macos]
     permissions:
       contents: write
     runs-on: ubuntu-24.04
@@ -1112,32 +1034,11 @@ jobs:
           name: sun-macos-${{ env.BUILD_SHA }}
           path: dist/
 
-      # No body on either upload: publish-deb owns the release notes, and
-      # setting one here would race it.
-      - name: Upload to release
-        if: needs.build-macos.outputs.release-tag != ''
-        uses: softprops/action-gh-release@v2
-        with:
-          # Use the detected tag, including for manual runs on a branch.
-          tag_name: ${{ needs.build-macos.outputs.release-tag }}
-          files: |
-            dist/*.tar.gz
-            dist/*.moon
+      - name: Upload macOS assets
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Update dev release
-        if: needs.build-macos.outputs.release-tag == ''
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: dev
-          name: Development Build
-          prerelease: true
-          files: |
-            dist/*.tar.gz
-            dist/*.moon
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.release.outputs.tag }}
+        run: gh release upload "$RELEASE_TAG" dist/*.tar.gz dist/*.moon --clobber --repo "$GITHUB_REPOSITORY"
 
   test-install-macos:
     needs: build-macos
