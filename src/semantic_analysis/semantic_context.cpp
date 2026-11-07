@@ -177,11 +177,13 @@ void SemanticContext::enterInterfaceScope(const QualifiedName& interfaceName) {
 
 void SemanticContext::enterFunctionScope(const std::string& funcSig,
                                          const QualifiedName& funcName,
-                                         bool canThrow, TypePtr returnType) {
+                                         bool canThrow, TypePtr returnType,
+                                         bool isGenericSpecialization) {
   auto funcScope = std::make_shared<FunctionScope>();
   funcScope->functionSignature = funcSig;
   funcScope->functionName = funcName;
   funcScope->functionCanThrow = canThrow;
+  funcScope->isGenericSpecialization = isGenericSpecialization;
   funcScope->functionReturnType = std::move(returnType);
   funcScope->parent = currentScope_;
 

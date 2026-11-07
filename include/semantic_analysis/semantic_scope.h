@@ -893,6 +893,8 @@ struct FunctionScope : SemanticScopeBase {
   std::string functionSignature;  // e.g., "outer(i32)"
   sun::semantic_analysis::QualifiedName functionName;
   bool functionCanThrow = false;
+  /** Allows typed match arms to be absent from a generic specialization. */
+  bool isGenericSpecialization = false;
   sun::types::TypePtr functionReturnType;  // for return-position type inference
 
   // Variadic parameter pack for this function, when it is a specialized

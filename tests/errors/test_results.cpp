@@ -15,6 +15,50 @@
 
 using sun::driver::executeString;
 
+/** Generic handlers can cover payload types absent from one specialization. */
+TEST(Errors_Results, generic_typed_matches_allow_absent_payloads) {
+  EXPECT_EQ(executeString(R"(
+    /** Identifies the first kind of failure. */
+    class First {}
+    /** Identifies the second kind of failure. */
+    class Second {}
+    /** Carries only the first failure kind. */
+    enum One { Ok, Failed(First) }
+    /** Carries only the second failure kind. */
+    enum Two { Ok, Failed(Second) }
+    /** Classifies either result while preserving a success fallback. */
+    function classify<R>(value: R) i32 {
+      return match value {
+        (error: const ref First) => 1,
+        (error: const ref Second) => 2,
+        _ => 0
+      };
+    }
+    /** Exercises both specializations and their success variants. */
+    function main() i32 {
+      return classify(One.Failed(First())) + classify(Two.Failed(Second()))
+        + classify(One.Ok) + classify(Two.Ok);
+    }
+  )"), 3);
+}
+
+/** Concrete matches still diagnose a payload type that cannot occur. */
+TEST(Errors_Results, concrete_typed_matches_reject_absent_payloads) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    /** Identifies a failure absent from the result. */
+    class Failure {}
+    /** Has no payload to bind. */
+    enum Outcome { Ok, Failed }
+    /** Rejects the impossible typed arm. */
+    function main() i32 {
+      return match Outcome.Ok {
+        (error: const ref Failure) => 1,
+        _ => 0
+      };
+    }
+  )"), "Typed match pattern matches no variant payloads");
+}
+
 /** Obsolete wire nodes are rejected before they enter the compiler AST. */
 TEST(Errors_Results, rejects_serialized_exception_nodes) {
   sun::serialization::ASTDeserializer deserializer;

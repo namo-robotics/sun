@@ -514,12 +514,14 @@ void EnumAnalyzer::analyzeEnumMatch(sun::ast::MatchExprAST& matchExpr,
         arm.matchedVariantTags.push_back(variant.value);
         reachable |= coveredTags.insert(variant.value).second;
       }
-      if (arm.matchedVariantTags.empty()) {
+      const auto* functionScope = ctx_.currentFunctionScope();
+      const bool optionalPattern = functionScope && functionScope->isGenericSpecialization;
+      if (arm.matchedVariantTags.empty() && !optionalPattern) {
         logAndThrowError("Typed match pattern matches no variant payloads: '" +
                              bindingType->toDisplayString() + "'",
                          arm.pattern->getLocation());
       }
-      if (!reachable) {
+      if (!reachable && !arm.matchedVariantTags.empty()) {
         logWarning("Typed match arm is unreachable",
                    arm.pattern->getLocation());
       }
