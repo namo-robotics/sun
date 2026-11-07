@@ -96,6 +96,10 @@ void MoonWriter::addModule(llvm::Module& module,
   }
 
   data.metadata = metadata;
+  if (data.metadata.has_correspondence_proof()) {
+    data.metadata.mutable_correspondence_proof()->set_payload_digest(
+        computeSha256Hex(blobs_.at(data.blobIndex)));
+  }
 
   // Only advertise shapes whose ordinary method implementations are present.
   std::set<std::string> definitions;

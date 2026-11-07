@@ -4,39 +4,49 @@
 
 #include "types/type_utils.h"
 #include "abi/abi_compatibility_checker.h"
+#include "abi/correspondence_checker.h"
 
 /** Type definitions shared by analysis and code generation. */
 namespace sun::types {
 
 /** Checks nominal borrow compatibility while keeping exact type identities. */
 static bool compatibleBorrow(const TypePtr& source, const TypePtr& target) {
-  if (source->equals(*target)) {
-    return true;
-  }
-  if (source->isClass() && target->isClass()) {
-    const auto& from = static_cast<const ClassType&>(*source);
-    const auto& to = static_cast<const ClassType&>(*target);
-    if (from.isSpecialized() != to.isSpecialized() ||
-        from.getTypeArguments().size() != to.getTypeArguments().size()) {
-      return false;
+  return sun::abi::CorrespondenceChecker(
+      sun::abi::AbiCompatibilityChecker::current())
+      .checkBorrow(source, target).proven;
+}
+
+/** Checks a representation-preserving move without changing exact identities.
+ */
+bool ownedTransferAccepts(const TypePtr& source, const TypePtr& target) {
+  return sun::abi::CorrespondenceChecker(sun::abi::AbiCompatibilityChecker::current())
+      .checkOwnedTransfer(source, target).proven;
+}
+
+std::string ownedTransferHint(const TypePtr& source, const TypePtr& target) {
+  if (source && target && target->isReference()) {
+    const auto& destination =
+        static_cast<const ReferenceType&>(*target).getReferencedType();
+    const auto& origin = source->isReference()
+        ? static_cast<const ReferenceType&>(*source).getReferencedType() : source;
+    if ((origin->isClass() && destination->isClass()) ||
+        (origin->isEnum() && destination->isEnum())) {
+      auto result = sun::abi::CorrespondenceChecker(
+          sun::abi::AbiCompatibilityChecker::current()).checkBorrow(origin, destination);
+      return result.proven ? "" : "; no safe borrow is established: " +
+          result.explanation();
     }
-    for (size_t i = 0; i < from.getTypeArguments().size(); ++i) {
-      if (!from.getTypeArguments()[i]->equals(*to.getTypeArguments()[i])) {
-        return false;
-      }
-    }
-    return sun::abi::AbiCompatibilityChecker::current().acceptsNominalBorrow(
-        from.isSpecialized() ? from.getGenericQualifiedName() : from.getQualifiedName(),
-        to.isSpecialized() ? to.getGenericQualifiedName() : to.getQualifiedName(),
-        sun::abi::NominalKind::Class);
+    return "";
   }
-  if (source->isEnum() && target->isEnum()) {
-    return sun::abi::AbiCompatibilityChecker::current().acceptsNominalBorrow(
-        static_cast<const EnumType&>(*source).getQualifiedName(),
-        static_cast<const EnumType&>(*target).getQualifiedName(),
-        sun::abi::NominalKind::Enum);
+  if (!source || !target ||
+      !((source->isClass() && target->isClass()) ||
+        (source->isEnum() && target->isEnum()))) {
+    return "";
   }
-  return false;
+  auto result = sun::abi::CorrespondenceChecker(
+      sun::abi::AbiCompatibilityChecker::current()).checkOwnedTransfer(source, target);
+  return result.proven ? "" : "; no safe owned transfer is established: " +
+      result.explanation() + "; use an explicit conversion";
 }
 
 /** Reports whether a value of one type can be assigned to another. */
@@ -49,8 +59,8 @@ bool isAssignableTo(const TypePtr& from, const TypePtr& to) {
     return false;
   }
 
-  // Exact equality always works
-  if (from->equals(*to)) {
+  // Exact values and proven owned transfers share a representation.
+  if (ownedTransferAccepts(from, to)) {
     return true;
   }
 
@@ -135,8 +145,8 @@ bool isAssignableTo(const TypePtr& from, const TypePtr& to) {
                                      toRef->getReferencedType())) {
       return true;
     }
-    return isAssignableTo(fromRef->getReferencedType(),
-                          toRef->getReferencedType());
+    return compatibleBorrow(fromRef->getReferencedType(),
+                            toRef->getReferencedType());
   }
 
   // ref(T) -> T: the value is read out of the reference. Only a scalar can be

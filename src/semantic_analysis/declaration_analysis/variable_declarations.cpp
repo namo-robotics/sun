@@ -246,11 +246,12 @@ void DeclarationAnalyzer::analyzeVariableDeclaration(
       // Allow integer literal coercion as a fallback
       if (!tryCoerceIntegerLiteral(const_cast<ExprAST*>(varCreate.getValue()),
                                    declaredType, false)) {
-        logAndThrowError("Cannot assign value of type '" +
-                             rhsType->toDisplayString() + "' to variable '" +
-                             varCreate.getName() + "' of type '" +
-                             declaredType->toDisplayString() + "'",
-                         varCreate.getLocation());
+        logAndThrowError(
+            "Cannot assign value of type '" + rhsType->toDisplayString() +
+                "' to variable '" + varCreate.getName() + "' of type '" +
+                declaredType->toDisplayString() + "'" +
+                sun::types::ownedTransferHint(rhsType, declaredType),
+            varCreate.getLocation());
       }
     }
     type = declaredType;

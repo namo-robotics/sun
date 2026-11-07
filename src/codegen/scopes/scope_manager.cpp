@@ -11,6 +11,7 @@
 
 #include "codegen/codegen_visitor.h"
 #include "semantic_analysis/class_analysis/packed_layout.h"
+#include "types/argument_compatibility.h"
 
 using sun::semantic_analysis::DeclarationId;
 using sun::types::ClassType;
@@ -163,7 +164,9 @@ ClassAllocation* ScopeManager::findAllocation(Value* ptr, const TypePtr& type) {
       if (!type && alloc.alloca != ptr) {
         continue;
       }
-      if (type && (!alloc.type || !alloc.type->equals(*type))) {
+      // A proven transfer may use the destination descriptor for the same
+      // storage. Release its original owner so its destructor cannot run twice.
+      if (type && !sun::types::ownedTransferAccepts(alloc.type, type)) {
         continue;
       }
       auto candidate = storagePlace(alloc.alloca);

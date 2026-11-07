@@ -281,12 +281,13 @@ void EnumAnalyzer::analyzeEnumVariantConstruction(
     if (argType && !isAssignableTo(argType, payloadType)) {
       if (!tryCoerceIntegerLiteral(const_cast<ExprAST*>(args[i].get()),
                                    payloadType, /*throwOnFail=*/false)) {
-        logAndThrowError("Payload value " + std::to_string(i + 1) + " of '" +
-                             enumType->getBaseName() + "." + variantName +
-                             "' has type '" + argType->toDisplayString() +
-                             "', expected '" + payloadType->toDisplayString() +
-                             "'",
-                         args[i]->getLocation());
+        logAndThrowError(
+            "Payload value " + std::to_string(i + 1) + " of '" +
+                enumType->getBaseName() + "." + variantName + "' has type '" +
+                argType->toDisplayString() + "', expected '" +
+                payloadType->toDisplayString() + "'" +
+                sun::types::ownedTransferHint(argType, payloadType),
+            args[i]->getLocation());
       }
     }
   }

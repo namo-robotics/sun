@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "abi/compatibility.h"
+#include "abi/correspondence_evidence.h"
 #include "abi/nominal_identity.h"
 #include "semantic_analysis/qualified_name.h"
 
@@ -101,13 +102,21 @@ class AbiCompatibilityChecker {
     return importedContracts_;
   }
 
-  /** Checks a borrowed nominal argument without replacing either declaration. */
-  bool acceptsNominalBorrow(
+  /** Checks declared correspondence and ABI requirements without authorizing
+   * ownership transfer or replacing either declaration. */
+  bool hasCompatibleNominalCorrespondence(
       const sun::semantic_analysis::QualifiedName& source,
       const sun::semantic_analysis::QualifiedName& target,
       NominalKind kind) const;
 
+  /** Checks validated implementation evidence for corresponding nominal types. */
+  CorrespondenceResult compareNominalImplementation(
+      const sun::semantic_analysis::QualifiedName& source,
+      const sun::semantic_analysis::QualifiedName& target,
+      NominalKind kind, bool plain) const;
+
  private:
+  CorrespondenceEvidence correspondenceEvidence_;
   /** Records ABI-compatible artifact pairs for later argument checks. */
   void collectCompatibleRevisions(
       const std::vector<moon_bundling::MoonReader*>& readers);

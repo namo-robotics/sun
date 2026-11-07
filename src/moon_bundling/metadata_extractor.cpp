@@ -252,6 +252,8 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
   PortableDeclarationKey::assignOriginals(program, declarations, bundleHash);
   ASTSerializer serializer(
       {.declarations = &declarations, .include_location = true});
+  ASTSerializer proofSerializer(
+      {.declarations = &declarations, .include_proof_bindings = true, .include_location = false});
   std::vector<moon::ModuleMetadata> result;
   std::map<std::pair<std::string, sun::support::SourceFileId>, size_t> entries;
   std::map<std::string, DeclarationId> moduleIdentities;
@@ -349,6 +351,13 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
             *temporary.add_using_declarations() = serializer.serialize(*stmt);
           } else {
             continue;
+          }
+          if (stmt->getType() == ASTNodeType::FUNCTION ||
+              stmt->getType() == ASTNodeType::CLASS_DEFINITION ||
+              stmt->getType() == ASTNodeType::ENUM_DEFINITION) {
+            auto* proof = temporary.mutable_correspondence_proof();
+            proof->set_version(1);
+            *proof->add_definitions() = proofSerializer.serialize(*stmt);
           }
           bindMetadataTypes(temporary, ctx);
           bindMetadataModules(temporary, ctx);

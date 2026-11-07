@@ -89,11 +89,12 @@ void BodyAnalyzer::analyzeVariableAssignment(
       // Allow integer literal coercion as a fallback
       if (!tryCoerceIntegerLiteral(const_cast<ExprAST*>(varAssign.getValue()),
                                    expectedTargetType, false)) {
-        logAndThrowError("Cannot assign value of type '" +
-                             rhsType->toDisplayString() + "' to variable '" +
-                             varAssign.getName() + "' of type '" +
-                             varInfo->type->toDisplayString() + "'",
-                         varAssign.getLocation());
+        logAndThrowError(
+            "Cannot assign value of type '" + rhsType->toDisplayString() +
+                "' to variable '" + varAssign.getName() + "' of type '" +
+                varInfo->type->toDisplayString() + "'" +
+                sun::types::ownedTransferHint(rhsType, expectedTargetType),
+            varAssign.getLocation());
       }
     }
     varAssign.setResolvedType(varInfo->type);
