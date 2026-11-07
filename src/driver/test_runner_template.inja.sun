@@ -7,7 +7,8 @@
 // default; "--test-sequential" in argv runs them inline instead,
 // and "--test-filter <pattern>" (repeatable) picks which tests run at all.
 // Results are reported in declaration order either way, so the output is
-// deterministic.
+// deterministic. "--list-tests" prints the compiled names and source locations
+// as JSON and returns without invoking any test.
 using std;
 using std.test;
 using std.thread;
@@ -15,6 +16,14 @@ using std.thread;
 /** Runs the generated test cases and returns their combined exit status. */
 function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
     var alloc = make_heap_allocator();
+    var env = std.env.Env(alloc);
+    var args = env.args(argc, argv);
+    for (var i: i64 = 0; i < args.size(); i = i + 1) {
+        if (unsafe { args.get_unchecked(i); }.equals_literal("--list-tests")) {
+            println({{ listing_literal }});
+            return 0;
+        }
+    }
     var total: i64 = 0;
     var failed: i64 = 0;
     if (wants_sequential(argc, argv)) {

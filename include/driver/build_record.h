@@ -29,6 +29,8 @@ struct BuildRecord {
   std::string inputHash;      // see computeInputHash
   bool hasTests = false;      // a test binary is built alongside
   bool hasExecutable = true;  // an executable is built alongside
+  int testListingVersion =
+      0;  // supported machine-readable test listing protocol
 };
 
 /**

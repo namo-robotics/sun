@@ -72,15 +72,45 @@ definitions override the settings above.
 
 ## Test Explorer
 
-Test Explorer discovers tests only through configured entrypoints, even when no
-files are open. Without configured entrypoints, the tree is empty. Opening a file
-never adds a test suite. Config file changes and saved Sun source changes refresh
-the tree automatically; config files may be created after the server starts.
+Test Explorer asks `sun-lsp` for configured suites and expected test binaries,
+then runs each supported binary with `--list-tests`. Suites appear immediately;
+their tests appear as individual listings finish. Listing does not invoke test
+functions. Test names and source locations describe the last compiled build.
 
-Test Explorer runs only compiled test binaries configured by `test_binary_name`
-in `sun-config.json`. Build tests before running them. Missing, unconfigured, or
-outdated binaries produce errors on the selected tests; Test Explorer never
-JIT-compiles tests. Rebuild after source changes, then run the tests again.
+Starting a run immediately marks selected tests as queued while discovery and
+freshness checks finish. Each test switches to running when its process starts.
+
+Execution uses a separate process for each selected test, passing an exact
+`--test-filter` and `--test-sequential`. Tests still run in parallel, with a shared
+limit of half the available CPU cores (at least one process). This isolates
+process-wide signal handlers, working directories, and file descriptors between
+tests. Each test's own threads still run normally. Cancellation stops active
+process groups and skips queued tests. Direct binary execution retains its
+existing runner options.
+
+Build tests before first discovery. Missing binaries show **Build required**.
+Older binaries without the listing capability show **Rebuild required for test
+discovery** and are never launched to probe their options. Rebuild them with the
+updated compiler. Update both `sun-lsp` and this extension together.
+
+Source edits update suite freshness without relisting unchanged binaries. Stale
+suites show **Needs rebuild — tests from last build** and remain runnable. A run
+prints the warning again; passing tests does not clear it. Unreadable or unresolved
+inputs show **Freshness unknown** and also remain runnable when a supported binary
+is available. Missing binaries cannot run. Freshness currently compares input and
+binary timestamps; it is not a full comparison of compiler settings or build hashes.
+
+Project configs, manifest sources, dependency artifacts, and binaries trigger
+refreshes. Exact binary paths are polled even when build directories are excluded
+from editor file watching. Manual refresh bypasses the listing cache. Discovery
+uses at most two listing processes at once and limits each to ten seconds. Errors
+appear on their suite and in the **Sun Tests** output channel.
+
+The binary listing is JSON with `version: 1` and a `tests` array. Each item contains
+`id` (dotted runner name), `label`, `file` (absolute build-time path), and `range`
+with zero-based lines and UTF-16 character positions. The executable's embedded
+build record advertises the supported listing version, so old runners that ignore
+unknown arguments are never accidentally executed during discovery.
 
 ## Learn more
 

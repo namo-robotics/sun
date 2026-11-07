@@ -196,7 +196,13 @@ add_library(sun_lib
     # Generated protobuf sources
     ${PROTO_SRCS}
     # Driver: pipeline orchestration
-    src/driver/driver.cpp
+    src/driver/pipeline/execution.cpp
+    src/driver/pipeline/construction.cpp
+    src/driver/pipeline/inspection.cpp
+    src/driver/pipeline/analysis.cpp
+    src/driver/pipeline/archives.cpp
+    src/driver/pipeline/tests.cpp
+    src/driver/pipeline/inputs.cpp
     src/driver/build_record.cpp
     src/driver/input_hash.cpp
     src/driver/c_bindings.cpp
@@ -504,7 +510,7 @@ endif()
 target_include_directories(sun_lib PRIVATE ${CMAKE_SOURCE_DIR}/third_party)
 
 # The test runner's Sun source lives in a template file and is embedded
-# into the compiler as a header, so driver.cpp holds no Sun code inline.
+# into the compiler as a header, so the driver holds no Sun code inline.
 set(TEST_RUNNER_TEMPLATE ${CMAKE_SOURCE_DIR}/src/driver/test_runner_template.inja.sun)
 set(TEST_RUNNER_HEADER ${CMAKE_BINARY_DIR}/generated/test_runner_template.h)
 add_custom_command(
@@ -585,7 +591,19 @@ target_link_libraries(sun PRIVATE sun_lib)
 # ------------------------------------------------------------------
 # Language Server Protocol executable
 # ------------------------------------------------------------------
-add_executable(sun-lsp src/lsp/main.cpp)
+add_executable(sun-lsp
+    src/lsp/main.cpp
+    src/lsp/server/configuration.cpp
+    src/lsp/server/test_suites.cpp
+    src/lsp/server/semantic_tokens.cpp
+    src/lsp/server/protocol.cpp
+    src/lsp/server/analysis.cpp
+    src/lsp/server/documents.cpp
+    src/lsp/server/formatting.cpp
+    src/lsp/server/navigation.cpp
+    src/lsp/server/test_requests.cpp
+    src/lsp/server/server.cpp
+)
 target_link_libraries(sun-lsp PRIVATE sun_lib)
 
 # ------------------------------------------------------------------

@@ -232,8 +232,9 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
   }
 
   // Recorded even under --force-rebuild, so the next run can skip
-  sun::driver::embedBuildRecord(testDriver->getModule(),
-                                {inputHash, /*hasTests=*/true, hasExecutable});
+  sun::driver::embedBuildRecord(
+      testDriver->getModule(),
+      {inputHash, /*hasTests=*/true, hasExecutable, /*testListingVersion=*/1});
   std::string errorMsg;
   sun::support::logPathMessage("debug", "Linking tests: ", testOutput);
   if (!sun::driver::compileToExecutable(

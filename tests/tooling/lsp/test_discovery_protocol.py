@@ -1,6 +1,7 @@
 """Exercise configured test discovery through a running language server."""
 
 import json
+import os
 from pathlib import Path
 import queue
 import subprocess
@@ -340,6 +341,145 @@ class DiscoveryProtocolTests(unittest.TestCase):
                 edits = renamed["changes"][file.as_uri()]
                 self.assertEqual(len(edits), expected)
                 self.assertTrue(all(edit["newText"] == "renamed" for edit in edits))
+
+    def test_inventory_reloads_composed_configs_without_source_analysis(self):
+        """Created, changed, or removed child configs update the lightweight inventory."""
+        inventory = self.request("sun/testSuites")
+        self.assertEqual(inventory["suites"], [])
+        child = self.directory / "child.json"
+        self.config.write_text(json.dumps({"projects": [child.name]}))
+        child.write_text(json.dumps({"entrypoints": [{"path": self.entry.name, "name": "first"}]}))
+        self.source.write_text("test_function syntaxError( {\n")
+        inventory = self.request("sun/testSuites")
+        self.assertEqual(inventory["suites"][0]["entrypoint"], str(self.entry))
+        self.assertIn(str(child), inventory["watched_paths"])
+        self.assertIn(str(self.source), inventory["watched_paths"])
+        child.write_text(json.dumps({"entrypoints": [{"path": self.other.name, "name": "second"}]}))
+        self.assertEqual(self.request("sun/testSuites")["suites"][0]["entrypoint"], str(self.other))
+        child.unlink()
+        inventory = self.request("sun/testSuites")
+        self.assertEqual(inventory["suites"], [])
+        self.assertTrue(inventory["errors"])
+        self.assertIn(str(child), inventory["watched_paths"])
+        self.config.write_text(json.dumps({"projects": ["children/*.json"]}))
+        self.assertIn(str(self.directory / "children/*.json"),
+                      self.request("sun/testSuites")["watched_patterns"])
+
+    def test_binary_inventory_and_listing_freshness(self):
+        """Inventory reads build capability and flags edits without analyzing test bodies."""
+        self.write_config(self.entry)
+        inventory = self.request("sun/testSuites")
+        suite = inventory["suites"][0]
+        self.assertEqual(suite["freshness"], "missing")
+        self.assertEqual(suite["listing_version"], 0)
+        self.assertIn(str(self.config), inventory["watched_paths"])
+        binary = Path(suite["test_binary"])
+        binary.parent.mkdir(parents=True, exist_ok=True)
+        # A quote in the source path exercises both generated Sun and JSON escaping.
+        quoted = self.directory / 'quoted"tests.sun'
+        quoted.write_text("module outer { module inner { /* π😀 */ test_function fails() { "
+                          "try std.test.assert(false); } } }\n")
+        self.entry.write_text('manifest { test_files: [' + json.dumps(quoted.name)
+                             + '] libraries: [' + json.dumps(str(SERVER.parent / "stdlib.moon"))
+                             + '] }\n')
+        result = subprocess.run(
+            [str(COMPILER), "-c", "-O0", "-o", str(binary)[:-5], str(self.entry)],
+            cwd=WORKSPACE, capture_output=True, text=True, timeout=90,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        suite = self.request("sun/testSuites")["suites"][0]
+        self.assertEqual(suite["freshness"], "fresh", suite)
+        self.assertEqual(suite["listing_version"], 1)
+        self.assertIsNotNone(suite["binary_identity"])
+        outputs = [subprocess.run([str(binary), "--list-tests"], capture_output=True,
+                                  text=True, timeout=10) for _ in range(2)]
+        for output in outputs:
+            self.assertEqual(output.returncode, 0, output.stderr)
+        self.assertEqual(outputs[0].stdout, outputs[1].stdout)
+        listing = json.loads(outputs[0].stdout)
+        self.assertEqual(listing["version"], 1)
+        case = listing["tests"][0]
+        self.assertEqual(case["id"], "outer.inner.fails")
+        self.assertEqual(case["file"], str(quoted))
+        self.assertEqual(case["range"]["start"]["line"], 0)
+        prefix = quoted.read_text().split("fails", 1)[0]
+        self.assertEqual(case["range"]["start"]["character"], len(prefix.encode("utf-16-le")) // 2)
+        executed = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
+        self.assertEqual(executed.returncode, 1, executed.stdout)
+        self.assertIn("FAIL outer.inner.fails", executed.stdout)
+        # A semantic error does not prevent inventory or execution of the old binary.
+        quoted.write_text("test_function changed() { nonexistent(); }\n")
+        newer = binary.stat().st_mtime_ns + 1000000000
+        os.utime(quoted, ns=(newer, newer))
+        suite = self.request("sun/testSuites")["suites"][0]
+        self.assertEqual(suite["freshness"], "stale", suite)
+        self.assertEqual(suite["listing_version"], 1)
+        self.assertEqual(subprocess.check_output([str(binary), "--list-tests"], text=True),
+                         outputs[0].stdout)
+        quoted.unlink()
+        self.assertEqual(self.request("sun/testSuites")["suites"][0]["freshness"], "unknown")
+        binary.unlink()
+        self.assertEqual(self.request("sun/testSuites")["suites"][0]["freshness"], "missing")
+
+    def test_inventory_tracks_unsaved_inputs_and_legacy_binaries(self):
+        """Unsaved input text is stale and arbitrary executables have no listing capability."""
+        self.write_config(self.entry)
+        suite = self.request("sun/testSuites")["suites"][0]
+        binary = Path(suite["test_binary"])
+        binary.parent.mkdir(parents=True, exist_ok=True)
+        binary.write_text("not a supported binary")
+        self.assertEqual(self.request("sun/testSuites")["suites"][0]["listing_version"], 0)
+        self.open_document(self.source)
+        self.notify("textDocument/didChange", {"textDocument": {
+            "uri": self.source.as_uri(), "version": 2,
+        }, "contentChanges": [{"text": "module suite { test_function edited() { return; } }"}]})
+        suite = self.request("sun/testSuites")["suites"][0]
+        self.assertEqual(suite["freshness"], "stale", suite)
+        self.assertIn("Unsaved changes", suite["reason"])
+        self.notify("textDocument/didClose", {"textDocument": {"uri": self.source.as_uri()}})
+        self.assertEqual(self.request("sun/testSuites")["suites"][0]["freshness"], "fresh")
+        newer = binary.stat().st_mtime_ns + 1000000000
+        os.utime(self.config, ns=(newer, newer))
+        self.assertEqual(self.request("sun/testSuites")["suites"][0]["freshness"], "stale")
+
+    def test_invalid_config_cannot_claim_freshness_for_other_suites(self):
+        """A readable but invalid participating config leaves existing binaries unknown."""
+        self.write_config(self.entry)
+        self.entry.write_text('manifest { test_files: ["tests.sun"] }\n')
+        invalid = self.directory / "invalid.json"
+        invalid.write_text("{invalid")
+        self.configure([], [self.config, invalid])
+        suite = self.request("sun/testSuites")["suites"][0]
+        binary = Path(suite["test_binary"])
+        binary.parent.mkdir(parents=True, exist_ok=True)
+        binary.write_text("legacy binary")
+        inventory = self.request("sun/testSuites")
+        self.assertTrue(inventory["errors"])
+        self.assertEqual(inventory["suites"][0]["freshness"], "unknown")
+        newer = binary.stat().st_mtime_ns + 1000000000
+        os.utime(self.entry, ns=(newer, newer))
+        self.assertEqual(self.request("sun/testSuites")["suites"][0]["freshness"], "stale")
+
+    def test_inventory_hides_fresh_targets_known_to_have_no_tests(self):
+        """Build records suppress non-test targets until an input changes."""
+        self.write_config(self.entry)
+        self.source.write_text("function helper() i32 { return 0; }\n")
+        self.entry.write_text("function main() i32 { return 0; }\n"
+                             + self.entry.read_text().replace("test_files:", "source_files:"))
+        binary = Path(self.request("sun/testSuites")["suites"][0]["test_binary"])
+        output = Path(str(binary)[:-5])
+        output.parent.mkdir(parents=True, exist_ok=True)
+        result = subprocess.run([str(COMPILER), "-c", "-O0", "-o", str(output),
+                                 str(self.entry)], cwd=WORKSPACE, capture_output=True,
+                                text=True, timeout=90)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        inventory = self.request("sun/testSuites")
+        self.assertEqual(inventory["suites"], [])
+        self.assertIn(str(binary), inventory["watched_binaries"])
+        self.assertIn(str(output), inventory["watched_binaries"])
+        newer = output.stat().st_mtime_ns + 1000000000
+        os.utime(self.source, ns=(newer, newer))
+        self.assertEqual(self.request("sun/testSuites")["suites"][0]["freshness"], "missing")
 
     def test_test_file_runs_through_its_configured_entrypoint(self):
         """The discovered entrypoint and dotted name form a working test command."""

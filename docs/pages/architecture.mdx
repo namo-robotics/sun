@@ -49,3 +49,25 @@ declaration identities connect references across independently built bundles.
 See [Semantic Analysis](/architecture/semantic-analysis) for the analysis flow
 and shared data, and [Code Generation](/architecture/codegen) for how those
 results become executable code.
+
+## Implementation layout
+
+The public compiler driver remains declared in `include/driver/driver.h`.
+Its implementation lives in `src/driver/pipeline/`:
+
+- `construction.cpp` creates drivers and manages JIT exit handlers.
+- `inputs.cpp` resolves, parses, and merges compilation inputs.
+- `analysis.cpp` loads imported declarations and runs semantic analysis.
+- `tests.cpp` collects tests and synthesizes the test runner and listing.
+- `execution.cpp` runs borrow checking, code generation, optimization, and JIT execution.
+- `archives.cpp` collects and loads native archives.
+- `inspection.cpp` writes debug artifacts and LLVM IR views.
+
+The language server starts in `src/lsp/main.cpp`; its implementation lives in
+`src/lsp/server/`. `server.cpp` initializes the protocol and dispatches messages,
+while `protocol.cpp` handles framing, URIs, and responses. Configuration,
+document updates, cached analysis, semantic tokens, formatting, navigation, and
+test requests each have their own implementation file. `test_suites.cpp`
+inventories binaries and checks freshness independently of semantic analysis.
+The private `server.h` declares the interfaces shared by these files. Reusable
+language features remain in `include/lsp/` and `src/lsp/`.
