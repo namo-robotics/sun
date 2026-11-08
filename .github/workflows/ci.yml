@@ -783,7 +783,9 @@ jobs:
     needs: [ready-linux, ready-cuda, ready-macos]
     if: >-
       always() && !cancelled() && github.event_name != 'pull_request' &&
-      contains(needs.*.result, 'success')
+      (needs.ready-linux.result == 'success' ||
+       needs.ready-cuda.result == 'success' ||
+       needs.ready-macos.result == 'success')
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -832,6 +834,10 @@ jobs:
 
       - name: Publish validated assets and release notes
         id: publish
+        if: >-
+          env.RELEASE_DEB == 'true' ||
+          env.RELEASE_CUDA == 'true' ||
+          env.RELEASE_MACOS == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release.outputs.tag }}
