@@ -160,6 +160,44 @@ std::string calleeDisplayName(const CallExprAST& callExpr) {
 // analyzeCall
 // -------------------------------------------------------------------
 
+/** Applies contextual integer literal types before deducing promoted operands. */
+static void coercePromotedIntegerArguments(
+    const GenericFunctionInfo& generic,
+    const std::vector<std::unique_ptr<ExprAST>>& args) {
+  if (args.size() != 2 || generic.params.size() != 2 || !generic.returnType) {
+    return;
+  }
+
+  /** Finds a promotion query connecting this function's two operand types. */
+  auto usesPromotion = [&](auto&& self,
+                           const sun::ast::TypeAnnotation& annotation) -> bool {
+    if (annotation.baseName == "_promoted_integer" &&
+        annotation.typeArguments.size() == 2 &&
+        annotation.typeArguments[0]->baseName == generic.params[0].second.baseName &&
+        annotation.typeArguments[1]->baseName == generic.params[1].second.baseName) {
+      return true;
+    }
+    for (const auto& argument : annotation.typeArguments) {
+      if (self(self, *argument)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  if (!usesPromotion(usesPromotion, *generic.returnType)) {
+    return;
+  }
+
+  auto left = unwrapRef(args[0]->getResolvedType());
+  auto right = unwrapRef(args[1]->getResolvedType());
+  if (left->isIntegral()) {
+    tryCoerceIntegerLiteral(args[1].get(), left, false);
+  }
+  if (right->isIntegral()) {
+    tryCoerceIntegerLiteral(args[0].get(), right, false);
+  }
+}
+
 void CallAnalyzer::analyzeCall(CallExprAST& callExpr, TypePtr expectedType) {
   // Non-generic intrinsics. The generic ones (_load<T>, _to_ref<T>, ...) are a
   // GenericCallAST and go through analyzeGenericCall, which applies the same
@@ -181,8 +219,8 @@ void CallAnalyzer::analyzeCall(CallExprAST& callExpr, TypePtr expectedType) {
         ctx_.currentScope().lookupVariable(varRef.getName()) ||
         !ctx_.currentScope().getAllFunctions(varRef.getName()).empty() ||
         ctx_.currentScope().lookupGenericFunction(varRef.getName());
-    if (!userDefined && (varRef.getName() == "checked_div" ||
-                         varRef.getName() == "checked_rem")) {
+    if (!userDefined && (varRef.getName() == "_checked_div" ||
+                         varRef.getName() == "_checked_rem")) {
       if (callExpr.getArgs().size() != 2) {
         logAndThrowError(varRef.getName() + " expects two integer operands",
                          callExpr.getLocation());
@@ -215,7 +253,7 @@ void CallAnalyzer::analyzeCall(CallExprAST& callExpr, TypePtr expectedType) {
                          callExpr.getLocation());
       }
       auto result = generics_.instantiateGenericEnum(
-          "_Result", {*valueType, ctx_.types()->arithmeticError});
+          "_Result", {*valueType, Types::Int32()});
       const_cast<ExprAST*>(callExpr.getCallee())
           ->setResolvedType(std::make_shared<FunctionType>(
               result, std::vector<TypePtr>{*valueType, *valueType}));
@@ -504,9 +542,11 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveNamedCallee(
   // call resolve to it like any other named function.
   if (const GenericFunctionInfo* genericFunc =
           ctx_.lookupGenericFunction(resolved.baseName)) {
+    coercePromotedIntegerArguments(*genericFunc, callExpr.getArgs());
     GenericCallTarget target =
-        resolveGenericCallTarget(*genericFunc, argTypes, /*writtenTypeArgs=*/{},
-                                 varRef.getName(), callExpr.getLocation());
+        resolveGenericCallTarget(*genericFunc, resolvedTypesOf(callExpr.getArgs()),
+                                 /*writtenTypeArgs=*/{}, varRef.getName(),
+                                 callExpr.getLocation());
     out.takesPack = target.takesPack;
     if (target.specialized) {
       out.function = target.specialized->asFunctionInfo();
@@ -584,7 +624,7 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMemberCallee(
   // Module-qualified generic call: type arguments written or inferred, and
   // the callee pinned to its specialization.
   if (auto generic = resolveModuleQualifiedGenericCall(memberAccess, objectType,
-                                                       argTypes)) {
+                                                       callExpr.getArgs())) {
     return *generic;
   }
 
@@ -1061,16 +1101,17 @@ const FunctionInfo* CallAnalyzer::resolveModuleQualifiedCall(
 std::optional<CallAnalyzer::CalleeResolution>
 CallAnalyzer::resolveModuleQualifiedGenericCall(
     const MemberAccessAST& memberAccess, const TypePtr& objectType,
-    const std::vector<TypePtr>& argTypes) {
+    const std::vector<std::unique_ptr<ExprAST>>& args) {
   SymbolMatch match =
       findModuleCallee(memberAccess, objectType, SymbolKind::GenericFunction);
   if (!match || !match.genericFunctionInfo) {
     return std::nullopt;
   }
 
+  coercePromotedIntegerArguments(*match.genericFunctionInfo, args);
   auto loc = memberAccess.getLocation();
   GenericCallTarget target = resolveGenericCallTarget(
-      *match.genericFunctionInfo, argTypes,
+      *match.genericFunctionInfo, resolvedTypesOf(args),
       resolver_.resolveTypeArguments(memberAccess.getTypeArguments(), loc,
                                      "generic function call"),
       memberAccess.getMemberName(), loc);
@@ -1391,6 +1432,7 @@ void CallAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
     if (calleeTakesPack) {
       expandPackArguments(genericCall.getArgsMutable());
     }
+    coercePromotedIntegerArguments(*genFuncInfo, args);
     argTypes = resolvedTypesOf(args);
     argsAnalyzed = true;
     if (genericCall.getResolvedTypeArgs().size() <

@@ -37,12 +37,6 @@ void ClassAnalyzer::analyzeClassDefinition(
   // Validate class name
   validateNotReserved(classDef.getName(), "Class name", classDef.getLocation());
 
-  // Check for redefinition of builtin types
-  if (ctx_.types()->isBuiltinTypeName(classDef.getName())) {
-    logAndThrowError(
-        "Cannot redefine builtin type '" + classDef.getName() + "'",
-        classDef.getLocation());
-  }
 
   // Validate field names and reject duplicates. Names alone are compared, so
   // this runs before the generic early-return below: a template's field types

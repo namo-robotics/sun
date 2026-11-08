@@ -35,6 +35,34 @@ public module std {
     public const method message() String;
   }
 
+  /** Reports checked integer division or remainder without allocating storage. */
+  public class ArithmeticError implements IError {
+    var code_: i32;
+
+    /** Retains the failure code returned by checked arithmetic. */
+    init(code: i32) {
+      this.code_ = code;
+    }
+
+    /** Identifies division by zero or signed division overflow. */
+    public const method code() i32 {
+      return this.code_;
+    }
+
+    /** Creates diagnostic text owned by the caller. */
+    public const method message() String {
+      if (this.code_ == 4) {
+        return String("integer division by zero");
+      }
+      return String("integer division overflow");
+    }
+  }
+
+  /** Prints a literal diagnostic and aborts the process without running destructors. */
+  public function panic(message: static_ptr<u8>) void {
+    _panic(message);
+  }
+
   // ============================================================================
   // Generic Error - base error with custom message
   // ============================================================================

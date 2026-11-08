@@ -55,8 +55,9 @@ test_function arithmetic() TestOutcome {
 
 Explicit `_Result<void, E>` remains supported. Its `E` can be a concrete class
 implementing `std.IError`, or an enum whose immediate payloads implement
-`std.IError`. `_Result<void, ArithmeticError>` is also supported: the runner
-reports the builtin arithmetic error's literal message directly.
+`std.IError`. This includes `std.ArithmeticError`, which follows the same
+reporting path as other errors. A panic aborts the whole test process; it is not
+converted into a returned test failure.
 
 Tests default to `std.test.AssertionResult<void>`. Use `try` to propagate
 an assertion failure. An explicit error enum lets a test also propagate concrete

@@ -212,7 +212,7 @@ class CallAnalyzer {
   std::optional<CalleeResolution> resolveModuleQualifiedGenericCall(
       const MemberAccessAST &memberAccess,
       const sun::types::TypePtr &objectType,
-      const std::vector<sun::types::TypePtr> &argTypes);
+      const std::vector<std::unique_ptr<sun::ast::ExprAST>> &args);
 
   /** What a generic call resolves to once its type arguments are known. */
   struct GenericCallTarget {

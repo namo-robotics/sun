@@ -18,9 +18,6 @@ Value* CodegenVisitor::codegen(const sun::ast::BlockExprAST& block,
   }
 
   functions_.declareBlockSignatures(block);
-  if (scopes.empty()) {
-    errors.emitArithmeticErrorMethods();
-  }
   variables.declareBlockGlobals(block);
 
   Value* lastValue = nullptr;
@@ -95,10 +92,6 @@ Value* CodegenVisitor::codegen(const sun::ast::BlockExprAST& block,
     if (!lastValue) {
       return nullptr;
     }
-  }
-
-  if (scopes.empty()) {
-    errors.emitArithmeticErrorMethods(/*defineBodies=*/true);
   }
 
   // If we encountered a return, the block has already been terminated

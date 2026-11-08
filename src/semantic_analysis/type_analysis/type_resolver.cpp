@@ -10,6 +10,7 @@
 #include "semantic_analysis/constants/constant_evaluator.h"
 #include "semantic_analysis/globals.h"
 #include "semantic_analysis/semantic_analyzer.h"
+#include "semantic_analysis/type_analysis/type_inferer.h"
 #include "semantic_analysis/type_analysis/type_traits.h"
 #include "support/error.h"
 
@@ -573,6 +574,20 @@ TypePtr TypeResolver::resolveAnnotation(const sun::ast::TypeAnnotation& annot) {
   auto typeParamBinding = ctx_.findTypeParameter(annot.baseName);
   if (typeParamBinding) {
     return typeParamBinding;
+  }
+
+  if (annot.baseName == "_promoted_integer") {
+    if (annot.typeArguments.size() != 2) {
+      logAndThrowError("_promoted_integer takes exactly two type arguments",
+                       annot.span);
+    }
+    auto left = typeAnnotationToType(*annot.typeArguments[0]);
+    auto right = typeAnnotationToType(*annot.typeArguments[1]);
+    if ((!left->isIntegral() && !left->isTypeParameter()) ||
+        (!right->isIntegral() && !right->isTypeParameter())) {
+      logAndThrowError("_promoted_integer requires integer types", annot.span);
+    }
+    return std::get<TypePtr>(TypeInferer::numeric(left, right));
   }
 
   // _return_type_of<F>: what F returns. A type computed from another type

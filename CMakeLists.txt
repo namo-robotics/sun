@@ -304,6 +304,7 @@ add_library(sun_lib
     src/codegen/codegen_visitor.cpp
     src/codegen/debug_info_builder.cpp
     src/codegen/llvm_type_resolver.cpp
+    src/codegen/support/panic.cpp
     src/codegen/support/scalar_ops.cpp
     src/codegen/support/struct_access.cpp
     src/codegen/scopes/scope_manager.cpp

@@ -1,5 +1,5 @@
 #include "abi/lowering_descriptors.h"
-// Concrete arithmetic errors, unsafe scopes, and call cleanup.
+// Unsafe scopes and call cleanup.
 
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/Function.h>
@@ -14,57 +14,8 @@
 
 using namespace llvm;
 
-/** Generates concrete arithmetic errors, unsafe scopes, and call cleanup. */
+/** Generates unsafe scopes and call cleanup. */
 namespace sun::codegen::errors {
-
-void ErrorGenerator::emitArithmeticErrorMethods(bool defineBodies) {
-  auto error = typeRegistry()->arithmeticError;
-  auto* objectType = error->getStructType(ctx.getContext());
-  auto* pointerType = PointerType::getUnqual(ctx.getContext());
-  auto* closureType = state_.typeResolver.getClosureType();
-  for (const auto& method : error->getMethods()) {
-    std::string name = state_.declarationSymbol(
-        method.declarationId, method.returnType->isClass()
-                                  ? "arithmetic-owned-method"
-                                  : "arithmetic-literal-method");
-    auto* returnType = state_.typeResolver.resolve(method.returnType);
-    auto* signature = llvm::FunctionType::get(returnType, {pointerType}, false);
-    auto* function = module->getFunction(name);
-    if (!function) {
-      function =
-          Function::Create(signature, Function::ExternalLinkage, name, module);
-    }
-    gen_.functionRegistry().registerFunction(method.declarationId, function);
-    if (!defineBodies || function->use_empty() || !function->empty()) {
-      continue;
-    }
-    function->setLinkage(Function::LinkOnceODRLinkage);
-    IRBuilder<> builder(
-        BasicBlock::Create(ctx.getContext(), "entry", function));
-    auto* object = builder.CreateLoad(
-        pointerType,
-        builder.CreateStructGEP(closureType, function->getArg(0), 1));
-    auto* code = builder.CreateLoad(
-        builder.getInt32Ty(), builder.CreateStructGEP(objectType, object, 0));
-    if (method.name == "code") {
-      builder.CreateRet(code);
-      continue;
-    }
-    auto* zero = builder.CreateICmpEQ(code, builder.getInt32(4));
-    auto* data = builder.CreateSelect(
-        zero, builder.CreateGlobalString("integer division by zero"),
-        builder.CreateGlobalString("integer division overflow"));
-    auto* length = builder.CreateSelect(
-        zero, builder.getInt64(sizeof("integer division by zero") - 1),
-        builder.getInt64(sizeof("integer division overflow") - 1));
-    auto* literalType =
-        state_.typeResolver.resolve(sun::types::Types::String());
-    Value* literal = UndefValue::get(literalType);
-    literal = builder.CreateInsertValue(literal, data, 0);
-    literal = builder.CreateInsertValue(literal, length, 1);
-    builder.CreateRet(literal);
-  }
-}
 
 // Codegen for unsafe block: unsafe { ... }
 // The body is a scope like any other block body, so names declared inside stay

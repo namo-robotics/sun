@@ -83,13 +83,8 @@ void visitTests(BlockExprAST& block, std::vector<std::string>& modulePath,
       }
       path += func.getProto().getName();
       const auto& result = *func.getProto().getReturnType();
-      const bool arithmetic =
-          result.baseName == "_Result" && result.typeArguments.size() == 2 &&
-          result.typeArguments[1]->baseName == "ArithmeticError";
       found->push_back({path,
-                        arithmetic                     ? "run_arithmetic"
-                        : result.baseName == "_Result" ? "run_one"
-                                                       : "run_result",
+                        result.baseName == "_Result" ? "run_one" : "run_result",
                         func.getLocation(), func.getProto().getName()});
       ++it;
       continue;

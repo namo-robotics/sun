@@ -929,23 +929,23 @@ TEST(Errors_Results, checked_arithmetic) {
   for (bool optimize : {false, true}) {
     for (const std::string type :
          {"i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64"}) {
-      for (const std::string operation : {"checked_div", "checked_rem"}) {
+      for (const std::string operation : {"_checked_div", "_checked_rem"}) {
         SCOPED_TRACE(type + operation);
         std::string source =
             "/** Runs a checked operation. */\nfunction calculate(a: " + type +
             ", b: " + type + ") _Result<" + type +
-            ", ArithmeticError> { return " + operation +
+            ", i32> { return " + operation +
             "(a, b); }\n"
             "/** Handles both result variants. */\nfunction main() i32 {\n"
             "var success = match calculate(7, 2) { _Result.Ok(v) => "
             "_convert<i32>(v), _Result.Err(e) => -100 };\n"
             "var error = match calculate(7, 0) { _Result.Ok(v) => -100, "
-            "_Result.Err(e) => e.code() };\n"
+            "_Result.Err(e) => e };\n"
             "return success + error; }";
         auto driver = sun::driver::Driver::createForJIT("checked_arithmetic",
                                                         false, optimize);
         EXPECT_EQ(driver->executeString(source),
-                  operation == "checked_div" ? 7 : 5);
+                  operation == "_checked_div" ? 7 : 5);
       }
     }
   }
@@ -960,7 +960,7 @@ TEST(Errors_Results, checked_arithmetic_signed_overflow) {
       std::string minimum = width == 64
                                 ? "-9223372036854775807 - 1"
                                 : std::to_string(-(int64_t{1} << (width - 1)));
-      for (const std::string operation : {"checked_div", "checked_rem"}) {
+      for (const std::string operation : {"_checked_div", "_checked_rem"}) {
         auto driver = sun::driver::Driver::createForJIT("checked_overflow",
                                                         false, optimize);
         EXPECT_EQ(driver->executeString(
@@ -972,7 +972,7 @@ TEST(Errors_Results, checked_arithmetic_signed_overflow) {
                       "return match " +
                       operation +
                       "(a, b) { _Result.Ok(v) => -1, _Result.Err(e) => "
-                      "e.code() }; }"),
+                      "e }; }"),
                   5);
       }
     }
@@ -987,13 +987,13 @@ TEST(Errors_Results, checked_arithmetic_propagation) {
     /** Records evaluation of an operand. */
     function operand(value: i32) i32 { calls += 1; return value; }
     /** Stops before the success return when division fails. */
-    function compute() _Result<i32, ArithmeticError> {
-      var value = try checked_div(operand(42), operand(0));
+    function compute() _Result<i32, i32> {
+      var value = try _checked_div(operand(42), operand(0));
       return _Result.Ok(value);
     }
     /** Observes both the failure code and evaluation count. */
     function main() i32 {
-      var code = match compute() { _Result.Ok(v) => -1, _Result.Err(e) => e.code() };
+      var code = match compute() { _Result.Ok(v) => -1, _Result.Err(e) => e };
       return code * 10 + calls;
     }
   )"),

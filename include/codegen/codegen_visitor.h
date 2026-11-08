@@ -360,7 +360,7 @@ class CodegenVisitor {
                             const sun::support::Position& loc);
 
   /**
-   * Emits integer division or remainder, throwing ArithmeticError on failure.
+   * Emits integer division or remainder, aborting with a diagnostic on failure.
    */
   llvm::Value* createIntDivRem(llvm::Value* L, llvm::Value* R, bool isModulo,
                                bool isUnsigned);

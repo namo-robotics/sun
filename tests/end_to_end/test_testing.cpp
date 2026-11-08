@@ -358,7 +358,7 @@ TEST(EndToEnd_Testing, custom_result_arithmetic_failure_exits_one) {
     /** Accepts the standard result's arithmetic variant on a successful test. */
     test_function succeeds() Result<void> { return; }
     /** Reports checked division failure through a custom result. */
-    test_function fails() Outcome { var value = try checked_div(10, 0); }
+    test_function fails() Outcome { var value = try std.checked_div(10, 0); }
   )";
   EXPECT_EQ(executeTestsWithStdlib(program), 1);
   const char* argv[] = {"program", "--test-sequential", nullptr};
@@ -434,12 +434,12 @@ TEST(EndToEnd_Testing, public_errno_and_nonblocking_helpers) {
             0);
 }
 
-/** Arithmetic error results fail tests without an IError implementation. */
+/** Arithmetic error results fail tests through the ordinary IError implementation. */
 TEST(EndToEnd_Testing, concrete_arithmetic_errors_fail_tests) {
   EXPECT_EQ(executeTestsWithStdlib(R"(
-    /** Propagates the builtin concrete failure from checked division. */
-    test_function checked_failure() _Result<void, ArithmeticError> {
-      var value = try checked_div(10, 0);
+    /** Propagates the standard-library failure from checked division. */
+    test_function checked_failure() _Result<void, std.ArithmeticError> {
+      var value = try std.checked_div(10, 0);
       return _Result.Ok;
     }
   )"), 1);

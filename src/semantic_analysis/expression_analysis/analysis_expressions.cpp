@@ -176,8 +176,8 @@ void ExpressionAnalyzer::checkIntegerDivision(
   }
   if (invalid) {
     logAndThrowError(
-        "Invalid integer division or remainder; use checked_div or checked_rem "
-        "to handle failure",
+        "Invalid integer division or remainder; use std.checked_div or "
+        "std.checked_rem to handle failure",
         location);
   }
 }
