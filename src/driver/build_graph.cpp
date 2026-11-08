@@ -240,6 +240,16 @@ void visitConfig(const fs::path& input, const std::string& target,
   }
   visiting.insert(file);
   auto config = SunConfig::loadFile(file, target);
+  if (!config.targetSupported) {
+    sun::support::logWarning(
+        "Skipping project " + sun::support::displayPath(file.string()) +
+        ": target " + configTargetKey(config.targetTriple) +
+        " is not in supported_targets");
+    graph.skippedProjects.push_back(file);
+    visiting.erase(file);
+    visited.insert(file);
+    return;
+  }
   if (!config.packageId.empty() &&
       !ids.emplace(config.packageId, file).second) {
     fail("duplicate package_id: " + config.packageId);

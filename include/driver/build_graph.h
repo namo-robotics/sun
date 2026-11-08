@@ -24,6 +24,7 @@ SunConfig buildContextConfig();
 struct ConfigGraph {
   std::filesystem::path root;
   std::vector<std::filesystem::path> projects;
+  std::vector<std::filesystem::path> skippedProjects;
 };
 
 /** Compiles one configured product into its workspace output path. */
@@ -43,6 +44,7 @@ void setBuildConfiguration(const std::string& name, bool force);
 void setConfiguredBuildRoots(const std::vector<std::string>& roots);
 
 /** Loads an explicit root config and its included configs without merging them.
+ * Warns and skips projects that do not support the selected target.
  */
 ConfigGraph loadConfigGraph(const std::filesystem::path& file,
                             const std::string& target = "");
