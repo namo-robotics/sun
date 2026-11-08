@@ -25,7 +25,10 @@ A file for guiding coding agents.
 
 ## Code Comments (all code, including .sun files)
 
-- Write concise comments in plain English for a general audience of software engineers.
+- All code comments should written in crystal-clear and unambiguous plain-english describing the how the target code works and its purpose.
+- All code comments written for a general audience of software engineers.
+- Comments requiring deeper explanation should be led by concrete minimal examples.
+- Comments should be concise and to-the-point.
 - Every namespace, function, and type definition must have a documentation comment describing what it does or what it is for. This applies to all first-party source code, including C++ and `.sun` files, regardless of visibility.
 - Use `/** ... */` blocks in C++, Sun, and JavaScript/TypeScript. Use the language's native equivalent elsewhere, such as Python docstrings or a shell comment block.
 - Cover private and internal helpers, methods, constructors, destructors, anonymous namespaces, classes, structs, interfaces, enums, and type aliases, as well as public APIs. Document modules too.
