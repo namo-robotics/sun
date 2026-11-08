@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #include "codegen/codegen.h"
+#include "codegen/support/panic.h"
 #include "codegen/support/scalar_ops.h"
 #include "semantic_analysis/type_analysis/type_rules.h"
 
@@ -326,11 +327,10 @@ Value* CodegenVisitor::extendInt(Value* value, llvm::Type* destTy,
 Value* CodegenVisitor::createIntDivRem(Value* L, Value* R, bool isModulo,
                                        bool isUnsigned) {
   return support::createIntDivRem(
-      *ctx.builder, L, R, isModulo, isUnsigned, [this](int) {
-        auto* trap =
-            llvm::Intrinsic::getDeclaration(module, llvm::Intrinsic::trap);
-        ctx.builder->CreateCall(trap);
-        ctx.builder->CreateUnreachable();
+      *ctx.builder, L, R, isModulo, isUnsigned, [this](int code) {
+        support::emitPanic(*ctx.builder, module,
+                           code == 4 ? "integer division by zero"
+                                     : "integer division overflow");
       });
 }
 

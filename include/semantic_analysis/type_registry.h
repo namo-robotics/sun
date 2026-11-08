@@ -75,71 +75,10 @@ class TypeRegistry {
   std::unordered_map<SpecializationKey, DeclarationId, SpecializationKeyHash>
       specializations_;
 
-  /** Registers the concrete error returned by checked arithmetic. */
-  void registerArithmeticError() {
-    auto errorId = declarations_.add(DeclarationKind::Class, "ArithmeticError");
-    declarations_.bindPortable(
-        errorId,
-        PortableDeclarationKey::original(
-            "4c7b23a9e50e3bb484c7f661e4700d156bac371ed9dd5d23c3d22e2fefc263c1",
-            4));
-    arithmeticError = getClass(errorId, QualifiedName{{}, "ArithmeticError"});
-    arithmeticError->visibility = Visibility::Public;
-    auto codeId = declarations_.add(DeclarationKind::Field, "code_", errorId);
-    declarations_.bindPortable(
-        codeId,
-        PortableDeclarationKey::original(
-            "4c7b23a9e50e3bb484c7f661e4700d156bac371ed9dd5d23c3d22e2fefc263c1",
-            5));
-    arithmeticError->addField("code_", sun::types::Types::Int32(), codeId);
-    uint64_t methodOrdinal = 6;
-    for (const auto& name : {"code", "message"}) {
-      auto methodId = declarations_.add(DeclarationKind::Function, name, errorId);
-      declarations_.bindPortable(
-          methodId,
-          PortableDeclarationKey::original(
-              "4c7b23a9e50e3bb484c7f661e4700d156bac371ed9dd5d23c3d22e2fefc263c1",
-              methodOrdinal++));
-      auto& method = arithmeticError->addMethod(
-          name, std::string(name) == "code" ? sun::types::Types::Int32()
-                                           : sun::types::Types::String(), {});
-      method.declarationId = methodId;
-      method.isConst = true;
-      method.visibility = Visibility::Public;
-    }
-  }
-
  public:
-  /** Concrete error returned by checked integer division and remainder. */
-  std::shared_ptr<sun::types::ClassType> arithmeticError;
-
-  /**
-   * Initializes the collection of primitive and declared semantic types.
-   * Every type is created for a declaration in `declarations`, which belongs
-   * to the same analysis results and must outlive the registry.
-   */
+  /** Creates nominal types tied to declarations, which must outlive this registry. */
   explicit TypeRegistry(DeclarationTable& declarations)
-      : declarations_(declarations) {
-    registerBuiltins();
-  }
-
-  /**
-   * Register built-in error types. The iteration protocol
-   * (IIterator/IIterable) lives in stdlib/std/iterator.sun since it names
-   * Option.
-   */
-  void registerBuiltins() {
-    registerArithmeticError();
-  }
-
-  /**
-   * Reports whether a class or interface name would redefine a builtin
-   * error type. Type trait names such as `_Integer` need no entry: the
-   * parser already rejects a declared name that starts with `_`.
-   */
-  bool isBuiltinTypeName(const std::string& name) const {
-    return name == "ArithmeticError";
-  }
+      : declarations_(declarations) {}
 
   /**
    * Non-copyable to prevent accidental duplication

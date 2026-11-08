@@ -27,13 +27,13 @@ var e: char = 'k';
 
 ## Integer Arithmetic
 
-Integer `/`, `%`, `/=`, and `%=` trap if the divisor is zero or a signed
+Integer `/`, `%`, `/=`, and `%=` panic and abort if the divisor is zero or a signed
 integer's minimum value is divided by `-1` (including remainder). The same
 checks apply inside `unsafe` blocks. Statically invalid operations are rejected
-at compile time. These operators do not propagate errors or run cleanup on a trap.
+at compile time. These operators do not propagate errors or run cleanup on a panic.
 
-Use `checked_div(a, b)` or `checked_rem(a, b)` when failure should be handled.
-They return `_Result<T, ArithmeticError>` and work with `match` and prefix `try`.
+Use `std.checked_div(a, b)` or `std.checked_rem(a, b)` when failure should be handled.
+They return `_Result<T, std.ArithmeticError>` and work with `match` and prefix `try`.
 
 Shifts `<<` and `>>` mask the count with `width - 1`, using the bit width
 of the operands after integer widening. This includes negative counts:
@@ -370,5 +370,6 @@ passed or rebound as `const ref T`, never the other way round.
 
 ## Reserved Type Names
 
-`ArithmeticError` is a builtin concrete type and cannot be redefined. `IError`
-is not reserved: it is an ordinary interface declared by the standard library.
+`ArithmeticError` and `IError` are ordinary declarations in the standard
+library, not reserved builtin type names. `_promoted_integer<A, B>` is a compiler
+type query that follows integer arithmetic promotion rules.

@@ -46,7 +46,6 @@ SemanticContext::SemanticContext(
     std::shared_ptr<sun::semantic_analysis::AnalysisResults> results)
     : results_(std::move(results)) {
   rootScope_->accessContext = this;  // lookups filter by visibility
-  rootScope_->classes["ArithmeticError"] = results_->types->arithmeticError;
   std::vector<sun::ast::EnumVariantDecl> variants;
   for (const auto& name : {"Ok", "Err"}) {
     sun::ast::EnumVariantDecl variant;

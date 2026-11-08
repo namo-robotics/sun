@@ -422,7 +422,8 @@ TEST(Constants_Evaluator, invalid_integer_operations_are_rejected) {
        {"1 / 0", "1 % 0", "-2147483648 / -1", "-2147483648 % -1"}) {
     EXPECT_SUN_ERROR_WITH_MESSAGE(
         decideGlobal("const A: i32 = " + expression + ";", "A"),
-        "Invalid integer division or remainder");
+        "Invalid integer division or remainder; use std.checked_div or "
+        "std.checked_rem to handle failure");
   }
   expectInitializedAtStartup(
       "const F: f64 = 1.0e40;\nconst A: i32 = _convert<i32>(F);", "A",
@@ -561,7 +562,7 @@ TEST(Constants_Evaluator, functions_that_are_not_pure_wait_for_startup) {
                              "V", "");
   expectInitializedAtStartup(R"(
     /** Returns an arithmetic error as an ordinary value. */
-    function divide(a: i64, b: i64) _Result<i64, ArithmeticError> { return checked_div(a, b); }
+    function divide(a: i64, b: i64) _Result<i64, i32> { return _checked_div(a, b); }
     const V = divide(1, 0);
   )",
                              "V", "");

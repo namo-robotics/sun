@@ -9,8 +9,7 @@ namespace sun::codegen::scopes {
 class ScopeManager;
 }
 
-// Generates concrete arithmetic error methods and preserves owned values
-// across scoped unsafe blocks and calls that may unwind.
+// Preserves owned values across scoped unsafe blocks and calls that may unwind.
 
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
@@ -19,17 +18,15 @@ class ScopeManager;
 #include <llvm/IR/Value.h>
 
 #include <type_traits>
-#include <vector>
 
 #include "ast.h"
 #include "codegen/codegen_state.h"
-#include "semantic_analysis/type_registry.h"
 
 /** Generates value-based error support and call cleanup. */
 namespace sun::codegen::errors {
 using sun::ast::ExprAST;
 
-/** Emits builtin error methods, unsafe blocks, and calls with cleanup. */
+/** Emits unsafe blocks and calls with ownership cleanup. */
 class ErrorGenerator {
  public:
   /** Binds error propagation generation to the shared expression visitor and
@@ -63,10 +60,6 @@ class ErrorGenerator {
                                         llvm::ArrayRef<llvm::Value*> args,
                                         bool canThrow, const llvm::Twine& name);
 
-  /** Declares builtin error methods, optionally defining only referenced
-   * methods. */
-  void emitArithmeticErrorMethods(bool defineBodies = false);
-
  private:
   sun::codegen::CodegenState& state_;
   sun::codegen::CodegenVisitor& gen_;
@@ -99,8 +92,6 @@ class ErrorGenerator {
   /** Provides the scope manager responsible for variable storage and cleanup.
    */
   sun::codegen::scopes::ScopeManager& scopes();
-  /** Provides the semantic types available to this code generator. */
-  std::shared_ptr<sun::semantic_analysis::TypeRegistry>& typeRegistry();
   /** Returns the personality function stored by this object. */
   llvm::Constant* getPersonalityFunction();
 

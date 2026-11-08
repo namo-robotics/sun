@@ -682,12 +682,6 @@ void InterfaceAnalyzer::prepareInterfaceShape(
   validateNotReserved(interfaceDef.getName(), "Interface name",
                       interfaceDef.getLocation());
 
-  // Check for redefinition of builtin types
-  if (ctx_.types()->isBuiltinTypeName(interfaceDef.getName())) {
-    logAndThrowError(
-        "Cannot redefine builtin interface '" + interfaceDef.getName() + "'",
-        interfaceDef.getLocation());
-  }
 
   // Validate field names and reject duplicates, on the same terms as classes:
   // a name-only comparison, ahead of the generic early-return below.

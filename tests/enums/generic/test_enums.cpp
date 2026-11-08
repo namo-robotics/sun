@@ -72,7 +72,7 @@ TEST(Enums_Generic, ResultWithTwoParams) {
     enum Result<T, E> { Ok(T), Err(E) }
 
     function divide(a: i32, b: i32) Result<i32, i32> {
-        return match checked_div(a, b) {
+        return match _checked_div(a, b) {
             _Result.Ok(v) => Result.Ok(v),
             _Result.Err(error) => Result.Err(-1)
         };

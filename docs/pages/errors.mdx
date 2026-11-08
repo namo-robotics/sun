@@ -116,14 +116,15 @@ concrete payload types through one interface pattern.
 
 ## Checked integer arithmetic
 
-`checked_div(a, b)` and `checked_rem(a, b)` return
-`_Result<T, ArithmeticError>`, where `T` is the operands' promoted integer type.
+`std.checked_div(a, b)` and `std.checked_rem(a, b)` return
+`_Result<T, std.ArithmeticError>`, where `T` is the operands' promoted integer type.
 They evaluate each operand once and return an error for a zero divisor or
 signed minimum divided by `-1` (including remainder).
 
 ```sun
-function quotient(a: i32, b: i32) _Result<i32, ArithmeticError> {
-    var value = try checked_div(a, b);
+/** Returns a quotient or propagates its arithmetic error. */
+function quotient(a: i32, b: i32) _Result<i32, std.ArithmeticError> {
+    var value = try std.checked_div(a, b);
     return _Result.Ok(value);
 }
 ```
@@ -207,18 +208,17 @@ match operation() {
 Typed arms inspect immediate payloads. If `E` is itself an enum of error classes,
 first match `_Result.Err(error)`, then match `error` with the interface arm.
 
-## Built-in Arithmetic Errors
+## Arithmetic errors and panics
 
-`ArithmeticError` is a concrete builtin available without an import. It does
-not implement `std.IError`: `code()` returns an integer and `message()` returns
-a literal `static_ptr<u8>`, independent of any stdlib revision.
-`checked_div` and `checked_rem` return it on failure; ordinary integer
-arithmetic traps instead.
+`std.ArithmeticError` is an ordinary standard-library class implementing
+`std.IError`. It stores only a numeric code; construction and propagation do
+not allocate. Its `message()` method creates an owned `String` on demand.
+`std.checked_div` and `std.checked_rem` return this error on failure.
 
 ```sun
 /** Divides two integers, returning recoverable arithmetic failures. */
-function divide(a: i32, b: i32) _Result<i32, ArithmeticError> {
-  return checked_div(a, b);
+function divide(a: i32, b: i32) _Result<i32, std.ArithmeticError> {
+  return std.checked_div(a, b);
 }
 
 /** Handles division by zero through its concrete result payload. */
@@ -235,10 +235,24 @@ function main() i32 {
 | Zero divisor | `4` | `integer division by zero` |
 | Signed minimum divided by `-1`, including remainder | `5` | `integer division overflow` |
 
-`message()` returns an owned `String` with the standard library, retaining the
-existing `static_ptr<u8>` contract without it. Prefix `try` drops live owners
-before returning a failure to its caller. A trap terminates execution without
-running cleanup.
+Prefix `try` drops live owners before returning a failure to its caller.
+
+Ordinary integer division and remainder instead print `panic: ` followed by the
+failure message to stderr and abort the entire process without cleanup.
+`std.panic("explanation")` uses the same path. There is no panic catching or
+unwinding: a panic in a worker thread or test terminates the process too.
+Invalid constant operations remain compilation errors.
+
+Without stdlib, `_checked_div(a, b)` and `_checked_rem(a, b)` return
+`_Result<T, i32>`, with the same promotion rules and primitive failure codes
+listed above. `_panic` accepts a literal message without requiring stdlib.
+The type query `_promoted_integer<A, B>` computes the promoted integer type;
+when used for two generic operands, literals retain contextual coercion from
+the other operand before deduction.
+
+The former builtin `ArithmeticError` and unqualified builtin checked functions
+have been removed. Import/use stdlib or use the primitive intrinsics, and rebuild
+dependent `.moon` libraries with the matching compiler and stdlib.
 
 ## Cleanup during propagation
 

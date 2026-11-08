@@ -520,3 +520,6 @@ declare function _gemm_block_avx2_fma(
   rows: i64,
   cols: i64
 ) void;
+
+/** Prints a literal diagnostic to stderr and aborts without cleanup. */
+declare function _panic(message: static_ptr<u8>) void;

@@ -2,6 +2,28 @@
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
 
+  /** Divides integers, preserving operand promotion and returning failures. */
+  public function checked_div<A: _Integer, B: _Integer>(
+    a: A,
+    b: B
+  ) _Result<_promoted_integer<A, B>, ArithmeticError> {
+    return match _checked_div(a, b) {
+      _Result.Ok(value) => _Result.Ok(value),
+      _Result.Err(code) => _Result.Err(ArithmeticError(code))
+    };
+  }
+
+  /** Computes an integer remainder, returning zero-divisor or overflow failures. */
+  public function checked_rem<A: _Integer, B: _Integer>(
+    a: A,
+    b: B
+  ) _Result<_promoted_integer<A, B>, ArithmeticError> {
+    return match _checked_rem(a, b) {
+      _Result.Ok(value) => _Result.Ok(value),
+      _Result.Err(code) => _Result.Err(ArithmeticError(code))
+    };
+  }
+
   // Numeric limits
   public const I64_MAX: i64 = 9223372036854775807;
   public const I64_MIN: i64 = -9223372036854775807 - 1;

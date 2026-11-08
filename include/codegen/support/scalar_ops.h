@@ -23,7 +23,7 @@ llvm::Value* extendInt(llvm::IRBuilder<>& builder, llvm::Value* value,
 
 /**
  * Checks and emits integer division or remainder. The callback emits a
- * terminating throw for division by zero (code 4) or signed overflow (code 5).
+ * terminating failure branch for division by zero or signed division overflow.
  */
 llvm::Value* createIntDivRem(llvm::IRBuilder<>& builder, llvm::Value* L,
                              llvm::Value* R, bool isModulo, bool isUnsigned,

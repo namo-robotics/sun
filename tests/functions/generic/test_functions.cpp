@@ -704,3 +704,20 @@ TEST(Functions_Generic, mutually_recursive_specializations) {
   )"),
             1);
 }
+
+/** Public concrete overloads are resolved before private generic overloads. */
+TEST(Functions_Generic, public_overload_precedes_private_generic) {
+  EXPECT_EQ(executeString(R"(
+    /** Groups public and private overloads of the same function. */
+    module example {
+      /** Exposes an ordinary overload. */
+      public function value(a: i32, b: i32) i32 { return a + b; }
+      /** Keeps generic arithmetic inside the module. */
+      function value<A: _Integer, B: _Integer>(a: A, b: B) _promoted_integer<A, B> {
+        return a + b;
+      }
+    }
+    /** Calls the accessible ordinary overload. */
+    function main() i32 { return example.value(20, 22); }
+  )"), 42);
+}

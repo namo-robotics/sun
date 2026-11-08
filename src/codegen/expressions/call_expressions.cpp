@@ -3,6 +3,7 @@
 #include "ast.h"
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
+#include "codegen/support/panic.h"
 #include "codegen/support/scalar_ops.h"
 #include "semantic_analysis/semantic_scope.h"
 
@@ -779,8 +780,16 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
           expr.getCallee())) {
     calleeName = varRef->getName();
 
+    if (calleeName == "_panic") {
+      auto* literal = codegen(*expr.getArgs().front());
+      support::emitPanic(*ctx.builder, module,
+                         ctx.builder->CreateExtractValue(literal, 0),
+                         ctx.builder->CreateExtractValue(literal, 1));
+      return nullptr;
+    }
+
     if (!varRef->getTargetDeclarationId() &&
-        (calleeName == "checked_div" || calleeName == "checked_rem")) {
+        (calleeName == "_checked_div" || calleeName == "_checked_rem")) {
       auto& resultType =
           static_cast<sun::types::EnumType&>(*expr.getResolvedType());
       auto valueType = resultType.getGenericArgs()[0];
@@ -800,7 +809,7 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
           BasicBlock::Create(ctx.getContext(), "checked.done", function);
       auto* tag = ctx.builder->CreateStructGEP(storageType, storage, 0);
       Value* value = support::createIntDivRem(
-          *ctx.builder, left, right, calleeName == "checked_rem",
+          *ctx.builder, left, right, calleeName == "_checked_rem",
           valueType->isUnsigned(), [&](int code) {
             ctx.builder->CreateStore(ctx.builder->getInt32(1), tag);
             auto* variantType =
@@ -808,7 +817,7 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
             auto* payload = ctx.builder->CreateStructGEP(
                 variantType, storage,
                 typeResolver.enumPayloadFieldIndex(resultType, "Err", 0));
-            // ArithmeticError owns only its numeric code.
+            // The intrinsic returns a primitive failure code.
             ctx.builder->CreateStore(ctx.builder->getInt32(code), payload);
             ctx.builder->CreateBr(done);
           });
