@@ -434,17 +434,10 @@ SunConfig parse(const Object& root, const std::filesystem::path& file,
                 const std::string& target) {
   keys(root, {"package_id", "root", "sun_path", "path_variables", "entrypoints",
               "packages", "dependencies", "target", "c_bindings", "sun_fmt",
-              "steps", "exports", "projects"});
+              "steps", "exports", "projects", "supported_targets"});
   SunConfig config;
   config.configDir = std::filesystem::weakly_canonical(
       std::filesystem::absolute(file).parent_path());
-  if (auto* value = root.get("projects")) {
-    for (const auto& path :
-         *select(*value, target, stringsValue)->getAsArray()) {
-      config.projects.push_back(
-          anchor(path.getAsString()->str(), config.configDir));
-    }
-  }
   if (auto* value = root.get("package_id")) {
     identityValue(*value);
     config.packageId = value->getAsString()->str();
@@ -452,6 +445,35 @@ SunConfig parse(const Object& root, const std::filesystem::path& file,
   if (auto* value = root.get("root")) {
     boolValue(*value);
     config.root = *value->getAsBoolean();
+  }
+  if (auto* value = root.get("supported_targets")) {
+    stringsValue(*value);
+    Object targets;
+    for (const auto& item : *value->getAsArray()) {
+      const auto name = item.getAsString()->str();
+      if (targets.get(name)) {
+        invalid("duplicate target triple");
+      }
+      targets[name] = true;
+    }
+    targetKeys(targets);
+    config.targetSupported = false;
+    for (const auto& [name, unused] : targets) {
+      if (configTargetKey(name.str()) == target) {
+        config.targetSupported = true;
+      }
+    }
+    // Unavailable projects need no paths, dependencies, or child configs.
+    if (!config.targetSupported) {
+      return config;
+    }
+  }
+  if (auto* value = root.get("projects")) {
+    for (const auto& path :
+         *select(*value, target, stringsValue)->getAsArray()) {
+      config.projects.push_back(
+          anchor(path.getAsString()->str(), config.configDir));
+    }
   }
   if (auto* value = root.get("sun_fmt")) {
     const auto& fmt = object(*value);

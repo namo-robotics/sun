@@ -97,6 +97,45 @@ TEST_F(BuildGraph, CompositionIsExplicitAndDoesNotMergeSettings) {
   EXPECT_EQ(child.pathVariables.at("VALUE"), (dir / "projects/a/a").string());
 }
 
+/** Unsupported projects warn once and never resolve their paths or children. */
+TEST_F(BuildGraph, SkipsUnsupportedProjects) {
+  put("sun-config.json", R"({"projects":["linux.json","linux.json","portable.json"]})");
+  put("linux.json", R"({
+    "supported_targets":["x86_64-linux-gnu","x86_64-linux-musl"],
+    "projects":["missing.json"],
+    "path_variables":{"LIB":{"target":{"x86_64-linux-gnu":"/missing"}}}
+  })");
+  put("portable.json", R"({"package_id":"example/portable"})");
+  testing::internal::CaptureStderr();
+  const auto graph = sun::driver::loadConfigGraph(
+      dir / "sun-config.json", "arm64-apple-darwin");
+  const auto warning = testing::internal::GetCapturedStderr();
+  ASSERT_EQ(graph.projects.size(), 2u);
+  EXPECT_EQ(graph.projects.back(), fs::canonical(dir / "portable.json"));
+  ASSERT_EQ(graph.skippedProjects.size(), 1u);
+  EXPECT_NE(warning.find("Skipping project"), std::string::npos);
+  EXPECT_NE(warning.find("linux.json"), std::string::npos);
+  EXPECT_NE(warning.find("aarch64-unknown-darwin"), std::string::npos);
+}
+
+/** Supported projects remain available for an explicitly selected target. */
+TEST_F(BuildGraph, IncludesSupportedProjects) {
+  put("sun-config.json", R"({"projects":["linux.json"]})");
+  put("linux.json", R"({"supported_targets":["x86_64-linux-musl"]})");
+  const auto graph = sun::driver::loadConfigGraph(
+      dir / "sun-config.json", "x86_64-unknown-linux-musl");
+  EXPECT_EQ(graph.projects.size(), 2u);
+  EXPECT_TRUE(graph.skippedProjects.empty());
+}
+
+/** A build with only unsupported projects completes after its warning. */
+TEST_F(BuildGraph, UnsupportedRootBuildSucceedsWithoutProducts) {
+  put("sun-config.json", R"({"supported_targets":["x86_64-linux-musl"]})");
+  EXPECT_EQ(sun::cli::runBuildCommand(
+                {"--config", (dir / "sun-config.json").string(),
+                 "--target", "arm64-apple-darwin"}), 0);
+}
+
 /** Artifact filenames resolve beneath the selected root, including child
  * configs. */
 TEST_F(BuildGraph, ArtifactNamesUseSelectedBuildRoot) {

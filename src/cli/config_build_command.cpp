@@ -293,7 +293,9 @@ int runConfigBuildCommand(const BuildRunOptions& options) {
         sun::driver::packageConfigProducts(graph, std::move(config), names);
       }
     }
-    if (!matched) {
+    if (!matched && (graph.skippedProjects.empty() ||
+                     !options.buildPackage.empty() ||
+                     !options.buildEntrypoint.empty())) {
       sun::support::logAndThrowError(
           "no matching build products in config graph");
     }

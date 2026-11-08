@@ -424,6 +424,23 @@ config, and explicit `--path-var` arguments override configured variables.
 This workspace includes the matching project configs. Paths are relative to the
 config declaring them; Sun does not automatically search every subdirectory.
 
+A project limited to particular platforms declares `supported_targets`:
+
+```json
+{
+  "supported_targets": ["x86_64-linux-gnu", "x86_64-linux-musl"]
+}
+```
+
+Sun compares these targets with `--target`, or the host target when omitted.
+Config builds warn and skip incompatible projects before resolving their paths,
+dependencies, or included projects. A build containing only skipped projects
+succeeds; an explicitly requested package or entrypoint must still match a build
+product. Omit `supported_targets` to allow every target; an empty list disables
+the project for every target. Target aliases are normalized, while architecture
+and ABI remain distinct. Target-specific settings alone do not restrict project
+support, and missing dependencies on a supported target remain errors.
+
 A project declares its identity and products:
 
 ```json filename="src/shapes/sun-config.json"

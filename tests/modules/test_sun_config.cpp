@@ -43,6 +43,33 @@ void writeFile(const fs::path& path, const std::string& content) {
 
 }  // namespace
 
+/** Supported target matching retains ABI distinctions and normalizes aliases. */
+TEST(Modules_SunConfig, supported_targets_match_normalized_triples) {
+  const auto dir = freshDir("supported_targets");
+  writeFile(dir / "sun-config.json", R"({
+    "supported_targets":["arm64-apple-darwin","x86_64-linux-musl"]
+  })");
+  EXPECT_TRUE(SunConfig::loadFile(dir / "sun-config.json",
+                                "aarch64-apple-macosx14.0").targetSupported);
+  EXPECT_TRUE(SunConfig::loadFile(dir / "sun-config.json",
+                                "x86_64-unknown-linux-musl").targetSupported);
+  EXPECT_FALSE(SunConfig::loadFile(dir / "sun-config.json",
+                                 "x86_64-linux-gnu").targetSupported);
+}
+
+/** Invalid support declarations fail instead of silently skipping a project. */
+TEST(Modules_SunConfig, rejects_invalid_supported_targets) {
+  const auto dir = freshDir("invalid_supported_targets");
+  for (const auto& value : {R"("linux")", R"(["invalid"])",
+                            R"(["arm64-apple-darwin","aarch64-apple-darwin"])",
+                            R"(["x86_64-linux-gnu","x86_64-linux-gnu"])"}) {
+    SCOPED_TRACE(value);
+    writeFile(dir / "sun-config.json",
+              std::string("{\"supported_targets\":") + value + "}");
+    EXPECT_THROW(SunConfig::loadFile(dir / "sun-config.json"), SunError);
+  }
+}
+
 TEST(Modules_SunConfig, cli_variables_override_config_and_environment) {
   fs::path dir = freshDir("override");
   writeFile(dir / "sun-config.json",

@@ -145,6 +145,7 @@ struct SunConfig {
   std::vector<ConfigBuildStep> steps;
   std::vector<ConfigResource> exports;
   std::string packageId;
+  bool targetSupported = true;  // selected target is allowed by supported_targets
   std::filesystem::path configFile;  // selected configuration file
   std::filesystem::path configDir;   // directory of the nearest config file
   std::vector<std::string> sunPath;  // extra library search dirs (absolute)
