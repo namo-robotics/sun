@@ -135,6 +135,17 @@ TEST_F(Packages, MoonCacheAndCollision) {
   EXPECT_NE(ManifestProcessor::expandPathVariables(
                 "$IMAGE_CORE/lib/image_core.moon", &arm),
             x64);
+  // Typed providers select the same verified artifact and reject other targets.
+  auto typed = config(R"({"dependencies":[{
+    "type":"moon","package":"IMAGE_CORE","library":"image_core",
+    "target":{"x86_64-linux-gnu":{"path":"x64.moon"},
+              "aarch64-linux-gnu":{"path":"arm.moon"}}
+  }]})");
+  EXPECT_EQ(ManifestProcessor::expandPathVariables("$IMAGE_CORE/lib/image_core.moon", &typed), x64);
+  auto wrongTarget = config(R"({"dependencies":[{
+    "type":"moon","package":"IMAGE_CORE","library":"image_core","path":"arm.moon"
+  }]})");
+  EXPECT_THROW(sun::driver::resolveConfigDependency(wrongTarget, "IMAGE_CORE"), SunError);
   ManifestProcessor::setPathVariable("IMAGE_CORE", "/override");
   EXPECT_THROW(ManifestProcessor::expandPathVariables(
                    "$IMAGE_CORE/lib/image_core.moon", &cfg),
@@ -185,6 +196,14 @@ TEST_F(Packages, RoundTripAndResourceRebuild) {
   auto modified = fs::last_write_time(archive);
   sun::driver::buildPackages(cfg, plans);
   EXPECT_EQ(fs::last_write_time(archive), modified);
+  // A staged file can change without its inventory, size, or timestamp changing.
+  const auto stagedBinary = plans[0].output / "bin/app";
+  const auto binaryTime = fs::last_write_time(stagedBinary);
+  put(stagedBinary, "broken");
+  fs::last_write_time(stagedBinary, binaryTime);
+  sun::driver::buildPackages(cfg, plans);
+  EXPECT_EQ(sun::driver::packageFileHash(stagedBinary),
+            sun::driver::packageFileHash(dir / "app"));
   fs::remove(archive);
   sun::driver::buildPackages(cfg, plans);
   EXPECT_EQ(sun::driver::packageFileHash(archive), firstHash);

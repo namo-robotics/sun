@@ -25,12 +25,10 @@ namespace {
 
 /** Creates a fresh temporary directory for the test's files. */
 fs::path freshDir(const std::string& name) {
-  fs::path dir = fs::temp_directory_path() / "sun_config_tests" / name;
+  fs::path dir = fs::current_path() / "tmp/sun_config_tests" / name;
   fs::remove_all(dir);
   fs::create_directories(dir);
-  // Canonical, so expected paths match what the config walk produces:
-  // findFrom resolves symlinks, and macOS's temp directory is one
-  // (/var -> /private/var).
+  // Resolve symlinks so expected paths match configuration discovery.
   return fs::canonical(dir);
 }
 
@@ -243,10 +241,11 @@ TEST(Modules_SunConfig, unknown_entrypoint_key_is_an_error) {
   }
 }
 
+/** Merges entrypoints through the fixture's root without inheriting the repository. */
 TEST(Modules_SunConfig, entrypoints_concatenate_up_the_parent_chain) {
   fs::path dir = freshDir("entrypoint_merge");
   writeFile(dir / "sun-config.json",
-            "{ \"entrypoints\": [{ \"path\": \"parent.sun\" }] }\n");
+            "{ \"root\": true, \"entrypoints\": [{ \"path\": \"parent.sun\" }] }\n");
   writeFile(dir / "sub" / "sun-config.json",
             "{ \"entrypoints\": [{ \"path\": \"child.sun\" }] }\n");
 
@@ -503,5 +502,159 @@ TEST(Modules_SunConfig, entrypoints_reject_output_overrides) {
               std::string("{\"entrypoints\":[{\"path\":\"main.sun\",\"") +
                   field + "\":\"app\"}]}");
     EXPECT_THROW(SunConfig::loadFile(dir / "sun-config.json"), SunError);
+  }
+}
+
+/** Typed dependencies share fields and select exact targets before OS defaults. */
+TEST(Modules_SunConfig, typed_dependencies_select_targets) {
+  auto dir = freshDir("typed_targets");
+  writeFile(dir / "sun-config.json", R"({"dependencies":[
+    {"type":"system","check":{"type":"pkg-config","name":"sdl3","version":">=3.2"},"target":{
+      "linux":{"apt":["libsdl3-dev"]},
+      "x86_64-linux-gnu":{"apt":["libsdl3-special-dev"]},
+      "macos":{"brew":["sdl3"]}}},
+    {"type":"moon","package":"example/math","target":{
+      "x86_64-linux-gnu":{"path":"linux.moon"},
+      "arm64-apple-darwin":{"path":"mac.moon"}}},
+    {"type":"deb","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "target":{"x86_64-linux-gnu":{"path":"lib.deb"}}}
+  ]})");
+  auto linuxConfig = SunConfig::loadFile(dir / "sun-config.json", "x86_64-linux-gnu");
+  ASSERT_EQ(linuxConfig.systemDependencies.size(), 2u);
+  EXPECT_EQ(linuxConfig.systemDependencies[0].apt, std::vector<std::string>{"libsdl3-special-dev"});
+  EXPECT_EQ(linuxConfig.systemDependencies[1].path, (dir / "lib.deb").string());
+  ASSERT_EQ(linuxConfig.dependencies.at("example/math").selections.size(), 1u);
+  EXPECT_EQ(linuxConfig.dependencies.at("example/math").selections[0].library, "example/math");
+  auto mac = SunConfig::loadFile(dir / "sun-config.json", "arm64-apple-darwin");
+  ASSERT_EQ(mac.systemDependencies.size(), 1u);
+  EXPECT_EQ(mac.systemDependencies[0].brew, std::vector<std::string>{"sdl3"});
+  EXPECT_EQ(mac.dependencies.at("example/math").selections[0].path, (dir / "mac.moon").string());
+  auto windows = SunConfig::loadFile(dir / "sun-config.json", "x86_64-pc-windows-msvc");
+  EXPECT_TRUE(windows.systemDependencies.empty());
+  EXPECT_TRUE(windows.dependencies.empty());
+}
+
+/** Typed Git providers retain package selections and the existing source resolver. */
+TEST(Modules_SunConfig, typed_git_dependency_uses_url) {
+  auto dir = freshDir("typed_git");
+  writeFile(dir / "sun-config.json", R"({"dependencies":[{
+    "type":"git","url":"git@github.com:example/math.git","version":"main",
+    "packages":{"example/math":{"entrypoints":["math"]}}
+  }]})");
+  auto config = SunConfig::loadFile(dir / "sun-config.json", "x86_64-linux-gnu");
+  EXPECT_EQ(config.dependencies.at("example/math").git, "git@github.com:example/math.git");
+  EXPECT_EQ(config.dependencies.at("example/math").version, "main");
+}
+
+/** Invalid providers, unpinned downloads, and inactive malformed branches fail early. */
+TEST(Modules_SunConfig, typed_dependencies_reject_invalid_descriptors) {
+  auto dir = freshDir("invalid_typed");
+  const std::vector<std::string> descriptors = {
+      R"({"type":"mystery"})",
+      R"({"type":"system","check":{"type":"pkg-config","name":"--help"}})",
+      R"({"type":"system","check":{"type":"pkg-config","name":"sdl3"},"apt":["--allow-unauthenticated"]})",
+      R"({"type":"system","check":{"type":"pkg-config","name":"sdl3","version":"anything"}})",
+      R"({"type":"deb","url":"https://example.com/pkg.deb"})",
+      R"({"type":"moon","package":"example/math","url":"https://example.com/math.moon"})",
+      R"({"type":"git","url":"git@github.com:example/math.git"})",
+      R"({"type":"system","check":{"type":"pkg-config","name":"sdl3"},"target":{"macos":{"brew":["--bad"]}}})",
+      R"({"type":"system","check":{"type":"pkg-config","name":"sdl3"},"target":{"bogus":{}}})",
+      R"({"type":"system","check":{"type":"pkg-config","name":"sdl3"},"target":{"linux":{"type":"deb"}}})"};
+  for (const auto& descriptor : descriptors) {
+    SCOPED_TRACE(descriptor);
+    writeFile(dir / "sun-config.json", "{\"dependencies\":[" + descriptor + "]}");
+    EXPECT_THROW(SunConfig::loadFile(dir / "sun-config.json", "x86_64-linux-gnu"), SunError);
+  }
+}
+
+/** System packages can omit checks or select independent availability mechanisms. */
+TEST(Modules_SunConfig, optional_dependency_checks) {
+  auto dir = freshDir("optional_checks");
+  writeFile(dir / "sun-config.json", R"({"dependencies":[
+    {"type":"system","apt":["build-essential"]},
+    {"type":"system","check":{"type":"executable","name":"cmake"},"apt":["cmake"]},
+    {"type":"system","check":{"type":"pkg-config","name":"sdl3","version":">=3.2"}},
+    {"type":"deb","path":"lib.deb","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "check":{"type":"executable","name":"example-tool"}}
+  ]})");
+  auto config = SunConfig::loadFile(dir / "sun-config.json", "x86_64-linux-gnu");
+  ASSERT_EQ(config.systemDependencies.size(), 4u);
+  EXPECT_FALSE(config.systemDependencies[0].check);
+  ASSERT_TRUE(config.systemDependencies[1].check);
+  EXPECT_EQ(config.systemDependencies[1].check->type,
+            sun::driver::ConfigDependencyCheck::Type::Executable);
+  EXPECT_EQ(config.systemDependencies[2].check->version, ">=3.2");
+  EXPECT_EQ(config.systemDependencies[3].check->name, "example-tool");
+}
+
+/** Invalid checks cannot be silently ignored, even in inactive target branches. */
+TEST(Modules_SunConfig, rejects_invalid_dependency_checks) {
+  auto dir = freshDir("invalid_checks");
+  for (const auto& check : {"null", "false", "{}", R"({"type":"unknown","name":"cmake"})",
+       R"({"type":"executable","name":"/bin/cmake"})",
+       R"({"type":"executable","name":"cmake","version":">=3"})",
+       R"({"type":"pkg-config","name":"sdl3","version":false})",
+       R"({"type":"pkg-config","name":"sdl3","command":"anything"})"}) {
+    SCOPED_TRACE(check);
+    writeFile(dir / "sun-config.json",
+        std::string(R"({"dependencies":[{"type":"system","target":{"macos":{"check":)") + check + "}}}]}");
+    EXPECT_THROW(SunConfig::loadFile(dir / "sun-config.json", "x86_64-linux-gnu"), SunError);
+  }
+  writeFile(dir / "sun-config.json", R"({"dependencies":[{"type":"system"}]})");
+  EXPECT_THROW(SunConfig::loadFile(dir / "sun-config.json"), SunError);
+}
+
+/** Dependency restrictions normalize aliases and preserve architecture and ABI. */
+TEST(Modules_SunConfig, dependency_supported_targets) {
+  const auto dir = freshDir("dependency_supported_targets");
+  writeFile(dir / "sun-config.json", R"({"dependencies":[
+    {"type":"git","url":"git@github.com:example/math.git","version":"main",
+     "packages":{"example/math":{"entrypoints":["math"]}},
+     "supported_targets":["arm64-apple-darwin","x86_64-linux-gnu"]},
+    {"type":"system","apt":["cmake"],"supported_targets":[]}
+  ]})");
+  for (const auto* target : {"aarch64-apple-macosx14.0", "x86_64-unknown-linux-gnu"}) {
+    const auto config = SunConfig::loadFile(dir / "sun-config.json", target);
+    EXPECT_EQ(config.dependencies.count("example/math"), 1u);
+    EXPECT_TRUE(config.systemDependencies.empty());
+  }
+  for (const auto* target : {"x86_64-linux-musl", "aarch64-linux-gnu"}) {
+    EXPECT_TRUE(SunConfig::loadFile(dir / "sun-config.json", target).dependencies.empty());
+  }
+}
+
+/** Restrictions filter dependency overrides without replacing branch selection. */
+TEST(Modules_SunConfig, dependency_supported_targets_with_overrides) {
+  const auto dir = freshDir("dependency_restricted_overrides");
+  writeFile(dir / "sun-config.json", R"({"dependencies":[
+    {"type":"system","supported_targets":["x86_64-linux-gnu","arm64-apple-darwin"],
+     "target":{"linux":{"apt":["cmake"]},"x86_64-linux-gnu":{"apt":["ninja-build"]}}}
+  ]})");
+  auto config = SunConfig::loadFile(dir / "sun-config.json", "x86_64-linux-gnu");
+  ASSERT_EQ(config.systemDependencies.size(), 1u);
+  EXPECT_EQ(config.systemDependencies[0].apt, std::vector<std::string>{"ninja-build"});
+  for (const auto* target : {"x86_64-linux-musl", "arm64-apple-darwin"}) {
+    EXPECT_TRUE(SunConfig::loadFile(dir / "sun-config.json", target).systemDependencies.empty());
+  }
+}
+
+/** Invalid restrictions and malformed excluded dependencies are still errors. */
+TEST(Modules_SunConfig, rejects_invalid_dependency_supported_targets) {
+  const auto dir = freshDir("invalid_dependency_supported_targets");
+  for (const auto* targets : {R"("linux")", R"(["linux"])", R"([false])", R"(["x86_64-linux-gnu","invalid"])",
+       R"(["x86_64-linux-gnu","x86_64-linux-gnu"])",
+       R"(["arm64-apple-darwin","aarch64-apple-darwin"])"}) {
+    SCOPED_TRACE(targets);
+    writeFile(dir / "sun-config.json",
+        std::string(R"({"dependencies":[{"type":"system","apt":["cmake"],"supported_targets":)") + targets + "}]}");
+    EXPECT_THROW(SunConfig::loadFile(dir / "sun-config.json", "x86_64-linux-gnu"), SunError);
+  }
+  for (const auto* descriptor : {
+       R"({"type":"system","supported_targets":[],"apt":["--bad"]})",
+       R"({"type":"system","supported_targets":[],"target":{"macos":{"brew":["--bad"]}}})",
+       R"({"type":"system","target":{"linux":{"apt":["cmake"],"supported_targets":[]}}})"}) {
+    SCOPED_TRACE(descriptor);
+    writeFile(dir / "sun-config.json", std::string("{\"dependencies\":[") + descriptor + "]}");
+    EXPECT_THROW(SunConfig::loadFile(dir / "sun-config.json", "x86_64-linux-gnu"), SunError);
   }
 }

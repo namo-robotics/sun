@@ -13,12 +13,20 @@ RECONFIGURE=false
 INSTALL=false
 UNINSTALL=false
 INSTALL_PREFIX=/usr/local
+BUILD_TYPE=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --skip-stdlib) SKIP_STDLIB=ON ;;
         --reconfigure|-r) RECONFIGURE=true ;;
         --install) INSTALL=true ;;
         --uninstall) UNINSTALL=true ;;
+        --build-type)
+            case "${2:-}" in
+                Debug|Release|RelWithDebInfo|MinSizeRel) BUILD_TYPE="$2" ;;
+                *) echo "--build-type requires Debug, Release, RelWithDebInfo, or MinSizeRel." >&2; exit 2 ;;
+            esac
+            shift
+            ;;
         --prefix)
             if [[ $# -lt 2 || "$2" != /* ]]; then
                 echo "--prefix requires an absolute installation path." >&2
@@ -28,7 +36,8 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --help|-h)
-            echo "Usage: $0 [--reconfigure] [--skip-stdlib] [--install | --uninstall] [--prefix /path]"
+            echo "Usage: $0 [--reconfigure] [--skip-stdlib] [--install | --uninstall] [--prefix /path] [--build-type TYPE]"
+            echo "Build type defaults to Debug, or Release with --install."
             echo "Build by default. --install copies binaries and Moon bundles after building."
             echo "--uninstall removes them without building. Default prefix: /usr/local."
             exit 0
@@ -44,6 +53,15 @@ if [[ "$INSTALL" == true && ( "$UNINSTALL" == true || "$SKIP_STDLIB" == ON ) ]];
 fi
 if [[ "$UNINSTALL" == true ]]; then
     exec bash scripts/install-build.sh uninstall "$INSTALL_PREFIX"
+fi
+
+# Installed compilers should run optimized; local development keeps debug builds.
+if [[ -z "$BUILD_TYPE" ]]; then
+    if [[ "$INSTALL" == true ]]; then
+        BUILD_TYPE=Release
+    else
+        BUILD_TYPE=Debug
+    fi
 fi
 
 # TLS bundles and tests require static OpenSSL archives before compilation.
@@ -75,9 +93,11 @@ if [[ -f CMakeCache.txt ]]; then
     fi
 fi
 
-# Check if SKIP_STDLIB setting changed from cached value
+# Read the settings that determine whether CMake needs reconfiguration.
 CACHED_SKIP_STDLIB=""
+CACHED_BUILD_TYPE=""
 if [[ -f CMakeCache.txt ]]; then
+    CACHED_BUILD_TYPE=$(grep "^CMAKE_BUILD_TYPE:" CMakeCache.txt 2>/dev/null | cut -d= -f2 || echo "")
     CACHED_SKIP_STDLIB=$(grep "^SKIP_STDLIB:" CMakeCache.txt 2>/dev/null | cut -d= -f2 || echo "")
 fi
 
@@ -94,13 +114,15 @@ if [[ "$(uname -s)" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
     fi
 fi
 
-# Reconfigure if: no cache, --reconfigure flag, or SKIP_STDLIB changed
-if [[ ! -f CMakeCache.txt ]] || [[ "$RECONFIGURE" == "true" ]] || [[ "$CACHED_SKIP_STDLIB" != "$SKIP_STDLIB" ]]; then
+# Reconfigure when the requested configuration differs from the existing build.
+if [[ ! -f CMakeCache.txt || "$RECONFIGURE" == true ||
+      "$CACHED_SKIP_STDLIB" != "$SKIP_STDLIB" ||
+      "$CACHED_BUILD_TYPE" != "$BUILD_TYPE" ]]; then
     cmake -G Ninja \
           -DCMAKE_CXX_COMPILER=clang++ \
           -DCMAKE_C_COMPILER=clang \
-          -DCMAKE_BUILD_TYPE=Debug \
-          -DCMAKE_CXX_FLAGS="-g3 -O0 -fno-omit-frame-pointer" \
+          -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+          -DCMAKE_CXX_FLAGS="-fno-omit-frame-pointer" \
           -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
           -DCMAKE_C_COMPILER_LAUNCHER=ccache \
           -DSKIP_STDLIB=$SKIP_STDLIB \

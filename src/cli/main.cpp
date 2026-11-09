@@ -66,6 +66,9 @@ int main(int argc, char* argv[]) {
   if (!args.empty() && args[0] == "build-compile") {
     return sun::cli::runBuildCompileCommand({args.begin() + 1, args.end()});
   }
+  if (!args.empty() && args[0] == "dep") {
+    return sun::cli::runDependencyCommand({args.begin() + 1, args.end()});
+  }
   if (!args.empty() && args[0] == "describe") {
     return sun::cli::runDescribeCommand({args.begin() + 1, args.end()});
   }

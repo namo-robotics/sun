@@ -19,6 +19,7 @@ const char* const kUsageBody =
     "                   --config <file> --package <id> --entrypoint <name>\n"
     "  resolve          Resolve --dependency <package-id> and print its root "
     "as JSON\n"
+    "  dep install      Install dependencies (--dry-run previews changes)\n"
     "  describe         Print resolved project and entrypoint paths as JSON\n"
     "                   --field build_root|install_root|package_id prints plain text\n"
     "  dependency-path  Read a resolved dependency from a custom build "

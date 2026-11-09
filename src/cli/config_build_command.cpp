@@ -25,6 +25,7 @@
 #include "driver/git_source.h"
 #include "driver/manifest_processor.h"
 #include "driver/package.h"
+#include "driver/system_dependencies.h"
 #include "support/display_path.h"
 
 /** Parses command-line options and runs the selected compiler command. */
@@ -273,18 +274,26 @@ int runConfigBuildCommand(const BuildRunOptions& options) {
                                               options.targetTriple);
     sun::driver::ConfigGraphScope graphScope(graph);
     configureProductCompiler(options);
-    bool matched = false;
+    std::vector<sun::driver::SunConfig> configs;
+    std::string missing;
     for (const auto& file : graph.projects) {
-      auto config =
-          sun::driver::SunConfig::loadFile(file, options.targetTriple);
-      if (!options.buildPackage.empty() &&
-          config.packageId != options.buildPackage) {
+      auto config = sun::driver::SunConfig::loadFile(file, options.targetTriple);
+      if ((!options.buildPackage.empty() && config.packageId != options.buildPackage) ||
+          config.entrypoints.empty()) {
         continue;
       }
-      if (config.entrypoints.empty()) {
-        continue;
+      try {
+        sun::driver::checkSystemDependencies(config);
+      } catch (const sun::support::SunError& error) {
+        missing += error.getMessage() + "\n";
       }
-      matched = true;
+      configs.push_back(std::move(config));
+    }
+    if (!missing.empty()) {
+      sun::support::logAndThrowError(missing);
+    }
+    const bool matched = !configs.empty();
+    for (auto& config : configs) {
       auto names = options.buildEntrypoint.empty()
                        ? sun::driver::defaultConfigEntrypoints(config)
                        : std::vector<std::string>{options.buildEntrypoint};
@@ -429,15 +438,21 @@ void configureProductCompiler(const BuildRunOptions& options) {
 }
 
 /** Identifies the operation applied to a selected config graph. */
-enum class ConfigAction { Build, Resolve, Describe };
+enum class ConfigAction { Build, Resolve, Describe, Install };
 
 /** Parses config operations through the same root and project selection. */
 static int runConfigCommand(const std::vector<std::string>& args,
                             ConfigAction action) {
   try {
+    bool dryRun = false, yes = false;
     std::vector<std::string> compilerArgs;
     std::string package, entrypoint, configFile, dependency, field;
     for (size_t i = 0; i < args.size(); ++i) {
+      if (action == ConfigAction::Install && (args[i] == "--dry-run" || args[i] == "--yes")) {
+        if (args[i] == "--dry-run") dryRun = true;
+        else yes = true;
+        continue;
+      }
       if (args[i] == "--entrypoint" || args[i] == "--package" ||
           args[i] == "--config" || args[i] == "--dependency" ||
           (action == ConfigAction::Describe && args[i] == "--field")) {
@@ -500,6 +515,22 @@ static int runConfigCommand(const std::vector<std::string>& args,
     }
     auto graph = sun::driver::loadConfigGraph(configFile, options.targetTriple);
     sun::driver::ConfigGraphScope scope(graph);
+    if (action == ConfigAction::Install) {
+      if (!entrypoint.empty() || !dependency.empty())
+        sun::support::logAndThrowError("sun dep install selects projects with --package, not --entrypoint or --dependency");
+      std::vector<sun::driver::SunConfig> configs;
+      for (const auto& file : graph.projects) {
+        auto config = sun::driver::SunConfig::loadFile(file, options.targetTriple);
+        if (package.empty() || config.packageId == package) {
+          configs.push_back(sun::driver::configureBuildPaths(graph, std::move(config)));
+        }
+      }
+      if (configs.empty()) {
+        sun::support::logAndThrowError("consumer package not found: " + package);
+      }
+      sun::driver::installConfigDependencies(graph, configs, dryRun, yes);
+      return 0;
+    }
     configureProductCompiler(options);
     for (const auto& file : graph.projects) {
       auto config =
@@ -675,6 +706,21 @@ int runBuildCompileCommand(const std::vector<std::string>& args) {
   } catch (const std::exception& e) {
     return reportUnexpectedError(e);
   }
+}
+
+/** Parses the dependency installation subcommand and its side-effect controls. */
+int runDependencyCommand(const std::vector<std::string>& args) {
+  if (args.empty() || args.front() == "--help" || args.front() == "-h" ||
+      (args.front() == "install" && args.size() == 2 && args[1] == "--help")) {
+    llvm::outs() << "Usage: sun dep install [--config <file>] [--package <id>] "
+                    "[--target <triple>] [--dry-run] [--yes]\n";
+    return args.empty() ? 1 : 0;
+  }
+  if (args.front() != "install") {
+    sun::support::logErrorNoThrow("unknown dep command: " + args.front());
+    return 1;
+  }
+  return runConfigCommand({args.begin() + 1, args.end()}, ConfigAction::Install);
 }
 
 }  // namespace sun::cli

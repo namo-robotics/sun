@@ -307,6 +307,19 @@ void validatePackage(const fs::path& root, const std::string& target) {
   }
 }
 
+/** Compares file bytes without allocating copies of both complete files. */
+bool sameFileContents(const fs::path& a, const fs::path& b) {
+  auto left = llvm::MemoryBuffer::getFile(a.string());
+  if (!left) {
+    fail("cannot read " + a.string());
+  }
+  auto right = llvm::MemoryBuffer::getFile(b.string());
+  if (!right) {
+    fail("cannot read " + b.string());
+  }
+  return (*left)->getBuffer() == (*right)->getBuffer();
+}
+
 /** Returns whether two directories have identical files, bytes, and
  * permissions. */
 bool sameTree(const fs::path& a, const fs::path& b) {
@@ -332,8 +345,9 @@ bool sameTree(const fs::path& a, const fs::path& b) {
     return false;
   }
   for (const auto& name : left) {
-    if (packageFileHash(a / name) != packageFileHash(b / name) ||
-        executable(a / name) != executable(b / name)) {
+    if (fs::file_size(a / name) != fs::file_size(b / name) ||
+        executable(a / name) != executable(b / name) ||
+        !sameFileContents(a / name, b / name)) {
       return false;
     }
   }

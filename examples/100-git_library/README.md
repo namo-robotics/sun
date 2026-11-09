@@ -49,9 +49,9 @@ examples/100-git_library/build.sh --refresh-sources
 
 Sources are cached in `.sun/cache/git` beneath the directory where Sun is run,
 overridable with `SUN_GIT_CACHE`.
-For SSH, set `git` to `git@github.com:namo-robotics/sun_serve.git` or
+For SSH, set `url` on the `type: "git"` dependency to `git@github.com:namo-robotics/sun_serve.git` or
 `ssh://git@github.com/namo-robotics/sun_serve.git`; both use Git's normal SSH credentials.
 To use a precompiled Moon, replace the source dependency with a
-`{"package": "SUN_SERVE", "library": "sun_serve", "path": "sun_serve.moon"}`
+`{"type": "moon", "package": "SUN_SERVE", "library": "sun_serve", "path": "sun_serve.moon"}`
 artifact declaration. Configured Git dependencies instead use a repository's
 `packages` dictionary and require package IDs in that repository's configs.
