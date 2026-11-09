@@ -2,6 +2,7 @@
 
 #include "cli/usage.h"
 
+#include "generated/sun_build_timestamp.h"
 #include "generated/sun_version.h"
 
 /** Parses command-line options and runs the selected compiler command. */
@@ -84,7 +85,7 @@ const char* const kUsageBody =
     "  -h, --help        Show this help message\n"
     "  --abi-info        Print experimental ABI profiles and supported rules "
     "as JSON\n"
-    "  --version         Print version and git commit hash\n"
+    "  --version         Print version, git commit hash, and UTC build time\n"
     "\n"
     "Subcommands:\n"
     "  fmt [--check] <file.sun|directory>...\n"
@@ -142,7 +143,7 @@ std::string renderUsage(const std::string& programName) {
 std::string renderVersionLine() {
   const std::string name = SUN_VERSION_NAME;
   return std::string("sun") + (name.empty() ? "" : " " + name) + " (" +
-         SUN_GIT_HASH + ")\n";
+         SUN_GIT_HASH + ", built " + SUN_BUILD_TIMESTAMP + ")\n";
 }
 
 }  // namespace sun::cli

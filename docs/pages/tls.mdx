@@ -215,14 +215,16 @@ supported yet.
 ## Building the bundle
 
 `tls.moon` embeds `libssl.a` and `libcrypto.a`, which the repository does not
-carry. Build them once with the script for your platform, then build as
-usual:
+carry. `build.sh` prepares them automatically for the host platform, reusing
+existing archives on Linux:
 
 ```bash
-./scripts/fetch-openssl.sh          # Linux
-./scripts/build-openssl-macos.sh    # macOS (Apple Silicon)
 ./build.sh
 ```
+
+When invoking CMake directly, prepare the archives first with
+`./scripts/fetch-openssl.sh` on Linux or `./scripts/build-openssl-macos.sh`
+on macOS (Apple Silicon).
 
 Debian packages also include AArch64 Linux TLS and standard-library bundles.
 The compiler selects them automatically with `--target aarch64-linux-gnu`

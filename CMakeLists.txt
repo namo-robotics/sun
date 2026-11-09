@@ -560,7 +560,7 @@ add_custom_target(sun_version
         -DSUN_RELEASE_ORDER=${SUN_RELEASE_ORDER}
         -DSUN_RELEASE_SERIES=${SUN_RELEASE_SERIES}
         -P ${CMAKE_SOURCE_DIR}/cmake/GitVersion.cmake
-    BYPRODUCTS ${SUN_VERSION_HEADER}
+    BYPRODUCTS ${SUN_VERSION_HEADER} ${CMAKE_BINARY_DIR}/generated/sun_build_timestamp.h
     COMMENT "Updating sun_version.h"
     VERBATIM)
 # The compiler's version is part of every .moon bundle's content hash
