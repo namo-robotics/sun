@@ -270,7 +270,8 @@ Select packages and products from a Git repository:
 ```json
 {
     "dependencies": [{
-        "git": "git@github.com:example/toolkit.git",
+        "type": "git",
+        "url": "git@github.com:example/toolkit.git",
         "version": "v1.2.3",
         "packages": {
             "example/core": {"entrypoints": ["core"]},

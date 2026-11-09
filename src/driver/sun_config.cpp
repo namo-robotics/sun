@@ -119,19 +119,36 @@ bool wrapped(const llvm::json::Value& value) {
   return obj && (obj->get("default") || obj->get("target"));
 }
 
+/** Validates an exact target triple and returns its normalized selection key. */
+std::string checkedTargetKey(const std::string& name) {
+  const auto triple = sun::support::resolvedTargetTriple(name);
+  if (name.empty() || triple.getArch() == llvm::Triple::UnknownArch ||
+      triple.getOS() == llvm::Triple::UnknownOS) {
+    invalid("invalid target triple '" + name + "'");
+  }
+  return configTargetKey(name);
+}
+
 /** Validates target names using the same normalization used for selection. */
 void targetKeys(const Object& targets) {
   std::set<std::string> seen;
   for (const auto& [key, value] : targets) {
-    const auto triple = sun::support::resolvedTargetTriple(key.str());
-    if (key.str().empty() || triple.getArch() == llvm::Triple::UnknownArch ||
-        triple.getOS() == llvm::Triple::UnknownOS) {
-      invalid("invalid target triple '" + key.str() + "'");
-    }
-    if (!seen.insert(configTargetKey(key.str())).second) {
+    if (!seen.insert(checkedTargetKey(key.str())).second) {
       invalid("duplicate target triple");
     }
   }
+}
+
+/** Validates every target in the list, then checks whether it includes the target. */
+bool supportsTarget(const llvm::json::Value& value, const std::string& target) {
+  stringsValue(value);
+  std::set<std::string> targets;
+  for (const auto& item : *value.getAsArray()) {
+    if (!targets.insert(checkedTargetKey(item.getAsString()->str())).second) {
+      invalid("duplicate target triple");
+    }
+  }
+  return targets.count(target) != 0;
 }
 
 /** Checks every branch and selects a setting without touching the filesystem.
@@ -539,7 +556,7 @@ llvm::json::Value typedDependency(Object obj) {
   return result;
 }
 
-/** Merges typed target branches; exact triples override matching OS branches. */
+/** Validates dependencies and selects allowed targets, preferring exact branches. */
 std::optional<llvm::json::Value> selectDependency(const llvm::json::Value& value,
                                                 const std::string& target) {
   const auto& obj = object(value);
@@ -547,14 +564,20 @@ std::optional<llvm::json::Value> selectDependency(const llvm::json::Value& value
     const auto* selected = select(value, target, dependencyValue, false);
     return selected ? std::optional<llvm::json::Value>(*selected) : std::nullopt;
   }
+  const auto* supported = obj.get("supported_targets");
+  const bool enabled = !supported || supportsTarget(*supported, target);
   Object common;
   for (const auto& [field, item] : obj) {
-    if (field != "target") {
+    if (field != "target" && field != "supported_targets") {
       common[field] = item;
     }
   }
   if (!obj.get("target")) {
-    return typedDependency(std::move(common));
+    auto normalized = typedDependency(std::move(common));
+    if (!enabled) {
+      return std::nullopt;
+    }
+    return normalized;
   }
   const auto& branches = object(*obj.get("target"));
   if (branches.empty()) {
@@ -565,16 +588,15 @@ std::optional<llvm::json::Value> selectDependency(const llvm::json::Value& value
   std::set<std::string> seen;
   for (const auto& [name, branch] : branches) {
     const auto key = name.str();
-    bool os = key == "linux" || key == "macos" || key == "windows";
-    if (!os) targetKeys(Object{{key, branch}});
-    const auto normalized = os ? key : configTargetKey(key);
+    const bool os = key == "linux" || key == "macos" || key == "windows";
+    const auto normalized = os ? key : checkedTargetKey(key);
     if (!seen.insert(normalized).second) {
       invalid("duplicate dependency target");
     }
     Object merged = common;
     for (const auto& [field, item] : object(branch)) {
-      if (field == "type" || field == "target") {
-        invalid("target branch cannot change dependency type");
+      if (field == "type" || field == "target" || field == "supported_targets") {
+        invalid("target branch cannot change dependency type or target restrictions");
       }
       merged[field] = item;
     }
@@ -587,6 +609,9 @@ std::optional<llvm::json::Value> selectDependency(const llvm::json::Value& value
                (key == "windows" && triple.isOSWindows())) {
       osBranch = std::move(normalizedDependency);
     }
+  }
+  if (!enabled) {
+    return std::nullopt;
   }
   return exactBranch ? std::move(exactBranch) : std::move(osBranch);
 }
@@ -631,22 +656,7 @@ SunConfig parse(const Object& root, const std::filesystem::path& file,
     config.root = *value->getAsBoolean();
   }
   if (auto* value = root.get("supported_targets")) {
-    stringsValue(*value);
-    Object targets;
-    for (const auto& item : *value->getAsArray()) {
-      const auto name = item.getAsString()->str();
-      if (targets.get(name)) {
-        invalid("duplicate target triple");
-      }
-      targets[name] = true;
-    }
-    targetKeys(targets);
-    config.targetSupported = false;
-    for (const auto& [name, unused] : targets) {
-      if (configTargetKey(name.str()) == target) {
-        config.targetSupported = true;
-      }
-    }
+    config.targetSupported = supportsTarget(*value, target);
     // Unavailable projects need no paths, dependencies, or child configs.
     if (!config.targetSupported) {
       return config;

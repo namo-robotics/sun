@@ -16,8 +16,9 @@
   ],
   "dependencies": [
     {
+      "type": "git",
       "package": "SUN_SERVE",
-      "git": "https://github.com/namo-robotics/sun_serve.git",
+      "url": "https://github.com/namo-robotics/sun_serve.git",
       "version": "c36daff597868fe9771c7cc5aa9ce475f74387fc",
       "path": "src/sun_serve.sun"
     }

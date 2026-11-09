@@ -591,13 +591,36 @@ by `sun dep install`. The original local `.deb` can be removed afterward. A loca
 }
 ```
 
-The same selection rules apply to every dependency type:
+To restrict where a dependency applies without changing its fields, use
+`supported_targets`:
+
+```json
+{
+  "dependencies": [
+    {
+      "type": "git",
+      "url": "git@github.com:example/toolkit.git",
+      "version": "main",
+      "supported_targets": ["x86_64-linux-gnu", "arm64-apple-darwin"],
+      "packages": {"example/ui": {"entrypoints": ["widgets"]}}
+    }
+  ]
+}
+```
+
+The list accepts exact target triples, normalizes aliases, and keeps architectures
+and ABIs distinct. An empty list disables the dependency everywhere. Omit it to
+apply no additional restriction. Use `target` when fields differ by platform;
+when both are present, the target must be allowed by `supported_targets` and
+have a matching `target` branch. Existing empty target branches remain supported.
+
+The same selection rules apply to every explicit dependency type:
 
 - Fields outside `target` are shared; the matching branch overrides them.
 - Exact triples take precedence over `linux`, `macos`, and `windows` branches.
   Branches do not inherit from one another.
-- Without `target`, the dependency applies everywhere. With no matching branch,
-  it is skipped.
+- Without `target`, shared fields apply on every allowed target. With no matching
+  branch, the dependency is skipped.
 - All branches are validated, including inactive ones.
 
 `--target` selects the compilation target; otherwise Sun uses the host.
@@ -614,8 +637,10 @@ sun dep install --yes
 ```
 
 The command follows project and target selection. It installs missing system
-requirements, resolves prebuilt artifacts, and builds selected Git products.
-Source builds can discover further system requirements to install.
+requirements, installs prebuilt artifacts, and fetches Git sources. It follows
+local and Git dependency configs to install their declared requirements without
+running preparation steps, generators, or compilation. `sun build` builds the
+selected source products afterward.
 
 `--dry-run` prints the plan without downloading, building, or installing, so it
 cannot discover requirements in unresolved sources. APT retains its confirmation

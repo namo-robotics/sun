@@ -16,20 +16,11 @@ void checkSystemDependencies(const SunConfig& config);
  */
 void installSystemDependencies(const SunConfig& config, bool dryRun, bool yes);
 
-/** Enables explicit installation for dependencies reached through Git builds. */
-class DependencyInstallScope {
- public:
-  /** Selects installation instead of checking for the lifetime of this scope. */
-  explicit DependencyInstallScope(bool yes);
-  /** Restores the previous dependency policy. */
-  ~DependencyInstallScope();
-  /** Prevents copying a scope that restores thread-local state. */
-  DependencyInstallScope(const DependencyInstallScope&) = delete;
-  /** Prevents assigning a scope that restores thread-local state. */
-  DependencyInstallScope& operator=(const DependencyInstallScope&) = delete;
+/** Describes the projects available to dependency installation. */
+struct ConfigGraph;
 
- private:
-  bool previousInstall_;
-  bool previousYes_;
-};
+/** Installs requirements and prebuilt artifacts, fetching source configs without builds. */
+void installConfigDependencies(const ConfigGraph& graph,
+                               const std::vector<SunConfig>& configs,
+                               bool dryRun, bool yes);
 }  // namespace sun::driver

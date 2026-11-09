@@ -603,3 +603,58 @@ TEST(Modules_SunConfig, rejects_invalid_dependency_checks) {
   writeFile(dir / "sun-config.json", R"({"dependencies":[{"type":"system"}]})");
   EXPECT_THROW(SunConfig::loadFile(dir / "sun-config.json"), SunError);
 }
+
+/** Dependency restrictions normalize aliases and preserve architecture and ABI. */
+TEST(Modules_SunConfig, dependency_supported_targets) {
+  const auto dir = freshDir("dependency_supported_targets");
+  writeFile(dir / "sun-config.json", R"({"dependencies":[
+    {"type":"git","url":"git@github.com:example/math.git","version":"main",
+     "packages":{"example/math":{"entrypoints":["math"]}},
+     "supported_targets":["arm64-apple-darwin","x86_64-linux-gnu"]},
+    {"type":"system","apt":["cmake"],"supported_targets":[]}
+  ]})");
+  for (const auto* target : {"aarch64-apple-macosx14.0", "x86_64-unknown-linux-gnu"}) {
+    const auto config = SunConfig::loadFile(dir / "sun-config.json", target);
+    EXPECT_EQ(config.dependencies.count("example/math"), 1u);
+    EXPECT_TRUE(config.systemDependencies.empty());
+  }
+  for (const auto* target : {"x86_64-linux-musl", "aarch64-linux-gnu"}) {
+    EXPECT_TRUE(SunConfig::loadFile(dir / "sun-config.json", target).dependencies.empty());
+  }
+}
+
+/** Restrictions filter dependency overrides without replacing branch selection. */
+TEST(Modules_SunConfig, dependency_supported_targets_with_overrides) {
+  const auto dir = freshDir("dependency_restricted_overrides");
+  writeFile(dir / "sun-config.json", R"({"dependencies":[
+    {"type":"system","supported_targets":["x86_64-linux-gnu","arm64-apple-darwin"],
+     "target":{"linux":{"apt":["cmake"]},"x86_64-linux-gnu":{"apt":["ninja-build"]}}}
+  ]})");
+  auto config = SunConfig::loadFile(dir / "sun-config.json", "x86_64-linux-gnu");
+  ASSERT_EQ(config.systemDependencies.size(), 1u);
+  EXPECT_EQ(config.systemDependencies[0].apt, std::vector<std::string>{"ninja-build"});
+  for (const auto* target : {"x86_64-linux-musl", "arm64-apple-darwin"}) {
+    EXPECT_TRUE(SunConfig::loadFile(dir / "sun-config.json", target).systemDependencies.empty());
+  }
+}
+
+/** Invalid restrictions and malformed excluded dependencies are still errors. */
+TEST(Modules_SunConfig, rejects_invalid_dependency_supported_targets) {
+  const auto dir = freshDir("invalid_dependency_supported_targets");
+  for (const auto* targets : {R"("linux")", R"(["linux"])", R"([false])", R"(["x86_64-linux-gnu","invalid"])",
+       R"(["x86_64-linux-gnu","x86_64-linux-gnu"])",
+       R"(["arm64-apple-darwin","aarch64-apple-darwin"])"}) {
+    SCOPED_TRACE(targets);
+    writeFile(dir / "sun-config.json",
+        std::string(R"({"dependencies":[{"type":"system","apt":["cmake"],"supported_targets":)") + targets + "}]}");
+    EXPECT_THROW(SunConfig::loadFile(dir / "sun-config.json", "x86_64-linux-gnu"), SunError);
+  }
+  for (const auto* descriptor : {
+       R"({"type":"system","supported_targets":[],"apt":["--bad"]})",
+       R"({"type":"system","supported_targets":[],"target":{"macos":{"brew":["--bad"]}}})",
+       R"({"type":"system","target":{"linux":{"apt":["cmake"],"supported_targets":[]}}})"}) {
+    SCOPED_TRACE(descriptor);
+    writeFile(dir / "sun-config.json", std::string("{\"dependencies\":[") + descriptor + "]}");
+    EXPECT_THROW(SunConfig::loadFile(dir / "sun-config.json", "x86_64-linux-gnu"), SunError);
+  }
+}

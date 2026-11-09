@@ -515,7 +515,6 @@ static int runConfigCommand(const std::vector<std::string>& args,
     }
     auto graph = sun::driver::loadConfigGraph(configFile, options.targetTriple);
     sun::driver::ConfigGraphScope scope(graph);
-    configureProductCompiler(options);
     if (action == ConfigAction::Install) {
       if (!entrypoint.empty() || !dependency.empty())
         sun::support::logAndThrowError("sun dep install selects projects with --package, not --entrypoint or --dependency");
@@ -529,23 +528,10 @@ static int runConfigCommand(const std::vector<std::string>& args,
       if (configs.empty()) {
         sun::support::logAndThrowError("consumer package not found: " + package);
       }
-      // Install direct requirements before any source builds discover transitive ones.
-      for (const auto& config : configs) {
-        sun::driver::installSystemDependencies(config, dryRun, yes);
-      }
-      sun::driver::DependencyInstallScope installScope(yes);
-      for (const auto& config : configs) {
-        for (const auto& [name, dep] : config.dependencies) {
-          if (dryRun) {
-            sun::support::messageStream("info") << "Resolve dependency " << name
-                << " (transitive requirements checked after resolution)\n";
-          } else {
-            sun::driver::resolveConfigDependency(config, name);
-          }
-        }
-      }
+      sun::driver::installConfigDependencies(graph, configs, dryRun, yes);
       return 0;
     }
+    configureProductCompiler(options);
     for (const auto& file : graph.projects) {
       auto config =
           sun::driver::SunConfig::loadFile(file, options.targetTriple);

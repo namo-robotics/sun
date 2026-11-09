@@ -9,6 +9,7 @@
 #include "cli/config_build_command.h"
 #include "driver/system_dependencies.h"
 #include "driver/package.h"
+#include "moon_bundling/moon.h"
 #include "support/error.h"
 
 /** Keeps process-environment fixtures private to these tests. */
@@ -22,6 +23,7 @@ class SystemDependencies : public testing::Test {
 
   /** Writes an executable fake tool or plain test input. */
   void write(const std::string& name, const std::string& contents, bool executable = false) {
+    std::filesystem::create_directories((dir / name).parent_path());
     std::ofstream(dir / name) << contents;
     if (executable) std::filesystem::permissions(dir / name, std::filesystem::perms::owner_all);
   }
@@ -225,4 +227,118 @@ TEST_F(SystemDependencies, ExecutableCheckVerifiedAfterInstall) {
   write("brew", script, true);
   EXPECT_NO_THROW(sun::driver::installSystemDependencies(config, false, false));
   EXPECT_NO_THROW(sun::driver::checkSystemDependencies(config));
+}
+
+/** Local providers supply requirements without compiling or running their scripts. */
+TEST_F(SystemDependencies, InstallLocalDependenciesWithoutBuilding) {
+  write("sun-config.json", R"({"root":true,"package_id":"example/app",
+    "projects":["provider/sun-config.json"],
+    "dependencies":[{"package":"example/provider","entrypoints":["library"]}]
+  })");
+  write("provider/sun-config.json", R"({"root":true,"package_id":"example/provider",
+    "entrypoints":[{"name":"library","path":"missing.sun","type":"library",
+      "build":["missing-build-script.sh"]}],
+    "dependencies":[{"type":"system","apt":["libexample-dev"],"brew":["example"]}]
+  })");
+  EXPECT_EQ(sun::cli::runDependencyCommand({"install", "--config", config.configFile.string(),
+                                          "--package", "example/app"}), 0);
+  EXPECT_TRUE(std::filesystem::exists(dir / "installed"));
+  EXPECT_FALSE(std::filesystem::exists(dir / ".sun/build"));
+}
+
+/** Cached Git configs are inspected recursively without invoking Git or build steps. */
+TEST_F(SystemDependencies, InstallGitDependenciesWithoutBuilding) {
+  const std::string url = "https://invalid.example/provider.git";
+  const auto cache = dir / "git-cache";
+  const auto repository = cache / sun::moon_bundling::computeSha256Hex(url + "\nmain");
+  const auto snapshot = repository / "snapshot";
+  std::filesystem::create_directories(snapshot / ".sun-git-source");
+  std::ofstream(repository / "current") << "snapshot\n";
+  write(snapshot.lexically_relative(dir).string() + "/sun-config.json", R"({
+    "root":true,"package_id":"example/provider",
+    "entrypoints":[{"name":"library","path":"missing.sun","type":"library",
+      "build":["missing-build-script.sh"]}],
+    "dependencies":[{"type":"system","apt":["libexample-dev"],"brew":["example"]}]
+  })");
+  write("sun-config.json", R"({"root":true,"dependencies":[{
+    "type":"git","url":"https://invalid.example/provider.git","version":"main",
+    "packages":{"example/provider":{"entrypoints":["library"]}}
+  }]})");
+  write("git", "#!/bin/sh\nexit 99\n", true);
+  const char* previous = std::getenv("SUN_GIT_CACHE");
+  const std::optional<std::string> oldCache = previous ? std::optional<std::string>(previous) : std::nullopt;
+  setenv("SUN_GIT_CACHE", cache.c_str(), 1);
+  EXPECT_EQ(sun::cli::runDependencyCommand({"install", "--config", config.configFile.string()}), 0);
+  if (oldCache) setenv("SUN_GIT_CACHE", oldCache->c_str(), 1);
+  else unsetenv("SUN_GIT_CACHE");
+  EXPECT_TRUE(std::filesystem::exists(dir / "installed"));
+  EXPECT_FALSE(std::filesystem::exists(snapshot / ".sun/build"));
+}
+
+/** Installing prebuilt binaries stages their bytes without invoking the compiler. */
+TEST_F(SystemDependencies, InstallPrebuiltDependency) {
+  const auto binary = std::filesystem::canonical("build/sun");
+  write("sun-config.json", std::string(R"({"root":true,"dependencies":[{
+    "type":"binary","package":"example/tools","binary":"example/sun","path":")") +
+      binary.string() + R"("}]})");
+  EXPECT_EQ(sun::cli::runDependencyCommand({"install", "--config", config.configFile.string()}), 0);
+  bool found = false;
+  for (const auto& entry : std::filesystem::recursive_directory_iterator(dir / ".sun/cache/dependencies")) {
+    if (entry.is_regular_file() && entry.path().filename() == "sun") {
+      EXPECT_EQ(sun::driver::packageFileHash(entry.path()), sun::driver::packageFileHash(binary));
+      found = true;
+    }
+  }
+  EXPECT_TRUE(found);
+}
+
+/** A dependency preview never fetches remote sources or prebuilt artifacts. */
+TEST_F(SystemDependencies, DryRunDoesNotFetchDependencies) {
+  write("sun-config.json", R"({"root":true,"dependencies":[
+    {"type":"git","url":"https://invalid.example/provider.git","version":"main",
+     "packages":{"example/provider":{"entrypoints":["library"]}}},
+    {"type":"moon","package":"example/moon","url":"https://invalid.example/lib.moon",
+     "sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+  ]})");
+  const auto marker = (dir / "fetched").string();
+  write("git", "#!/bin/sh\n: > '" + marker + "'\nexit 99\n", true);
+  write("curl", "#!/bin/sh\n: > '" + marker + "'\nexit 99\n", true);
+  EXPECT_EQ(sun::cli::runDependencyCommand({"install", "--config", config.configFile.string(),
+                                          "--dry-run"}), 0);
+  EXPECT_FALSE(std::filesystem::exists(dir / "fetched"));
+  EXPECT_FALSE(std::filesystem::exists(dir / ".sun"));
+}
+
+/** Invalid product selections fail before installing a provider's system packages. */
+TEST_F(SystemDependencies, RejectsUnknownDependencyProduct) {
+  write("sun-config.json", R"({"root":true,"package_id":"example/app",
+    "projects":["provider/sun-config.json"],
+    "dependencies":[{"package":"example/provider","entrypoints":["typo"]}]
+  })");
+  write("provider/sun-config.json", R"({"root":true,"package_id":"example/provider",
+    "entrypoints":[{"name":"library","path":"missing.sun","type":"library"}],
+    "dependencies":[{"type":"system","apt":["libexample-dev"],"brew":["example"]}]
+  })");
+  EXPECT_NE(sun::cli::runDependencyCommand({"install", "--config", config.configFile.string(),
+                                          "--package", "example/app"}), 0);
+  EXPECT_FALSE(std::filesystem::exists(dir / "installed"));
+}
+
+/** A provider reached both as a dependency and a project is installed only once. */
+TEST_F(SystemDependencies, InstallsSharedProviderOnce) {
+  write("sun-config.json", R"({"root":true,"package_id":"example/app",
+    "projects":["provider/sun-config.json"],
+    "dependencies":[{"package":"example/provider","entrypoints":["library"]}]
+  })");
+  write("provider/sun-config.json", R"({"root":true,"package_id":"example/provider",
+    "entrypoints":[{"name":"library","path":"missing.sun","type":"library"}],
+    "dependencies":[{"type":"system","apt":["libexample-dev"],"brew":["example"]}]
+  })");
+  const auto script = "#!/bin/sh\necho installed >> '" + (dir / "calls").string() + "'\n";
+  write("apt-get", script, true);
+  write("brew", script, true);
+  EXPECT_EQ(sun::cli::runDependencyCommand({"install", "--config", config.configFile.string()}), 0);
+  std::ifstream input(dir / "calls");
+  const std::string calls((std::istreambuf_iterator<char>(input)), {});
+  EXPECT_EQ(calls, "installed\n");
 }

@@ -9,9 +9,11 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <set>
 
 #include "driver/build_graph.h"
 #include "driver/package.h"
+#include "driver/git_source.h"
 #include "moon_bundling/moon_cache.h"
 #include "support/error.h"
 #include "support/target_os.h"
@@ -20,8 +22,6 @@
 namespace sun::driver {
 /** Keeps process execution and package-manager policy private. */
 namespace {
-thread_local bool installing = false;
-thread_local bool acceptPrompts = false;
 
 /** Captures a tool's status and standard output without invoking a shell. */
 struct ToolResult {
@@ -187,23 +187,108 @@ bool debInstalled(const SunConfig& config, const std::filesystem::path& file) {
   auto installed = run(config, {"dpkg-query", "--show", "--showformat=${Status}\n${Version}", name.output});
   return installed.status == 0 && installed.output == "install ok installed\n" + version.output;
 }
-}
 
-DependencyInstallScope::DependencyInstallScope(bool yes)
-    : previousInstall_(installing), previousYes_(acceptPrompts) {
-  installing = true;
-  acceptPrompts = yes;
-}
-DependencyInstallScope::~DependencyInstallScope() {
-  installing = previousInstall_;
-  acceptPrompts = previousYes_;
-}
+/** Visits source configs and stages artifacts without invoking product compilation. */
+class DependencyInstaller {
+ public:
+  /** Stores installation policy shared by all projects in one invocation. */
+  DependencyInstaller(bool dryRun, bool yes) : dryRun_(dryRun), yes_(yes) {}
+
+  /** Installs each project's requirements once, including transitive source configs. */
+  void install(const ConfigGraph& graph, const SunConfig& config) {
+    const auto key = std::filesystem::weakly_canonical(config.configFile).string() +
+                     "\n" + configTargetKey(config.targetTriple);
+    if (!visited_.insert(key).second) {
+      return;
+    }
+    installSystemDependencies(config, dryRun_, yes_);
+    for (const auto& [name, dep] : config.dependencies) {
+      installDependency(graph, config, name, dep);
+    }
+  }
+
+ private:
+  bool dryRun_;
+  bool yes_;
+  std::set<std::string> visited_;
+
+  /** Validates a provider's selected products and visits its requirements without builds. */
+  bool installProvider(const ConfigGraph& graph, const SunConfig& consumer,
+                       const std::string& name, const ConfigDependency& dep) {
+    for (const auto& file : graph.projects) {
+      auto provider = SunConfig::loadFile(file, consumer.targetTriple);
+      if (provider.packageId != name) {
+        continue;
+      }
+      findConfigEntrypoints(provider, dep.entrypoints.empty()
+          ? defaultConfigEntrypoints(provider) : dep.entrypoints);
+      install(graph, configureBuildPaths(graph, std::move(provider)));
+      return true;
+    }
+    return false;
+  }
+
+  /** Prefers local providers, fetches Git sources, or installs prebuilt artifacts. */
+  void installDependency(const ConfigGraph& graph, const SunConfig& config,
+                         const std::string& name, const ConfigDependency& dep) {
+    if (installProvider(graph, config, name, dep)) {
+      return;
+    }
+    if (!dep.selections.empty()) {
+      for (const auto& selection : dep.selections) {
+        installDependency(graph, config, name, selection);
+      }
+      return;
+    }
+    auto& log = sun::support::messageStream("info");
+    log << (dep.git.empty() ? "Installing prebuilt dependency " : "Fetching source dependency ")
+        << name << (dryRun_ ? " (dry run)\n" : "\n");
+    log.flush();
+    if (dryRun_) {
+      return;
+    }
+    if (dep.git.empty()) {
+      auto single = config;
+      single.dependencies[name] = dep;
+      // Local providers were handled above; artifact resolution must never build one.
+      ConfigGraph empty;
+      empty.root = configWorkspaceRoot(config);
+      ConfigGraphScope scope(empty);
+      resolveConfigDependency(single, name);
+      return;
+    }
+    ConfigEntrypoint source;
+    source.type = ConfigEntrypoint::Type::Library;
+    source.git = dep.git;
+    source.version = dep.version;
+    source.path = dep.path.empty() ? dep.config : dep.path;
+    const std::filesystem::path input = resolveGitEntrypoint(source);
+    if (!dep.path.empty()) {
+      return;  // Direct-source dependencies do not use their repository's config.
+    }
+    auto checkout = input.parent_path();
+    while (!std::filesystem::is_directory(checkout / ".sun-git-source")) {
+      if (checkout == checkout.parent_path()) {
+        sun::support::logAndThrowError("missing Git checkout boundary");
+      }
+      checkout = checkout.parent_path();
+    }
+    auto dependencyGraph = loadConfigGraph(input, config.targetTriple);
+    for (const auto& file : dependencyGraph.projects) {
+      const auto relative = std::filesystem::weakly_canonical(file).lexically_relative(checkout);
+      if (relative.empty() || *relative.begin() == "..") {
+        sun::support::logAndThrowError("dependency config escapes its checkout");
+      }
+    }
+    if (installProvider(dependencyGraph, config, name, dep)) {
+      return;
+    }
+    sun::support::logAndThrowError("Git repository has no package " + name);
+  }
+};
+}  // namespace
 
 void checkSystemDependencies(const SunConfig& config) {
-  if (installing) {
-    installSystemDependencies(config, false, acceptPrompts);
-    return;
-  }
   std::string missing;
   for (const auto& dep : config.systemDependencies) {
     if (dep.check) {
@@ -235,6 +320,11 @@ void checkSystemDependencies(const SunConfig& config) {
 }
 
 void installSystemDependencies(const SunConfig& config, bool dryRun, bool yes) {
+  auto& log = sun::support::messageStream("info");
+  log << (dryRun ? "Checking" : "Installing") << " system dependencies for "
+      << (config.packageId.empty() ? config.configFile.string() : config.packageId)
+      << (config.systemDependencies.empty() ? ": none declared\n" : "\n");
+  log.flush();
   for (const auto& dep : config.systemDependencies) {
     requireNativeTarget(config);
     if (dep.type == "system") {
@@ -275,4 +365,15 @@ void installSystemDependencies(const SunConfig& config, bool dryRun, bool yes) {
     }
   }
 }
+
+void installConfigDependencies(const ConfigGraph& graph,
+                               const std::vector<SunConfig>& configs,
+                               bool dryRun, bool yes) {
+  ConfigGraphScope scope(graph);
+  DependencyInstaller installer(dryRun, yes);
+  for (const auto& config : configs) {
+    installer.install(graph, config);
+  }
+}
+
 }
