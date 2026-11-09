@@ -140,6 +140,11 @@ To build and install the compiler, language server, and standard Moon bundles:
 ./build.sh --install
 ```
 
+`--install` defaults to an optimized Release compiler. Plain `./build.sh` uses
+Debug for compiler development; `--build-type RelWithDebInfo` enables optimization
+with debug information. Changing the build type reconfigures the existing build
+directory and requires recompilation.
+
 Binaries go to `/usr/local/bin` and bundles to `/usr/local/lib/sun`.
 Use `--prefix /absolute/path` to choose another location.
 Plain `./build.sh` only builds; `./build.sh --uninstall` removes the installed

@@ -196,6 +196,14 @@ TEST_F(Packages, RoundTripAndResourceRebuild) {
   auto modified = fs::last_write_time(archive);
   sun::driver::buildPackages(cfg, plans);
   EXPECT_EQ(fs::last_write_time(archive), modified);
+  // A staged file can change without its inventory, size, or timestamp changing.
+  const auto stagedBinary = plans[0].output / "bin/app";
+  const auto binaryTime = fs::last_write_time(stagedBinary);
+  put(stagedBinary, "broken");
+  fs::last_write_time(stagedBinary, binaryTime);
+  sun::driver::buildPackages(cfg, plans);
+  EXPECT_EQ(sun::driver::packageFileHash(stagedBinary),
+            sun::driver::packageFileHash(dir / "app"));
   fs::remove(archive);
   sun::driver::buildPackages(cfg, plans);
   EXPECT_EQ(sun::driver::packageFileHash(archive), firstHash);
