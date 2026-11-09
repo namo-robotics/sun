@@ -46,9 +46,20 @@ if [[ "$UNINSTALL" == true ]]; then
     exec bash scripts/install-build.sh uninstall "$INSTALL_PREFIX"
 fi
 
-# TLS bundles and tests require the pinned static archives before compilation.
-if [[ "$SKIP_STDLIB" == OFF && "$(uname -s)" == Darwin ]]; then
-    bash scripts/build-openssl-macos.sh
+# TLS bundles and tests require static OpenSSL archives before compilation.
+if [[ "$SKIP_STDLIB" == OFF ]]; then
+    case "$(uname -s)" in
+        Linux)
+            OPENSSL_ARCH=$(uname -m)
+            OPENSSL_DIR="third_party/openssl/$OPENSSL_ARCH-linux-musl"
+            if [[ ! -f "$OPENSSL_DIR/libssl.a" || ! -f "$OPENSSL_DIR/libcrypto.a" ]]; then
+                bash scripts/fetch-openssl.sh --arch "$OPENSSL_ARCH"
+            fi
+            ;;
+        Darwin)
+            bash scripts/build-openssl-macos.sh
+            ;;
+    esac
 fi
 
 mkdir -p build

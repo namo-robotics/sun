@@ -16,7 +16,7 @@ namespace sun::cli {
 std::string renderUsage(const std::string& programName);
 
 /**
- * The line `sun --version` prints: version number and git commit hash.
+ * The line `sun --version` prints: version name, git hash, and UTC build time.
  */
 std::string renderVersionLine();
 

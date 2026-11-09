@@ -45,6 +45,23 @@ check_name("" "-DSUN_VERSION_NAME=")
 check_name("dev" "-DCMAKE_DISABLE_FIND_PACKAGE_Git=TRUE")
 check_name("quote\\\"slash\\\\name" "-DSUN_VERSION_NAME=quote\"slash\\name")
 
+# Build timestamps honor reproducible builds without changing compiler identity.
+set(ENV{SOURCE_DATE_EPOCH} "0")
+check_name("dev" "-DCMAKE_DISABLE_FIND_PACKAGE_Git=TRUE")
+file(READ "${work}/version.h" identity_before)
+file(READ "${work}/sun_build_timestamp.h" timestamp)
+if(NOT timestamp MATCHES "1970-01-01 00:00:00 UTC")
+    message(FATAL_ERROR "Unexpected reproducible timestamp: ${timestamp}")
+endif()
+set(ENV{SOURCE_DATE_EPOCH} "86400")
+check_name("dev" "-DCMAKE_DISABLE_FIND_PACKAGE_Git=TRUE")
+file(READ "${work}/version.h" identity_after)
+file(READ "${work}/sun_build_timestamp.h" timestamp)
+if(NOT timestamp MATCHES "1970-01-02 00:00:00 UTC" OR
+        NOT identity_before STREQUAL identity_after)
+    message(FATAL_ERROR "Build time must update without changing compiler identity")
+endif()
+
 # Distribution scripts use the same tag and dirty-source rules.
 set(ENV{PATH} "${work}:$ENV{PATH}")
 unset(ENV{SUN_VERSION_NAME})
