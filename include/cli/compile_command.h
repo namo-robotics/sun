@@ -74,7 +74,8 @@ int compileEntrypoint(const CompileJob& job);
  * program also yields an executable, which the test binary records for later
  * runs. Throws SunError like any compile — including "no test functions
  * found" when the program has no tests; the caller decides what that means
- * for it.
+ * for it. A matching `<test-output>.no-tests` input-hash record avoids repeating
+ * compilation when the previous check found no tests.
  */
 int compileTestBinary(const CompileJob& job, bool hasExecutable = true);
 
