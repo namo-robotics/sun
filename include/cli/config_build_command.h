@@ -11,6 +11,9 @@ int runConfigBuildCommand(const BuildRunOptions& options);
 /** Supplies compiler settings to local dependency builds. */
 void configureProductCompiler(const BuildRunOptions& options);
 
+/** Installs selected config dependencies only on explicit user request. */
+int runDependencyCommand(const std::vector<std::string>& args);
+
 /** Resolves sun build arguments and invokes the ordinary config build path. */
 int runBuildCommand(const std::vector<std::string>& args);
 

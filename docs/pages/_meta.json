@@ -17,7 +17,7 @@
   "simd": "SIMD",
   "matrices": "Matrices",
   "cuda": "NVIDIA GPU Matrices",
-  "modules": "Modules & Namespaces",
+  "modules": "Modules & Configuration",
   "protobuf": "Protobuf",
   "stdlib": "Standard Library",
   "tls": "TLS & HTTPS",

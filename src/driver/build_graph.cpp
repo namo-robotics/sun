@@ -16,6 +16,7 @@
 
 #include "driver/manifest_processor.h"
 #include "driver/package.h"
+#include "driver/system_dependencies.h"
 #include "moon_bundling/moon.h"
 #include "support/error.h"
 
@@ -82,7 +83,7 @@ std::string hashPaths(const std::vector<fs::path>& paths) {
 /** Runs declared preparation steps before a product, using host tools
  * explicitly. */
 void runSteps(const SunConfig& config, const ConfigEntrypoint& entry,
-              const fs::path& output) {
+              const fs::path& output, const fs::path& artifact) {
   std::set<std::string> visiting, complete;
   std::function<void(const std::string&)> run = [&](const std::string& name) {
     if (complete.count(name)) {
@@ -187,8 +188,16 @@ void runSteps(const SunConfig& config, const ConfigEntrypoint& entry,
     }
     fs::current_path(working);
     std::vector<llvm::StringRef> refs(arguments.begin(), arguments.end());
+    const std::string project = config.packageId.empty()
+                                    ? config.configDir.string()
+                                    : config.packageId;
+    sun::support::messageStream("info")
+        << "Building " << artifact.filename().string() << ": step " << name
+        << "\n";
+    // Show the step before the child process writes any output.
+    llvm::outs().flush();
     if (llvm::sys::ExecuteAndWait(*program, refs) != 0) {
-      fail("build step failed: " + name);
+      fail("build step failed: " + project + ": " + name);
     }
     std::ofstream(stamp) << digest << ":" << hashPaths(outputs) << "\n";
     visiting.erase(name);
@@ -504,7 +513,7 @@ bool compileProduct(const SunConfig& config, const ConfigEntrypoint& entry,
   const fs::path output = config.pathVariables.at("SUN_BUILD");
   fs::create_directories(output);
   fs::create_directories(artifact.parent_path());
-  runSteps(config, entry, output);
+  runSteps(config, entry, output, artifact);
   compiler(config, entry, artifact);
   if (fs::is_regular_file(artifact)) {
     return true;
@@ -536,6 +545,7 @@ fs::path buildConfigProducts(const ConfigGraph& workspace, SunConfig config,
   if (entries.empty()) {
     return install;
   }
+  checkSystemDependencies(config);
   auto& accumulated = selectedProducts[guard.key];
   for (const auto* entry : entries) {
     accumulated.insert(entry->name);

@@ -78,6 +78,26 @@ struct ConfigDependency {
   std::vector<std::string> entrypoints;
 };
 
+/** An availability check for a native library or a host executable. */
+struct ConfigDependencyCheck {
+  /** Selects metadata-based library discovery or an executable lookup on PATH. */
+  enum class Type { PkgConfig, Executable };
+  Type type = Type::PkgConfig;
+  std::string name;
+  std::string version;
+};
+
+/** A system package requirement or a checksum-pinned Debian package. */
+struct ConfigSystemDependency {
+  std::string type;
+  std::optional<ConfigDependencyCheck> check;
+  std::vector<std::string> apt;
+  std::vector<std::string> brew;
+  std::string url;
+  std::string hash;
+  std::string path;
+};
+
 /** A tracked external build action with declared inputs and outputs. */
 struct ConfigBuildStep {
   std::string name;
@@ -152,6 +172,7 @@ struct SunConfig {
   std::map<std::string, std::string> pathVariables;  // values made absolute
   std::vector<ConfigEntrypoint> entrypoints;         // declared build products
   std::map<std::string, ConfigDependency> dependencies;
+  std::vector<ConfigSystemDependency> systemDependencies;
   std::vector<ConfigPackage> packages;
   std::map<std::string, ConfigCBinding> cBindings;
   std::string targetTriple;  // resolved compilation triple, retaining vendor

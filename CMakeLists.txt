@@ -211,6 +211,7 @@ add_library(sun_lib
     src/driver/sun_config.cpp
     src/driver/build_graph.cpp
     src/driver/package.cpp
+    src/driver/system_dependencies.cpp
     src/driver/git_source.cpp
     # Parsing
     src/parsing/parser.cpp

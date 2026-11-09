@@ -11,6 +11,7 @@ target_sources(sun_tests PRIVATE
     test_proto_import.cpp
     test_build_graph.cpp
     test_sun_config.cpp
+    test_system_dependencies.cpp
     test_packages.cpp
     test_git_source.cpp
 )

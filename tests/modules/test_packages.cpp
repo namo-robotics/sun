@@ -135,6 +135,17 @@ TEST_F(Packages, MoonCacheAndCollision) {
   EXPECT_NE(ManifestProcessor::expandPathVariables(
                 "$IMAGE_CORE/lib/image_core.moon", &arm),
             x64);
+  // Typed providers select the same verified artifact and reject other targets.
+  auto typed = config(R"({"dependencies":[{
+    "type":"moon","package":"IMAGE_CORE","library":"image_core",
+    "target":{"x86_64-linux-gnu":{"path":"x64.moon"},
+              "aarch64-linux-gnu":{"path":"arm.moon"}}
+  }]})");
+  EXPECT_EQ(ManifestProcessor::expandPathVariables("$IMAGE_CORE/lib/image_core.moon", &typed), x64);
+  auto wrongTarget = config(R"({"dependencies":[{
+    "type":"moon","package":"IMAGE_CORE","library":"image_core","path":"arm.moon"
+  }]})");
+  EXPECT_THROW(sun::driver::resolveConfigDependency(wrongTarget, "IMAGE_CORE"), SunError);
   ManifestProcessor::setPathVariable("IMAGE_CORE", "/override");
   EXPECT_THROW(ManifestProcessor::expandPathVariables(
                    "$IMAGE_CORE/lib/image_core.moon", &cfg),

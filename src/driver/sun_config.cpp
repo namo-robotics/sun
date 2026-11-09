@@ -7,6 +7,7 @@
 #include <cctype>
 #include <fstream>
 #include <set>
+#include <regex>
 #include <sstream>
 
 #include "driver/git_source.h"
@@ -407,6 +408,189 @@ void dependencyValue(const llvm::json::Value& value) {
   }
 }
 
+/** Validates an optional library or executable availability check. */
+void dependencyCheckValue(const llvm::json::Value& value) {
+  const auto& check = object(value);
+  keys(check, {"type", "name", "version"});
+  for (const auto& [key, field] : check) {
+    stringValue(field);
+  }
+  const auto type = check.getString("type");
+  const auto name = check.getString("name");
+  if (!type || (*type != "pkg-config" && *type != "executable")) {
+    invalid("check.type must be pkg-config or executable");
+  }
+  if (!name || !std::regex_match(name->str(), std::regex("[A-Za-z0-9][A-Za-z0-9+._-]*"))) {
+    invalid("check.name must be a module or executable name");
+  }
+  if (auto version = check.getString("version")) {
+    if (*type != "pkg-config") {
+      invalid("check.version is only supported for pkg-config checks");
+    }
+    if (!std::regex_match(version->str(), std::regex("(>=|<=|=|>|<)?[ ]*[0-9][A-Za-z0-9.+_~-]*"))) {
+      invalid("check.version must be a version comparison");
+    }
+  }
+}
+
+/** Validates native package mappings and optional availability checks. */
+void systemDependencyValue(const Object& obj, bool deb) {
+  keys(obj, {"check", "apt", "brew", "url", "path", "sha256"});
+  for (const auto& [key, value] : obj) {
+    if (key == "check") {
+      dependencyCheckValue(value);
+    } else if (key == "apt" || key == "brew") {
+      stringsValue(value);
+      if (value.getAsArray()->empty()) {
+        invalid("package list must not be empty");
+      }
+      for (const auto& package : *value.getAsArray()) {
+        const auto text = package.getAsString()->str();
+        if (!std::regex_match(text, std::regex("[A-Za-z0-9][A-Za-z0-9+._/@:-]*"))) {
+          invalid("invalid system package name: " + text);
+        }
+      }
+    } else {
+      stringValue(value);
+    }
+  }
+  if (!deb) {
+    if (!obj.get("check") && !obj.get("apt") && !obj.get("brew")) {
+      invalid("system dependency requires a check or package-manager mapping");
+    }
+    if (obj.get("url") || obj.get("path") || obj.get("sha256")) {
+      invalid("system dependencies use apt or brew, not artifact URLs");
+    }
+  } else {
+    if (bool(obj.get("url")) == bool(obj.get("path"))) {
+      invalid("deb dependency requires exactly one of url or path");
+    }
+    if (!obj.get("sha256")) {
+      invalid("deb dependency requires sha256");
+    }
+    if (obj.get("apt") || obj.get("brew")) {
+      invalid("deb dependency cannot specify apt or brew");
+    }
+  }
+  if (auto hash = obj.getString("sha256")) {
+    if (hash->size() != 64 || hash->find_first_not_of("0123456789abcdef") != llvm::StringRef::npos) {
+      invalid("sha256 must be a lowercase SHA-256 digest");
+    }
+  }
+}
+
+/** Validates and normalizes an explicit provider into the existing resolver shape. */
+llvm::json::Value typedDependency(Object obj) {
+  auto type = obj.getString("type");
+  if (!type) {
+    invalid("dependency type must be a string");
+  }
+  const auto provider = type->str();
+  obj.erase("type");
+  if (provider == "system" || provider == "deb") {
+    systemDependencyValue(obj, provider == "deb");
+    obj["type"] = provider;
+    return llvm::json::Value(std::move(obj));
+  }
+  if (provider != "git" && provider != "moon" && provider != "package" && provider != "binary") {
+    invalid("unknown dependency type: " + provider);
+  }
+  if (provider == "git") {
+    if (obj.get("git") || !obj.getString("url")) {
+      invalid("typed git dependency requires url");
+    }
+    obj["git"] = obj.getString("url")->str();
+    obj.erase("url");
+  } else {
+    if (obj.get("git") || obj.get("packages")) {
+      invalid("artifact dependency cannot contain git fields");
+    }
+    if (obj.get("hash")) {
+      invalid("typed artifact dependency uses sha256, not hash");
+    }
+    if (auto hash = obj.getString("sha256")) {
+      obj["hash"] = hash->str();
+      obj.erase("sha256");
+    } else if (obj.get("url")) {
+      invalid("remote artifact dependency requires sha256");
+    }
+    if (provider == "moon" && obj.get("binary")) {
+      invalid("moon dependency cannot select a binary");
+    }
+    if (provider == "binary" && obj.get("library")) {
+      invalid("binary dependency cannot select a library");
+    }
+    if (provider == "moon" && !obj.get("library")) {
+      if (auto id = obj.getString("package")) {
+        obj["library"] = id->str();
+      } else {
+        invalid("moon dependency requires package identity");
+      }
+    }
+    if (provider == "binary" && !obj.get("binary")) {
+      invalid("binary dependency requires binary identity");
+    }
+    if (provider == "package" && (obj.get("library") || obj.get("binary"))) {
+      invalid("package dependency selects a whole package");
+    }
+  }
+  llvm::json::Value result(std::move(obj));
+  dependencyValue(result);
+  return result;
+}
+
+/** Merges typed target branches; exact triples override matching OS branches. */
+std::optional<llvm::json::Value> selectDependency(const llvm::json::Value& value,
+                                                const std::string& target) {
+  const auto& obj = object(value);
+  if (!obj.get("type")) {
+    const auto* selected = select(value, target, dependencyValue, false);
+    return selected ? std::optional<llvm::json::Value>(*selected) : std::nullopt;
+  }
+  Object common;
+  for (const auto& [field, item] : obj) {
+    if (field != "target") {
+      common[field] = item;
+    }
+  }
+  if (!obj.get("target")) {
+    return typedDependency(std::move(common));
+  }
+  const auto& branches = object(*obj.get("target"));
+  if (branches.empty()) {
+    invalid("dependency target must not be empty");
+  }
+  const auto triple = sun::support::resolvedTargetTriple(target);
+  std::optional<llvm::json::Value> osBranch, exactBranch;
+  std::set<std::string> seen;
+  for (const auto& [name, branch] : branches) {
+    const auto key = name.str();
+    bool os = key == "linux" || key == "macos" || key == "windows";
+    if (!os) targetKeys(Object{{key, branch}});
+    const auto normalized = os ? key : configTargetKey(key);
+    if (!seen.insert(normalized).second) {
+      invalid("duplicate dependency target");
+    }
+    Object merged = common;
+    for (const auto& [field, item] : object(branch)) {
+      if (field == "type" || field == "target") {
+        invalid("target branch cannot change dependency type");
+      }
+      merged[field] = item;
+    }
+    // Normalize once and validate inactive branches as well.
+    auto normalizedDependency = typedDependency(std::move(merged));
+    if (!os && normalized == target) {
+      exactBranch = std::move(normalizedDependency);
+    } else if ((key == "linux" && triple.isOSLinux()) ||
+               (key == "macos" && triple.isOSDarwin()) ||
+               (key == "windows" && triple.isOSWindows())) {
+      osBranch = std::move(normalizedDependency);
+    }
+  }
+  return exactBranch ? std::move(exactBranch) : std::move(osBranch);
+}
+
 /** Detects wrapper settings inside a legacy-replaced collection. */
 bool containsWrapper(const llvm::json::Value& value) {
   if (wrapped(value)) {
@@ -621,11 +805,34 @@ SunConfig parse(const Object& root, const std::filesystem::path& file,
     }
     std::set<std::pair<std::string, std::string>> selections;
     for (const auto& value : *array) {
-      const auto* selected = select(value, target, dependencyValue, false);
+      auto selected = selectDependency(value, target);
       if (!selected) {
         continue;
       }
       const auto& obj = object(*selected);
+      if (auto type = obj.getString("type")) {
+        ConfigSystemDependency dep;
+        dep.type = type->str();
+        if (const auto* check = obj.getObject("check")) {
+          dep.check = ConfigDependencyCheck{
+              *check->getString("type") == "pkg-config"
+                  ? ConfigDependencyCheck::Type::PkgConfig
+                  : ConfigDependencyCheck::Type::Executable,
+              check->getString("name")->str(),
+              check->getString("version").value_or("").str()};
+        }
+        dep.url = obj.getString("url").value_or("").str();
+        dep.hash = obj.getString("sha256").value_or("").str();
+        if (auto path = obj.getString("path")) dep.path = anchor(path->str(), config.configDir);
+        for (const auto& key : {"apt", "brew"}) {
+          if (const auto* packages = obj.getArray(key)) {
+            for (const auto& package : *packages)
+              (std::string(key) == "apt" ? dep.apt : dep.brew).push_back(package.getAsString()->str());
+          }
+        }
+        config.systemDependencies.push_back(std::move(dep));
+        continue;
+      }
       if (auto* packages = obj.getObject("packages")) {
         ConfigDependency repository;
         repository.git = obj.getString("git")->str();
@@ -869,6 +1076,8 @@ std::optional<SunConfig> SunConfig::findFrom(
         for (const auto& [name, value] : config.pathVariables) {
           merged->pathVariables.emplace(name, value);
         }
+        merged->systemDependencies.insert(merged->systemDependencies.end(),
+                                          config.systemDependencies.begin(), config.systemDependencies.end());
         for (const auto& [name, value] : config.dependencies) {
           merged->dependencies.emplace(name, value);
         }
