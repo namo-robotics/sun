@@ -1,0 +1,23 @@
+{
+  "root": true,
+  "dependencies": [
+    {
+      "git": "git@example.com:leaf.git",
+      "version": "v1",
+      "packages": {
+        "LEAF": {
+          "entrypoints": [
+            "leaf"
+          ]
+        }
+      }
+    }
+  ],
+  "entrypoints": [
+    {
+      "path": "top.sun",
+      "type": "library"
+    }
+  ],
+  "package_id": "LIB"
+}
