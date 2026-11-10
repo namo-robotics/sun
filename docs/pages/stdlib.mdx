@@ -30,6 +30,24 @@ next to the file it tests, listed under `test_files:` in the manifest (see
 [Testing](/testing)). They compile only into the test binary, never into
 `stdlib.moon`.
 
+## Modules
+
+Import the module for the API you use. `using std;` provides core types such
+as `String`, `Vec`, `Option`, and `Result`; it does not import child modules.
+
+| Module | APIs |
+| --- | --- |
+| `std.io` | Printing, files, streams, and readiness polling |
+| `std.net` | IPv4, TCP, UDP, and socket configuration |
+| `std.http` | HTTP requests, responses, and servers |
+| `std.json` | JSON values, parsing, and serialization |
+| `std.xml` | XML documents, parsing, and serialization |
+| `std.linalg` | Matrices, matrix views, and linear algebra |
+
+For example, printing now needs `using std.io;`, and TCP sockets need
+`using std.net;`. Qualified calls use names such as `std.io.println` and
+`std.net.TcpStream`. Tests for each API use that same module.
+
 ## HeapAllocator
 
 The standard memory allocator using system `malloc`/`free`. Many stdlib types require an allocator for construction.
@@ -156,6 +174,8 @@ var x = v[0];    // Calls __index__
 ### Iteration
 
 ```sun
+using std.io;
+
 var v = Vec<i32>(allocator, 4);
 v.push(1); v.push(2); v.push(3);
 
@@ -197,6 +217,8 @@ with `try` from a function that returns a compatible result enum.
 ### Iteration
 
 ```sun
+using std.io;
+
 var m = Map<i64, i32>(allocator, 16);
 m.insert(1, 10);
 m.insert(2, 20);
@@ -215,6 +237,8 @@ for (var v: i32 in m) {
 A heap-allocated mutable string backed by `Matrix<u8>`. Supports slicing via the `[start:end]` syntax which returns a `StringView`.
 
 ```sun
+using std.io;
+
 var allocator = make_heap_allocator();
 var s = String(allocator, "Hello");
 var t = String("literal only");  // allocator-less: uses a fresh HeapAllocator
@@ -313,6 +337,8 @@ var again = join(allocator, fields, "=");  // "NAME=ADA"
 String slicing returns a `StringView` (non-owning view, no copy):
 
 ```sun
+using std.io;
+
 var s = String(allocator, "Hello, World!");
 var view = s[0:5];   // StringView of "Hello"
 println(view.length());  // 5
@@ -338,6 +364,8 @@ Iterates a `String` as Unicode scalar values, decoding UTF-8 as it goes.
 Obtained from `String.iterate_chars()`.
 
 ```sun
+using std.io;
+
 var s = String(alloc, "héllo😀");
 s.length();       // 10 bytes
 s.count_chars();   // 6 scalar values
@@ -387,6 +415,8 @@ A non-owning view into a `String`. Provides read-only access to a substring with
 N-dimensional matrices backed by contiguous heap memory. Supports bracket indexing and slicing.
 
 ```sun
+using std.linalg;
+
 var allocator = make_heap_allocator();
 var m = Matrix<i32>(allocator, [3, 3]);   // 3x3 matrix
 m[0, 0] = 1;
@@ -530,6 +560,8 @@ negative, overflowing, or out-of-bounds ranges. The backing buffer remains
 borrowed while the slice is in use. Slices expose `size()` and checked `get(index)`.
 
 ```sun
+using std.io;
+
 using std;
 
 /** Reads a bounded chunk from standard input. */
@@ -613,6 +645,8 @@ buffer sizes are rejected. Do not close, seek, or read the file separately while
 the reader is in use.
 
 ```sun
+using std.io;
+
 var file = File();
 try file.open("recording.jsonl", FileMode.Read);
 var reader = try LineReader(alloc, file, 65536, 4096);
@@ -646,6 +680,8 @@ directory record itself — no second syscall per entry, and no application-leve
 parsing of `getdents64` output.
 
 ```sun
+using std.io;
+
 var entries = try read_dir(alloc, "/etc");
 for (var e: DirEntry in entries) {
     if (e.is_dir()) {
@@ -798,6 +834,8 @@ the pipe is full. A wakeup can occasionally have an empty snapshot when another
 handler finishes writing after its pending bit was consumed.
 
 ```sun
+using std.net;
+
 using std;
 
 /** Wait for an interrupt or termination request, then restore both handlers. */
@@ -943,6 +981,8 @@ The fallible calls below use `try` inside a function returning `SystemResult<T>`
 or another compatible result enum.
 
 ```sun
+using std.io;
+
 using std;
 using std.env;
 
@@ -979,6 +1019,8 @@ appear after `refresh()`, while its own `set` and `remove` refresh
 automatically.
 
 ```sun
+using std.io;
+
 function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
     var alloc = make_heap_allocator();
     var environment = Env(alloc);
@@ -996,6 +1038,8 @@ Fallible operations return `SystemResult<T>` with an owned `Error`; `try`
 propagates its code and message to a compatible caller result.
 
 ```sun
+using std.io;
+
 using std.process;
 
 var cmd = Command(alloc, "/bin/sh");
@@ -1081,6 +1125,8 @@ makes an empty argv[0] indistinguishable from padding.
 Physical memory is the system total, not a container or cgroup limit.
 
 ```sun
+using std.io;
+
 var observed = try process_identity(alloc, target_pid);
 var handle = ProcessHandle(alloc);
 try handle.open(observed);
@@ -1135,6 +1181,8 @@ written to that rule; hand-rolled forks have to be too.
 `stdlib/std/time/time.sun` (module `std.time`).
 
 ```sun
+using std.io;
+
 using std.time;
 
 var start = now();
@@ -1175,6 +1223,8 @@ return `SystemResult<T>`. These examples use `try` inside a function returning
 a compatible result enum.
 
 ```sun
+using std.net;
+
 using std;
 
 // Client
@@ -1204,6 +1254,8 @@ try client.set_nonblocking(true);         // accepted streams configure themselv
 record in network byte order — the form `connect_ip` takes:
 
 ```sun
+using std.net;
+
 var ip: i32 = try resolve_host_ipv4(host);
 ```
 
@@ -1238,6 +1290,20 @@ storage; errors own diagnostic messages. The older `accept`, `recv`, and `send`
 methods still report would-block through `SystemResult.Error`, recognized by
 `is_would_block(error.code())`.
 
+### Nonblocking connection establishment
+
+`TcpStream.start_connect(address, port)` opens an unopened stream with nonblocking
+and close-on-exec flags. It returns `ConnectResult.Connected`, `Pending`, or
+`Error(error)`. For `Pending`, register the descriptor for writable/error readiness,
+then call `finish_connect()` to inspect the socket's completion status. Do not treat
+writable readiness alone as a successful connection. Failed attempts close the
+new descriptor. `close()` cancels a pending attempt; applications enforce deadlines
+using their monotonic clock and poller. Existing blocking connect methods are unchanged.
+
+`UdpSocket.set_multicast_interface(address)` selects the outgoing IPv4 multicast
+interface after binding. This is separate from `join_multicast(group, address)`,
+which selects the interface on which to receive group traffic.
+
 ### Socket configuration and broken pipes
 
 `TcpListener.bind(address, port, reuse_address, reuse_port)` applies checked
@@ -1271,6 +1337,9 @@ intrinsics take, and `ipv4_from_network` wraps what `resolve_host_ipv4`
 returns.
 
 ```sun
+using std.net;
+using std.io;
+
 var lan = Ipv4Addr(192, 168, 1, 10);     // from octets
 var addr = try parse_ipv4(text);             // propagate an error if malformed
 var any = ipv4_any();                    // 0.0.0.0
@@ -1293,6 +1362,8 @@ Pass `true` as the third argument, `socket.bind(any, port, true)`, to enable
 opt in; ordinary unicast listeners should keep the exclusive default.
 
 ```sun
+using std.net;
+
 using std;
 
 var socket = UdpSocket();
@@ -1322,6 +1393,8 @@ Multicast is part of `UdpSocket`. Join a group on an interface (use
 sent to the group on its bound port:
 
 ```sun
+using std.net;
+
 var socket = UdpSocket();
 try socket.bind(ipv4_any(), 9000, true);
 var group = Ipv4Addr(239, 255, 0, 1);
@@ -1342,6 +1415,8 @@ accept loop and all framing; the handler only reads the request and fills in
 the response.
 
 ```sun
+using std.http;
+
 var server = HttpServer(alloc);
 try server.bind(8080);
 server.serve((req: ref HttpRequest, resp: ref HttpResponse) => void {
@@ -1429,6 +1504,8 @@ function main() i32 {
 Iterators can also be driven by hand:
 
 ```sun
+using std.io;
+
 var it = v.iter();
 var going = true;
 while (going) {
@@ -1510,6 +1587,8 @@ numeric types and returns `ConversionResult<T>`. Its `Error` variant owns a
 `ConversionError` when the value does not fit:
 
 ```sun
+using std.io;
+
 /** Narrows a value and lets the caller handle conversion failure. */
 function narrow(value: i64) ConversionResult<u8> {
   return safe_convert<u8>(value);
@@ -1589,6 +1668,9 @@ scan), numbers are `Int(i64)` when the text is an integer that fits and
 `Float(f64)` otherwise, strings are UTF-8 `String`s.
 
 ```sun
+using std.json;
+using std.io;
+
 /** Parses and builds JSON while propagating concrete JSON errors. */
 function json_example() JsonResult<void> {
   var alloc = make_heap_allocator();
@@ -1609,6 +1691,8 @@ function json_example() JsonResult<void> {
 The tree node is `class Json` wrapping a `public var value: JsonValue`:
 
 ```sun
+using std.json;
+
 enum JsonValue { Null, Bool(bool), Int(i64), Float(f64), String(String), Array(Vec<Json>), Object(Vec<JsonMember>) }
 class JsonMember { var key: String; var value: Json; }
 ```
@@ -1622,6 +1706,8 @@ a later use. When a value is still needed after being placed in a document,
 store a copy instead. `create_json_string(alloc, ref s)` does that for a `String`:
 
 ```sun
+using std.json;
+
 // cfg.model is still needed later, so the document gets a copy
 try req.set(String(alloc, "model"), create_json_string(alloc, cfg.model));
 // Equivalent to an explicit clone:
@@ -1708,6 +1794,8 @@ copy, so its message remains readable after the source string has been dropped.
 Returning and propagating a result transfers that ownership to the caller.
 
 ```sun
+using std.io;
+
 /** Creates an owned error message from a runtime path. */
 function failure(path: const ref String) SystemResult<void> {
     return SystemResult.Error(Error(errno(), path));
@@ -1740,6 +1828,8 @@ Overloaded `print` (no newline) and `println` (with newline) from `print.sun`. B
 Interpolated strings can be passed directly:
 
 ```sun
+using std.io;
+
 var x: i32 = 42;
 println(`x = ${x}`);   // prints "x = 42\n"
 print("no newline");
@@ -1754,6 +1844,8 @@ a temporary `String`; floating-point values use the decimal formatting from
 `String.append_f64`. Calling `eprintln()` writes a bare newline.
 
 ```sun
+using std.io;
+
 eprintln("could not open the file");
 eprint("error code: ");
 eprintln(42);
@@ -1771,6 +1863,9 @@ XML processor or a complete implementation of every XML encoding requirement.
 ### Parsing and ownership
 
 ```sun
+using std.xml;
+using std.io;
+
 var alloc = make_heap_allocator();
 var document = try parse_xml(alloc, "<p>Hello <b>Sun</b>!</p>");
 var bold = try (try document.root().child(1)).element();

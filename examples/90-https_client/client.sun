@@ -1,3 +1,5 @@
+using std.io;
+
 // An HTTPS GET with the tls bundle's HttpsClient.
 //
 // The certificate is verified against the system CA store and checked

@@ -1,3 +1,5 @@
+using std.io;
+
 using std;
 
 /** Runs the example that calls through transitive compiled-library dependencies. */

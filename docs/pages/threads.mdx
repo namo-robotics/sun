@@ -221,6 +221,8 @@ Both the thread and the parent then work on the same value, so guard it with a
 `Mutex`:
 
 ```sun
+using std.io;
+
 using std;
 using std.thread;
 
@@ -293,6 +295,8 @@ Because Sun never copies implicitly, every extra owner is a visible `clone()`,
 so you can see the count change in the source.
 
 ```sun
+using std.io;
+
 using std;
 using std.thread;
 

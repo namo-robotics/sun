@@ -378,6 +378,7 @@ TEST(MemorySafety_Const, mutable_ref_while_const_ref_is_rejected) {
 TEST(MemorySafety_Const, const_string_reads_and_prints) {
   auto value = executeStringWithStdlib(R"(
       using std;
+      using std.io;
       function main() i32 {
           var allocator = make_heap_allocator();
           const s = String(allocator, "hello");

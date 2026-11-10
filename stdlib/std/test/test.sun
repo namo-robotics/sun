@@ -1,3 +1,6 @@
+using std.json;
+using std.io;
+
 // stdlib/std/test/test.sun - Unit testing: assertions, test results, and the runner.
 //
 // Test functions are declared with `test_function` and compiled only into

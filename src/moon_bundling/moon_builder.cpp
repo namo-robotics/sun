@@ -79,6 +79,7 @@ struct MoonBuilder::LoadedInputs {
   std::vector<LoadedNativeArchive> loadedArchives;
   std::string archiveSetHash;
   std::string inputHash;
+  bool hasTestFiles = false;
 
   /** Creates an empty result for input preparation. */
   LoadedInputs() = default;
@@ -125,6 +126,7 @@ MoonBuilder::LoadedInputs MoonBuilder::loadInputs(
   if (auto manifest = sun::driver::ManifestProcessor::fromEntrypointFile(
           entrypoint, options.targetTriple)) {
     result.libraryId = manifest->libraryId;
+    result.hasTestFiles = !manifest->testSunFiles.empty();
     report.sunFiles = std::move(manifest->sunFiles);
     report.moonImports.insert(report.moonImports.end(),
                               manifest->moonImports.begin(),
@@ -411,6 +413,7 @@ std::vector<std::string> MoonBuilder::writeBundle(
   auto& driver = compiled.driver;
   MoonWriter writer(inputs.inputHash);
   writer.setVersionName(options.versionName);
+  writer.setHasTests(inputs.hasTestFiles || driver->programHasTests());
   for (const auto& metadata : compiled.metadata.records) {
     writer.addModule(driver->getModule(), metadata);
   }

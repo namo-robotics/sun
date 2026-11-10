@@ -1,5 +1,5 @@
 /** Editable owned XML documents with ordered mixed content. */
-public module std {
+public module std.xml {
 
   /** Holds the supported XML content kinds. */
   public enum XmlNodeValue { Element(XmlElement), Text(String), Comment(String), Instruction(XmlInstruction) }

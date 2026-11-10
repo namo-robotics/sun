@@ -160,6 +160,8 @@ var maybe: Option<char> = char_of(128512);
 `String` is byte-indexed, so scalar values come from `iterate_chars()`:
 
 ```sun
+using std.io;
+
 var s = String(alloc, "héllo😀");
 s.length();      // 10 bytes
 s.count_chars();  // 6 scalar values

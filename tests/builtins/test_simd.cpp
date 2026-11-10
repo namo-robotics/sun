@@ -121,6 +121,7 @@ TEST(Builtins_SIMD, overlapping_copy) {
 TEST(Builtins_SIMD, matrix_and_vectors_from_bundle) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
     using std;
+    using std.linalg;
     /** Runs register tiles and both row and column tails through bundled Matrix operators. */
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -229,6 +230,7 @@ TEST(Builtins_SIMD, bounded_stack_scratch) {
 TEST(Builtins_SIMD, packed_matrix_from_bundle) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
     using std;
+    using std.linalg;
     /** Crosses an inner-panel boundary with initialized inputs and fresh output. */
     function main() i32 {
       var alloc = make_heap_allocator();

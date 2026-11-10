@@ -1,3 +1,5 @@
+using std.http;
+
 // tls/https_client.sun - Minimal HTTPS client on top of TlsStream
 //
 // Sends HTTP/1.1 requests with Connection: close and reads the response to
@@ -7,6 +9,7 @@
 //
 // Usage:
 //   using std;
+//   using std.io;
 //   using tls;
 //
 //   var alloc = make_heap_allocator();

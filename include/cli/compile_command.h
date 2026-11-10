@@ -72,10 +72,8 @@ int compileEntrypoint(const CompileJob& job);
  * Compile only the job's test binary: tests kept, the runner synthesized,
  * linked to the job's test binary name. `hasExecutable` says whether the
  * program also yields an executable, which the test binary records for later
- * runs. Throws SunError like any compile — including "no test functions
- * found" when the program has no tests; the caller decides what that means
- * for it. A matching `<test-output>.no-tests` input-hash record avoids repeating
- * compilation when the previous check found no tests.
+ * runs. An empty suite generates a runner that lists no tests and succeeds.
+ * Compilation and linking failures throw SunError.
  */
 int compileTestBinary(const CompileJob& job, bool hasExecutable = true);
 

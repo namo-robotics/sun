@@ -3,48 +3,44 @@ using std;
 /** Tests for replacing owned values while keeping storage initialized. */
 public module std {
 
-  /** Groups tests for the memory library behavior. */
-  module memory_tests {
+  var drops: i32 = 0;
 
-    var drops: i32 = 0;
+  /** Count every destruction, including values whose contents are zero. */
+  class Owner {
+    var id: i32;
 
-    /** Count every destruction, including values whose contents are zero. */
-    class Owner {
-      var id: i32;
-
-      /** Initializes the fixture fields used by this example or regression test. */
-      init(id: i32) {
-        this.id = id;
-      }
-
-      /** Records fixture destruction so tests can verify ownership and cleanup. */
-      deinit() {
-        drops = drops + 1;
-      }
+    /** Initializes the fixture fields used by this example or regression test. */
+    init(id: i32) {
+      this.id = id;
     }
 
-    /** Replacing through a reference transfers ownership without an extra drop. */
-    test_function replacement_transfers_ownership() {
-      drops = 0;
-      if (true) {
-        var current = Owner(0);
-        var previous = replace(current, Owner(1));
-        try std.test.assert_eq(drops, 0);
-        try std.test.assert_eq(previous.id, 0);
-        try std.test.assert_eq(current.id, 1);
-      }
+    /** Records fixture destruction so tests can verify ownership and cleanup. */
+    deinit() {
+      drops = drops + 1;
+    }
+  }
+
+  /** Replacing through a reference transfers ownership without an extra drop. */
+  test_function replacement_transfers_ownership() {
+    drops = 0;
+    if (true) {
+      var current = Owner(0);
+      var previous = replace(current, Owner(1));
+      try std.test.assert_eq(drops, 0);
+      try std.test.assert_eq(previous.id, 0);
+      try std.test.assert_eq(current.id, 1);
+    }
+    try std.test.assert_eq(drops, 2);
+
+    if (true) {
+      var alloc = make_heap_allocator();
+      var slots = Vec<Option<Owner>>(alloc, 1);
+      slots.push(Option.Some(Owner(0)));
+      var empty: Option<Owner> = Option.None;
+      var previous = try std.test.expect_access(slots.replace(0, empty));
+      slots.clear();
       try std.test.assert_eq(drops, 2);
-
-      if (true) {
-        var alloc = make_heap_allocator();
-        var slots = Vec<Option<Owner>>(alloc, 1);
-        slots.push(Option.Some(Owner(0)));
-        var empty: Option<Owner> = Option.None;
-        var previous = try std.test.expect_access(slots.replace(0, empty));
-        slots.clear();
-        try std.test.assert_eq(drops, 2);
-      }
-      try std.test.assert_eq(drops, 3);
     }
+    try std.test.assert_eq(drops, 3);
   }
 }

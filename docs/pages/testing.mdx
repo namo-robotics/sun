@@ -97,9 +97,15 @@ helper functions, module variables declared outside `test_files` — stays in
 the production build, so shared fixtures and helpers that should not ship
 belong in a test file.
 
+Reusing the library's module name does not change that separation: even public
+helpers and types in `test_files` are excluded from the production library.
+Their names must still avoid collisions within the module during a test build.
+
 The standard library tests itself this way: each `stdlib/<area>_tests.sun`
 sits next to the file it tests and is listed under `test_files:` in
 `stdlib/stdlib.sun`, with shared fixtures in `stdlib/std/fixtures_tests.sun`.
+Tests use the library module directly, such as `std.linalg` or `std.io`, and
+keep short names unless a collision requires a more specific name.
 `sun test stdlib/stdlib.sun` runs the whole suite from a workspace checkout;
 none of it ships in `stdlib.moon`. The `tls` bundle does the same with
 `tls/https_client_tests.sun`, listed in `tls/tls.sun`.

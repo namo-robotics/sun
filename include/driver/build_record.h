@@ -27,7 +27,7 @@ namespace sun::driver {
  */
 struct BuildRecord {
   std::string inputHash;      // see computeInputHash
-  bool hasTests = false;      // a test binary is built alongside
+  bool hasTests = false;      // a test binary should be built unless skipped
   bool hasExecutable = true;  // an executable is built alongside
   int testListingVersion =
       0;  // supported machine-readable test listing protocol
@@ -41,7 +41,7 @@ void embedBuildRecord(llvm::Module& module, const BuildRecord& record);
 
 /**
  * The record inside the executable or object file at `path`. Empty when the
- * file is missing, is not an object file, or carries no record.
+ * file is missing or carries no record. Moon libraries expose the same flags.
  */
 std::optional<BuildRecord> readBuildRecord(const std::string& path);
 

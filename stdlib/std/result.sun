@@ -1,3 +1,6 @@
+using std.json;
+using std.xml;
+
 /** Stores results inline; reference payloads remain borrowed. */
 public module std {
 
@@ -36,12 +39,6 @@ public module std {
   public enum PopResult<T> {
     Ok(T),
     Empty(EmptyError)
-  }
-
-  /** Reports JSON parsing, conversion, and container errors. */
-  public enum JsonResult<T> {
-    Ok(T),
-    Error(JsonError)
   }
 
   /** Reports a number that cannot be represented by the requested type. */

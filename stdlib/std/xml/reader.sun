@@ -1,5 +1,5 @@
 /** Event-based parsing of complete UTF-8 XML input. */
-public module std {
+public module std.xml {
 
   /** Owns a reader event; empty elements emit both Start and End. */
   public enum XmlEvent { Start(XmlElement), End(XmlName), Text(String), Comment(String), Instruction(XmlInstruction) }

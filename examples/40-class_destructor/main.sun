@@ -1,3 +1,5 @@
+using std.io;
+
 using std;
 
 /** Demonstrates a class whose destructor runs when its value leaves scope. */

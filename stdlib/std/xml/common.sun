@@ -1,5 +1,5 @@
 /** Shared XML names, diagnostics, and Unicode validation. */
-public module std {
+public module std.xml {
 
   /** Identifies a half-open byte range in the original XML input. */
   public class XmlSourceSpan {

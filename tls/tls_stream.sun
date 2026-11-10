@@ -1,3 +1,5 @@
+using std.net;
+
 // tls/tls_stream.sun - TLS client connection over a TcpStream
 //
 // Certificate verification is always on: the peer must present a chain that

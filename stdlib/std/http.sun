@@ -1,3 +1,5 @@
+using std.net;
+
 // stdlib/std/http.sun - Minimal HTTP/1.1 server built on TcpListener/TcpStream
 //
 // The server owns the accept loop and all HTTP framing; user code supplies
@@ -5,6 +7,7 @@
 //
 // Usage:
 //   using std;
+//   using std.http;
 //
 //   function main() i32 {
 //       var alloc = make_heap_allocator();
@@ -21,8 +24,8 @@
 //       return 0;
 //   }
 
-/** Provides the standard-library declarations implemented in this source file. */
-public module std {
+/** Provides HTTP requests, responses, and a TCP server. */
+public module std.http {
 
   // Cap on total request header size
   public const HTTP_MAX_REQUEST: i64 = 65536;

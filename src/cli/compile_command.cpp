@@ -202,17 +202,6 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
   const std::string& inputFile = job.inputFiles[0];
   const std::string testOutput = getTestOutputName(job);
   const std::string inputHash = computeJobInputHash(job, /*forTests=*/true);
-  const auto noTestsPath = testOutput + ".no-tests";
-  if (maySkip(job)) {
-    std::ifstream cached(noTestsPath);
-    std::string previousHash;
-    if (cached >> previousHash && previousHash == inputHash) {
-      sun::support::logBuildProgress("Up to date (no tests): ", testOutput);
-      sun::support::logAndThrowError(
-          "no test functions found: declare tests with 'test_function' or list "
-          "test-only sources under 'test_files:' in the manifest");
-    }
-  }
   std::optional<BuildRecord> existing;
   if (maySkip(job) && isUpToDate(testOutput, inputHash, existing)) {
     sun::support::logBuildProgress("Up to date: ", testOutput);
@@ -237,18 +226,7 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
   testDriver->setTestHandling(Driver::TestHandling::Compile);
   testDriver->setExecutable(true);
 
-  try {
-    compileInputs(*testDriver, job);
-  } catch (const sun::support::SunError& error) {
-    if (isNoTestsError(error)) {
-      // The hash includes test sources, imports, compiler, and build settings.
-      // A failed cache write only costs another check on the next build.
-      std::ofstream(noTestsPath) << inputHash << '\n';
-    }
-    throw;
-  }
-  std::error_code ignored;
-  std::filesystem::remove(noTestsPath, ignored);
+  compileInputs(*testDriver, job);
 
   if (job.emitIR) {
     testDriver->printUserDefinedIR();

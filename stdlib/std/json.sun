@@ -6,6 +6,7 @@
 //
 // Usage:
 //   using std;
+//   using std.json;
 //
 //   var alloc = make_heap_allocator();
 //   var doc = parse_json(alloc, "{\"name\": \"sun\", \"tags\": [1, 2.5]}");
@@ -21,8 +22,14 @@
 // move their String/Json arguments in, so the caller cannot use them after
 // the call. To keep a String, store a copy with create_json_string(alloc, ref s).
 
-/** Provides the standard-library declarations implemented in this source file. */
-public module std {
+/** Provides JSON values, parsing, and serialization. */
+public module std.json {
+
+  /** Reports JSON parsing, conversion, and container errors. */
+  public enum JsonResult<T> {
+    Ok(T),
+    Error(JsonError)
+  }
 
   // ==========================================================================
   // Errors

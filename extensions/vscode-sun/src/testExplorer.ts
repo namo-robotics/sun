@@ -17,6 +17,9 @@ interface BinaryTest { id: string; label: string; file: string; range: TestRange
 /** Expected suite and current freshness supplied by the LSP. */
 interface Suite {
   entrypoint: string;
+  package_id?: string;
+  entrypoint_name?: string;
+  build_location?: string;
   test_binary: string | null;
   listing_version: number;
   binary_identity: string | null;
@@ -76,8 +79,8 @@ export function activateTestExplorer(
   synchronizeConfiguration: () => Promise<void>,
   getConfigPaths: () => string[]
 ): void {
-  const controller = vscode.tests.createTestController('sun', 'Sun Tests');
-  const output = vscode.window.createOutputChannel('Sun Tests');
+  const controller = vscode.tests.createTestController('sun', 'Sun Test Explorer');
+  const output = vscode.window.createOutputChannel('Sun Test Explorer');
   const targets = new WeakMap<vscode.TestItem, TestTarget>();
   const entrypointRuns = new Map<string, EntrypointRun>();
   const cache = new Map<string, { identity: string; tests: BinaryTest[] }>();
@@ -135,6 +138,14 @@ export function activateTestExplorer(
     if (suite.freshness === 'stale') return 'Needs rebuild — tests from last build';
     if (suite.freshness === 'unknown') return 'Freshness unknown — tests from last build';
     return undefined;
+  }
+
+  /** Labels entrypoints and preserves actionable build warnings. */
+  function suiteDescription(suite: Suite): string {
+    if (suite.freshness === 'missing') return 'Entrypoint · Build required';
+    if (suite.listing_version !== 1) return 'Entrypoint · Rebuild required for test discovery';
+    const status = warning(suite);
+    return status ? `Entrypoint · ${status}` : 'Entrypoint';
   }
 
   /** Coalesces save and watcher events before requesting another inventory. */
@@ -241,26 +252,46 @@ export function activateTestExplorer(
     });
   }
 
-  /** Replaces one suite's children using locations captured at build time. */
+  /** Groups compiled tests by module, retaining source locations on test items. */
   function publishTests(root: vscode.TestItem, suite: Suite, tests: BinaryTest[]): void {
-    const files = new Map<string, vscode.TestItem>();
+    const retained = new Set<string>();
     for (const test of tests) {
-      const fileKey = test.file || suite.entrypoint;
-      let file = files.get(fileKey);
-      if (!file) {
-        file = controller.createTestItem(`${suite.entrypoint}::file::${fileKey}`,
-          path.basename(fileKey), vscode.Uri.file(fileKey));
-        targets.set(file, { entrypoint: suite.entrypoint, dottedName: '' });
-        files.set(fileKey, file);
+      let parent = root;
+      const segments = test.id.split('.').slice(0, -1);
+      let modulePath = '';
+      for (const segment of segments) {
+        modulePath = modulePath ? `${modulePath}.${segment}` : segment;
+        const id = `${suite.entrypoint}::module::${modulePath}`;
+        retained.add(id);
+        let group = parent.children.get(id);
+        if (!group) {
+          group = controller.createTestItem(id, segment);
+          group.description = 'Module';
+          targets.set(group, { entrypoint: suite.entrypoint, dottedName: '' });
+          parent.children.add(group);
+        }
+        parent = group;
       }
-      const item = controller.createTestItem(`${suite.entrypoint}::${test.id}`, test.label,
-        test.file ? vscode.Uri.file(test.file) : undefined);
+      const id = `${suite.entrypoint}::${test.id}`;
+      retained.add(id);
+      const uri = test.file ? vscode.Uri.file(test.file) : undefined;
+      const previous = parent.children.get(id);
+      const item = previous?.uri?.fsPath === uri?.fsPath && previous
+        ? previous : controller.createTestItem(id, test.label, uri);
+      item.label = test.label;
       item.range = new vscode.Range(test.range.start.line, test.range.start.character,
         test.range.end.line, test.range.end.character);
       targets.set(item, { entrypoint: suite.entrypoint, dottedName: test.id });
-      file.children.add(item);
+      if (item !== previous) parent.children.add(item);
     }
-    root.children.replace([...files.values()]);
+    /** Removes deleted tests and modules without replacing surviving items. */
+    const prune = (children: vscode.TestItemCollection) => {
+      children.forEach((item) => {
+        if (!retained.has(item.id)) children.delete(item.id);
+        else prune(item.children);
+      });
+    };
+    prune(root.children);
   }
 
   /** Publishes roots first, then fills them with at most two listing processes. */
@@ -276,19 +307,51 @@ export function activateTestExplorer(
     updateWatchers(response.watched_paths,
       response.watched_binaries ?? response.suites.flatMap((suite) => suite.test_binary ? [suite.test_binary] : []),
       response.watched_patterns);
+    const previousRoots = new Map<string, vscode.TestItem>();
+    controller.items.forEach((item) => {
+      previousRoots.set(item.id, item);
+      item.children.forEach((child) => previousRoots.set(child.id, child));
+    });
+    const packages = new Map<string, vscode.TestItem>();
+    const topLevel: vscode.TestItem[] = [];
     const roots = response.suites.map((suite) => {
-      const root = controller.createTestItem(suite.entrypoint, entrypointLabel(suite.entrypoint),
-        vscode.Uri.file(suite.entrypoint));
+      const label = suite.entrypoint_name || entrypointLabel(suite.entrypoint);
+      const root = previousRoots.get(suite.entrypoint) ?? controller.createTestItem(
+        suite.entrypoint, label, vscode.Uri.file(suite.entrypoint));
+      root.label = label;
+      root.error = undefined;
+      if (suite.test_binary) output.appendLine(`${suite.entrypoint}: ${suite.build_location || 'configured'} build ${suite.test_binary}`);
+      if (suite.package_id) {
+        let group = packages.get(suite.package_id);
+        if (!group) {
+          const id = `package::${suite.package_id}`;
+          group = controller.items.get(id) ?? controller.createTestItem(id, suite.package_id);
+          group.description = 'Package';
+          packages.set(suite.package_id, group);
+          topLevel.push(group);
+        }
+        if (group.children.get(root.id) !== root) group.children.add(root);
+      } else {
+        topLevel.push(root);
+      }
       targets.set(root, { entrypoint: suite.entrypoint, dottedName: '' });
-      root.description = warning(suite);
-      if (suite.freshness === 'missing') root.description = 'Build required';
-      else if (suite.listing_version !== 1) root.description = 'Rebuild required for test discovery';
+      root.description = suiteDescription(suite);
       root.busy = suite.freshness !== 'missing' && suite.listing_version === 1;
       if (suite.freshness !== 'fresh') output.appendLine(`${entrypointLabel(suite.entrypoint)}: ${suite.reason}`);
       return root;
     });
     entrypointRuns.clear();
-    controller.items.replace(roots);
+    const suitePackages = new Map(response.suites.map((suite) => [suite.entrypoint, suite.package_id]));
+    for (const group of packages.values()) {
+      group.children.forEach((root) => {
+        if (`package::${suitePackages.get(root.id)}` !== group.id) group.children.delete(root.id);
+      });
+    }
+    const topIds = new Set(topLevel.map((item) => item.id));
+    controller.items.forEach((item) => { if (!topIds.has(item.id)) controller.items.delete(item.id); });
+    for (const item of topLevel) {
+      if (controller.items.get(item.id) !== item) controller.items.add(item);
+    }
     const binaries = new Set(response.suites.map((suite) => suite.test_binary));
     for (const binary of cache.keys()) if (!binaries.has(binary)) cache.delete(binary);
     let next = 0, total = 0;
@@ -299,7 +362,10 @@ export function activateTestExplorer(
         const suite = response.suites[index], root = roots[index];
         const run: EntrypointRun = { testBinary: suite.test_binary, suite };
         entrypointRuns.set(suite.entrypoint, run);
-        if (suite.freshness === 'missing' || suite.listing_version !== 1 || !suite.test_binary) continue;
+        if (suite.freshness === 'missing' || suite.listing_version !== 1 || !suite.test_binary) {
+          publishTests(root, suite, []);
+          continue;
+        }
         try {
           const identity = binaryIdentity(suite.test_binary);
           if (identity !== suite.binary_identity) {
@@ -316,6 +382,15 @@ export function activateTestExplorer(
           run.identity = identity;
           cache.set(suite.test_binary, { identity, tests });
           publishTests(root, suite, tests);
+          if (tests.length === 0 && suite.freshness === 'fresh') {
+            const group = suite.package_id ? packages.get(suite.package_id) : undefined;
+            if (group) {
+              group.children.delete(root.id);
+              if (group.children.size === 0) controller.items.delete(group.id);
+            } else {
+              controller.items.delete(root.id);
+            }
+          }
           total += tests.length;
         } catch (error) {
           if (disposed || generation !== refreshGeneration) return;
@@ -582,7 +657,7 @@ export function activateTestExplorer(
       for (const [entrypoint, items] of byEntrypoint) {
         if (disposed || token.isCancellationRequested) break;
 
-        const root = controller.items.get(entrypoint);
+        const root = current.get(entrypoint);
         const runInfo = entrypointRuns.get(entrypoint);
         try {
           const inventory = await client.sendRequest<SuiteResponse>('sun/testSuites', {});
@@ -594,10 +669,10 @@ export function activateTestExplorer(
             continue;
           }
           runInfo.suite = latest;
-          if (root) root.description = warning(latest);
+          if (root) root.description = suiteDescription(latest);
         } catch (error) {
           if (runInfo) runInfo.suite = { ...runInfo.suite, freshness: 'unknown', reason: String(error) };
-          if (root && runInfo) root.description = warning(runInfo.suite);
+          if (root && runInfo) root.description = suiteDescription(runInfo.suite);
         }
         if (disposed || token.isCancellationRequested) break;
         let buildError: string | undefined;

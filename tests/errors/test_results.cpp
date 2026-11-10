@@ -1390,6 +1390,7 @@ TEST(Errors_Results, rejects_discarded_pop_result) {
 TEST(Errors_Results, json_result_propagation) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
     using std;
+    using std.json;
     /** Parses a document and propagates either parsing or scalar conversion errors. */
     function read(text: static_ptr<u8>) Result<i64> {
       var alloc = make_heap_allocator();
@@ -1423,6 +1424,7 @@ TEST(Errors_Results, json_result_propagation) {
 TEST(Errors_Results, rejects_discarded_json_result) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeStringWithStdlib(R"(
     using std;
+    using std.json;
     /** Attempts to discard the result of parsing malformed JSON. */
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -1576,6 +1578,7 @@ TEST(Errors_Results, file_result_propagation) {
 TEST(Errors_Results, network_result_propagation) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
     using std;
+    using std.net;
     /** Parses an IPv4 address through the broad standard result. */
     function parse(text: static_ptr<u8>) Result<Ipv4Addr> {
       var alloc = make_heap_allocator();

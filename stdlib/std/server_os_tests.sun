@@ -1,7 +1,9 @@
+using std.net;
+
 using std;
 
 /** Portable server primitive regression tests. */
-public module std.server_os_tests {
+public module std {
 
   /** Online CPUs must be a positive host count. */
   test_function online_cpus() {
@@ -34,7 +36,7 @@ public module std.server_os_tests {
 }
 
 /** Concurrency and socket behavior using private native checks only inside stdlib tests. */
-public module std.server_os_tests {
+public module std {
 
   /** Notify repeatedly from a worker while the main thread drains the same source. */
   function send_wakeups(wake: std.io.Wakeup) i32 {
@@ -206,7 +208,7 @@ public module std.server_os_tests {
 }
 
 /** Additional socket backpressure and registration reuse regressions. */
-public module std.server_os_tests {
+public module std {
 
   /** A bounded native send buffer forces a partial nonblocking write with a resumable prefix. */
   test_function tcp_partial_write() {
@@ -274,7 +276,7 @@ public module std.server_os_tests {
 }
 
 /** Metadata and ownership with the first available descriptor. */
-public module std.server_os_tests {
+public module std {
 
   /** Open a real file at descriptor zero and verify metadata and cleanup after moving. */
   function metadata_at_zero() std.test.AssertionResult<void> {

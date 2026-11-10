@@ -20,6 +20,15 @@
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
 
+  /** Read an integer socket option into caller-owned storage. */
+  extern "C" function c_getsockopt(
+    fd: i32,
+    level: i32,
+    option: i32,
+    value: raw_ptr<i32>,
+    length: raw_ptr<u32>
+  ) i32 as "getsockopt";
+
   /** Read metadata for an open descriptor into platform-sized storage. */
   extern "C" function c_fstat(fd: i32, data: raw_ptr<u8>) i32 as "fstat";
 

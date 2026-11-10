@@ -1,3 +1,5 @@
+using std.net;
+
 /** The private OpenSSL socket adapter used by server sessions. */
 public module tls {
 

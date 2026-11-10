@@ -19,13 +19,9 @@ namespace {
 
 /**
  * Compile one entrypoint with tests enabled and JIT-run the synthesized
- * runner. Returns its exit code: 0 iff every selected test passed. With
- * skipWhenNoTests (config runs, where a library may simply have no tests
- * yet) an entrypoint without tests reports itself and counts as passing;
- * without it that stays the usual error.
+ * runner. Returns zero when every selected test passed, including an empty suite.
  */
-int runTestEntrypoint(const std::string& inputFile, const TestOptions& options,
-                      bool skipWhenNoTests = false) {
+int runTestEntrypoint(const std::string& inputFile, const TestOptions& options) {
   // The runner reads its flags from main(argc, argv), argv[0] being the
   // entrypoint file, same as ordinary JIT execution.
   ProgramArguments programArgs(inputFile, options.forwardedArgs);
@@ -46,10 +42,6 @@ int runTestEntrypoint(const std::string& inputFile, const TestOptions& options,
       return *code;
     }
   } catch (const sun::support::SunError& e) {
-    if (skipWhenNoTests && isNoTestsError(e)) {
-      llvm::outs() << "no tests\n";
-      return 0;
-    }
     return reportSunError(e);
   } catch (const std::exception& e) {
     return reportUnexpectedError(e);
@@ -75,8 +67,7 @@ int runConfigTests(const TestOptions& options) {
                      << " ==\n";
         llvm::outs().flush();
       }
-      if (runTestEntrypoint(entry.path, options,
-                            /*skipWhenNoTests=*/true) != 0) {
+      if (runTestEntrypoint(entry.path, options) != 0) {
         failures++;
       }
     }

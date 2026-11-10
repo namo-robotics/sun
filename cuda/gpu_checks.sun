@@ -1,3 +1,6 @@
+using std.linalg;
+using std.io;
+
 /** Exercises public GPU arithmetic through both the JIT and native compilation. */
 manifest {
   libraries: [

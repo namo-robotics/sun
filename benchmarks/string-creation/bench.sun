@@ -1,3 +1,5 @@
+using std.io;
+
 /** Compare standard integer interpolation with the small-string benchmark. */
 using std;
 

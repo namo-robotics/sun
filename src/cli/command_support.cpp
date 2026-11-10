@@ -118,10 +118,4 @@ int reportUnexpectedError(const std::exception& error) {
   return 1;
 }
 
-/** Recognizes the diagnostic produced when no tests are available. */
-bool isNoTestsError(const sun::support::SunError& error) {
-  return std::string(error.what()).find("no test functions found") !=
-         std::string::npos;
-}
-
 }  // namespace sun::cli

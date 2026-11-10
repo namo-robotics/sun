@@ -1,7 +1,7 @@
 using std;
 
 /** Checks SIMD lane arithmetic and checked storage access. */
-public module std.simd_tests {
+public module std.simd {
 
   /** Checks the zero-initializing constructor. */
   test_function default_constructor() {

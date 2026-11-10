@@ -184,6 +184,8 @@ partial class Point {
 Classes can implement interfaces using the `implements` keyword:
 
 ```sun
+using std.io;
+
 interface Printable {
     method print() void;
 }
@@ -209,6 +211,8 @@ class Point implements Printable {
 Separate multiple interfaces with commas:
 
 ```sun
+using std.io;
+
 interface Named {
     var name: i32;
 }

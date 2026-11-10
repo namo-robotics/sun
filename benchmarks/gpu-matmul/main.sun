@@ -1,3 +1,6 @@
+using std.linalg;
+using std.io;
+
 /** Measures transfers, allocating products, and repeated output reuse separately. */
 manifest {
   libraries: [

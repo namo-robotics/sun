@@ -131,12 +131,9 @@ TEST(EndToEnd_Testing, a_returned_error_fails_the_test) {
             1);
 }
 
-// Test mode without any test functions is an error, not an empty pass.
-TEST(EndToEnd_Testing, no_tests_found_is_an_error) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeTestsWithStdlib(R"(
-    function main() i32 { return 0; }
-  )"),
-                                "no test functions found");
+/** An empty runner succeeds rather than treating absence as a compiler error. */
+TEST(EndToEnd_Testing, empty_test_suite_succeeds) {
+  EXPECT_EQ(executeTestsWithStdlib("function main() i32 { return 0; }"), 0);
 }
 
 // Tests need std.test, so a test build without the standard library is
@@ -398,6 +395,7 @@ TEST(EndToEnd_Testing, default_assertion_result) {
 TEST(EndToEnd_Testing, public_errno_and_nonblocking_helpers) {
   EXPECT_EQ(executeTestsWithStdlib(R"(
     using std;
+    using std.net;
 
     /** Exercise the descriptor API as an application importing stdlib would. */
     module descriptor_client {
@@ -411,19 +409,19 @@ TEST(EndToEnd_Testing, public_errno_and_nonblocking_helpers) {
             var fd: i32 = listener.get_fd();
             var original: i32 = unsafe { fcntl(fd, 3); };
             try std.test.assert(original >= 0);
-            try std.test.expect_system_success(std.set_fd_nonblocking(fd, true));
+            try std.test.expect_system_success(std.net.set_fd_nonblocking(fd, true));
             var enabled: i32 = unsafe { fcntl(fd, 3); };
             try std.test.assert(enabled != original);
-            try std.test.expect_system_success(std.set_fd_nonblocking(fd, false));
+            try std.test.expect_system_success(std.net.set_fd_nonblocking(fd, false));
             try std.test.assert_eq(unsafe { fcntl(fd, 3); }, original);
 
             var failed: i32 = unsafe { fcntl(-1, 3); };
             var code: i32 = std.errno();
             try std.test.assert_eq(failed, -1);
             try std.test.assert(code > 0);
-            try std.test.assert(not std.is_would_block(code));
+            try std.test.assert(not std.net.is_would_block(code));
             var reported: i32 = 0;
-            match std.set_fd_nonblocking(-1, true) {
+            match std.net.set_fd_nonblocking(-1, true) {
                 SystemResult.Ok => {},
                 SystemResult.Error(e) => { reported = e.code(); }
             };

@@ -1,3 +1,5 @@
+using std.io;
+
 using std;
 
 // The code under test: distance helpers in a module. `half` is private, but

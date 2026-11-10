@@ -1133,6 +1133,7 @@ TEST(MemorySafety_BorrowChecker, constructor_argument_by_value_moves) {
 TEST(MemorySafety_BorrowChecker, xml_reader_cannot_escape_input) {
   EXPECT_THROW(executeStringWithStdlib(R"(
     using std;
+    using std.xml;
     /** Attempts to return a reader beyond its input's lifetime. */
     function dangling(alloc: ref HeapAllocator) XmlReader {
       var input = String(alloc, "<r/>");
@@ -1152,6 +1153,7 @@ TEST(MemorySafety_BorrowChecker, xml_reader_cannot_escape_input) {
 TEST(MemorySafety_BorrowChecker, xml_reader_prevents_input_mutation) {
   EXPECT_THROW(executeStringWithStdlib(R"(
     using std;
+    using std.xml;
     /** Attempts to invalidate input before advancing its reader. */
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -1169,6 +1171,7 @@ TEST(MemorySafety_BorrowChecker, xml_reader_prevents_input_mutation) {
 TEST(MemorySafety_BorrowChecker, xml_child_prevents_document_move) {
   EXPECT_THROW(executeStringWithStdlib(R"(
     using std;
+    using std.xml;
     /** Consumes the complete owned document. */
     function consume(document: XmlDocument) void {}
     /** Attempts to use a child after consuming its owner. */
@@ -1190,6 +1193,7 @@ TEST(MemorySafety_BorrowChecker, xml_child_prevents_document_move) {
 TEST(MemorySafety_BorrowChecker, xml_child_prevents_removal) {
   EXPECT_THROW(executeStringWithStdlib(R"(
     using std;
+    using std.xml;
     /** Attempts to use a child after removing it from its owning element. */
     function main() XmlResult<i32> {
       var alloc = make_heap_allocator();
@@ -1209,6 +1213,7 @@ TEST(MemorySafety_BorrowChecker, xml_child_prevents_removal) {
 TEST(MemorySafety_BorrowChecker, xml_child_valid_borrow) {
   auto value = executeStringWithStdlib(R"(
     using std;
+    using std.xml;
     /** Reads a child through a reference carrying its document's lifetime. */
     function inspect(document: ref XmlDocument) XmlResult<i64> {
       var child: ref XmlNode = try document.root().child(0);

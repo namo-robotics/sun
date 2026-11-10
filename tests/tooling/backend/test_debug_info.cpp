@@ -216,6 +216,7 @@ TEST(Tooling_Backend_DebugInfo, moon_bundle_carries_debug_info_into_g_compile) {
   driver->setMoonImports(imports);
   driver->compileString(R"(
 using std;
+using std.io;
 function main() i32 {
   println("hi");
   return 0;
@@ -245,6 +246,7 @@ TEST(Tooling_Backend_DebugInfo, moon_debug_info_stripped_from_non_g_compile) {
   driver->setMoonImports(imports);
   driver->compileString(R"(
 using std;
+using std.io;
 function main() i32 {
   println("hi");
   return 0;

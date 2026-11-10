@@ -95,7 +95,7 @@ function harness(fileSystem = {}) {
     TestRunProfileKind: { Run: 1 },
     /** Retains errors reported to the editor. */
     TestMessage: class { /** Stores the displayed error. */ constructor(message) { this.message = message; } },
-    tests: { createTestController: () => controller },
+    tests: { createTestController: (_id, label) => { controller.label = label; return controller; } },
     workspace: {
       workspaceFolders: [{ uri: uri('/workspace') }],
       getConfiguration: () => ({ get: (key, fallback) => settings[key] ?? fallback }),
@@ -229,7 +229,7 @@ test('legacy, missing, and replaced binaries are not launched for discovery', as
     h.start(); await flush();
     assert.equal(h.commands.length, 0, scenario);
     const root = h.controller.items.get(suite.entrypoint);
-    assert.match(root.description ?? root.error, /[Bb]uild|changed/);
+    assert.match(root.error ?? root.description, /[Bb]uild|changed/);
     h.dispose();
   }
 });
@@ -414,7 +414,8 @@ test('listing chunks preserve Unicode and reject unsupported versions', async ()
   h.children[1].complete(JSON.stringify({ version: 999, tests: [] }));
   await flush();
   const unicode = h.controller.items.get('/workspace/unicode.sun');
-  assert.ok([...unicode.children.values()].some((item) => item.uri.fsPath === '/workspace/😀.sun'));
+  const module = [...unicode.children.values()][0];
+  assert.ok([...module.children.values()].some((item) => item.uri.fsPath === '/workspace/😀.sun'));
   assert.match(h.controller.items.get('/workspace/unsupported.sun').error, /Unsupported/);
   h.dispose();
 });
@@ -579,8 +580,9 @@ test('cancellation during inventory skips queued tests without starting processe
 });
 
 /** A previously empty suite can populate during refresh without a false removal error. */
-test('an empty suite gains queued leaves when discovery finishes', async () => {
+test('a stale empty suite gains queued leaves when discovery finishes', async () => {
   const h = harness(); h.client.response = listing('/workspace/main.sun');
+  h.client.response.suites[0].freshness = 'stale';
   h.options.listingText = JSON.stringify({ version: 1, tests: [] });
   h.start(); await flush();
   const root = h.controller.items.get('/workspace/main.sun');
@@ -632,4 +634,132 @@ test('artifact polling includes targets hidden by production metadata', async ()
   await debounce(); await flush();
   assert.equal(h.calls.filter((call) => call === 'sun/testSuites').length, 2);
   h.dispose();
+});
+
+/** Package selections run all nested suites while preserving entrypoint identities. */
+test('package groups contain named entrypoints and run their selected binaries', async () => {
+  const h = harness();
+  h.client.response = listing('/workspace/one.sun', '/workspace/two.sun');
+  for (const [index, suite] of h.client.response.suites.entries()) {
+    suite.package_id = 'example/library';
+    suite.entrypoint_name = ['unit', 'integration'][index];
+    suite.build_location = index === 0 ? 'standalone' : 'workspace';
+  }
+  h.start(); await flush();
+  assert.equal(h.controller.items.size, 1);
+  const group = h.controller.items.get('package::example/library');
+  assert.equal(group.label, 'example/library');
+  assert.equal(group.description, 'Package');
+  assert.equal(h.controller.label, 'Sun Test Explorer');
+  assert.deepEqual([...group.children.values()].map(item => item.label), ['unit', 'integration']);
+  assert.equal(group.children.get('/workspace/one.sun').description, 'Entrypoint');
+  assert.equal(group.children.get('/workspace/two.sun').description, 'Entrypoint');
+  await h.controller.run({ include: [group] }, token());
+  assert.equal(h.runs[0].passed.length, 4);
+  assert.equal(h.runs[0].errors.length, 0);
+  assert.equal(group.children.get('/workspace/one.sun').description, 'Entrypoint');
+  h.dispose();
+});
+
+/** Module selections span files, preserve nested scopes, and exclude sibling tests. */
+test('modules group tests across files and run only selected descendants', async () => {
+  const h = harness();
+  h.client.response = listing('/workspace/main.sun');
+  const fixture = binaryListing().tests[0];
+  h.options.listingText = JSON.stringify({ version: 1, tests: [
+    { ...fixture, id: 'acceptance.first', label: 'first' },
+    { ...fixture, id: 'acceptance.second', label: 'second', file: '/workspace/other.sun' },
+    { ...fixture, id: 'acceptance.http.first', label: 'first' },
+    { ...fixture, id: 'unit.first', label: 'first' },
+    { ...fixture, id: 'global_test', label: 'global_test' },
+  ] });
+  h.start(); await flush();
+  const root = h.controller.items.get('/workspace/main.sun');
+  assert.deepEqual([...root.children.values()].map(item => item.label), ['acceptance', 'unit', 'global_test']);
+  const acceptance = root.children.get('/workspace/main.sun::module::acceptance');
+  assert.equal(acceptance.description, 'Module');
+  assert.deepEqual([...acceptance.children.values()].map(item => item.label), ['first', 'second', 'http']);
+  const second = acceptance.children.get('/workspace/main.sun::acceptance.second');
+  assert.equal(second.uri.fsPath, '/workspace/other.sun');
+  const http = acceptance.children.get('/workspace/main.sun::module::acceptance.http');
+  assert.equal(http.description, 'Module');
+  assert.equal(http.children.get('/workspace/main.sun::acceptance.http.first').label, 'first');
+  await h.controller.run({ include: [acceptance], exclude: [http] }, token());
+  assert.deepEqual(h.commands.filter(command => command.args.includes('--test-filter'))
+    .map(command => command.args.at(-1)), ['acceptance.first', 'acceptance.second']);
+  assert.equal(h.runs[0].passed.length, 2);
+  assert.equal(h.runs[0].errors.length, 0);
+  await h.controller.run({ include: [http, root.children.get('/workspace/main.sun::global_test')] }, token());
+  assert.deepEqual(h.commands.filter(command => command.args.includes('--test-filter'))
+    .slice(-2).map(command => command.args.at(-1)), ['acceptance.http.first', 'global_test']);
+  assert.equal(h.runs[1].passed.length, 2);
+  assert.equal(h.runs[1].errors.length, 0);
+  h.dispose();
+});
+
+/** Switching build locations refreshes the listing instead of running the old artifact. */
+test('standalone selection replaces the workspace binary before execution', async () => {
+  const h = harness(); h.client.response = listing('/workspace/main.sun');
+  h.start(); await flush();
+  const selected = h.controller.items.get('/workspace/main.sun');
+  h.client.response.suites[0].test_binary = '/project/.sun/main_test';
+  await h.controller.run({ include: [selected] }, token());
+  assert.equal(h.runs[0].passed.length, 2);
+  assert.equal(h.commands.at(-1).command, '/project/.sun/main_test');
+  h.dispose();
+});
+
+/** Empty fresh suites disappear; stale empty listings still signal a rebuild. */
+test('empty listings hide only fresh suites and remove empty packages', async () => {
+  const h = harness();
+  h.client.response = listing('/workspace/empty.sun', '/workspace/stale.sun');
+  h.client.response.suites[0].package_id = 'empty/package';
+  h.client.response.suites[1].freshness = 'stale';
+  h.options.listingText = JSON.stringify({ version: 1, tests: [] });
+  h.start(); await flush();
+  assert.equal(h.controller.items.has('package::empty/package'), false);
+  assert.match(h.controller.items.get('/workspace/stale.sun').description, /Needs rebuild/);
+  h.dispose();
+});
+
+/** Refreshes preserve expanded group identities while reconciling rebuilt listings. */
+test('runs and refreshes retain tree items and remove only obsolete descendants', async () => {
+  const h = harness();
+  try {
+    h.client.response = listing('/workspace/main.sun');
+    h.client.response.suites[0].package_id = 'example/library';
+    h.start(); await flush();
+    const group = h.controller.items.get('package::example/library');
+    const root = group.children.get('/workspace/main.sun');
+    const module = root.children.get('/workspace/main.sun::module::suite');
+    const first = module.children.get('/workspace/main.sun::suite.first');
+    await h.controller.run({ include: [first] }, token());
+    assert.equal(h.controller.items.get(group.id), group);
+    assert.equal(group.children.get(root.id), root);
+    assert.equal(root.children.get(module.id), module);
+    assert.equal(module.children.get(first.id), first);
+    assert.equal(h.runs[0].passed.length, 1);
+
+    const fixture = binaryListing().tests[0];
+    h.options.listingText = JSON.stringify({ version: 1, tests: [
+      { ...fixture, label: 'updated label' },
+      { ...fixture, id: 'other.third', label: 'third' },
+    ] });
+    await h.controller.refreshHandler();
+    assert.equal(h.controller.items.get(group.id), group);
+    assert.equal(group.children.get(root.id), root);
+    assert.equal(root.children.get(module.id), module);
+    assert.equal(module.children.get(first.id), first);
+    assert.equal(first.label, 'updated label');
+    assert.equal(module.children.has('/workspace/main.sun::suite.second'), false);
+    const other = root.children.get('/workspace/main.sun::module::other');
+    assert.ok(other);
+
+    h.options.listingText = JSON.stringify({ version: 1, tests: [
+      { ...fixture, id: 'other.third', label: 'third' },
+    ] });
+    await h.controller.refreshHandler();
+    assert.equal(root.children.has(module.id), false);
+    assert.equal(root.children.get(other.id), other);
+  } finally { h.dispose(); }
 });

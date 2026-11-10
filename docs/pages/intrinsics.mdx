@@ -728,6 +728,8 @@ byte-swaps ports into network order. An `ip` is always in network order — 0 fo
 in host order, both directions:
 
 ```sun
+using std.net;
+
 var fd: i32 = unsafe { __socket(2, 1, 0); };            // AF_INET, SOCK_STREAM
 var rc: i32 = unsafe { __bind_ipv4(fd, 0, 8080); };     // 0.0.0.0:8080
 unsafe { __listen(fd, 16); };

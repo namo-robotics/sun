@@ -770,7 +770,7 @@ TEST(Modules, module_qualified_call_into_moon_library) {
   // function's own qualified name rather than being rebuilt from the path.
   auto value = sun::driver::executeStringWithStdlib(R"(
     function main() i32 {
-      std.println("ok");
+      std.io.println("ok");
       return 0;
     }
   )");

@@ -1,3 +1,5 @@
+using std.net;
+
 /** Owned, coalescing cross-thread notifications for Poller and EventLoop. */
 public module std.io {
 

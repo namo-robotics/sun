@@ -161,11 +161,6 @@ void Driver::applyTestHandling(BlockExprAST& blockAst) {
 
   visitTests(blockAst, modulePath, /*strip=*/false, &tests, sawAny);
   hasTests_ |= sawAny;
-  if (tests.empty()) {
-    logAndThrowError(
-        "no test functions found: declare tests with 'test_function' or list "
-        "test-only sources under 'test_files:' in the manifest");
-  }
 
   // The runner and its assertions live in std.test, so the test build needs
   // the standard library (same rule as string interpolation).
