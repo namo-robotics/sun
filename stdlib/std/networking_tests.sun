@@ -48,6 +48,9 @@ public module std {
       var listener = TcpListener();
       try std.test.expect_system_success(listener.bind_loopback(0));
       var port = try std.test.expect_system(listener.local_port());
+      // macOS drops connection attempts to a bound, non-listening socket.
+      // Release it so this test targets a closed port and receives a refusal.
+      listener.close();
       var stream = TcpStream();
       match stream.start_connect(ipv4_loopback(), port) {
         ConnectResult.Error(_) => {},
@@ -64,7 +67,7 @@ public module std {
           };
         },
         _ => {
-          try std.test.assert(false, "unlistened port cannot connect");
+          try std.test.assert(false, "closed port cannot connect");
         }
       };
       try std.test.assert(not stream.is_open(), "failed dial closes");
