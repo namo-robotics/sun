@@ -1265,3 +1265,5 @@ jobs:
         uses: actions/deploy-pages@v4
         with:
           artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
+          # Allow extra time for Pages to queue and sync the generated reference.
+          timeout: 1800000
