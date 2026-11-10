@@ -17,6 +17,9 @@ interface BinaryTest { id: string; label: string; file: string; range: TestRange
 /** Expected suite and current freshness supplied by the LSP. */
 interface Suite {
   entrypoint: string;
+  package_id?: string;
+  entrypoint_name?: string;
+  build_location?: string;
   test_binary: string | null;
   listing_version: number;
   binary_identity: string | null;
@@ -76,8 +79,8 @@ export function activateTestExplorer(
   synchronizeConfiguration: () => Promise<void>,
   getConfigPaths: () => string[]
 ): void {
-  const controller = vscode.tests.createTestController('sun', 'Sun Tests');
-  const output = vscode.window.createOutputChannel('Sun Tests');
+  const controller = vscode.tests.createTestController('sun', 'Sun Test Explorer');
+  const output = vscode.window.createOutputChannel('Sun Test Explorer');
   const targets = new WeakMap<vscode.TestItem, TestTarget>();
   const entrypointRuns = new Map<string, EntrypointRun>();
   const cache = new Map<string, { identity: string; tests: BinaryTest[] }>();
@@ -135,6 +138,13 @@ export function activateTestExplorer(
     if (suite.freshness === 'stale') return 'Needs rebuild — tests from last build';
     if (suite.freshness === 'unknown') return 'Freshness unknown — tests from last build';
     return undefined;
+  }
+
+  /** Keep discovery and run-time descriptions consistent, including the selected build. */
+  function suiteDescription(suite: Suite): string | undefined {
+    if (suite.freshness === 'missing') return 'Build required';
+    if (suite.listing_version !== 1) return 'Rebuild required for test discovery';
+    return warning(suite) || (suite.build_location ? `${suite.build_location} build` : undefined);
   }
 
   /** Coalesces save and watcher events before requesting another inventory. */
@@ -276,19 +286,31 @@ export function activateTestExplorer(
     updateWatchers(response.watched_paths,
       response.watched_binaries ?? response.suites.flatMap((suite) => suite.test_binary ? [suite.test_binary] : []),
       response.watched_patterns);
+    const packages = new Map<string, vscode.TestItem>();
+    const topLevel: vscode.TestItem[] = [];
     const roots = response.suites.map((suite) => {
-      const root = controller.createTestItem(suite.entrypoint, entrypointLabel(suite.entrypoint),
+      const root = controller.createTestItem(suite.entrypoint, suite.entrypoint_name || entrypointLabel(suite.entrypoint),
         vscode.Uri.file(suite.entrypoint));
+      if (suite.test_binary) output.appendLine(`${suite.entrypoint}: ${suite.build_location || 'configured'} build ${suite.test_binary}`);
+      if (suite.package_id) {
+        let group = packages.get(suite.package_id);
+        if (!group) {
+          group = controller.createTestItem(`package::${suite.package_id}`, suite.package_id);
+          packages.set(suite.package_id, group);
+          topLevel.push(group);
+        }
+        group.children.add(root);
+      } else {
+        topLevel.push(root);
+      }
       targets.set(root, { entrypoint: suite.entrypoint, dottedName: '' });
-      root.description = warning(suite);
-      if (suite.freshness === 'missing') root.description = 'Build required';
-      else if (suite.listing_version !== 1) root.description = 'Rebuild required for test discovery';
+      root.description = suiteDescription(suite);
       root.busy = suite.freshness !== 'missing' && suite.listing_version === 1;
       if (suite.freshness !== 'fresh') output.appendLine(`${entrypointLabel(suite.entrypoint)}: ${suite.reason}`);
       return root;
     });
     entrypointRuns.clear();
-    controller.items.replace(roots);
+    controller.items.replace(topLevel);
     const binaries = new Set(response.suites.map((suite) => suite.test_binary));
     for (const binary of cache.keys()) if (!binaries.has(binary)) cache.delete(binary);
     let next = 0, total = 0;
@@ -582,7 +604,7 @@ export function activateTestExplorer(
       for (const [entrypoint, items] of byEntrypoint) {
         if (disposed || token.isCancellationRequested) break;
 
-        const root = controller.items.get(entrypoint);
+        const root = current.get(entrypoint);
         const runInfo = entrypointRuns.get(entrypoint);
         try {
           const inventory = await client.sendRequest<SuiteResponse>('sun/testSuites', {});
@@ -594,10 +616,10 @@ export function activateTestExplorer(
             continue;
           }
           runInfo.suite = latest;
-          if (root) root.description = warning(latest);
+          if (root) root.description = suiteDescription(latest);
         } catch (error) {
           if (runInfo) runInfo.suite = { ...runInfo.suite, freshness: 'unknown', reason: String(error) };
-          if (root && runInfo) root.description = warning(runInfo.suite);
+          if (root && runInfo) root.description = suiteDescription(runInfo.suite);
         }
         if (disposed || token.isCancellationRequested) break;
         let buildError: string | undefined;

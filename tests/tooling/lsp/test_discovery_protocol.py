@@ -481,6 +481,92 @@ class DiscoveryProtocolTests(unittest.TestCase):
         os.utime(self.source, ns=(newer, newer))
         self.assertEqual(self.request("sun/testSuites")["suites"][0]["freshness"], "missing")
 
+    def composed_candidates(self):
+        """Create one package reachable through workspace and standalone roots."""
+        project = self.directory / "project"
+        project.mkdir()
+        entry = project / "main.sun"
+        entry.write_text(self.entry.read_text().replace('"tests.sun"', json.dumps(str(self.source))))
+        config = project / "sun-config.json"
+        config.write_text(json.dumps({"root": True, "package_id": "example/library",
+                                      "entrypoints": [{"path": "main.sun", "name": "unit"}]}))
+        self.config.write_text(json.dumps({"projects": [str(config)]}))
+        inventory = self.request("sun/testSuites")
+        suite = inventory["suites"][0]
+        workspace = Path(suite["test_binary"])
+        standalone = project / workspace.relative_to(self.directory)
+        return entry, workspace, standalone
+
+    def test_inventory_selects_build_locations_and_watches_both(self):
+        """Fresh standalone builds beat stale workspace builds; fresh ties prefer workspace."""
+        entry, workspace, standalone = self.composed_candidates()
+        for binary in (workspace, standalone):
+            binary.parent.mkdir(parents=True, exist_ok=True)
+        standalone.write_text("standalone fixture")
+        suite = self.request("sun/testSuites")["suites"][0]
+        self.assertEqual(suite["test_binary"], str(standalone))
+        self.assertEqual(suite["package_id"], "example/library")
+        self.assertEqual(suite["entrypoint_name"], "unit")
+        self.assertEqual(suite["build_location"], "standalone")
+        workspace.write_text("workspace fixture")
+        old = entry.stat().st_mtime_ns - 1000000000
+        os.utime(workspace, ns=(old, old))
+        self.assertEqual(self.request("sun/testSuites")["suites"][0]["test_binary"], str(standalone))
+        newer = standalone.stat().st_mtime_ns + 1000000000
+        os.utime(workspace, ns=(newer, newer))
+        inventory = self.request("sun/testSuites")
+        self.assertEqual(inventory["suites"][0]["test_binary"], str(workspace))
+        self.assertIn(str(workspace), inventory["watched_binaries"])
+        self.assertIn(str(standalone), inventory["watched_binaries"])
+        workspace.unlink()
+        self.assertEqual(self.request("sun/testSuites")["suites"][0]["test_binary"], str(standalone))
+
+    def test_workspace_config_changes_do_not_stale_standalone_builds(self):
+        """Only the selected build's configuration contributes to its freshness."""
+        entry, workspace, standalone = self.composed_candidates()
+        for binary in (workspace, standalone):
+            binary.parent.mkdir(parents=True, exist_ok=True)
+            binary.write_text("test fixture")
+        newer = standalone.stat().st_mtime_ns + 1000000000
+        os.utime(self.config, ns=(newer, newer))
+        suite = self.request("sun/testSuites")["suites"][0]
+        self.assertEqual(suite["test_binary"], str(standalone))
+        self.assertEqual(suite["freshness"], "fresh")
+        self.assertNotIn(str(self.config), suite["sources"])
+        self.assertIn(str(self.config), self.request("sun/testSuites")["watched_paths"])
+
+    def test_inventory_resolves_imports_in_each_build_directory(self):
+        """A stale workspace dependency must not mark a standalone build stale."""
+        entry, workspace, standalone = self.composed_candidates()
+        entry.write_text('manifest { libraries: ["${SUN_BUILD}/fixture.moon"] }\n')
+        for binary in (workspace, standalone):
+            binary.parent.mkdir(parents=True, exist_ok=True)
+            (binary.parent / "fixture.moon").write_text("dependency fixture")
+            binary.write_text("test fixture")
+        dependency = workspace.parent / "fixture.moon"
+        newer = workspace.stat().st_mtime_ns + 1000000000
+        os.utime(dependency, ns=(newer, newer))
+        inventory = self.request("sun/testSuites")
+        suite = inventory["suites"][0]
+        self.assertEqual(suite["test_binary"], str(standalone))
+        self.assertEqual(suite["freshness"], "fresh")
+        self.assertIn(str(standalone.parent / "fixture.moon"), suite["sources"])
+        self.assertIn(str(dependency), inventory["watched_paths"])
+
+    def test_standalone_non_test_metadata_hides_unbuilt_workspace_target(self):
+        """A standalone production build can prove a benchmark has no tests."""
+        entry, workspace, standalone = self.composed_candidates()
+        entry.write_text("manifest {}\nfunction main() i32 { return 0; }\n")
+        output = Path(str(standalone)[:-5])
+        output.parent.mkdir(parents=True, exist_ok=True)
+        result = subprocess.run([str(COMPILER), "-c", "-O0", "-o", str(output), str(entry)],
+                                cwd=WORKSPACE, capture_output=True, text=True, timeout=90)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        inventory = self.request("sun/testSuites")
+        self.assertEqual(inventory["suites"], [])
+        self.assertIn(str(workspace), inventory["watched_binaries"])
+        self.assertIn(str(standalone), inventory["watched_binaries"])
+
     def test_test_file_runs_through_its_configured_entrypoint(self):
         """The discovered entrypoint and dotted name form a working test command."""
         self.configure([self.entry])

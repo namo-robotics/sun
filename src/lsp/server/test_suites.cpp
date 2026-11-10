@@ -4,9 +4,11 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <sstream>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 #include "driver/build_graph.h"
 #include "driver/build_record.h"
@@ -108,11 +110,144 @@ static TestFreshness checkTestFreshness(const std::string& binary,
   return freshness;
 }
 
+/** One build location and the configuration used to resolve its inputs. */
+struct TestBuildCandidate {
+  sun::driver::ConfigEntrypoint entry;
+  std::optional<sun::driver::ConfigGraph> graph;
+  std::string packageId;
+  std::string location;
+  std::set<std::string> configs;
+};
+
+/** Order build candidates without depending on their timestamps across roots. */
+enum class TestBuildPreference { Missing, Unknown, Stale, Fresh };
+
+/** Evaluated metadata and preference for one build. */
+struct TestBuildInspection {
+  llvm::json::Object suite;
+  TestBuildPreference preference;
+  bool hidden;
+};
+
+/** Resolve inputs in this build's graph and inspect artifacts without executing them. */
+static TestBuildInspection inspectTestBuild(
+    const std::string& path, const TestBuildCandidate& candidate,
+    const std::string& configurationError, std::set<std::string>& watched,
+    std::set<std::string>& binaries) {
+  namespace fs = std::filesystem;
+  const auto& entry = candidate.entry;
+  std::optional<sun::driver::ConfigGraphScope> scope;
+  if (candidate.graph) {
+    scope.emplace(*candidate.graph);
+  }
+  std::set<std::string> inputs = candidate.configs;
+  inputs.insert(path);
+  std::string problem = configurationError;
+  try {
+    const auto manifest = ManifestProcessor::fromEntrypointFile(path);
+    if (manifest) {
+      inputs.insert(manifest->sunFiles.begin(), manifest->sunFiles.end());
+      inputs.insert(manifest->testSunFiles.begin(),
+                    manifest->testSunFiles.end());
+      inputs.insert(manifest->protoFiles.begin(), manifest->protoFiles.end());
+      for (const auto& moon : manifest->moonImports) {
+        inputs.insert(moon.path);
+      }
+      for (const auto& archive : manifest->nativeArchives) {
+        inputs.insert(archive.path);
+      }
+    } else {
+      problem = "Cannot resolve entrypoint manifest: " + path;
+    }
+    // Ancestor configs can supply manifest variables even outside the graph.
+    for (auto directory = fs::path(path).parent_path(); !directory.empty();) {
+      const auto configFile = directory / "sun-config.json";
+      if (fs::exists(configFile)) {
+        inputs.insert(configFile.string());
+        if (sun::driver::SunConfig::loadFile(configFile).root) {
+          break;
+        }
+      }
+      auto parent = directory.parent_path();
+      if (parent == directory) {
+        break;
+      }
+      directory = parent;
+    }
+  } catch (const std::exception& error) {
+    problem = error.what();
+  }
+  const auto& binary = entry.testBinaryName;
+  std::error_code ec;
+  const bool exists = !binary.empty() && fs::is_regular_file(binary, ec);
+  const auto identity = testBinaryIdentity(binary);
+  const auto record =
+      exists ? sun::driver::readBuildRecord(binary) : std::nullopt;
+  const auto freshness =
+      exists ? checkTestFreshness(binary, inputs, problem)
+             : TestFreshness{"missing", binary.empty()
+                                            ? "No test binary is configured"
+                                            : "Build required"};
+  llvm::json::Array sources;
+  for (const auto& input : inputs) {
+    const auto absolute = normalizePath(input);
+    watched.insert(absolute);
+    sources.push_back(absolute);
+  }
+  // Keep watching artifacts even while metadata hides a target with no tests.
+  for (const auto& artifact : {binary, entry.outputName}) {
+    if (!artifact.empty()) {
+      const auto absolute = normalizePath(artifact);
+      watched.insert(absolute);
+      binaries.insert(absolute);
+    }
+  }
+  bool hide = false;
+  // Fresh production metadata can prove that this target has no tests.
+  if (freshness.status != "fresh" && problem.empty() &&
+      !entry.outputName.empty()) {
+    const auto production = sun::driver::readBuildRecord(entry.outputName);
+    if (production && !production->hasTests &&
+        checkTestFreshness(entry.outputName, inputs, problem).status ==
+            "fresh") {
+      hide = true;
+    }
+  }
+  llvm::json::Object suite;
+  suite["entrypoint"] = path;
+  suite["package_id"] = candidate.packageId;
+  suite["entrypoint_name"] =
+      entry.name.empty() ? fs::path(path).stem().string() : entry.name;
+  suite["build_location"] = candidate.location;
+  suite["test_binary"] =
+      binary.empty() ? llvm::json::Value(nullptr) : llvm::json::Value(binary);
+  // A concurrent rebuild must not transfer an old capability to a new file.
+  const bool stable = identity && identity == testBinaryIdentity(binary);
+  suite["listing_version"] =
+      record && stable ? record->testListingVersion : 0;
+  suite["binary_identity"] =
+      identity ? llvm::json::Value(*identity) : llvm::json::Value(nullptr);
+  suite["freshness"] = freshness.status;
+  suite["reason"] = freshness.reason;
+  suite["sources"] = std::move(sources);
+  // Fresh builds win; keep configured workspace order on ties. Missing
+  // artifacts must not displace an existing stale or unknown build.
+  auto preference = TestBuildPreference::Missing;
+  if (hide || freshness.status == "fresh") {
+    preference = TestBuildPreference::Fresh;
+  } else if (freshness.status == "stale") {
+    preference = TestBuildPreference::Stale;
+  } else if (freshness.status == "unknown") {
+    preference = TestBuildPreference::Unknown;
+  }
+  return {std::move(suite), preference, hide};
+}
+
 /** Lists expected test artifacts and checks their inputs without semantic
  * analysis. */
 llvm::json::Object testSuites() {
   namespace fs = std::filesystem;
-  std::map<std::string, sun::driver::ConfigEntrypoint> entries;
+  std::map<std::string, std::vector<TestBuildCandidate>> entries;
   std::set<std::string> configs, configPatterns;
   for (const auto& root : configuredSunConfigs) {
     collectTestConfigPaths(root, configs, configPatterns);
@@ -122,21 +257,43 @@ llvm::json::Object testSuites() {
   for (const auto& root : configuredSunConfigs) {
     try {
       const auto graph = sun::driver::loadConfigGraph(root);
+      std::set<std::string> workspaceConfigs, ignoredPatterns;
+      collectTestConfigPaths(root, workspaceConfigs, ignoredPatterns);
       for (const auto& file : graph.projects) {
         collectTestConfigPaths(file.string(), configs, configPatterns);
-        const auto config = sun::driver::configureBuildPaths(
-            graph, sun::driver::SunConfig::loadFile(file));
-        for (auto entry : config.entrypoints) {
-          if (!entry.git.empty()) {
-            continue;
+        const auto standalone = sun::driver::loadConfigGraph(file);
+        std::set<std::string> standaloneConfigs;
+        collectTestConfigPaths(file.string(), standaloneConfigs, ignoredPatterns);
+        for (const auto* candidateGraph : {&graph, &standalone}) {
+          const auto config = sun::driver::configureBuildPaths(
+              *candidateGraph, sun::driver::SunConfig::loadFile(file));
+          for (auto entry : config.entrypoints) {
+            if (!entry.git.empty()) {
+              continue;
+            }
+            entry.path = normalizePath(
+                ManifestProcessor::expandPathVariables(entry.path, &config));
+            entry.testBinaryName = ManifestProcessor::expandPathVariables(
+                entry.testBinaryName, &config);
+            entry.outputName = ManifestProcessor::expandPathVariables(
+                entry.outputName, &config);
+            auto& candidates = entries[entry.path];
+            bool duplicate = false;
+            for (const auto& existing : candidates) {
+              if (existing.entry.testBinaryName == entry.testBinaryName) {
+                duplicate = true;
+                break;
+              }
+            }
+            if (!duplicate) {
+              candidates.push_back(
+                  {std::move(entry), *candidateGraph, config.packageId,
+                   candidateGraph->root == config.configDir ? "standalone"
+                                                           : "workspace",
+                   candidateGraph == &graph ? workspaceConfigs
+                                            : standaloneConfigs});
+            }
           }
-          entry.path = normalizePath(
-              ManifestProcessor::expandPathVariables(entry.path, &config));
-          entry.testBinaryName = ManifestProcessor::expandPathVariables(
-              entry.testBinaryName, &config);
-          entry.outputName =
-              ManifestProcessor::expandPathVariables(entry.outputName, &config);
-          entries.emplace(entry.path, std::move(entry));
         }
       }
     } catch (const std::exception& error) {
@@ -146,7 +303,10 @@ llvm::json::Object testSuites() {
   for (const auto& file : explicitEntrypoints) {
     sun::driver::ConfigEntrypoint entry;
     entry.path = normalizePath(file);
-    entries.emplace(entry.path, std::move(entry));
+    if (!entries.count(entry.path)) {
+      entries[entry.path].push_back(
+          {std::move(entry), std::nullopt, "", "unconfigured", configs});
+    }
   }
   // Match the existing editor behavior for open manifest entrypoints.
   for (const auto& entry : entrypointManager.entrypoints()) {
@@ -155,99 +315,29 @@ llvm::json::Object testSuites() {
     }
     sun::driver::ConfigEntrypoint candidate;
     candidate.path = entry.entrypointPath;
-    entries.emplace(candidate.path, std::move(candidate));
+    if (!entries.count(candidate.path)) {
+      entries[candidate.path].push_back(
+          {std::move(candidate), std::nullopt, "", "unconfigured", configs});
+    }
   }
 
   llvm::json::Array suites;
   std::set<std::string> watched = configs;
   std::set<std::string> binaries;
-  for (const auto& [path, entry] : entries) {
-    std::set<std::string> inputs = configs;
-    inputs.insert(path);
-    std::string problem =
-        errors.empty() ? "" : "Cannot resolve project configuration";
-    try {
-      const auto manifest = ManifestProcessor::fromEntrypointFile(path);
-      if (manifest) {
-        inputs.insert(manifest->sunFiles.begin(), manifest->sunFiles.end());
-        inputs.insert(manifest->testSunFiles.begin(),
-                      manifest->testSunFiles.end());
-        inputs.insert(manifest->protoFiles.begin(), manifest->protoFiles.end());
-        for (const auto& moon : manifest->moonImports) {
-          inputs.insert(moon.path);
-        }
-        for (const auto& archive : manifest->nativeArchives) {
-          inputs.insert(archive.path);
-        }
-      } else {
-        problem = "Cannot resolve entrypoint manifest: " + path;
-      }
-      // Ancestor configs can supply manifest variables even outside the graph.
-      for (auto directory = fs::path(path).parent_path(); !directory.empty();) {
-        const auto configFile = directory / "sun-config.json";
-        if (fs::exists(configFile)) {
-          inputs.insert(configFile.string());
-          if (sun::driver::SunConfig::loadFile(configFile).root) {
-            break;
-          }
-        }
-        auto parent = directory.parent_path();
-        if (parent == directory) {
-          break;
-        }
-        directory = parent;
-      }
-    } catch (const std::exception& error) {
-      problem = error.what();
-    }
-    const auto& binary = entry.testBinaryName;
-    std::error_code ec;
-    const bool exists = !binary.empty() && fs::is_regular_file(binary, ec);
-    const auto identity = testBinaryIdentity(binary);
-    const auto record =
-        exists ? sun::driver::readBuildRecord(binary) : std::nullopt;
-    const auto freshness =
-        exists ? checkTestFreshness(binary, inputs, problem)
-               : TestFreshness{"missing", binary.empty()
-                                              ? "No test binary is configured"
-                                              : "Build required"};
-    llvm::json::Array sources;
-    for (const auto& input : inputs) {
-      const auto absolute = normalizePath(input);
-      watched.insert(absolute);
-      sources.push_back(absolute);
-    }
-    // Keep watching artifacts even while metadata hides a target with no tests.
-    for (const auto& artifact : {binary, entry.outputName}) {
-      if (!artifact.empty()) {
-        const auto absolute = normalizePath(artifact);
-        watched.insert(absolute);
-        binaries.insert(absolute);
+  for (const auto& [path, candidates] : entries) {
+    std::optional<TestBuildInspection> selected;
+    for (const auto& candidate : candidates) {
+      auto inspected = inspectTestBuild(
+          path, candidate,
+          errors.empty() ? "" : "Cannot resolve project configuration", watched,
+          binaries);
+      if (!selected || inspected.preference > selected->preference) {
+        selected = std::move(inspected);
       }
     }
-    // Fresh production metadata can prove that this target has no tests.
-    if (!exists && problem.empty() && !entry.outputName.empty()) {
-      const auto production = sun::driver::readBuildRecord(entry.outputName);
-      if (production && !production->hasTests &&
-          checkTestFreshness(entry.outputName, inputs, problem).status ==
-              "fresh") {
-        continue;
-      }
+    if (selected && !selected->hidden) {
+      suites.push_back(std::move(selected->suite));
     }
-    llvm::json::Object suite;
-    suite["entrypoint"] = path;
-    suite["test_binary"] =
-        binary.empty() ? llvm::json::Value(nullptr) : llvm::json::Value(binary);
-    // A concurrent rebuild must not transfer an old capability to a new file.
-    const bool stable = identity && identity == testBinaryIdentity(binary);
-    suite["listing_version"] =
-        record && stable ? record->testListingVersion : 0;
-    suite["binary_identity"] =
-        identity ? llvm::json::Value(*identity) : llvm::json::Value(nullptr);
-    suite["freshness"] = freshness.status;
-    suite["reason"] = freshness.reason;
-    suite["sources"] = std::move(sources);
-    suites.push_back(std::move(suite));
   }
   llvm::json::Array paths;
   for (const auto& path : watched) {

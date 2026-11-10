@@ -95,7 +95,7 @@ function harness(fileSystem = {}) {
     TestRunProfileKind: { Run: 1 },
     /** Retains errors reported to the editor. */
     TestMessage: class { /** Stores the displayed error. */ constructor(message) { this.message = message; } },
-    tests: { createTestController: () => controller },
+    tests: { createTestController: (_id, label) => { controller.label = label; return controller; } },
     workspace: {
       workspaceFolders: [{ uri: uri('/workspace') }],
       getConfiguration: () => ({ get: (key, fallback) => settings[key] ?? fallback }),
@@ -631,5 +631,39 @@ test('artifact polling includes targets hidden by production metadata', async ()
   h.polled.get('/workspace/build/program_test')();
   await debounce(); await flush();
   assert.equal(h.calls.filter((call) => call === 'sun/testSuites').length, 2);
+  h.dispose();
+});
+
+/** Package selections run all nested suites while preserving entrypoint identities. */
+test('package groups contain named entrypoints and run their selected binaries', async () => {
+  const h = harness();
+  h.client.response = listing('/workspace/one.sun', '/workspace/two.sun');
+  for (const [index, suite] of h.client.response.suites.entries()) {
+    suite.package_id = 'example/library';
+    suite.entrypoint_name = ['unit', 'integration'][index];
+    suite.build_location = index === 0 ? 'standalone' : 'workspace';
+  }
+  h.start(); await flush();
+  assert.equal(h.controller.items.size, 1);
+  const group = h.controller.items.get('package::example/library');
+  assert.equal(group.label, 'example/library');
+  assert.equal(h.controller.label, 'Sun Test Explorer');
+  assert.deepEqual([...group.children.values()].map(item => item.label), ['unit', 'integration']);
+  assert.match(group.children.get('/workspace/one.sun').description, /standalone build/);
+  await h.controller.run({ include: [group] }, token());
+  assert.equal(h.runs[0].passed.length, 4);
+  assert.equal(h.runs[0].errors.length, 0);
+  h.dispose();
+});
+
+/** Switching build locations refreshes the listing instead of running the old artifact. */
+test('standalone selection replaces the workspace binary before execution', async () => {
+  const h = harness(); h.client.response = listing('/workspace/main.sun');
+  h.start(); await flush();
+  const selected = h.controller.items.get('/workspace/main.sun');
+  h.client.response.suites[0].test_binary = '/project/.sun/main_test';
+  await h.controller.run({ include: [selected] }, token());
+  assert.equal(h.runs[0].passed.length, 2);
+  assert.equal(h.commands.at(-1).command, '/project/.sun/main_test');
   h.dispose();
 });

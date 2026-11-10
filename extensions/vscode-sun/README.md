@@ -72,6 +72,17 @@ definitions override the settings above.
 
 ## Test Explorer
 
+The **Sun Test Explorer** groups suites by `package_id`, then by entrypoint name.
+Entrypoints without a package identifier remain at the top level.
+
+Discovery checks both the workspace build directory and each project's standalone
+build directory. A fresh build wins over a stale or missing build; when both are
+fresh, the workspace build wins. Library paths are resolved separately for each
+build. The suite description and output channel identify the selected location,
+and that same executable is used to list and run tests. Both locations are watched
+for rebuilds. A fresh production build with no tests can hide a non-test entrypoint
+even when it was built only inside its project.
+
 Test Explorer asks `sun-lsp` for configured suites and expected test binaries,
 then runs each supported binary with `--list-tests`. Suites appear immediately;
 their tests appear as individual listings finish. Listing does not invoke test
@@ -104,7 +115,7 @@ Project configs, manifest sources, dependency artifacts, and binaries trigger
 refreshes. Exact binary paths are polled even when build directories are excluded
 from editor file watching. Manual refresh bypasses the listing cache. Discovery
 uses at most two listing processes at once and limits each to ten seconds. Errors
-appear on their suite and in the **Sun Tests** output channel.
+appear on their suite and in the **Sun Test Explorer** output channel.
 
 The binary listing is JSON with `version: 1` and a `tests` array. Each item contains
 `id` (dotted runner name), `label`, `file` (absolute build-time path), and `range`
