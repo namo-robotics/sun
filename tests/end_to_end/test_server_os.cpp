@@ -205,6 +205,7 @@ TEST(EndToEnd_ServerOs, ConfigurationFailureClosesDescriptors) {
     try {
       const auto result = sun::driver::executeStringWithStdlib(R"(
         using std;
+        using std.net;
         /** Exercise both fallible constructors repeatedly and compare descriptor counts. */
         function verify() Result<i32> {
           var alloc = make_heap_allocator();

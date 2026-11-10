@@ -1,5 +1,5 @@
 /** Checked XML serialization with automatic namespace declarations. */
-public module std {
+public module std.xml {
 
   /** Appends escaped character data to an existing buffer. */
   function xml_escape(out: ref String, text: const ref String, attribute: bool) void {

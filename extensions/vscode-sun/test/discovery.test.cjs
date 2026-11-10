@@ -721,3 +721,45 @@ test('empty listings hide only fresh suites and remove empty packages', async ()
   assert.match(h.controller.items.get('/workspace/stale.sun').description, /Needs rebuild/);
   h.dispose();
 });
+
+/** Refreshes preserve expanded group identities while reconciling rebuilt listings. */
+test('runs and refreshes retain tree items and remove only obsolete descendants', async () => {
+  const h = harness();
+  try {
+    h.client.response = listing('/workspace/main.sun');
+    h.client.response.suites[0].package_id = 'example/library';
+    h.start(); await flush();
+    const group = h.controller.items.get('package::example/library');
+    const root = group.children.get('/workspace/main.sun');
+    const module = root.children.get('/workspace/main.sun::module::suite');
+    const first = module.children.get('/workspace/main.sun::suite.first');
+    await h.controller.run({ include: [first] }, token());
+    assert.equal(h.controller.items.get(group.id), group);
+    assert.equal(group.children.get(root.id), root);
+    assert.equal(root.children.get(module.id), module);
+    assert.equal(module.children.get(first.id), first);
+    assert.equal(h.runs[0].passed.length, 1);
+
+    const fixture = binaryListing().tests[0];
+    h.options.listingText = JSON.stringify({ version: 1, tests: [
+      { ...fixture, label: 'updated label' },
+      { ...fixture, id: 'other.third', label: 'third' },
+    ] });
+    await h.controller.refreshHandler();
+    assert.equal(h.controller.items.get(group.id), group);
+    assert.equal(group.children.get(root.id), root);
+    assert.equal(root.children.get(module.id), module);
+    assert.equal(module.children.get(first.id), first);
+    assert.equal(first.label, 'updated label');
+    assert.equal(module.children.has('/workspace/main.sun::suite.second'), false);
+    const other = root.children.get('/workspace/main.sun::module::other');
+    assert.ok(other);
+
+    h.options.listingText = JSON.stringify({ version: 1, tests: [
+      { ...fixture, id: 'other.third', label: 'third' },
+    ] });
+    await h.controller.refreshHandler();
+    assert.equal(root.children.has(module.id), false);
+    assert.equal(root.children.get(other.id), other);
+  } finally { h.dispose(); }
+});

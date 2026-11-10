@@ -114,6 +114,8 @@ own their contents, and assigning a compound field moves the source. Match
 bindings over `optional` and `oneof` payloads borrow in place:
 
 ```sun
+using std.io;
+
 match status.nickname {
     Option.Some(s) => println(s.length()),   // s borrows the String
     Option.None => { }

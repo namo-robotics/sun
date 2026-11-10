@@ -254,7 +254,7 @@ export function activateTestExplorer(
 
   /** Groups compiled tests by module, retaining source locations on test items. */
   function publishTests(root: vscode.TestItem, suite: Suite, tests: BinaryTest[]): void {
-    root.children.replace([]);
+    const retained = new Set<string>();
     for (const test of tests) {
       let parent = root;
       const segments = test.id.split('.').slice(0, -1);
@@ -262,6 +262,7 @@ export function activateTestExplorer(
       for (const segment of segments) {
         modulePath = modulePath ? `${modulePath}.${segment}` : segment;
         const id = `${suite.entrypoint}::module::${modulePath}`;
+        retained.add(id);
         let group = parent.children.get(id);
         if (!group) {
           group = controller.createTestItem(id, segment);
@@ -271,13 +272,26 @@ export function activateTestExplorer(
         }
         parent = group;
       }
-      const item = controller.createTestItem(`${suite.entrypoint}::${test.id}`, test.label,
-        test.file ? vscode.Uri.file(test.file) : undefined);
+      const id = `${suite.entrypoint}::${test.id}`;
+      retained.add(id);
+      const uri = test.file ? vscode.Uri.file(test.file) : undefined;
+      const previous = parent.children.get(id);
+      const item = previous?.uri?.fsPath === uri?.fsPath && previous
+        ? previous : controller.createTestItem(id, test.label, uri);
+      item.label = test.label;
       item.range = new vscode.Range(test.range.start.line, test.range.start.character,
         test.range.end.line, test.range.end.character);
       targets.set(item, { entrypoint: suite.entrypoint, dottedName: test.id });
-      parent.children.add(item);
+      if (item !== previous) parent.children.add(item);
     }
+    /** Removes deleted tests and modules without replacing surviving items. */
+    const prune = (children: vscode.TestItemCollection) => {
+      children.forEach((item) => {
+        if (!retained.has(item.id)) children.delete(item.id);
+        else prune(item.children);
+      });
+    };
+    prune(root.children);
   }
 
   /** Publishes roots first, then fills them with at most two listing processes. */
@@ -293,21 +307,30 @@ export function activateTestExplorer(
     updateWatchers(response.watched_paths,
       response.watched_binaries ?? response.suites.flatMap((suite) => suite.test_binary ? [suite.test_binary] : []),
       response.watched_patterns);
+    const previousRoots = new Map<string, vscode.TestItem>();
+    controller.items.forEach((item) => {
+      previousRoots.set(item.id, item);
+      item.children.forEach((child) => previousRoots.set(child.id, child));
+    });
     const packages = new Map<string, vscode.TestItem>();
     const topLevel: vscode.TestItem[] = [];
     const roots = response.suites.map((suite) => {
-      const root = controller.createTestItem(suite.entrypoint, suite.entrypoint_name || entrypointLabel(suite.entrypoint),
-        vscode.Uri.file(suite.entrypoint));
+      const label = suite.entrypoint_name || entrypointLabel(suite.entrypoint);
+      const root = previousRoots.get(suite.entrypoint) ?? controller.createTestItem(
+        suite.entrypoint, label, vscode.Uri.file(suite.entrypoint));
+      root.label = label;
+      root.error = undefined;
       if (suite.test_binary) output.appendLine(`${suite.entrypoint}: ${suite.build_location || 'configured'} build ${suite.test_binary}`);
       if (suite.package_id) {
         let group = packages.get(suite.package_id);
         if (!group) {
-          group = controller.createTestItem(`package::${suite.package_id}`, suite.package_id);
+          const id = `package::${suite.package_id}`;
+          group = controller.items.get(id) ?? controller.createTestItem(id, suite.package_id);
           group.description = 'Package';
           packages.set(suite.package_id, group);
           topLevel.push(group);
         }
-        group.children.add(root);
+        if (group.children.get(root.id) !== root) group.children.add(root);
       } else {
         topLevel.push(root);
       }
@@ -318,7 +341,17 @@ export function activateTestExplorer(
       return root;
     });
     entrypointRuns.clear();
-    controller.items.replace(topLevel);
+    const suitePackages = new Map(response.suites.map((suite) => [suite.entrypoint, suite.package_id]));
+    for (const group of packages.values()) {
+      group.children.forEach((root) => {
+        if (`package::${suitePackages.get(root.id)}` !== group.id) group.children.delete(root.id);
+      });
+    }
+    const topIds = new Set(topLevel.map((item) => item.id));
+    controller.items.forEach((item) => { if (!topIds.has(item.id)) controller.items.delete(item.id); });
+    for (const item of topLevel) {
+      if (controller.items.get(item.id) !== item) controller.items.add(item);
+    }
     const binaries = new Set(response.suites.map((suite) => suite.test_binary));
     for (const binary of cache.keys()) if (!binaries.has(binary)) cache.delete(binary);
     let next = 0, total = 0;
@@ -329,7 +362,10 @@ export function activateTestExplorer(
         const suite = response.suites[index], root = roots[index];
         const run: EntrypointRun = { testBinary: suite.test_binary, suite };
         entrypointRuns.set(suite.entrypoint, run);
-        if (suite.freshness === 'missing' || suite.listing_version !== 1 || !suite.test_binary) continue;
+        if (suite.freshness === 'missing' || suite.listing_version !== 1 || !suite.test_binary) {
+          publishTests(root, suite, []);
+          continue;
+        }
         try {
           const identity = binaryIdentity(suite.test_binary);
           if (identity !== suite.binary_identity) {

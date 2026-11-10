@@ -102,6 +102,9 @@ then runs each supported binary with `--list-tests`. Suites appear immediately;
 their tests appear as individual listings finish. Listing does not invoke test
 functions. Test names and source locations describe the last compiled build.
 
+Refreshes update existing tree items in place, preserving expanded groups when
+starting a run or rediscovering tests.
+
 Starting a run immediately marks selected tests as queued while discovery and
 freshness checks finish. Each test switches to running when its process starts.
 

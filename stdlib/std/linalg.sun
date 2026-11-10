@@ -65,7 +65,7 @@ public module std.linalg {
   }
 
   /** Checks matrix rank before accessing its two dimensions. */
-  function valid_matrix<T: _Float>(matrix: const ref std.Matrix<T>) bool {
+  function valid_matrix<T: _Float>(matrix: const ref std.linalg.Matrix<T>) bool {
     if (matrix.ndims() != 2) {
       return false;
     }
@@ -73,7 +73,7 @@ public module std.linalg {
   }
 
   /** Scales validated output storage, reading existing values only for nonzero beta. */
-  function scale_output<T: _Float>(output: ref std.Matrix<T>, beta: T) void {
+  function scale_output<T: _Float>(output: ref std.linalg.Matrix<T>, beta: T) void {
     var data = output.raw_data();
     var count = output.size();
     if (beta == _convert<T>(1)) {
@@ -91,7 +91,7 @@ public module std.linalg {
   /** Scales only output outside the packed rectangle, after shape validation.
    * The packed kernel initializes the excluded rectangle on its first panel. */
   function scale_remainder<T: _Float>(
-    output: ref std.Matrix<T>,
+    output: ref std.linalg.Matrix<T>,
     beta: T,
     rows: i64,
     cols: i64
@@ -613,13 +613,13 @@ public module std.linalg {
    * Dimensions and strides must keep every element offset within its allocation. */
   function multiply<T: _Float>(
     alpha: T,
-    left: const ref std.Matrix<T>,
+    left: const ref std.linalg.Matrix<T>,
     ar: i64,
     ac: i64,
-    right: const ref std.Matrix<T>,
+    right: const ref std.linalg.Matrix<T>,
     br: i64,
     bc: i64,
-    output: ref std.Matrix<T>,
+    output: ref std.linalg.Matrix<T>,
     k: i64,
     beta: T
   ) void {
@@ -713,12 +713,12 @@ public module std.linalg {
    * hardware fusion when available; rounding may vary with target and shape. */
   public function gemm<T: _Float>(
     alpha: T,
-    a: const ref std.Matrix<T>,
+    a: const ref std.linalg.Matrix<T>,
     trans_a: Transpose,
-    b: const ref std.Matrix<T>,
+    b: const ref std.linalg.Matrix<T>,
     trans_b: Transpose,
     beta: T,
-    c: ref std.Matrix<T>
+    c: ref std.linalg.Matrix<T>
   ) LinalgResult<void> {
     if (not valid_matrix<T>(a) or not valid_matrix<T>(b) or not valid_matrix<T>(c)) {
       return LinalgResult.Error(LinalgError(LinalgErrorReason.InvalidDimensions));
@@ -766,10 +766,10 @@ public module std.linalg {
   /** Allocates A * B through the supplied allocator after validating both shapes.
    * Inputs are borrowed; all arithmetic is delegated to GEMM. */
   public function matmul<T: _Float>(
-    a: const ref std.Matrix<T>,
-    b: const ref std.Matrix<T>,
+    a: const ref std.linalg.Matrix<T>,
+    b: const ref std.linalg.Matrix<T>,
     alloc: const ref std.HeapAllocator
-  ) LinalgResult<std.Matrix<T>> {
+  ) LinalgResult<std.linalg.Matrix<T>> {
     if (not valid_matrix<T>(a) or not valid_matrix<T>(b)) {
       return LinalgResult.Error(LinalgError(LinalgErrorReason.InvalidDimensions));
     }
@@ -783,7 +783,7 @@ public module std.linalg {
         return LinalgResult.Error(LinalgError(LinalgErrorReason.InvalidDimensions));
       }
     }
-    var output = std.Matrix<T>(alloc, [rows, cols]);
+    var output = std.linalg.Matrix<T>(alloc, [rows, cols]);
     try gemm<T>(_convert<T>(1), a, Transpose.None, b, Transpose.None, _convert<T>(0), output);
     return LinalgResult.Ok(output);
   }

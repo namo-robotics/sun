@@ -1,3 +1,5 @@
+using std.net;
+
 using std;
 
 /** Portable server primitive regression tests. */

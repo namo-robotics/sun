@@ -24,7 +24,7 @@ using std;
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-public module std {
+public module std.xml {
 
   /** Combines assertion and XML failures without terminating the process. */
   enum XmlFixtureChecks { Ok, Assertion(std.test.AssertionError), Xml(XmlError), Bounds(IndexOutOfBoundsError) }

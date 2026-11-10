@@ -1,3 +1,5 @@
+using std.net;
+
 using std;
 
 /** Regression coverage for kernel readiness queues and their portable interface. */

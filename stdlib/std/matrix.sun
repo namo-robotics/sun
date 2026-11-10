@@ -7,6 +7,7 @@
 //   import "stdlib/std/allocator.sun";
 //   import "stdlib/std/matrix.sun";
 //   using std;
+//   using std.linalg;
 //   
 //   var allocator = make_heap_allocator();
 //   var shape: array<i64, 2> = [10, 10];
@@ -22,8 +23,8 @@
 //   // var row = m[0, :];      // First row as view
 //   // var sub = m[1:5, 2:8];  // Submatrix view
 
-/** Provides the standard-library declarations implemented in this source file. */
-public module std {
+/** Provides owning multidimensional matrices and borrowed views. */
+public module std.linalg {
 
   // Interface for types that support indexed access and slicing
   // Any class implementing this interface can use bracket indexing syntax

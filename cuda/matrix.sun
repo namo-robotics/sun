@@ -1,3 +1,5 @@
+using std.linalg;
+
 using std;
 
 /** Provides owning GPU matrices with explicit transfers and synchronous arithmetic. */

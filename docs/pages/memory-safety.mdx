@@ -197,6 +197,8 @@ When positions must stay stable, use `Vec<Option<T>>` and replace the
 occupied slot with `None`:
 
 ```sun
+using std.net;
+
 var empty: Option<TcpStream> = Option.None;
 var previous = slots.replace(index, empty);
 ```
@@ -606,6 +608,8 @@ to a name conservatively borrows **every** variable the call could hand back
 a reference into:
 
 ```sun
+using std.io;
+
 function longest(a: ref String, b: ref String) ref String {
     if (a.length() > b.length()) { return a; } else { return b; }
 }
@@ -694,6 +698,8 @@ The bound follows the value when it moves: a holder built in an inner scope
 may move outward exactly as far as the outermost variable it borrows.
 
 ```sun
+using std.io;
+
 class Holder {
     public var x: ref String;
     init(x: ref String) { this.x = x; }

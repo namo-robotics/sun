@@ -1,3 +1,5 @@
+using std.io;
+
 manifest {
   libraries: [
     "stdlib.moon",

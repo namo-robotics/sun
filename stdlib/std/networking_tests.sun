@@ -6,7 +6,7 @@
 using std;
 
 /** Tests networking behavior in the library module. */
-public module std {
+public module std.net {
 
   /** Complete a nonblocking dial through writable readiness and cancel by closing. */
   test_function nonblocking_connect_completes() {

@@ -10,6 +10,7 @@
 // deterministic. "--list-tests" prints the compiled names and source locations
 // as JSON and returns without invoking any test.
 using std;
+using std.io;
 using std.test;
 using std.thread;
 

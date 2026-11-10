@@ -4,6 +4,7 @@
 //
 // Usage:
 //   using std;
+//   using std.net;
 //
 //   // TCP Server (for HTTP, prefer HttpServer from http.sun)
 //   var listener = TcpListener();
@@ -30,8 +31,8 @@
 //   var datagram = socket.recv_from(buf);  // who sent what
 //   socket.close();
 
-/** Provides the standard-library declarations implemented in this source file. */
-public module std {
+/** Provides IPv4 addressing and TCP and UDP sockets. */
+public module std.net {
 
   /** Nonblocking connection progress; errors close the attempted connection. */
   public enum ConnectResult { Connected, Pending, Error(Error) }

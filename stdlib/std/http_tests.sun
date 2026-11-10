@@ -5,7 +5,7 @@
 using std;
 
 /** Tests http behavior in the library module. */
-public module std {
+public module std.http {
 
   /**
      * Builds "GET /index.html HTTP/1.1\r\nHost: x\r\n\r\n"
@@ -37,11 +37,11 @@ public module std {
     var incomplete = String(alloc, "GET / HTTP/1.1");
     append_crlf(incomplete);
     try std.test.assert(
-      std.find_header_end(incomplete) < 0,
+      std.http.find_header_end(incomplete) < 0,
       "incomplete headers have no terminator"
     );
     try std.test.assert(
-      std.find_header_end(complete) >= 0,
+      std.http.find_header_end(complete) >= 0,
       "complete headers have a terminator"
     );
   }
@@ -55,23 +55,23 @@ public module std {
     var s = String(alloc, "GET / HTTP/1.1\r\nHost: x\r\n\r\nbody");
     // The run starts at the CRLF that ends the last header line, not
     // after it: "GET / HTTP/1.1" (14) + CRLF (2) + "Host: x" (7) = 23.
-    try std.test.assert_eq(std.find_header_end(s), 23);
+    try std.test.assert_eq(std.http.find_header_end(s), 23);
 
     // A terminator at the very start, and one at the very end
     var lead = String(alloc, "\r\n\r\nrest");
-    try std.test.assert_eq(std.find_header_end(lead), 0);
+    try std.test.assert_eq(std.http.find_header_end(lead), 0);
     var trail = String(alloc, "ab\r\n\r\n");
-    try std.test.assert_eq(std.find_header_end(trail), 2);
+    try std.test.assert_eq(std.http.find_header_end(trail), 2);
 
     // Three CRs in a row: the match starts at the first complete run
     var tricky = String(alloc, "\r\r\n\r\n");
-    try std.test.assert_eq(std.find_header_end(tricky), 1);
+    try std.test.assert_eq(std.http.find_header_end(tricky), 1);
 
     // Never a partial match
     var cut = String(alloc, "a\r\n\r");
-    try std.test.assert(std.find_header_end(cut) < 0, "partial run must not match");
+    try std.test.assert(std.http.find_header_end(cut) < 0, "partial run must not match");
     var empty = String(alloc, "");
-    try std.test.assert(std.find_header_end(empty) < 0, "empty text has no terminator");
+    try std.test.assert(std.http.find_header_end(empty) < 0, "empty text has no terminator");
   }
 
   /** Checks response defaults and setters. */

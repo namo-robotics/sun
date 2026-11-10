@@ -5,7 +5,7 @@
 using std;
 
 /** Tests matrix behavior in the library module. */
-public module std {
+public module std.linalg {
 
   /** Checks shape inference and row-major values from a rectangular literal. */
   test_function matrix_from_literal() {

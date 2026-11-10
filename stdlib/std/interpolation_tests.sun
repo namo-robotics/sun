@@ -1,3 +1,5 @@
+using std.io;
+
 // stdlib/std/interpolation_tests.sun - Tests for string interpolation (no single source file).
 // The compile-environment cases (no stdlib, self-declared std.String, no
 // `using std;`) are in tests/modules/test_interpolation.cpp.

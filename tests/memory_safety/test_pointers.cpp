@@ -15,6 +15,7 @@
 TEST(MemorySafety_Pointers, pass_static_ptr_to_function) {
   auto value = sun::driver::executeStringWithStdlib(R"(
     using std;
+    using std.io;
     function foo(p: static_ptr<u8>) void {
         println(p);
     };

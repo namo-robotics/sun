@@ -227,6 +227,7 @@ TEST(MemorySafety, ref_scope_ends) {
 TEST(MemorySafety, matrix_use_after_move) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
     using std;
+    using std.linalg;
       
       function main() i64 {
           var allocator = make_heap_allocator();
@@ -243,6 +244,7 @@ TEST(MemorySafety, matrix_use_after_move) {
 TEST(MemorySafety, matrix_ref_borrow) {
   auto value = executeStringWithStdlib(R"(
     using std;
+    using std.linalg;
     
     function get_size(m: ref Matrix<i64>) i64 {
         return m.size();
@@ -263,6 +265,7 @@ TEST(MemorySafety, matrix_ref_borrow) {
 TEST(MemorySafety, matrix_okay) {
   auto value = executeStringWithStdlib(R"(
     using std;
+    using std.linalg;
     
     function main() i64 {
         var allocator = make_heap_allocator();

@@ -1,3 +1,6 @@
+using std.http;
+using std.io;
+
 // HTTP server: serves a small webpage on http://127.0.0.1:8080
 using std;
 

@@ -199,6 +199,8 @@ Handle an error without binding its payload with `_Result.Err(_)`. To inspect
 several concrete error payloads through one interface, use a typed borrowed arm:
 
 ```sun
+using std.io;
+
 match operation() {
     _Result.Ok(value) => use(value),
     (error: const ref IError) => println(error.message())

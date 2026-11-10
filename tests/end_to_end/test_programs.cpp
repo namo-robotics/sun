@@ -313,6 +313,7 @@ TEST(EndToEnd_Programs, func_return) {
 TEST(EndToEnd_Programs, print_i32_overload) {
   auto value = executeStringWithStdlib(R"(
     using std;
+    using std.io;
     function main() i32 {
         print(42);
         return 100;
@@ -324,6 +325,7 @@ TEST(EndToEnd_Programs, print_i32_overload) {
 TEST(EndToEnd_Programs, println_i32_overload) {
   auto value = executeStringWithStdlib(R"(
     using std;
+    using std.io;
     function main() i32 {
         println(123);
         println(-456);
@@ -336,6 +338,7 @@ TEST(EndToEnd_Programs, println_i32_overload) {
 TEST(EndToEnd_Programs, print_multiple) {
   auto value = executeStringWithStdlib(R"(
     using std;
+    using std.io;
     function main() i32 {
         var x: i32 = 10;
         print(x);
@@ -351,6 +354,7 @@ TEST(EndToEnd_Programs, print_multiple) {
 TEST(EndToEnd_Programs, print_overload_dispatch) {
   auto value = executeStringWithStdlib(R"(
     using std;
+    using std.io;
     function main() i32 {
         var a: i32 = 1;
         var b: i64 = 2;
@@ -370,6 +374,7 @@ TEST(EndToEnd_Programs, print_overload_dispatch) {
 TEST(EndToEnd_Programs, print_overload_unsigned) {
   auto value = executeStringWithStdlib(R"(
     using std;
+    using std.io;
     function main() i32 {
         var a: u32 = 7;
         var b: u64 = 9;
@@ -384,6 +389,7 @@ TEST(EndToEnd_Programs, print_overload_unsigned) {
 TEST(EndToEnd_Programs, println_no_args) {
   auto value = executeStringWithStdlib(R"(
     using std;
+    using std.io;
     function main() i32 {
         print(1);
         println();
@@ -397,6 +403,7 @@ TEST(EndToEnd_Programs, println_no_args) {
 TEST(EndToEnd_Programs, println_string_class) {
   auto value = executeStringWithStdlib(R"(
     using std;
+    using std.io;
     function main() i32 {
         var allocator = make_heap_allocator();
         var s = String(allocator, "hi");
@@ -411,6 +418,7 @@ TEST(EndToEnd_Programs, println_string_class) {
 TEST(EndToEnd_Programs, hello_world) {
   auto value = executeStringWithStdlib(R"(
     using std;
+    using std.io;
     function main() i32 {
         println("hello world");
         return 0;
@@ -422,6 +430,7 @@ TEST(EndToEnd_Programs, hello_world) {
 TEST(EndToEnd_Programs, string_variable) {
   auto value = executeStringWithStdlib(R"(
     using std;
+    using std.io;
     function main() i32 {
         var greeting: static_ptr<u8> = "Hello, Sun!";
         println(greeting);
@@ -537,6 +546,7 @@ TEST(EndToEnd_Programs, main_void_return) {
   // Test that function main() void works (return type is now required)
   auto value = executeStringWithStdlib(R"(
     using std;
+    using std.io;
     function main() void {
         println("Hello from void main!");
     };
@@ -549,6 +559,7 @@ TEST(EndToEnd_Programs, main_explicit_void_return) {
   // Test that function main() void works explicitly
   auto value = executeStringWithStdlib(R"(
     using std;
+    using std.io;
     function main() void {
         println("Explicit void return");
     };
@@ -600,6 +611,7 @@ TEST(EndToEnd_Programs, stderr_primitive_overloads) {
   testing::internal::CaptureStderr();
   auto value = executeStringWithStdlib(R"(
     using std;
+    using std.io;
     function main() i32 {
       eprint(-2147483647 - 1);
       eprint("|");
@@ -673,6 +685,7 @@ TEST(EndToEnd_Programs, string_bytes_from_const_ref) {
 TEST(EndToEnd_Programs, scalar_gemm_from_stdlib) {
   EXPECT_EQ(executeStringWithStdlib(R"(
     using std;
+    using std.linalg;
     /** Runs both floating-point specializations from the imported bundle. */
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -700,6 +713,7 @@ TEST(EndToEnd_Programs, scalar_gemm_from_stdlib) {
 TEST(EndToEnd_Programs, scalar_gemm_rejects_integer) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
     using std;
+    using std.linalg;
     /** Attempts an unsupported integer multiplication. */
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -756,6 +770,7 @@ TEST(EndToEnd_Programs, matrix_multiplication_methods_reject_integer) {
                                  "std.linalg.Transpose.None, 0)"}) {
     EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
       using std;
+      using std.linalg;
       /** Attempts a floating-point-only operation on integer matrices. */
       function main() i32 {
         var alloc = make_heap_allocator();
@@ -774,6 +789,7 @@ TEST(EndToEnd_Programs, matrix_multiplication_methods_reject_integer) {
 TEST(EndToEnd_Programs, matrix_multiplication_rejects_mixed_precision) {
   EXPECT_THROW(executeStringWithStdlib(R"(
     using std;
+    using std.linalg;
     /** Attempts to multiply matrices with different element types. */
     function main() i32 {
       var alloc = make_heap_allocator();

@@ -1,3 +1,6 @@
+using std.linalg;
+using std.io;
+
 /** Runs preallocated f32 Matrix products using the staged standard library. */
 using std;
 

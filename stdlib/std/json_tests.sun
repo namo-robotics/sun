@@ -6,13 +6,13 @@
 using std;
 
 /** Tests json behavior in the library module. */
-public module std {
+public module std.json {
 
   /** Combines assertion failures with errors from borrowed reads. */
   enum JsonChecks { Ok, Assertion(std.test.AssertionError), Read(JsonError), Bounds(IndexOutOfBoundsError) }
 
   /** Checks parse scalars. */
-  test_function parse_scalars() std.JsonChecks {
+  test_function parse_scalars() std.json.JsonChecks {
     var alloc = make_heap_allocator();
     try std.test.assert(
       (try std.test.expect_json(parse_json(alloc, "null"))).is_null(),
@@ -80,7 +80,7 @@ public module std {
   }
 
   /** Checks parse string escapes. */
-  test_function parse_string_escapes() std.JsonChecks {
+  test_function parse_string_escapes() std.json.JsonChecks {
     var alloc = make_heap_allocator();
     var s = try std.test.expect_json(parse_json(alloc, "\"a\\\"b\\\\c\\/d\\n\\t\\r\\b\\f\""));
     var text: ref String = try s.as_string();
@@ -117,7 +117,7 @@ public module std {
   }
 
   /** Checks borrowed tags before the caller resumes access to the parent object. */
-  function check_tags(tags: ref Json) std.JsonChecks {
+  function check_tags(tags: ref Json) std.json.JsonChecks {
     try std.test.assert(tags.is_array(), "tags is an array");
     try std.test.assert_eq(tags.len(), 5);
     try std.test.assert_eq(try std.test.expect_json((try tags.at(0)).as_i64()), 1);
@@ -128,11 +128,11 @@ public module std {
     );
     try std.test.assert((try tags.at(3)).is_null(), "fourth tag is null");
     try std.test.assert_eq((try (try (try tags.at(4)).get("deep")).at(0)).len(), 0);
-    return std.JsonChecks.Ok;
+    return std.json.JsonChecks.Ok;
   }
 
   /** Checks parse nested and access. */
-  test_function parse_nested_and_access() std.JsonChecks {
+  test_function parse_nested_and_access() std.json.JsonChecks {
     var alloc = make_heap_allocator();
     var doc = try std.test.expect_json(
       parse_json(
@@ -159,7 +159,7 @@ public module std {
   }
 
   /** Checks reader kind mismatch throws. */
-  test_function reader_kind_mismatch_throws() std.JsonChecks {
+  test_function reader_kind_mismatch_throws() std.json.JsonChecks {
     var alloc = make_heap_allocator();
     var codes: i32 = 0;
     var doc = try std.test.expect_json(
@@ -272,7 +272,7 @@ public module std {
   }
 
   /** Checks parse errors report offsets. */
-  test_function parse_errors_report_offsets() std.JsonChecks {
+  test_function parse_errors_report_offsets() std.json.JsonChecks {
     var alloc = make_heap_allocator();
     try std.test.assert_eq(classify_parse(alloc, ""), -2);
     try std.test.assert_eq(classify_parse(alloc, "[1, 2,]"), -2);
@@ -300,14 +300,14 @@ public module std {
   }
 
   /** Checks JSON error carries offset. */
-  test_function json_error_carries_offset() std.JsonChecks {
+  test_function json_error_carries_offset() std.json.JsonChecks {
     var e = JsonError("bad", 7);
     try std.test.assert_eq(e.code(), 60);
     try std.test.assert_eq(e.offset(), 7);
   }
 
   /** Checks deep nesting is rejected. */
-  test_function deep_nesting_is_rejected() std.JsonChecks {
+  test_function deep_nesting_is_rejected() std.json.JsonChecks {
     var alloc = make_heap_allocator();
     var text = String(alloc, "");
     for (var i: i64 = 0; i < 300; i = i + 1) {
@@ -328,7 +328,7 @@ public module std {
   }
 
   /** Checks deep but allowed nesting. */
-  test_function deep_but_allowed_nesting() std.JsonChecks {
+  test_function deep_but_allowed_nesting() std.json.JsonChecks {
     var alloc = make_heap_allocator();
     var text = String(alloc, "");
     for (var i: i64 = 0; i < 200; i = i + 1) {
@@ -344,7 +344,7 @@ public module std {
   }
 
   /** Checks build and write compact. */
-  test_function build_and_write_compact() std.JsonChecks {
+  test_function build_and_write_compact() std.json.JsonChecks {
     var alloc = make_heap_allocator();
     var obj = create_json_object(alloc);
     try std.test.expect_json_success(obj.set(String(alloc, "ok"), Json(true)));
@@ -389,7 +389,7 @@ public module std {
      * Issue #94: Json(s) moves the String in; create_json_string(alloc, ref s)
      * stores a copy so the caller can keep using the original.
      */
-  test_function json_string_copies_a_borrowed_string() std.JsonChecks {
+  test_function json_string_copies_a_borrowed_string() std.json.JsonChecks {
     var alloc = make_heap_allocator();
     var cfg = JsonConfig(String(alloc, "sun-1"));
     var req = create_json_object(alloc);
@@ -416,7 +416,7 @@ public module std {
   }
 
   /** Checks write pretty. */
-  test_function write_pretty() std.JsonChecks {
+  test_function write_pretty() std.json.JsonChecks {
     var alloc = make_heap_allocator();
     var doc = try std.test.expect_json(
       parse_json(alloc, "{\"a\":[1,{\"b\":null}],\"c\":{},\"d\":[]}")
@@ -443,7 +443,7 @@ public module std {
   }
 
   /** Checks number formatting. */
-  test_function number_formatting() std.JsonChecks {
+  test_function number_formatting() std.json.JsonChecks {
     var alloc = make_heap_allocator();
     try std.test.assert(writes_as(alloc, Json(0.1), "0.1"), "0.1");
     try std.test.assert(writes_as(alloc, Json(5.0), "5.0"), "5.0");
@@ -474,7 +474,7 @@ public module std {
   }
 
   /** Checks round trip. */
-  test_function round_trip() std.JsonChecks {
+  test_function round_trip() std.json.JsonChecks {
     var alloc = make_heap_allocator();
     var text = String(
       alloc,
@@ -494,7 +494,7 @@ public module std {
   }
 
   /** Checks control characters are escaped on write. */
-  test_function control_characters_are_escaped_on_write() std.JsonChecks {
+  test_function control_characters_are_escaped_on_write() std.json.JsonChecks {
     var alloc = make_heap_allocator();
     var s = String(alloc, "a");
     s.append_char(1);
@@ -508,7 +508,7 @@ public module std {
   }
 
   /** Checks iterate object members and array items. */
-  test_function iterate_object_members_and_array_items() std.JsonChecks {
+  test_function iterate_object_members_and_array_items() std.json.JsonChecks {
     var alloc = make_heap_allocator();
     var doc = try std.test.expect_json(
       parse_json(alloc, "{\"a\": 1, \"b\": 2, \"c\": [10, 20, 30]}")
@@ -536,7 +536,7 @@ public module std {
      * Owning payloads are dropped exactly once: building, overwriting and
      * dropping a large document must not double free or crash.
      */
-  test_function large_document_builds_and_drops() std.JsonChecks {
+  test_function large_document_builds_and_drops() std.json.JsonChecks {
     var alloc = make_heap_allocator();
     var total: i64 = 0;
     for (var round: i64 = 0; round < 3; round = round + 1) {
@@ -585,7 +585,7 @@ public module std {
   }
 
   /** Checks JSON value enum is matchable. */
-  test_function json_value_enum_is_matchable() std.JsonChecks {
+  test_function json_value_enum_is_matchable() std.json.JsonChecks {
     var alloc = make_heap_allocator();
     var doc = try std.test.expect_json(parse_json(alloc, "[null, true, 1, 1.5, \"s\", [], {}]"));
     var sum: i32 = 0;

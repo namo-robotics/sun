@@ -1,7 +1,7 @@
 using std;
 
 /** Exercises XML parsing, editing, namespaces, and serialization. */
-public module std {
+public module std.xml {
 
   /** Combines assertion and XML failures for these tests. */
   enum XmlChecks { Ok, Assertion(std.test.AssertionError), Xml(XmlError), Bounds(IndexOutOfBoundsError) }

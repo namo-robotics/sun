@@ -1,3 +1,6 @@
+using std.xml;
+using std.io;
+
 using std;
 
 /** Produces a small SVG with namespace declarations and escaped text. */

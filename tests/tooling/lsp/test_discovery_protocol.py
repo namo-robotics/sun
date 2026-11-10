@@ -160,7 +160,7 @@ class DiscoveryProtocolTests(unittest.TestCase):
 
     def test_unsaved_manifest_resolves_println(self):
         """Adding and removing a manifest updates diagnostics and library hover."""
-        source = ('using std;\n/** Prints a greeting. */\n'
+        source = ('using std; using std.io;\n/** Prints a greeting. */\n'
                   'function main() i32 { println("hello"); return 0; }\n')
         self.entry.write_text(source)
         self.open_document(self.entry)
