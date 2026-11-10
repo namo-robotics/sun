@@ -79,11 +79,4 @@ int reportSunError(const sun::support::SunError& error);
  */
 int reportUnexpectedError(const std::exception& error);
 
-/**
- * True when the error says the program declares no test functions. Config
- * runs treat that as "nothing to do" rather than a failure, since a library
- * may simply have no tests yet.
- */
-bool isNoTestsError(const sun::support::SunError& error);
-
 }  // namespace sun::cli

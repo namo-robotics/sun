@@ -237,6 +237,7 @@ bool MoonWriter::write(const std::filesystem::path& outputPath) {
   if (!versionName_.empty()) {
     bundleMetadata.set_version_name(versionName_);
   }
+  bundleMetadata.set_has_tests(hasTests_);
   std::ofstream out(outputPath, std::ios::binary);
   if (!out) {
     error_ = "Failed to open output file: " + outputPath.string();

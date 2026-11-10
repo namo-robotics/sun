@@ -140,11 +140,12 @@ export function activateTestExplorer(
     return undefined;
   }
 
-  /** Show only actionable build status beside each suite. */
-  function suiteDescription(suite: Suite): string | undefined {
-    if (suite.freshness === 'missing') return 'Build required';
-    if (suite.listing_version !== 1) return 'Rebuild required for test discovery';
-    return warning(suite);
+  /** Labels entrypoints and preserves actionable build warnings. */
+  function suiteDescription(suite: Suite): string {
+    if (suite.freshness === 'missing') return 'Entrypoint · Build required';
+    if (suite.listing_version !== 1) return 'Entrypoint · Rebuild required for test discovery';
+    const status = warning(suite);
+    return status ? `Entrypoint · ${status}` : 'Entrypoint';
   }
 
   /** Coalesces save and watcher events before requesting another inventory. */
@@ -264,6 +265,7 @@ export function activateTestExplorer(
         let group = parent.children.get(id);
         if (!group) {
           group = controller.createTestItem(id, segment);
+          group.description = 'Module';
           targets.set(group, { entrypoint: suite.entrypoint, dottedName: '' });
           parent.children.add(group);
         }
@@ -301,6 +303,7 @@ export function activateTestExplorer(
         let group = packages.get(suite.package_id);
         if (!group) {
           group = controller.createTestItem(`package::${suite.package_id}`, suite.package_id);
+          group.description = 'Package';
           packages.set(suite.package_id, group);
           topLevel.push(group);
         }
@@ -343,6 +346,15 @@ export function activateTestExplorer(
           run.identity = identity;
           cache.set(suite.test_binary, { identity, tests });
           publishTests(root, suite, tests);
+          if (tests.length === 0 && suite.freshness === 'fresh') {
+            const group = suite.package_id ? packages.get(suite.package_id) : undefined;
+            if (group) {
+              group.children.delete(root.id);
+              if (group.children.size === 0) controller.items.delete(group.id);
+            } else {
+              controller.items.delete(root.id);
+            }
+          }
           total += tests.length;
         } catch (error) {
           if (disposed || generation !== refreshGeneration) return;

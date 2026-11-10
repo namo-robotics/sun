@@ -131,12 +131,9 @@ TEST(EndToEnd_Testing, a_returned_error_fails_the_test) {
             1);
 }
 
-// Test mode without any test functions is an error, not an empty pass.
-TEST(EndToEnd_Testing, no_tests_found_is_an_error) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeTestsWithStdlib(R"(
-    function main() i32 { return 0; }
-  )"),
-                                "no test functions found");
+/** An empty runner succeeds rather than treating absence as a compiler error. */
+TEST(EndToEnd_Testing, empty_test_suite_succeeds) {
+  EXPECT_EQ(executeTestsWithStdlib("function main() i32 { return 0; }"), 0);
 }
 
 // Tests need std.test, so a test build without the standard library is

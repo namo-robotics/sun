@@ -65,7 +65,10 @@ public module std.signal {
     while (unsafe { c_write(shared.writer, _address_of<u8>(byte), 1); } == 1) {}
     try std.test.assert_eq(errno(), WOULD_BLOCK_ERRNO);
     unsafe { _store<i32>(errno_ptr(), 0, 123); };
-    unsafe { test_raise(std.process.SIGINT); test_raise(std.process.SIGTERM); };
+    unsafe {
+      test_raise(std.process.SIGINT);
+      test_raise(std.process.SIGTERM);
+    };
     try std.test.assert_eq(errno(), 123);
     var full = try std.test.expect_system(subscription.take_pending());
     try std.test.assert(full.interrupted() and full.terminated());

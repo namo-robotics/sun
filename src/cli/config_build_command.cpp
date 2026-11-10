@@ -22,6 +22,7 @@
 #include "cli/compile_command.h"
 #include "cli/option_parser.h"
 #include "driver/build_graph.h"
+#include "driver/build_record.h"
 #include "driver/git_source.h"
 #include "driver/manifest_processor.h"
 #include "driver/package.h"
@@ -66,15 +67,13 @@ int buildLibrary(const CompileJob& job) {
       0) {
     return 1;
   }
-  if (job.noTest) {
+  const auto record = sun::driver::readBuildRecord(moonPath.string());
+  if (job.noTest || (record && !record->hasTests)) {
     return 0;
   }
   try {
     return compileTestBinary(job);
   } catch (const sun::support::SunError& e) {
-    if (isNoTestsError(e)) {
-      return 0;
-    }
     return reportSunError(e);
   } catch (const std::exception& e) {
     return reportUnexpectedError(e);

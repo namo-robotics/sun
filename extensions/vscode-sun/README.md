@@ -73,7 +73,8 @@ definitions override the settings above.
 ## Test Explorer
 
 The **Sun Test Explorer** groups tests by `package_id`, entrypoint name, and
-module/namespace. Nested modules appear as nested groups, including when their
+module/namespace. Each group shows its type beside its title: **Package**,
+**Entrypoint**, or **Module**. Nested modules appear as nested groups, including when their
 tests span multiple source files. Tests outside a module appear directly under
 their entrypoint. Each test links to its source location. Entrypoints without a
 package identifier remain at the top level.
@@ -82,10 +83,19 @@ Discovery checks both the workspace build directory and each project's standalon
 build directory. A fresh build wins over a stale or missing build; when both are
 fresh, the workspace build wins. Library paths are resolved separately for each
 build. The output channel records the selected executable's full path; suite
-descriptions show only build warnings. The same executable is used to list and
-run tests. Both locations are watched for rebuilds. A build with no tests hides
-its entrypoint while its sources and configuration remain unchanged. Rebuilding
-a dependency library does not make that entrypoint appear in Test Explorer.
+entrypoint descriptions also show build warnings. The same executable is used to list and
+run tests. Both locations are watched for rebuilds.
+
+Executables and `.moon` libraries record whether a test binary should be built.
+Inline test functions or a nonempty `test_files` list set this flag, even when
+the listed files contain no tests. Fresh build metadata can hide entrypoints
+that do not produce test binaries. Unbuilt or changed entrypoints require a
+build before discovery can determine whether they have tests. Separate
+`.no-tests` files are no longer used.
+
+`--no-test` skips the test build without changing that flag. A missing test
+binary remains **Build required**. An empty runner lists zero tests and exits
+successfully; Test Explorer hides it when its build is fresh.
 
 Test Explorer asks `sun-lsp` for configured suites and expected test binaries,
 then runs each supported binary with `--list-tests`. Suites appear immediately;

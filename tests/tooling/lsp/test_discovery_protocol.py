@@ -578,6 +578,30 @@ class DiscoveryProtocolTests(unittest.TestCase):
         os.utime(entry, ns=(newer, newer))
         self.assertEqual(self.request("sun/testSuites")["suites"][0]["freshness"], "missing")
 
+    def test_library_records_expected_runner_and_builds_empty_tests(self):
+        """A test-files manifest needs a runner even when its listing is empty."""
+        self.source.write_text("// Tests can be added later.\n")
+        self.config.write_text(json.dumps({"entrypoints": [{
+            "path": self.entry.name, "type": "library", "name": "suite"}]}))
+        binary = Path(self.request("sun/testSuites")["suites"][0]["test_binary"])
+        for flags in (["--no-test"], []):
+            built = subprocess.run([str(COMPILER), "build", "--config", str(self.config), *flags],
+                                   cwd=WORKSPACE, capture_output=True, text=True, timeout=90)
+            self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
+            suite = self.request("sun/testSuites")["suites"][0]
+            self.assertEqual(suite["freshness"], "missing" if flags else "fresh", built.stdout + built.stderr + str(suite))
+        listed = subprocess.run([str(binary), "--list-tests"], capture_output=True, text=True, timeout=10)
+        self.assertEqual(listed.returncode, 0, listed.stderr)
+        self.assertEqual(json.loads(listed.stdout)["tests"], [])
+        executed = subprocess.run([str(binary), "--test-sequential"], capture_output=True, text=True, timeout=10)
+        self.assertEqual(executed.returncode, 0, executed.stdout + executed.stderr)
+        self.assertFalse(Path(str(binary) + ".no-tests").exists())
+        self.entry.write_text("manifest {}\npublic function value() i32 { return 1; }\n")
+        built = subprocess.run([str(COMPILER), "build", "--config", str(self.config), "--no-test"],
+                               cwd=WORKSPACE, capture_output=True, text=True, timeout=90)
+        self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
+        self.assertEqual(self.request("sun/testSuites")["suites"], [])
+
     def test_test_file_runs_through_its_configured_entrypoint(self):
         """The discovered entrypoint and dotted name form a working test command."""
         self.configure([self.entry])

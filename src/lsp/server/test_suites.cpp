@@ -178,7 +178,7 @@ static TestBuildInspection inspectTestBuild(
   } catch (const std::exception& error) {
     problem = error.what();
   }
-  // Rebuilding a library cannot add test declarations to this entrypoint.
+  // Dependency rebuilds do not change whether a test binary is expected.
   const auto declarationInputs = inputs;
   inputs.insert(artifacts.begin(), artifacts.end());
   const auto& binary = entry.testBinaryName;
@@ -207,16 +207,11 @@ static TestBuildInspection inspectTestBuild(
     }
   }
   bool hide = false;
-  // Trust non-test metadata while sources and configuration are unchanged,
-  // even when dependency artifacts have been rebuilt.
-  if (freshness.status != "fresh" && problem.empty() &&
-      !entry.outputName.empty()) {
+  if (freshness.status != "fresh" && problem.empty()) {
     const auto production = sun::driver::readBuildRecord(entry.outputName);
-    if (production && !production->hasTests &&
+    hide = production && !production->hasTests &&
         checkTestFreshness(entry.outputName, declarationInputs, problem).status ==
-            "fresh") {
-      hide = true;
-    }
+            "fresh";
   }
   llvm::json::Object suite;
   suite["entrypoint"] = path;

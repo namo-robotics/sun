@@ -229,7 +229,7 @@ test('legacy, missing, and replaced binaries are not launched for discovery', as
     h.start(); await flush();
     assert.equal(h.commands.length, 0, scenario);
     const root = h.controller.items.get(suite.entrypoint);
-    assert.match(root.description ?? root.error, /[Bb]uild|changed/);
+    assert.match(root.error ?? root.description, /[Bb]uild|changed/);
     h.dispose();
   }
 });
@@ -580,8 +580,9 @@ test('cancellation during inventory skips queued tests without starting processe
 });
 
 /** A previously empty suite can populate during refresh without a false removal error. */
-test('an empty suite gains queued leaves when discovery finishes', async () => {
+test('a stale empty suite gains queued leaves when discovery finishes', async () => {
   const h = harness(); h.client.response = listing('/workspace/main.sun');
+  h.client.response.suites[0].freshness = 'stale';
   h.options.listingText = JSON.stringify({ version: 1, tests: [] });
   h.start(); await flush();
   const root = h.controller.items.get('/workspace/main.sun');
@@ -648,14 +649,15 @@ test('package groups contain named entrypoints and run their selected binaries',
   assert.equal(h.controller.items.size, 1);
   const group = h.controller.items.get('package::example/library');
   assert.equal(group.label, 'example/library');
+  assert.equal(group.description, 'Package');
   assert.equal(h.controller.label, 'Sun Test Explorer');
   assert.deepEqual([...group.children.values()].map(item => item.label), ['unit', 'integration']);
-  assert.equal(group.children.get('/workspace/one.sun').description, undefined);
-  assert.equal(group.children.get('/workspace/two.sun').description, undefined);
+  assert.equal(group.children.get('/workspace/one.sun').description, 'Entrypoint');
+  assert.equal(group.children.get('/workspace/two.sun').description, 'Entrypoint');
   await h.controller.run({ include: [group] }, token());
   assert.equal(h.runs[0].passed.length, 4);
   assert.equal(h.runs[0].errors.length, 0);
-  assert.equal(group.children.get('/workspace/one.sun').description, undefined);
+  assert.equal(group.children.get('/workspace/one.sun').description, 'Entrypoint');
   h.dispose();
 });
 
@@ -675,10 +677,12 @@ test('modules group tests across files and run only selected descendants', async
   const root = h.controller.items.get('/workspace/main.sun');
   assert.deepEqual([...root.children.values()].map(item => item.label), ['acceptance', 'unit', 'global_test']);
   const acceptance = root.children.get('/workspace/main.sun::module::acceptance');
+  assert.equal(acceptance.description, 'Module');
   assert.deepEqual([...acceptance.children.values()].map(item => item.label), ['first', 'second', 'http']);
   const second = acceptance.children.get('/workspace/main.sun::acceptance.second');
   assert.equal(second.uri.fsPath, '/workspace/other.sun');
   const http = acceptance.children.get('/workspace/main.sun::module::acceptance.http');
+  assert.equal(http.description, 'Module');
   assert.equal(http.children.get('/workspace/main.sun::acceptance.http.first').label, 'first');
   await h.controller.run({ include: [acceptance], exclude: [http] }, token());
   assert.deepEqual(h.commands.filter(command => command.args.includes('--test-filter'))
@@ -702,5 +706,18 @@ test('standalone selection replaces the workspace binary before execution', asyn
   await h.controller.run({ include: [selected] }, token());
   assert.equal(h.runs[0].passed.length, 2);
   assert.equal(h.commands.at(-1).command, '/project/.sun/main_test');
+  h.dispose();
+});
+
+/** Empty fresh suites disappear; stale empty listings still signal a rebuild. */
+test('empty listings hide only fresh suites and remove empty packages', async () => {
+  const h = harness();
+  h.client.response = listing('/workspace/empty.sun', '/workspace/stale.sun');
+  h.client.response.suites[0].package_id = 'empty/package';
+  h.client.response.suites[1].freshness = 'stale';
+  h.options.listingText = JSON.stringify({ version: 1, tests: [] });
+  h.start(); await flush();
+  assert.equal(h.controller.items.has('package::empty/package'), false);
+  assert.match(h.controller.items.get('/workspace/stale.sun').description, /Needs rebuild/);
   h.dispose();
 });

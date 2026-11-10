@@ -94,6 +94,9 @@ class MoonWriter {
   /** Sets an optional human-readable name without changing compatibility. */
   void setVersionName(const std::string& name) { versionName_ = name; }
 
+  /** Records the producing entrypoint's tests, excluding imported libraries. */
+  void setHasTests(bool present) { hasTests_ = present; }
+
   /** Retains all requirements of code embedded from a validated dependency. */
   void inheritContract(const abi::BundleContract& contract);
   /** Records additional producer-declared requirements for packaged archives.
@@ -147,6 +150,7 @@ class MoonWriter {
   abi::BundleContract contract_;
   std::string bundleHash_;
   std::string versionName_;
+  bool hasTests_ = false;
   std::string error_;
 };
 

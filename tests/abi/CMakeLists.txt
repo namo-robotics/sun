@@ -84,7 +84,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
         add_test(NAME ABI_Compatibility.GenericCPUExecution
             COMMAND ${SUN_ABI_QEMU_X86_64} -cpu Nehalem
                 ${CMAKE_BINARY_DIR}/stdlib_tests_test
-                --test-sequential --test-filter std.linalg_tests
+                --test-sequential --test-filter std.linalg
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
         set_tests_properties(ABI_Compatibility.GenericCPUExecution PROPERTIES
             PASS_REGULAR_EXPRESSION "[1-9][0-9]* passed, 0 failed")

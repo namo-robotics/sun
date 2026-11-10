@@ -64,6 +64,7 @@ message MoonLibrary {
   repeated LibraryArchive native_archives = 4;
   // Human-readable name, excluded from compatibility decisions.
   optional string version_name = 5;
+  optional bool has_tests = 6;
 }
 
 /**

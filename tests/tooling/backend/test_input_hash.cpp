@@ -480,3 +480,40 @@ TEST(Tooling_Backend_InputHash, config_version_name_reaches_each_library) {
     EXPECT_EQ(reader->getLibrary().version_name(), "v1.0.0");
   }
 }
+
+/** Shared module names do not export declarations from test-only source files. */
+TEST(Tooling_Backend_InputHash, test_only_declarations_stay_out_of_library) {
+  if (!haveSunBinary()) {
+    GTEST_SKIP() << "build/sun not found";
+  }
+  Scratch scratch("test_only_exports");
+  writeFile(scratch.path("library.sun"), R"(
+manifest { test_files: ["checks.sun"] }
+/** Production API shared with the test module. */
+public module sample {
+  /** Returns a value that consumers may use. */
+  public function library_value() i32 { return 7; }
+}
+)");
+  writeFile(scratch.path("checks.sun"), R"(
+/** Test-only declarations deliberately use the production module name. */
+public module sample {
+  /** A public helper must still remain outside the library. */
+  public function test_only_helper() i32 { return 9; }
+  /** A public type must still remain outside the library. */
+  public enum TestOnlyType { Value }
+  /** A test may call the module's production function. */
+  test_function test_only_case() { var value = library_value(); }
+}
+)");
+  const auto moon = scratch.path("library.moon");
+  scratch.runSun("--emit-moon -o " + moon + " " + scratch.path("library.sun"));
+  auto reader = sun::moon_bundling::MoonReader::open(moon);
+  ASSERT_TRUE(reader);
+  const auto metadata = reader->getLibrary().DebugString();
+  EXPECT_TRUE(contains(metadata, "library_value"));
+  EXPECT_FALSE(contains(metadata, "test_only_helper"));
+  EXPECT_FALSE(contains(metadata, "TestOnlyType"));
+  EXPECT_FALSE(contains(metadata, "test_only_case"));
+  EXPECT_TRUE(reader->getLibrary().has_tests());
+}

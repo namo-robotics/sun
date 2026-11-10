@@ -97,6 +97,18 @@ std::optional<BuildRecord> readBuildRecord(const std::string& path) {
   if (!std::filesystem::is_regular_file(path, ec)) {
     return std::nullopt;
   }
+  if (std::filesystem::path(path).extension() == ".moon") {
+    try {
+      auto reader = sun::moon_bundling::MoonReader::open(path);
+      if (!reader || !reader->getLibrary().has_has_tests()) {
+        return std::nullopt;
+      }
+      const auto& library = reader->getLibrary();
+      return BuildRecord{library.content_hash(), library.has_tests(), false};
+    } catch (const std::exception&) {
+      return std::nullopt;
+    }
+  }
   auto binary = llvm::object::ObjectFile::createObjectFile(path);
   if (!binary) {
     llvm::consumeError(binary.takeError());

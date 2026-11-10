@@ -1,5 +1,5 @@
 /** Regression tests for bounded byte storage and native-endian decoding. */
-public module std.bytes_tests {
+public module std {
 
   /** Checks boundaries, unaligned decoding, signed values, and overflow-sized offsets. */
   test_function native_decoding_checks_slice_bounds() {
