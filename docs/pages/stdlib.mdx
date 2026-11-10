@@ -1238,6 +1238,20 @@ storage; errors own diagnostic messages. The older `accept`, `recv`, and `send`
 methods still report would-block through `SystemResult.Error`, recognized by
 `is_would_block(error.code())`.
 
+### Nonblocking connection establishment
+
+`TcpStream.start_connect(address, port)` opens an unopened stream with nonblocking
+and close-on-exec flags. It returns `ConnectResult.Connected`, `Pending`, or
+`Error(error)`. For `Pending`, register the descriptor for writable/error readiness,
+then call `finish_connect()` to inspect the socket's completion status. Do not treat
+writable readiness alone as a successful connection. Failed attempts close the
+new descriptor. `close()` cancels a pending attempt; applications enforce deadlines
+using their monotonic clock and poller. Existing blocking connect methods are unchanged.
+
+`UdpSocket.set_multicast_interface(address)` selects the outgoing IPv4 multicast
+interface after binding. This is separate from `join_multicast(group, address)`,
+which selects the interface on which to receive group traffic.
+
 ### Socket configuration and broken pipes
 
 `TcpListener.bind(address, port, reuse_address, reuse_port)` applies checked

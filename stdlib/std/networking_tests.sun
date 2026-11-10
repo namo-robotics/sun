@@ -11,6 +11,72 @@ public module std {
   /** Groups tests for the networking library behavior. */
   module networking_tests {
 
+    /** Complete a nonblocking dial through writable readiness and cancel by closing. */
+    test_function nonblocking_connect_completes() {
+      var alloc = make_heap_allocator();
+      var listener = TcpListener();
+      try std.test.expect_system_success(listener.bind_loopback(0));
+      try std.test.expect_system_success(listener.listen(4));
+      var stream = TcpStream();
+      var port = try std.test.expect_system(listener.local_port());
+      match stream.start_connect(ipv4_loopback(), port) {
+        ConnectResult.Connected => {},
+        ConnectResult.Pending => {
+          var poller = std.io.Poller(alloc);
+          poller.add_write(stream.get_fd());
+          var ready = try std.test.expect_system(poller.wait(1000));
+          try std.test.assert(ready > 0, "dial becomes ready");
+          match stream.finish_connect() {
+            ConnectResult.Connected => {},
+            _ => {
+              try std.test.assert(false, "dial succeeds");
+            }
+          };
+        },
+        ConnectResult.Error(_) => {
+          try std.test.assert(false, "dial starts");
+        }
+      };
+      var accepted = try std.test.expect_system(listener.accept());
+      stream.close();
+      try std.test.assert(not stream.is_open(), "close releases the dial");
+    }
+
+    /** A refused asynchronous connection reports failure and releases its descriptor. */
+    test_function nonblocking_connect_refused() {
+      var alloc = make_heap_allocator();
+      var listener = TcpListener();
+      try std.test.expect_system_success(listener.bind_loopback(0));
+      var port = try std.test.expect_system(listener.local_port());
+      var stream = TcpStream();
+      match stream.start_connect(ipv4_loopback(), port) {
+        ConnectResult.Error(_) => {},
+        ConnectResult.Pending => {
+          var poller = std.io.Poller(alloc);
+          poller.add_write(stream.get_fd());
+          var ready = try std.test.expect_system(poller.wait(1000));
+          try std.test.assert(ready > 0, "refusal becomes ready");
+          match stream.finish_connect() {
+            ConnectResult.Error(_) => {},
+            _ => {
+              try std.test.assert(false, "refusal is an error");
+            }
+          };
+        },
+        _ => {
+          try std.test.assert(false, "unlistened port cannot connect");
+        }
+      };
+      try std.test.assert(not stream.is_open(), "failed dial closes");
+    }
+
+    /** Select an explicit outgoing multicast interface on a bound socket. */
+    test_function multicast_select_interface() {
+      var socket = UdpSocket();
+      try std.test.expect_system_success(socket.bind(ipv4_any(), 0));
+      try std.test.expect_system_success(socket.set_multicast_interface(ipv4_loopback()));
+    }
+
     /** Check socket ownership with stdin closed in an isolated process. */
     test_function sockets_can_own_descriptor_zero() {
       var pid: i32 = try std.test.expect_system(std.process.fork());

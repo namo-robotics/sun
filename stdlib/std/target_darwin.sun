@@ -54,6 +54,12 @@ public module std {
   const SO_NOSIGPIPE: i32 = 4130;  // 0x1022
 
   // IPPROTO_IP-level options for IPv4 multicast.
+  /** Native socket connection progress status. */
+  const CONNECT_PENDING_ERRNO: i32 = 36;
+  /** Socket option reporting asynchronous connection failure. */
+  const SOCKET_ERROR_OPTION: i32 = 4103;
+  /** Select the outgoing IPv4 multicast interface. */
+  const MULTICAST_INTERFACE_OPTION: i32 = 9;
   public const IP_MULTICAST_TTL: i32 = 10;
   public const IP_MULTICAST_LOOP: i32 = 11;
   public const IP_ADD_MEMBERSHIP: i32 = 12;

@@ -146,7 +146,7 @@
                     "match": "\\bmethod(?=\\s+[A-Za-z_])"
                 },
                 {
-                    "name": "keyword.operator.word.sun",
+                    "name": "keyword.operator.wordlike.sun",
                     "match": "\\b(?:and|or|not)\\b"
                 },
                 {

@@ -33,6 +33,9 @@
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
 
+  /** Nonblocking connection progress; errors close the attempted connection. */
+  public enum ConnectResult { Connected, Pending, Error(Error) }
+
   /** A newly owned connection, routine would-block, or an actual accept failure. */
   public enum AcceptResult { Accepted(TcpStream), WouldBlock, Error(Error) }
 
@@ -282,6 +285,59 @@ public module std {
 
   /** A TCP connection that starts without an open socket. */
   public class TcpStream {
+    /** Start a nonblocking connection on an unopened stream; close on setup failure. */
+    public method start_connect(addr: const ref Ipv4Addr, port: i32) ConnectResult {
+      if (this.is_open() or port < 1 or port > 65535) {
+        return ConnectResult.Error(Error(22, "invalid connection state or port"));
+      }
+      this.fd = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
+      if (this.fd < 0) {
+        return ConnectResult.Error(Error(errno(), "socket failed"));
+      }
+      this.owns_fd = true;
+      match configure_accepted_socket(this.fd) {
+        SystemResult.Ok => {},
+        SystemResult.Error(error) => {
+          this.close();
+          return ConnectResult.Error(error);
+        }
+      };
+      if (unsafe { __connect_ipv4(this.fd, addr.to_network_i32(), port); } == 0) {
+        return ConnectResult.Connected;
+      }
+      var code = errno();
+      if (code == CONNECT_PENDING_ERRNO or is_interrupted(code)) {
+        return ConnectResult.Pending;
+      }
+      this.close();
+      return ConnectResult.Error(Error(code, "connection failed"));
+    }
+
+    /** Check a pending connection after writable/error readiness; close on failure. */
+    public method finish_connect() ConnectResult {
+      var code: i32 = 0;
+      var length: u32 = 4;
+      if (unsafe {
+        c_getsockopt(
+          this.fd,
+          SOL_SOCKET,
+          SOCKET_ERROR_OPTION,
+          _address_of<i32>(code),
+          _address_of<u32>(length)
+        );
+      } < 0) {
+        code = errno();
+      }
+      if (code == CONNECT_PENDING_ERRNO) {
+        return ConnectResult.Pending;
+      }
+      if (code != 0) {
+        this.close();
+        return ConnectResult.Error(Error(code, "connection failed"));
+      }
+      return ConnectResult.Connected;
+    }
+
     /** Read bounded storage, retrying interruptions and distinguishing EOF and would-block. */
     public method try_read(buffer: ref MutableByteSlice) std.io.ReadResult {
       if (buffer.size() == 0) {
@@ -833,6 +889,17 @@ public module std {
   // comes first; a send-only socket binds port 0 and lets the OS pick.
   /** A UDP socket that starts closed. */
   public class UdpSocket {
+    /** Select the local IPv4 address used for outgoing multicast datagrams. */
+    public method set_multicast_interface(addr: const ref Ipv4Addr) SystemResult<void> {
+      var value = addr.to_network_i32();
+      if (unsafe {
+        __setsockopt(this.fd, IPPROTO_IP, MULTICAST_INTERFACE_OPTION, _address_of<i32>(value), 4);
+      } < 0) {
+        return SystemResult.Error(Error(errno(), "failed to select multicast interface"));
+      }
+      return SystemResult.Ok;
+    }
+
     var fd: i32 = -1;
     // Moves clear this flag, while an owned descriptor may be zero.
     var owns_fd: bool = false;
