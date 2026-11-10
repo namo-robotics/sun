@@ -457,6 +457,54 @@ TEST_F(GitSourceTest, BuildsTransitiveDependenciesAndRefreshesOnce) {
   }
 }
 
+/** Direct and transitive imports share a build and accept each other's values. */
+TEST_F(GitSourceTest, SharesTypesAcrossDirectAndTransitiveDependencies) {
+  write(dir / "sun-config.json", readConfigFixture("consumer.json"));
+  write(dir / "repos/top.git/sun-config.json", readConfigFixture("top.json"));
+  write(dir / "repos/leaf.git/sun-config.json", readConfigFixture("leaf.json"));
+  write(dir / "repos/leaf.git/leaf.sun", R"sun(
+    /** Supplies the shared value type. */
+    public module leaf {
+      /** Carries a value across library boundaries. */
+      public class Value {
+        public var number: i32;
+        /** Initializes the stored number. */
+        init(number: i32) { this.number = number; }
+      }
+    }
+  )sun");
+  write(dir / "repos/top.git/top.sun", R"sun(
+    manifest { libraries: ["$LEAF/lib/leaf.moon"] }
+    /** Consumes the shared value type. */
+    public module top {
+      /** Reads a value supplied by the caller. */
+      public function answer(value: const ref leaf.Value) i32 {
+        return value.number;
+      }
+    }
+  )sun");
+  write(dir / "main.sun", R"sun(
+    manifest { libraries: ["$LEAF/lib/leaf.moon", "$LIB/lib/top.moon"] }
+    /** Passes a directly imported value to a transitive consumer. */
+    function main() i32 {
+      var value = leaf.Value(42);
+      return top.answer(value);
+    }
+  )sun");
+  sun::driver::GitDependencyBuildScope scope(false, true);
+  auto config = sun::driver::configureBuildPaths(
+      sun::driver::loadConfigGraph(dir / "sun-config.json"),
+      sun::driver::SunConfig::loadFile(dir / "sun-config.json"));
+  auto topConfig = sun::driver::configureBuildPaths(
+      sun::driver::loadConfigGraph(dir / "repos/top.git/sun-config.json"),
+      sun::driver::SunConfig::loadFile(dir / "repos/top.git/sun-config.json"));
+  EXPECT_EQ(sun::driver::resolveConfigDependency(config, "LEAF"),
+            sun::driver::resolveConfigDependency(topConfig, "LEAF"));
+  auto driver = sun::driver::Driver::createForJIT("diamond_dependency_test");
+  EXPECT_EQ(std::get<int32_t>(driver->executeFile((dir / "main.sun").string())),
+            42);
+}
+
 /** Unavailable target descriptors stay lazy and cannot silently use host
  * sources. */
 TEST_F(GitSourceTest, KeepsUnavailableSourceDependenciesLazy) {

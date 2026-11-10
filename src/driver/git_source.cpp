@@ -304,19 +304,30 @@ std::filesystem::path resolveGitDependency(const SunConfig& consumer,
   if (refresh) {
     refreshedDependencies.insert(repository);
   }
-  // Keep the consumer and its dependencies on the same local libraries.
+  // Configured repositories share builds across consumers; direct sources
+  // still inherit the importing project's configuration.
+  std::string buildIdentity = selection + "\n" + inputFile.string() + "\n" +
+                              (direct ? consumer.configDir.string() : "");
+  const auto build = consumer.pathVariables.find("SUN_BUILD");
+  const auto consumerOutput = build == consumer.pathVariables.end()
+                                  ? fs::path{}
+                                  : fs::path(build->second).lexically_normal();
   std::vector<std::string> consumerPaths;
   for (const auto& path : consumer.sunPath) {
-    consumerPaths.push_back(
-        ManifestProcessor::expandPathVariables(path, &consumer));
+    auto expanded = ManifestProcessor::expandPathVariables(path, &consumer);
+    // Inherit explicit search paths, excluding the automatic output directory.
+    if (!direct && !consumerOutput.empty() &&
+        fs::path(expanded).lexically_normal() == consumerOutput) {
+      continue;
+    }
+    buildIdentity += "\n" + expanded;
+    consumerPaths.push_back(std::move(expanded));
   }
   const auto settings =
       std::string(dependencyOptions.debugInfo ? "debug" : "release") +
       (dependencyOptions.optimize ? "-optimized" : "-unoptimized");
   const auto output = cacheDirectory() / "builds" /
-                      sun::moon_bundling::computeSha256Hex(
-                          selection + "\n" + inputFile.string() + "\n" +
-                          consumer.configDir.string()) /
+                      sun::moon_bundling::computeSha256Hex(buildIdentity) /
                       configTargetKey(consumer.targetTriple) / settings;
   auto checkout = inputFile.parent_path();
   while (!fs::is_directory(checkout / ".sun-git-source")) {
