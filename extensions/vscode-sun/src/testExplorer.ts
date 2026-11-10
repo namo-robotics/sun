@@ -140,11 +140,11 @@ export function activateTestExplorer(
     return undefined;
   }
 
-  /** Keep discovery and run-time descriptions consistent, including the selected build. */
+  /** Show only actionable build status beside each suite. */
   function suiteDescription(suite: Suite): string | undefined {
     if (suite.freshness === 'missing') return 'Build required';
     if (suite.listing_version !== 1) return 'Rebuild required for test discovery';
-    return warning(suite) || (suite.build_location ? `${suite.build_location} build` : undefined);
+    return warning(suite);
   }
 
   /** Coalesces save and watcher events before requesting another inventory. */
@@ -251,26 +251,31 @@ export function activateTestExplorer(
     });
   }
 
-  /** Replaces one suite's children using locations captured at build time. */
+  /** Groups compiled tests by module, retaining source locations on test items. */
   function publishTests(root: vscode.TestItem, suite: Suite, tests: BinaryTest[]): void {
-    const files = new Map<string, vscode.TestItem>();
+    root.children.replace([]);
     for (const test of tests) {
-      const fileKey = test.file || suite.entrypoint;
-      let file = files.get(fileKey);
-      if (!file) {
-        file = controller.createTestItem(`${suite.entrypoint}::file::${fileKey}`,
-          path.basename(fileKey), vscode.Uri.file(fileKey));
-        targets.set(file, { entrypoint: suite.entrypoint, dottedName: '' });
-        files.set(fileKey, file);
+      let parent = root;
+      const segments = test.id.split('.').slice(0, -1);
+      let modulePath = '';
+      for (const segment of segments) {
+        modulePath = modulePath ? `${modulePath}.${segment}` : segment;
+        const id = `${suite.entrypoint}::module::${modulePath}`;
+        let group = parent.children.get(id);
+        if (!group) {
+          group = controller.createTestItem(id, segment);
+          targets.set(group, { entrypoint: suite.entrypoint, dottedName: '' });
+          parent.children.add(group);
+        }
+        parent = group;
       }
       const item = controller.createTestItem(`${suite.entrypoint}::${test.id}`, test.label,
         test.file ? vscode.Uri.file(test.file) : undefined);
       item.range = new vscode.Range(test.range.start.line, test.range.start.character,
         test.range.end.line, test.range.end.character);
       targets.set(item, { entrypoint: suite.entrypoint, dottedName: test.id });
-      file.children.add(item);
+      parent.children.add(item);
     }
-    root.children.replace([...files.values()]);
   }
 
   /** Publishes roots first, then fills them with at most two listing processes. */

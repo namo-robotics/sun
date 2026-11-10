@@ -141,6 +141,7 @@ static TestBuildInspection inspectTestBuild(
     scope.emplace(*candidate.graph);
   }
   std::set<std::string> inputs = candidate.configs;
+  std::set<std::string> artifacts;
   inputs.insert(path);
   std::string problem = configurationError;
   try {
@@ -151,10 +152,10 @@ static TestBuildInspection inspectTestBuild(
                     manifest->testSunFiles.end());
       inputs.insert(manifest->protoFiles.begin(), manifest->protoFiles.end());
       for (const auto& moon : manifest->moonImports) {
-        inputs.insert(moon.path);
+        artifacts.insert(moon.path);
       }
       for (const auto& archive : manifest->nativeArchives) {
-        inputs.insert(archive.path);
+        artifacts.insert(archive.path);
       }
     } else {
       problem = "Cannot resolve entrypoint manifest: " + path;
@@ -177,6 +178,9 @@ static TestBuildInspection inspectTestBuild(
   } catch (const std::exception& error) {
     problem = error.what();
   }
+  // Rebuilding a library cannot add test declarations to this entrypoint.
+  const auto declarationInputs = inputs;
+  inputs.insert(artifacts.begin(), artifacts.end());
   const auto& binary = entry.testBinaryName;
   std::error_code ec;
   const bool exists = !binary.empty() && fs::is_regular_file(binary, ec);
@@ -203,12 +207,13 @@ static TestBuildInspection inspectTestBuild(
     }
   }
   bool hide = false;
-  // Fresh production metadata can prove that this target has no tests.
+  // Trust non-test metadata while sources and configuration are unchanged,
+  // even when dependency artifacts have been rebuilt.
   if (freshness.status != "fresh" && problem.empty() &&
       !entry.outputName.empty()) {
     const auto production = sun::driver::readBuildRecord(entry.outputName);
     if (production && !production->hasTests &&
-        checkTestFreshness(entry.outputName, inputs, problem).status ==
+        checkTestFreshness(entry.outputName, declarationInputs, problem).status ==
             "fresh") {
       hide = true;
     }

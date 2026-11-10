@@ -72,16 +72,20 @@ definitions override the settings above.
 
 ## Test Explorer
 
-The **Sun Test Explorer** groups suites by `package_id`, then by entrypoint name.
-Entrypoints without a package identifier remain at the top level.
+The **Sun Test Explorer** groups tests by `package_id`, entrypoint name, and
+module/namespace. Nested modules appear as nested groups, including when their
+tests span multiple source files. Tests outside a module appear directly under
+their entrypoint. Each test links to its source location. Entrypoints without a
+package identifier remain at the top level.
 
 Discovery checks both the workspace build directory and each project's standalone
 build directory. A fresh build wins over a stale or missing build; when both are
 fresh, the workspace build wins. Library paths are resolved separately for each
-build. The suite description and output channel identify the selected location,
-and that same executable is used to list and run tests. Both locations are watched
-for rebuilds. A fresh production build with no tests can hide a non-test entrypoint
-even when it was built only inside its project.
+build. The output channel records the selected executable's full path; suite
+descriptions show only build warnings. The same executable is used to list and
+run tests. Both locations are watched for rebuilds. A build with no tests hides
+its entrypoint while its sources and configuration remain unchanged. Rebuilding
+a dependency library does not make that entrypoint appear in Test Explorer.
 
 Test Explorer asks `sun-lsp` for configured suites and expected test binaries,
 then runs each supported binary with `--list-tests`. Suites appear immediately;

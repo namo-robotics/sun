@@ -554,9 +554,12 @@ class DiscoveryProtocolTests(unittest.TestCase):
         self.assertIn(str(dependency), inventory["watched_paths"])
 
     def test_standalone_non_test_metadata_hides_unbuilt_workspace_target(self):
-        """A standalone production build can prove a benchmark has no tests."""
+        """Dependency rebuilds preserve non-test metadata; source edits invalidate it."""
         entry, workspace, standalone = self.composed_candidates()
-        entry.write_text("manifest {}\nfunction main() i32 { return 0; }\n")
+        dependency = entry.parent / "stdlib.moon"
+        dependency.write_bytes((SERVER.parent / "stdlib.moon").read_bytes())
+        entry.write_text('manifest { libraries: ["stdlib.moon"] }\n'
+                         'function main() i32 { return 0; }\n')
         output = Path(str(standalone)[:-5])
         output.parent.mkdir(parents=True, exist_ok=True)
         result = subprocess.run([str(COMPILER), "-c", "-O0", "-o", str(output), str(entry)],
@@ -566,6 +569,14 @@ class DiscoveryProtocolTests(unittest.TestCase):
         self.assertEqual(inventory["suites"], [])
         self.assertIn(str(workspace), inventory["watched_binaries"])
         self.assertIn(str(standalone), inventory["watched_binaries"])
+        newer = output.stat().st_mtime_ns + 1000000000
+        os.utime(dependency, ns=(newer, newer))
+        inventory = self.request("sun/testSuites")
+        self.assertEqual(inventory["suites"], [])
+        self.assertIn(str(dependency), inventory["watched_paths"])
+        entry.write_text(entry.read_text() + "test_function added() {}\n")
+        os.utime(entry, ns=(newer, newer))
+        self.assertEqual(self.request("sun/testSuites")["suites"][0]["freshness"], "missing")
 
     def test_test_file_runs_through_its_configured_entrypoint(self):
         """The discovered entrypoint and dotted name form a working test command."""

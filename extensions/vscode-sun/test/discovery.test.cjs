@@ -414,7 +414,8 @@ test('listing chunks preserve Unicode and reject unsupported versions', async ()
   h.children[1].complete(JSON.stringify({ version: 999, tests: [] }));
   await flush();
   const unicode = h.controller.items.get('/workspace/unicode.sun');
-  assert.ok([...unicode.children.values()].some((item) => item.uri.fsPath === '/workspace/😀.sun'));
+  const module = [...unicode.children.values()][0];
+  assert.ok([...module.children.values()].some((item) => item.uri.fsPath === '/workspace/😀.sun'));
   assert.match(h.controller.items.get('/workspace/unsupported.sun').error, /Unsupported/);
   h.dispose();
 });
@@ -649,10 +650,46 @@ test('package groups contain named entrypoints and run their selected binaries',
   assert.equal(group.label, 'example/library');
   assert.equal(h.controller.label, 'Sun Test Explorer');
   assert.deepEqual([...group.children.values()].map(item => item.label), ['unit', 'integration']);
-  assert.match(group.children.get('/workspace/one.sun').description, /standalone build/);
+  assert.equal(group.children.get('/workspace/one.sun').description, undefined);
+  assert.equal(group.children.get('/workspace/two.sun').description, undefined);
   await h.controller.run({ include: [group] }, token());
   assert.equal(h.runs[0].passed.length, 4);
   assert.equal(h.runs[0].errors.length, 0);
+  assert.equal(group.children.get('/workspace/one.sun').description, undefined);
+  h.dispose();
+});
+
+/** Module selections span files, preserve nested scopes, and exclude sibling tests. */
+test('modules group tests across files and run only selected descendants', async () => {
+  const h = harness();
+  h.client.response = listing('/workspace/main.sun');
+  const fixture = binaryListing().tests[0];
+  h.options.listingText = JSON.stringify({ version: 1, tests: [
+    { ...fixture, id: 'acceptance.first', label: 'first' },
+    { ...fixture, id: 'acceptance.second', label: 'second', file: '/workspace/other.sun' },
+    { ...fixture, id: 'acceptance.http.first', label: 'first' },
+    { ...fixture, id: 'unit.first', label: 'first' },
+    { ...fixture, id: 'global_test', label: 'global_test' },
+  ] });
+  h.start(); await flush();
+  const root = h.controller.items.get('/workspace/main.sun');
+  assert.deepEqual([...root.children.values()].map(item => item.label), ['acceptance', 'unit', 'global_test']);
+  const acceptance = root.children.get('/workspace/main.sun::module::acceptance');
+  assert.deepEqual([...acceptance.children.values()].map(item => item.label), ['first', 'second', 'http']);
+  const second = acceptance.children.get('/workspace/main.sun::acceptance.second');
+  assert.equal(second.uri.fsPath, '/workspace/other.sun');
+  const http = acceptance.children.get('/workspace/main.sun::module::acceptance.http');
+  assert.equal(http.children.get('/workspace/main.sun::acceptance.http.first').label, 'first');
+  await h.controller.run({ include: [acceptance], exclude: [http] }, token());
+  assert.deepEqual(h.commands.filter(command => command.args.includes('--test-filter'))
+    .map(command => command.args.at(-1)), ['acceptance.first', 'acceptance.second']);
+  assert.equal(h.runs[0].passed.length, 2);
+  assert.equal(h.runs[0].errors.length, 0);
+  await h.controller.run({ include: [http, root.children.get('/workspace/main.sun::global_test')] }, token());
+  assert.deepEqual(h.commands.filter(command => command.args.includes('--test-filter'))
+    .slice(-2).map(command => command.args.at(-1)), ['acceptance.http.first', 'global_test']);
+  assert.equal(h.runs[1].passed.length, 2);
+  assert.equal(h.runs[1].errors.length, 0);
   h.dispose();
 });
 
