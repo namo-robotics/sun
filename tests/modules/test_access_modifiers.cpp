@@ -538,13 +538,26 @@ TEST(Modules_AccessModifiers, moon_rejects_private_root_module) {
 TEST(Modules_AccessModifiers, stdlib_internals_are_private) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       compileString(R"(
-    using std;
-    function main() i32 {
-        var allocator = make_heap_allocator();
-        var v = Vec<i32>(allocator, 4);
-        return v.size_;
+using std;
+
+/** Runs the fixture with explicit error propagation. */
+function test_main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var v = try Vec<i32>(allocator, 4);
+  return Result.Ok(v.size_);
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )",
+  };
+}
+)",
                     /*includeStdlib=*/true),
       "'size_' is private to class 'std.Vec<i32>' in module 'std'");
 }

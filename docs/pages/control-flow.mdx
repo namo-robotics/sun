@@ -126,7 +126,7 @@ function main() i32 {
 }
 ```
 
-**Convergence example:**
+**Convergence example** (run with `sun file.sun`; a compiled `main` must return `i32` or `void`):
 
 ```sun
 function main() f64 {
@@ -244,7 +244,7 @@ function main() i32 {
 **Break and continue** work with for-in loops:
 
 ```sun
-function sum_until_five(iter: ref RangeIterator) i32 {
+function sum_until_five(iter: RangeIterator) i32 {
     var sum: i32 = 0;
     for (var x: i32 in iter) {
         if (x == 5) {

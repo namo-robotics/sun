@@ -8,7 +8,7 @@
 //   println(start.elapsed().as_millis());
 //
 //   var today = convert_to_utc(read_unix_time());
-//   println(format(alloc, today, "%Y-%m-%d"));
+//   println(format(global_allocator, today, "%Y-%m-%d"));
 
 /** Measure durations and work with clocks and calendar times. */
 public module std.time {
@@ -298,15 +298,15 @@ public module std.time {
     alloc: const ref HeapAllocator,
     dt: const ref DateTime,
     fmt: raw_ptr<u8>
-  ) String {
+  ) AllocationResult<String> {
     var tm: CTm = to_ctm(dt);
     tm.wday = dt.weekday;
     tm.yday = dt.yearday;
-    var buf: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 256);
+    var buf: ContiguousBuffer<u8> = try ContiguousBuffer<u8>(alloc, 256);
     var written: i64 = unsafe { c_strftime(buf.raw_data(), 256, fmt, tm); };
     if (written <= 0) {
-      return String(alloc, "");
+      return AllocationResult.Ok(try String(alloc, ""));
     }
-    return from_c_str(alloc, buf.raw_data());
+    return AllocationResult.Ok(try from_c_str(alloc, buf.raw_data()));
   }
 }

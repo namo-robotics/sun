@@ -106,8 +106,7 @@ using std;
 using std.env;
 
 function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
-    var alloc = make_heap_allocator();
-    var environment = Env(alloc);
+    var environment = try Env(global_allocator);
     var cli = environment.args(argc, argv);
     for (var arg: ref String in cli) { println(arg); }
     return 0;
@@ -123,17 +122,20 @@ type:
 ```sun
 function double(x: i32) i32 { return x * 2; }
 
-function apply(callback: function (i32) i32, value: i32) i32 {
-    return callback(value);
+function apply(fn: function (i32) i32, value: i32) i32 {
+    return fn(value);
 }
 
 function choose() function (i32) i32 {
     return double;
 }
 
-var callback: function (i32) i32 = double;
-callback = choose();
-var answer = callback(21);
+/** Selects and invokes a function pointer. */
+function invoke_selected() i32 {
+    var callback: function (i32) i32 = double;
+    callback = choose();
+    return callback(21);
+}
 ```
 
 Function pointers can be stored in locals, globals, fields, and enum payloads,

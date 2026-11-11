@@ -62,9 +62,21 @@ TEST(Builtins_Signals, restores_complete_native_dispositions) {
               if (not events.interrupted() or not events.terminated()) { return 2; }
             },
             SystemResult.Error(error) => { return 3; }
+          ,
+SystemResult.Allocation(error) => { return 3; }
+          ,
+SystemResult.InvalidArgument(error) => { return 3; }
+          ,
+SystemResult.Overflow(error) => { return 3; }
           };
         },
         SystemResult.Error(error) => { return 1; }
+      ,
+SystemResult.Allocation(error) => { return 1; }
+      ,
+SystemResult.InvalidArgument(error) => { return 1; }
+      ,
+SystemResult.Overflow(error) => { return 1; }
       };
       return 0;
     }
@@ -119,20 +131,38 @@ TEST(Builtins_Signals, concurrent_delivery_during_restoration) {
             match subscription.take_pending() {
               SystemResult.Ok(events) => {},
               SystemResult.Error(error) => { return 2; }
+            ,
+SystemResult.Allocation(error) => { return 2; }
+            ,
+SystemResult.InvalidArgument(error) => { return 2; }
+            ,
+SystemResult.Overflow(error) => { return 2; }
             };
             match subscription.restore() {
               SystemResult.Ok => {},
               SystemResult.Error(error) => { return 3; }
+            ,
+SystemResult.Allocation(error) => { return 3; }
+            ,
+SystemResult.InvalidArgument(error) => { return 3; }
+            ,
+SystemResult.Overflow(error) => { return 3; }
             };
           },
           SystemResult.Error(error) => { return 1; }
+        ,
+SystemResult.Allocation(error) => { return 1; }
+        ,
+SystemResult.InvalidArgument(error) => { return 1; }
+        ,
+SystemResult.Overflow(error) => { return 1; }
         };
       }
       return 0;
     }
     /** Join all possible handler executions before the JIT unloads their code. */
     function main() i32 {
-      var sender = std.thread.spawn(send_signals);
+      var sender = match std.thread.spawn(send_signals) { AllocationResult.Ok(thread) => thread, _ => { return -1; } };
       var result = exercise_subscriptions();
       stopped.store(true);
       sender.join();

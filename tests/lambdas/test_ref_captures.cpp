@@ -423,10 +423,10 @@ TEST(Lambdas_RefCaptures, spawn_byref_lambda_accepted) {
     using std.thread;
       function main() i32 {
           var x: i32 = 0;
-          var t = spawn([ref x]() => i32 {
+          var t = match spawn([ref x]() => i32 {
               x = 7;
               return 0;
-          });
+          }) { std.AllocationResult.Ok(thread) => thread, _ => { return -1; } };
           var r = t.join();
           return x;
       }
@@ -443,7 +443,7 @@ TEST(Lambdas_RefCaptures, spawn_byref_lambda_via_variable_accepted) {
               x = 9;
               return 0;
           };
-          var t = spawn(f);
+          var t = match spawn(f) { std.AllocationResult.Ok(thread) => thread, _ => { return -1; } };
           var r = t.join();
           return x;
       }

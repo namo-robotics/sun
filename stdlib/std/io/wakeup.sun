@@ -30,6 +30,18 @@ public module std.io {
           SystemResult.Error(error) => {
             this.close();
             return SystemResult.Error(error);
+          },
+          SystemResult.Allocation(error) => {
+            this.close();
+            return SystemResult.Allocation(error);
+          },
+          SystemResult.InvalidArgument(error) => {
+            this.close();
+            return SystemResult.InvalidArgument(error);
+          },
+          SystemResult.Overflow(error) => {
+            this.close();
+            return SystemResult.Overflow(error);
           }
         };
       }
@@ -67,7 +79,7 @@ public module std.io {
     /** Allocate shared ownership after acquiring both endpoints. */
     init(alloc: const ref HeapAllocator) SystemResult<void> {
       var state = try WakeupState();
-      this.shared = Shared<WakeupState>(alloc, state);
+      this.shared = try Shared<WakeupState>(alloc, state);
     }
 
     /** Reuse existing ownership; only library code can name the payload type. */

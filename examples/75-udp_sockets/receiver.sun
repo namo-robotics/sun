@@ -6,20 +6,19 @@ using std;
 
 /** Performs the operation and propagates returned failures. */
 function run() Result<void> {
-  var alloc = make_heap_allocator();
-  var buf = ContiguousBuffer<u8>(alloc, 256);
+  var buf = try ContiguousBuffer<u8>(global_allocator, 256);
 
   var socket = UdpSocket();
   try socket.bind(ipv4_loopback(), 9090);
   println("Waiting on 127.0.0.1:9090...");
 
   var datagram = try socket.recv_from(buf);
-  var text = try String(alloc, buf, datagram.length());
+  var text = try String(global_allocator, buf, datagram.length());
   println(text);
 
   var from = datagram.addr();
   println("From address:");
-  println(from.to_string(alloc));
+  println(try from.to_string(global_allocator));
 
   socket.close();
 
@@ -30,7 +29,10 @@ function run() Result<void> {
 function main() i32 {
   return match run() {
     (e: const ref IError) => {
-      println(e.message());
+      match e.message() {
+        AllocationResult.Ok(message) => println(message),
+        _ => println("unable to allocate error message")
+      };
       1;
     },
     _ => 0

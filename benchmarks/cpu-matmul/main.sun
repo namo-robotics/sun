@@ -33,10 +33,10 @@ function run() std.linalg.LinalgResult<i32> {
   var repetitions = unsafe { bench_arg(3); };
   var samples = unsafe { bench_arg(4); };
   var warmups = unsafe { bench_arg(5); };
-  var alloc = make_heap_allocator();
-  var a = Matrix<f32>(alloc, [m, k]);
-  var b = Matrix<f32>(alloc, [k, n]);
-  var c = Matrix<f32>(alloc, [m, n]);
+
+  var a = try Matrix<f32>(global_allocator, [m, k]);
+  var b = try Matrix<f32>(global_allocator, [k, n]);
+  var c = try Matrix<f32>(global_allocator, [m, n]);
   // Shapes were validated by the harness; each buffer has the required capacity.
   unsafe { bench_fill(a.raw_data(), b.raw_data()); };
   for (var w: i64 = 0; w < warmups; w = w + 1) {
@@ -67,7 +67,10 @@ function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
   }
   return match run() {
     (error: const ref IError) => {
-      println(error.message());
+      match error.message() {
+        AllocationResult.Ok(message) => println(message),
+        _ => println("unable to allocate error message")
+      };
       1;
     },
     std.linalg.LinalgResult.Ok(result) => result

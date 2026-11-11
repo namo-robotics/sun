@@ -49,6 +49,16 @@ void BodyAnalyzer::analyzeMatchExpr(sun::ast::MatchExprAST& matchExpr,
   // exhaustiveness checking
   TypePtr discType = unwrapRef(matchExpr.getDiscriminant()->getResolvedType());
   if (matchExpr.isPropagation()) {
+    // Generic allocation factories must also accept infallible constructors.
+    // Only _init has a constructor-dependent void status; ordinary void calls
+    // still cannot be used as the operand of try.
+    auto* initialization = dynamic_cast<const sun::ast::GenericCallAST*>(
+        matchExpr.getDiscriminant());
+    if (discType->isVoid() && initialization &&
+        initialization->getFunctionName() == "_init") {
+      matchExpr.setResolvedType(Types::Void());
+      return;
+    }
     using namespace sun::ast;
     auto source = std::dynamic_pointer_cast<sun::types::EnumType>(discType);
     auto target = std::dynamic_pointer_cast<sun::types::EnumType>(
@@ -494,7 +504,10 @@ void BodyAnalyzer::analyzeReturnExpr(sun::ast::ReturnExprAST& returnExpr) {
     sema_.analyzeExpr(const_cast<ExprAST&>(*returnExpr.getValue()),
                       declaredReturn);
     TypePtr valueType = requireResolvedType(*returnExpr.getValue());
-    if (declaredReturn && declaredReturn->isEnum() &&
+    const bool returnsPayloadEnum =
+        valueType->isEnum() &&
+        static_cast<const sun::types::EnumType&>(*valueType).hasPayload();
+    if (declaredReturn && (declaredReturn->isEnum() || returnsPayloadEnum) &&
         !declaredReturn->equals(*valueType)) {
       logAndThrowError("Return value has type '" +
                            valueType->toDisplayString() + "', expected '" +

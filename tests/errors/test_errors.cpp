@@ -520,15 +520,16 @@ function main() i32 {
 
 TEST(Errors, pass_mayThrow_to_function) {
   auto value = executeString(R"(
-
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
 class TestError {
   init() {}
+
   const method code() i32 {
     return 1;
   }
+
   const method message() static_ptr<u8> {
     return "test error";
   }
@@ -561,15 +562,16 @@ function main() i32 {
 
 TEST(Errors, pass_mayThrow_success) {
   auto value = executeString(R"(
-
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
 class TestError {
   init() {}
+
   const method code() i32 {
     return 1;
   }
+
   const method message() static_ptr<u8> {
     return "test error";
   }
@@ -756,15 +758,16 @@ function main() i32 {
 
 TEST(Errors, try_catch_with_multiple_calls) {
   auto value = executeString(R"(
-
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
 class TestError {
   init() {}
+
   const method code() i32 {
     return 1;
   }
+
   const method message() static_ptr<u8> {
     return "test error";
   }
@@ -1362,15 +1365,16 @@ function main() i32 {
 
 TEST(Errors, throw_after_loop_iteration) {
   auto value = executeString(R"(
-
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
 class TestError {
   init() {}
+
   const method code() i32 {
     return 1;
   }
+
   const method message() static_ptr<u8> {
     return "test error";
   }
@@ -1406,15 +1410,16 @@ function main() i32 {
 
 TEST(Errors, throw_after_loop_exceeds_limit) {
   auto value = executeString(R"(
-
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
 class TestError {
   init() {}
+
   const method code() i32 {
     return 1;
   }
+
   const method message() static_ptr<u8> {
     return "test error";
   }
@@ -1455,19 +1460,22 @@ function main() i32 {
 TEST(Errors, error_carries_a_computed_string_message) {
   auto value = executeStringWithStdlib(R"(
 using std;
+
 /** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), Error(Error) }
+enum Outcome<T> { Ok(T), Error(Error), Allocation(AllocationError), InvalidArgument(InvalidArgumentError), Overflow(OverflowError) }
 
 function boom(path: ref String) Outcome<void> {
-  return Outcome.Error(Error(-7, path));
+  return Outcome.Error(try Error(-7, path));
 
   return Outcome.Ok;
 }
 
-function main() i32 {
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
   var a = make_heap_allocator();
-  var path = String(a, "/tmp/");
-  path.append("computed.txt");
+  var path = try String(a, "/tmp/");
+  try path.append("computed.txt");
   /** Executes a fallible operation. */
   var attempt_0 = [ref path]() => Outcome<void> {
     try boom(path);
@@ -1478,14 +1486,25 @@ function main() i32 {
     Outcome.Ok => {},
     (e: ref IError) => {
       // The message outlives the String's scope: Error keeps its own copy.
-      var msg: String = e.message();
+      var msg: String = try e.message();
       if (not msg.equals(path)) {
-        return -2;
+        return Result.Ok(-2);
       }
-      return e.code();
+      return Result.Ok(e.code());
     }
   };
-  return 0;
+  return Result.Ok(0);
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
+    }
+  };
 }
 )");
   EXPECT_EQ(value, -7);
@@ -1494,20 +1513,23 @@ function main() i32 {
 TEST(Errors, computed_error_message_survives_the_string_it_came_from) {
   auto value = executeStringWithStdlib(R"(
 using std;
+
 /** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), Error(Error) }
+enum Outcome<T> { Ok(T), Error(Error), Allocation(AllocationError), InvalidArgument(InvalidArgumentError), Overflow(OverflowError) }
 
 // The String is built, moved into the Error and dropped here; only the
 // Error's copy is left for the caller to read.
 function make(a: ref HeapAllocator) Outcome<void> {
-  var msg = String(a, "gone");
-  msg.append(" by now");
-  return Outcome.Error(Error(3, msg));
+  var msg = try String(a, "gone");
+  try msg.append(" by now");
+  return Outcome.Error(try Error(3, msg));
 
   return Outcome.Ok;
 }
 
-function main() i32 {
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
   var a = make_heap_allocator();
   /** Executes a fallible operation. */
   var attempt_0 = [ref a]() => Outcome<void> {
@@ -1518,18 +1540,29 @@ function main() i32 {
   match attempt_0() {
     Outcome.Ok => {},
     (e: ref IError) => {
-      var text: String = e.message();
+      var text: String = try e.message();
       if (text.length() != 11) {
-        return -2;
+        return Result.Ok(-2);
       }
       // 'g' is 103: the clone is real bytes, not freed storage.
       if (unsafe { text.unsafe_at(0); } != 103) {
-        return -3;
+        return Result.Ok(-3);
       }
-      return e.code();
+      return Result.Ok(e.code());
     }
   };
-  return 0;
+  return Result.Ok(0);
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
+    }
+  };
 }
 )");
   EXPECT_EQ(value, 3);
@@ -1537,30 +1570,56 @@ function main() i32 {
 
 TEST(Errors, error_still_takes_a_literal_message) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    function main() i32 {
-      var e: Error = Error(5, "plain literal");
-      var msg: String = e.message();
-      return e.code() + _convert<i32>(msg.length());
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
+  var e: Error = Error(5, "plain literal");
+  var msg: String = try e.message();
+  return Result.Ok(_convert<i32>(e.code() + _convert<i32>(msg.length())));
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )");
+  };
+}
+)");
   EXPECT_EQ(value, 18);  // 5 + 13
 }
 
 TEST(Errors, message_returns_an_independent_clone_each_time) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    function main() i32 {
-      var e: Error = Error(1, "abc");
-      var first: String = e.message();
-      first.append("!");
-      // Mutating one clone must not leak into the next.
-      var second: String = e.message();
-      return _convert<i32>(first.length() * 10 + second.length());
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
+  var e: Error = Error(1, "abc");
+  var first: String = try e.message();
+  try first.append("!");
+  // Mutating one clone must not leak into the next.
+  var second: String = try e.message();
+  return Result.Ok(_convert<i32>(first.length() * 10 + second.length()));
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )");
+  };
+}
+)");
   EXPECT_EQ(value, 43);  // first grew to 4, second is a fresh 3
 }
 
@@ -1709,33 +1768,38 @@ function main() i32 {
 
 TEST(Errors, bool_leading_class_return_field_access) {
   auto value = executeString(R"(
-
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), TestError(TestError) }
 
 class TestError {
   init() {}
+
   const method code() i32 {
     return 1;
   }
+
   const method message() static_ptr<u8> {
     return "test error";
   }
 }
+
 class R {
   public var ok: bool;
   public var t: i64;
+
   init() {
     this.ok = true;
     this.t = 37;
   }
 }
+
 function make(fail: bool) Outcome<R> {
   if (fail) {
     return Outcome.TestError(TestError());
   }
   return Outcome.Ok(R());
 }
+
 function main() i32 {
   var result: i32 = 0;
   /** Executes a fallible operation. */

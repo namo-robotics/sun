@@ -15,13 +15,13 @@ public module std.io {
   test_function read_dir_lists_entries_without_dot_and_dotdot() {
     var alloc = make_heap_allocator();
     var td = try std.test.expect_system(std.tests.TempDir(alloc, "read_dir_lists"));
-    var a_path = td.file("a.txt");
-    var a_body = String("aaa");
+    var a_path = try td.file("a.txt");
+    var a_body = try String("aaa");
     try std.test.expect_system_success(std.io.write_string(a_path, a_body));
-    var b_path = td.file("b.txt");
-    var b_body = String("bb");
+    var b_path = try td.file("b.txt");
+    var b_body = try String("bb");
     try std.test.expect_system_success(std.io.write_string(b_path, b_body));
-    var sub = td.file("sub");
+    var sub = try td.file("sub");
     try std.test.expect_system_success(std.io.make_dir(sub, 493));
 
     var entries = try std.test.expect_system(std.io.read_dir(alloc, td.path));
@@ -48,8 +48,8 @@ public module std.io {
   test_function read_dir_finds_a_named_entry() {
     var alloc = make_heap_allocator();
     var td = try std.test.expect_system(std.tests.TempDir(alloc, "read_dir_finds"));
-    var needle = td.file("needle.txt");
-    var body = String("x");
+    var needle = try td.file("needle.txt");
+    var body = try String("x");
     try std.test.expect_system_success(std.io.write_string(needle, body));
 
     var entries = try std.test.expect_system(std.io.read_dir(alloc, td.path));
@@ -74,13 +74,16 @@ public module std.io {
   test_function read_dir_on_missing_directory_throws() {
     var alloc = make_heap_allocator();
     var td = try std.test.expect_system(std.tests.TempDir(alloc, "read_dir_missing"));
-    var missing = td.file("nope");
+    var missing = try td.file("nope");
     match std.io.read_dir(alloc, missing) {
       SystemResult.Ok(matched_value) => {
         var entries = matched_value;
         try std.test.fail("expected error");
       },
-      SystemResult.Error(e) => {}
+      SystemResult.Error(e) => {},
+      SystemResult.Allocation(e) => {},
+      SystemResult.InvalidArgument(e) => {},
+      SystemResult.Overflow(e) => {}
     };
   }
 
@@ -88,19 +91,19 @@ public module std.io {
   test_function metadata_predicates() {
     var alloc = make_heap_allocator();
     var td = try std.test.expect_system(std.tests.TempDir(alloc, "metadata_predicates"));
-    var file = td.file("file.txt");
-    var body = String("12345");
+    var file = try td.file("file.txt");
+    var body = try String("12345");
     try std.test.expect_system_success(std.io.write_string(file, body));
-    var adir = td.file("adir");
+    var adir = try td.file("adir");
     try std.test.expect_system_success(std.io.make_dir(adir, 493));
-    var missing = td.file("missing");
+    var missing = try td.file("missing");
 
-    try std.test.assert(std.io.exists(file), "file should exist");
-    try std.test.assert(not std.io.exists(missing), "missing path should not exist");
-    try std.test.assert(std.io.is_dir(adir), "adir is a directory");
-    try std.test.assert(not std.io.is_dir(file), "file is not a directory");
-    try std.test.assert(std.io.is_file(file), "file is an ordinary file");
-    try std.test.assert(not std.io.is_file(adir), "adir is not an ordinary file");
+    try std.test.assert(try std.io.exists(file), "file should exist");
+    try std.test.assert(not try std.io.exists(missing), "missing path should not exist");
+    try std.test.assert(try std.io.is_dir(adir), "adir is a directory");
+    try std.test.assert(not try std.io.is_dir(file), "file is not a directory");
+    try std.test.assert(try std.io.is_file(file), "file is an ordinary file");
+    try std.test.assert(not try std.io.is_file(adir), "adir is not an ordinary file");
     try std.test.assert_eq(try std.test.expect_system(std.io.get_file_size(file)), 5);
   }
 
@@ -108,8 +111,8 @@ public module std.io {
   test_function read_dir_accepts_a_runtime_string_path() {
     var alloc = make_heap_allocator();
     var td = try std.test.expect_system(std.tests.TempDir(alloc, "read_dir_runtime"));
-    var only = td.file("only.txt");
-    var body = String("x");
+    var only = try td.file("only.txt");
+    var body = try String("x");
     try std.test.expect_system_success(std.io.write_string(only, body));
 
     // td.path is a String assembled at runtime, not a literal.
@@ -125,11 +128,11 @@ public module std.io {
   test_function open_and_write_a_computed_path() {
     var alloc = make_heap_allocator();
     var td = try std.test.expect_system(std.tests.TempDir(alloc, "open_write_computed"));
-    var path = td.file("computed.txt");
+    var path = try td.file("computed.txt");
 
     var f = std.io.File();
     try std.test.expect_system_success(f.open(path, std.io.FileMode.Write));
-    var body = String("written through a String path");
+    var body = try String("written through a String path");
     var n: i64 = f.write(body);
     f.close();
 
@@ -142,8 +145,8 @@ public module std.io {
   test_function whole_file_helpers_take_a_computed_path() {
     var alloc = make_heap_allocator();
     var td = try std.test.expect_system(std.tests.TempDir(alloc, "whole_file_helpers"));
-    var path = td.file("round_trip.txt");
-    var body = String("round trip");
+    var path = try td.file("round_trip.txt");
+    var body = try String("round trip");
 
     try std.test.expect_system_success(std.io.write_string(path, body));
     var back = try std.test.expect_system(std.io.read_to_string(alloc, path));
@@ -155,40 +158,40 @@ public module std.io {
   test_function metadata_queries_take_a_computed_path() {
     var alloc = make_heap_allocator();
     var td = try std.test.expect_system(std.tests.TempDir(alloc, "metadata_computed"));
-    var file = td.file("there.txt");
-    var body = String("x");
+    var file = try td.file("there.txt");
+    var body = try String("x");
     try std.test.expect_system_success(std.io.write_string(file, body));
-    var missing = td.file("nope.txt");
+    var missing = try td.file("nope.txt");
 
-    try std.test.assert(std.io.exists(file), "file should exist");
-    try std.test.assert(not std.io.exists(missing), "missing path should not exist");
-    try std.test.assert(std.io.is_dir(td.path), "the temp dir is a directory");
-    try std.test.assert(not std.io.is_dir(file), "the file is not a directory");
-    try std.test.assert(std.io.is_file(file), "the file is an ordinary file");
+    try std.test.assert(try std.io.exists(file), "file should exist");
+    try std.test.assert(not try std.io.exists(missing), "missing path should not exist");
+    try std.test.assert(try std.io.is_dir(td.path), "the temp dir is a directory");
+    try std.test.assert(not try std.io.is_dir(file), "the file is not a directory");
+    try std.test.assert(try std.io.is_file(file), "the file is an ordinary file");
   }
 
   /** Checks directory calls take a computed path. */
   test_function directory_calls_take_a_computed_path() {
     var alloc = make_heap_allocator();
     var td = try std.test.expect_system(std.tests.TempDir(alloc, "directory_computed"));
-    var dir = td.file("made");
+    var dir = try td.file("made");
     try std.test.expect_system_success(std.io.make_dir(dir, 493));
-    try std.test.assert(std.io.is_dir(dir), "made should be a directory");
+    try std.test.assert(try std.io.is_dir(dir), "made should be a directory");
 
-    var inner = td.file("made/one.txt");
-    var body = String("1");
+    var inner = try td.file("made/one.txt");
+    var body = try String("1");
     try std.test.expect_system_success(std.io.write_string(inner, body));
 
     var entries = try std.test.expect_system(std.io.read_dir(alloc, dir));
     try std.test.assert_eq(entries.size(), 1);
 
-    var renamed = td.file("made/two.txt");
+    var renamed = try td.file("made/two.txt");
     try std.test.expect_system_success(std.io.rename_file(inner, renamed));
-    try std.test.assert(not std.io.exists(inner), "old name should be gone");
+    try std.test.assert(not try std.io.exists(inner), "old name should be gone");
 
     try std.test.expect_system_success(std.io.remove_file(renamed));
     try std.test.expect_system_success(std.io.remove_dir(dir));
-    try std.test.assert(not std.io.exists(dir), "made should be removed");
+    try std.test.assert(not try std.io.exists(dir), "made should be removed");
   }
 
   /** Checks literals still pick the static ptr overload. */
@@ -197,7 +200,7 @@ public module std.io {
     // a fixed /tmp name. The file is removed before any assertion can
     // throw, so no litter is left behind even on failure.
     var alloc = make_heap_allocator();
-    var body = String("literal path");
+    var body = try String("literal path");
     try std.test.expect_system_success(
       std.io.write_string("/tmp/sun_stdlib_io_literal_overload.txt", body)
     );
@@ -220,7 +223,7 @@ public module std.io {
   /** Checks empty poller returns zero. */
   test_function empty_poller_returns_zero() {
     var alloc = make_heap_allocator();
-    var p = std.io.Poller(alloc);
+    var p = try std.io.Poller(alloc);
     try std.test.assert_eq(p.count(), 0);
     try std.test.assert_eq(try std.test.expect_system(p.wait(0)), 0);
   }
@@ -229,14 +232,14 @@ public module std.io {
   test_function pipe_becomes_readable_after_a_write() {
     var alloc = make_heap_allocator();
     var pipe = try std.test.expect_system(std.process.open_pipe(alloc));
-    var p = std.io.Poller(alloc);
-    p.add_read(pipe.read_fd());
+    var p = try std.io.Poller(alloc);
+    try p.add_read(pipe.read_fd());
 
     // Nothing written yet, so a zero timeout finds nothing ready.
     try std.test.assert_eq(try std.test.expect_system(p.wait(0)), 0);
     try std.test.assert(not p.is_readable(0), "nothing to read before a write");
 
-    var msg = String("hi");
+    var msg = try String("hi");
     var writer = std.io.File();
     writer.adopt(pipe.write_fd());
     writer.write(msg);
@@ -253,8 +256,8 @@ public module std.io {
     var pipe = try std.test.expect_system(std.process.open_pipe(alloc));
     pipe.close_write();
 
-    var p = std.io.Poller(alloc);
-    p.add_read(pipe.read_fd());
+    var p = try std.io.Poller(alloc);
+    try p.add_read(pipe.read_fd());
     try std.test.assert(
       (try std.test.expect_system(p.wait(1000))) >= 1,
       "hangup should be reported"
@@ -269,13 +272,13 @@ public module std.io {
     var first = try std.test.expect_system(std.process.open_pipe(alloc));
     var second = try std.test.expect_system(std.process.open_pipe(alloc));
 
-    var p = std.io.Poller(alloc);
-    p.add_read(first.read_fd());
-    p.add_read(second.read_fd());
+    var p = try std.io.Poller(alloc);
+    try p.add_read(first.read_fd());
+    try p.add_read(second.read_fd());
     try std.test.assert_eq(p.count(), 2);
 
     // Write to the second one only.
-    var msg = String("x");
+    var msg = try String("x");
     var writer = std.io.File();
     writer.adopt(second.write_fd());
     writer.write(msg);
@@ -292,11 +295,11 @@ public module std.io {
   /** Checks remove forgets all matching descriptors. */
   test_function remove_forgets_all_matching_descriptors() {
     var alloc = make_heap_allocator();
-    var p = std.io.Poller(alloc);
-    p.add_read(10);
-    p.add_write(20);
-    p.add_read_write(10);
-    p.add_read(30);
+    var p = try std.io.Poller(alloc);
+    try p.add_read(10);
+    try p.add_write(20);
+    try p.add_read_write(10);
+    try p.add_read(30);
 
     try std.test.assert(p.remove(10), "both registrations of 10 are removed");
     try std.test.assert_eq(p.count(), 2);
@@ -317,15 +320,15 @@ public module std.io {
     reader.adopt(pipe.read_fd());
     var writer = std.io.File();
     writer.adopt(pipe.write_fd());
-    var poller = std.io.Poller(alloc);
-    poller.add_read(-1);
-    poller.add_read(-1);
-    poller.add_write(pipe.write_fd());
+    var poller = try std.io.Poller(alloc);
+    try poller.add_read(-1);
+    try poller.add_read(-1);
+    try poller.add_write(pipe.write_fd());
     try std.test.assert_eq(try std.test.expect_system(poller.wait(0)), 1);
     try std.test.assert(poller.remove(-1), "duplicate ignored descriptors removed");
     try std.test.assert_eq(poller.count(), 1);
     try std.test.assert(poller.is_writable(0), "compaction preserves readiness");
-    poller.add_write(pipe.write_fd());
+    try poller.add_write(pipe.write_fd());
     try std.test.assert(poller.modify(pipe.write_fd(), 0), "all matching interests replaced");
     try std.test.assert_eq(poller.revents(0), 0);
     try std.test.assert_eq(try std.test.expect_system(poller.wait(0)), 0);
@@ -338,12 +341,12 @@ public module std.io {
     var first = try std.test.expect_system(std.process.open_pipe(alloc));
     var second = try std.test.expect_system(std.process.open_pipe(alloc));
     var third = try std.test.expect_system(std.process.open_pipe(alloc));
-    var p = std.io.Poller(alloc);
-    p.add_read(first.read_fd());
-    p.add_read(second.read_fd());
-    p.add_read(third.read_fd());
+    var p = try std.io.Poller(alloc);
+    try p.add_read(first.read_fd());
+    try p.add_read(second.read_fd());
+    try p.add_read(third.read_fd());
 
-    var msg = String("ready");
+    var msg = try String("ready");
     var writer = std.io.File();
     writer.adopt(second.write_fd());
     writer.write(msg);
@@ -386,7 +389,7 @@ public module std.io {
   /** Checks empty duration wait honors timeout. */
   test_function empty_duration_wait_honors_timeout() {
     var alloc = make_heap_allocator();
-    var p = std.io.Poller(alloc);
+    var p = try std.io.Poller(alloc);
     var start = std.time.now();
     var events = try std.test.expect_system(p.wait(std.time.create_duration_millis(20)));
     try std.test.assert_eq(events.size(), 0);
@@ -423,8 +426,8 @@ public module std.io {
     var alloc = make_heap_allocator();
     var td = try std.test.expect_system(std.tests.TempDir(alloc, "sun_io_file_runtime"));
     // The path is built at runtime, which the intrinsics cannot take.
-    var path = td.file("runtime.txt");
-    var body = String("runtime path");
+    var path = try td.file("runtime.txt");
+    var body = try String("runtime path");
     try std.test.expect_system_success(std.io.write_string(path, body));
 
     var back = try std.test.expect_system(std.io.read_to_string(alloc, path));
@@ -436,8 +439,8 @@ public module std.io {
   test_function sun_io_file_seek_and_size() {
     var alloc = make_heap_allocator();
     var td = try std.test.expect_system(std.tests.TempDir(alloc, "sun_io_file_seek"));
-    var path = td.file("seek.txt");
-    var body = String("0123456789");
+    var path = try td.file("seek.txt");
+    var body = try String("0123456789");
     try std.test.expect_system_success(std.io.write_string(path, body));
 
     var f = std.io.File();
@@ -455,8 +458,8 @@ public module std.io {
   test_function sun_io_append_mode_keeps_existing_content() {
     var alloc = make_heap_allocator();
     var td = try std.test.expect_system(std.tests.TempDir(alloc, "sun_io_append"));
-    var path = td.file("append.txt");
-    var body = String("first;");
+    var path = try td.file("append.txt");
+    var body = try String("first;");
     try std.test.expect_system_success(std.io.write_string(path, body));
 
     var f = std.io.File();
@@ -472,13 +475,16 @@ public module std.io {
   test_function sun_io_open_missing_file_throws() {
     var alloc = make_heap_allocator();
     var td = try std.test.expect_system(std.tests.TempDir(alloc, "sun_io_open_missing"));
-    var missing = td.file("nope.txt");
+    var missing = try td.file("nope.txt");
     var f = std.io.File();
     match f.open(missing, std.io.FileMode.Read) {
       SystemResult.Ok => {
         try std.test.fail("expected error");
       },
-      SystemResult.Error(e) => {}
+      SystemResult.Error(e) => {},
+      SystemResult.Allocation(e) => {},
+      SystemResult.InvalidArgument(e) => {},
+      SystemResult.Overflow(e) => {}
     };
   }
 
@@ -486,21 +492,21 @@ public module std.io {
   test_function sun_io_remove_rename_and_directories() {
     var alloc = make_heap_allocator();
     var td = try std.test.expect_system(std.tests.TempDir(alloc, "sun_io_remove_rename"));
-    var victim = td.file("victim.txt");
-    var body = String("x");
+    var victim = try td.file("victim.txt");
+    var body = try String("x");
     try std.test.expect_system_success(std.io.write_string(victim, body));
 
-    var renamed = td.file("renamed.txt");
+    var renamed = try td.file("renamed.txt");
     try std.test.expect_system_success(std.io.rename_file(victim, renamed));
-    try std.test.assert(not std.io.exists(victim), "old name should be gone");
-    try std.test.assert(std.io.exists(renamed), "new name should exist");
+    try std.test.assert(not try std.io.exists(victim), "old name should be gone");
+    try std.test.assert(try std.io.exists(renamed), "new name should exist");
     try std.test.expect_system_success(std.io.remove_file(renamed));
-    try std.test.assert(not std.io.exists(renamed), "removed file should be gone");
+    try std.test.assert(not try std.io.exists(renamed), "removed file should be gone");
 
-    var newdir = td.file("newdir");
+    var newdir = try td.file("newdir");
     try std.test.expect_system_success(std.io.make_dir(newdir, 493));
-    try std.test.assert(std.io.is_dir(newdir), "newdir is a directory");
+    try std.test.assert(try std.io.is_dir(newdir), "newdir is a directory");
     try std.test.expect_system_success(std.io.remove_dir(newdir));
-    try std.test.assert(not std.io.exists(newdir), "newdir should be removed");
+    try std.test.assert(not try std.io.exists(newdir), "newdir should be removed");
   }
 }

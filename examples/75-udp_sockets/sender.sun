@@ -20,7 +20,10 @@ function run() Result<void> {
 function main() i32 {
   return match run() {
     (e: const ref IError) => {
-      println(e.message());
+      match e.message() {
+        AllocationResult.Ok(message) => println(message),
+        _ => println("unable to allocate error message")
+      };
       1;
     },
     _ => 0

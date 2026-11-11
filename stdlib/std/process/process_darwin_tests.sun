@@ -7,7 +7,7 @@ public module std.process {
   test_function generated_process_record_fields() {
     var alloc = make_heap_allocator();
     var target = pid();
-    var info = ContiguousBuffer<darwin_process_abi.proc_bsdinfo>(alloc, 1);
+    var info = try ContiguousBuffer<darwin_process_abi.proc_bsdinfo>(alloc, 1);
     var info_size = _convert<i32>(_sizeof<darwin_process_abi.proc_bsdinfo>());
     var got = unsafe { c_proc_pidinfo(target, 3, 0, info.raw_data(), info_size); };
     try std.test.assert_eq(got, info_size);
@@ -18,7 +18,7 @@ public module std.process {
       info[0].pbi_start_tvsec * 1000000 + info[0].pbi_start_tvusec
     );
 
-    var task = ContiguousBuffer<darwin_process_abi.proc_taskinfo>(alloc, 1);
+    var task = try ContiguousBuffer<darwin_process_abi.proc_taskinfo>(alloc, 1);
     var task_size = _convert<i32>(_sizeof<darwin_process_abi.proc_taskinfo>());
     got = unsafe { c_proc_pidinfo(target, 4, 0, task.raw_data(), task_size); };
     try std.test.assert_eq(got, task_size);
@@ -39,8 +39,8 @@ public module std.process {
   /** KERN_PROCARGS2 padding is skipped and argc excludes environment entries. */
   test_function darwin_argument_record() {
     var alloc = make_heap_allocator();
-    var text = String(alloc, "/bin/program\0\0program\0\0two words\0KEY=value\0");
-    var data = ContiguousBuffer<u8>(alloc, text.length() + 4);
+    var text = try String(alloc, "/bin/program\0\0program\0\0two words\0KEY=value\0");
+    var data = try ContiguousBuffer<u8>(alloc, text.length() + 4);
     unsafe { _store<i32>(data.raw_data(), 0, 3); };
     for (var i: i64 = 0; i < text.length(); i = i + 1) {
       data[i + 4] = process_byte(text, i);

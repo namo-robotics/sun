@@ -402,15 +402,15 @@ class Config {
     var n: i64;
     init(alloc: ref HeapAllocator) { this.n = 1; }
 }
-function main() i64 {
+function main() AllocationResult<i64> {
     var allocator = make_heap_allocator();
-    var v = Vec<i64>(allocator, 8);
-    v.push(1);
+    var v = try Vec<i64>(allocator, 8);
+    try v.push(1);
     var sum: i64 = 0;
     for (var item: i64 in v) {
         sum = sum + item;
     }
-    return sum;
+    return AllocationResult.Ok(sum);
 }
 )";
   // Resolve every location against the same analyzed document.

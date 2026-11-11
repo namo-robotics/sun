@@ -145,6 +145,28 @@ Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
     logAndThrowError("Failed to generate the arguments for _spawn");
   }
 
+  Function* function = ctx.builder->GetInsertBlock()->getParent();
+  auto* failure = BasicBlock::Create(llvmCtx, "spawn.failure", function);
+  auto* complete = BasicBlock::Create(llvmCtx, "spawn.complete", function);
+  auto* nullPointer = ConstantPointerNull::get(cast<PointerType>(ptrTy));
+  /** Track each allocation so the shared failure path can free partial state. */
+  auto makeSlot = [&](const char* name) {
+    auto* slot = gen_.createEntryBlockAlloca(function, name, ptrTy);
+    ctx.builder->CreateStore(nullPointer, slot);
+    return slot;
+  };
+  auto* argumentAllocation = makeSlot("spawn.argument.allocation");
+  auto* contextAllocation = makeSlot("spawn.context.allocation");
+  auto* resultAllocation = makeSlot("spawn.result.allocation");
+  /** Record storage before branching to cleanup on allocation failure. */
+  auto requireAllocation = [&](Value* pointer, Value* slot) {
+    ctx.builder->CreateStore(pointer, slot);
+    auto* next = BasicBlock::Create(llvmCtx, "spawn.allocated", function);
+    ctx.builder->CreateCondBr(ctx.builder->CreateICmpEQ(pointer, nullPointer),
+                              failure, next);
+    ctx.builder->SetInsertPoint(next);
+  };
+
   FunctionCallee mallocFunc = sun::codegen::intrinsics::malloc(module);
   const DataLayout& layout = module->getDataLayout();
 
@@ -161,6 +183,7 @@ Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
     argsBlob = allocateAlignedBytes(
         ConstantInt::get(i64Ty, layout.getTypeAllocSize(argsType)),
         layout.getABITypeAlign(argsType).value());
+    requireAllocation(argsBlob, argumentAllocation);
     for (size_t i = 1; i < argValues.size(); ++i) {
       ctx.builder->CreateStore(
           argValues[i],
@@ -174,6 +197,7 @@ Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
       mallocFunc,
       {ConstantInt::get(i64Ty, layout.getTypeAllocSize(contextType))},
       "spawn.context");
+  requireAllocation(contextPtr, contextAllocation);
 
   ctx.builder->CreateStore(
       funcPtr, ctx.builder->CreateStructGEP(contextType, contextPtr, 0));
@@ -187,6 +211,7 @@ Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
     resultSlot = allocateAlignedBytes(
         ConstantInt::get(i64Ty, layout.getTypeAllocSize(resultLLVMType)),
         layout.getABITypeAlign(resultLLVMType).value());
+    requireAllocation(resultSlot, resultAllocation);
   }
   ctx.builder->CreateStore(
       resultSlot, ctx.builder->CreateStructGEP(contextType, contextPtr, 2));
@@ -201,11 +226,29 @@ Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
   Value* attr = ctx.builder->CreateAlloca(
       llvm::ArrayType::get(llvm::Type::getInt8Ty(module->getContext()), 64),
       nullptr, "spawn.attr");
-  ctx.builder->CreateCall(sun::codegen::intrinsics::pthreadAttrInit(module),
-                          {attr});
-  ctx.builder->CreateCall(
+  auto* attrReady = BasicBlock::Create(llvmCtx, "spawn.attr.ready", function);
+  auto* attrFailed = BasicBlock::Create(llvmCtx, "spawn.attr.failed", function);
+  auto* attrConfigured =
+      BasicBlock::Create(llvmCtx, "spawn.attr.configured", function);
+  Value* attrResult = ctx.builder->CreateCall(
+      sun::codegen::intrinsics::pthreadAttrInit(module), {attr});
+  ctx.builder->CreateCondBr(
+      ctx.builder->CreateICmpEQ(
+          attrResult, ConstantInt::get(attrResult->getType(), 0)),
+      attrReady, failure);
+  ctx.builder->SetInsertPoint(attrReady);
+  Value* stackResult = ctx.builder->CreateCall(
       sun::codegen::intrinsics::pthreadAttrSetstacksize(module),
       {attr, ConstantInt::get(i64Ty, 8ull * 1024 * 1024)});
+  ctx.builder->CreateCondBr(
+      ctx.builder->CreateICmpEQ(
+          stackResult, ConstantInt::get(stackResult->getType(), 0)),
+      attrConfigured, attrFailed);
+  ctx.builder->SetInsertPoint(attrFailed);
+  ctx.builder->CreateCall(sun::codegen::intrinsics::pthreadAttrDestroy(module),
+                          {attr});
+  ctx.builder->CreateBr(failure);
+  ctx.builder->SetInsertPoint(attrConfigured);
 
   // pthread_create writes the thread id straight into the context (field 3)
   Value* tidFieldPtr =
@@ -218,29 +261,35 @@ Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
   ctx.builder->CreateCall(sun::codegen::intrinsics::pthreadAttrDestroy(module),
                           {attr});
 
-  // A failed pthread_create leaves the thread id unset, and joining that
-  // later crashes without a word. Say what happened and abort instead.
-  Function* func = ctx.builder->GetInsertBlock()->getParent();
-  BasicBlock* failBB = BasicBlock::Create(llvmCtx, "spawn.fail", func);
-  BasicBlock* okBB = BasicBlock::Create(llvmCtx, "spawn.ok", func);
-  Value* failed = ctx.builder->CreateICmpNE(
-      createResult, ConstantInt::get(createResult->getType(), 0),
-      "spawn.failed");
-  ctx.builder->CreateCondBr(failed, failBB, okBB);
+  auto* ready = BasicBlock::Create(llvmCtx, "spawn.ready", function);
+  ctx.builder->CreateCondBr(
+      ctx.builder->CreateICmpNE(createResult,
+                                ConstantInt::get(createResult->getType(), 0)),
+      failure, ready);
+  ctx.builder->SetInsertPoint(ready);
+  ctx.builder->CreateBr(complete);
 
-  ctx.builder->SetInsertPoint(failBB);
-  static const char kMessage[] =
-      "spawn: the OS refused to create a thread (pthread_create failed)\n";
-  Value* message = ctx.builder->CreateGlobalString(kMessage, "spawn.fail.msg");
-  ctx.builder->CreateCall(
-      sun::codegen::intrinsics::write(module),
-      {ConstantInt::get(llvm::Type::getInt32Ty(llvmCtx), 2), message,
-       ConstantInt::get(i64Ty, sizeof(kMessage) - 1)});
-  ctx.builder->CreateCall(sun::codegen::intrinsics::abort(module));
-  ctx.builder->CreateUnreachable();
+  ctx.builder->SetInsertPoint(failure);
+  // Call arguments have already moved. No worker owns them on this path.
+  for (size_t i = 1; i < argValues.size(); ++i) {
+    auto* storage = gen_.createEntryBlockAlloca(
+        function, "spawn.failed.argument", argValues[i]->getType());
+    ctx.builder->CreateStore(argValues[i], storage);
+    scopes().emitDropInPlace(calleeParams[i - 1], storage,
+                             "spawn.failed.argument");
+  }
+  for (auto* slot : {argumentAllocation, contextAllocation, resultAllocation}) {
+    ctx.builder->CreateCall(sun::codegen::intrinsics::free(module),
+                            {ctx.builder->CreateLoad(ptrTy, slot)});
+  }
+  auto* failureEnd = ctx.builder->GetInsertBlock();
+  ctx.builder->CreateBr(complete);
 
-  ctx.builder->SetInsertPoint(okBB);
-  return contextPtr;
+  ctx.builder->SetInsertPoint(complete);
+  auto* result = ctx.builder->CreatePHI(ptrTy, 2, "spawn.result");
+  result->addIncoming(contextPtr, ready);
+  result->addIncoming(nullPointer, failureEnd);
+  return result;
 }
 
 // -------------------------------------------------------------------

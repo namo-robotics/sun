@@ -1,6 +1,7 @@
-/** Checks the error and isolation contract of analysis-only test helpers. */
+/** Checks compiler test helpers and per-instance native JIT bindings. */
 #include <gtest/gtest.h>
 
+#include "driver/driver.h"
 #include "driver/execution_utils.h"
 
 /** A declaration can be analyzed without supplying or executing main. */
@@ -50,4 +51,15 @@ TEST(Support_Analysis, preloads_stdlib_when_requested) {
     function consume(value: const ref std.String) void {}
   )",
                                              true));
+}
+
+/** Duplicate native bindings produce a diagnostic instead of aborting the host. */
+TEST(Support_JIT, duplicate_native_symbol_is_diagnosed) {
+  sun::driver::initTestEnvironment();
+  auto driver = sun::driver::Driver::createForJIT();
+  int value = 42;
+  driver->defineJITSymbol("test_native_value", &value);
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      driver->defineJITSymbol("test_native_value", &value),
+      "Cannot bind native JIT symbol 'test_native_value'");
 }

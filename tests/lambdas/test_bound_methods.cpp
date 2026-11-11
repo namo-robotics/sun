@@ -358,58 +358,89 @@ TEST(Lambdas_BoundMethods, bound_method_call_in_loop) {
 
 TEST(Lambdas_BoundMethods, stdlib_class_method_as_value) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    function apply(f: <'_>(i32) => void) void {
-        f(42);
-    }
+function apply(f: <'_>(i32) => AllocationResult<void>) AllocationResult<void> {
+  return f(42);
+}
 
-    function main() i32 {
-        var allocator = make_heap_allocator();
-        var v = Vec<i32>(allocator, 8);
-        apply(v.push);
-        return unsafe { v.get_unchecked(0); };
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var v = try Vec<i32>(allocator, 8);
+  match apply(v.push) {
+    AllocationResult.Ok => {},
+    _ => {
+      return Result.Ok(-1);
     }
-  )");
+  };
+  return Result.Ok(unsafe { v.get_unchecked(0); });
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
+    }
+  };
+}
+)");
   EXPECT_EQ(value, 42);
 }
 
 TEST(Lambdas_BoundMethods, deinit_runs_once_with_bound_method) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    class Tracker {
-        var alloc: HeapAllocator;
-        var data: raw_ptr<u8>;
-        var hits: i32;
+class Tracker {
+  var alloc: HeapAllocator;
+  var data: raw_ptr<u8>;
+  var hits: i32;
 
-        init(allocator: ref HeapAllocator) {
-            this.alloc = allocator.copy();
-            this.data = this.alloc.alloc_raw(4);
-            this.hits = 0;
-        }
+  init(allocator: ref HeapAllocator) Result<void> {
+    this.alloc = allocator.copy();
+    this.data = try this.alloc.alloc_raw(4);
+    this.hits = 0;
+  }
 
-        method hit(x: i32) i32 {
-            this.hits = this.hits + x;
-            return this.hits;
-        }
+  method hit(x: i32) i32 {
+    this.hits = this.hits + x;
+    return this.hits;
+  }
 
-        deinit() {
-            unsafe { _free(this.data); };
-        }
+  deinit() {
+    unsafe { _free(this.data); };
+  }
+}
+
+function apply(f: <'_>(i32) => i32, x: i32) i32 {
+  return f(x);
+}
+
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
+  var alloc = HeapAllocator();
+  var t = try Tracker(alloc);
+  apply(t.hit, 3);
+  apply(t.hit, 4);
+  return Result.Ok(t.hits);
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-
-    function apply(f: <'_>(i32) => i32, x: i32) i32 {
-        return f(x);
-    }
-
-    function main() i32 {
-        var alloc = HeapAllocator();
-        var t = Tracker(alloc);
-        apply(t.hit, 3);
-        apply(t.hit, 4);
-        return t.hits;
-    }
-  )");
+  };
+}
+)");
   EXPECT_EQ(value, 7);
 }

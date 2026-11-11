@@ -6,8 +6,7 @@ using std;
 
 /** Performs the operation and propagates returned failures. */
 function run() Result<void> {
-  var alloc = make_heap_allocator();
-  var buf = ContiguousBuffer<u8>(alloc, 256);
+  var buf = try ContiguousBuffer<u8>(global_allocator, 256);
 
   var listener = TcpListener();
   try listener.bind_loopback(8080);
@@ -23,7 +22,7 @@ function run() Result<void> {
       println("Connection closed");
       break;
     }
-    var str = try String(alloc, buf, n);
+    var str = try String(global_allocator, buf, n);
     println(str);
   }
 
@@ -37,7 +36,10 @@ function run() Result<void> {
 function main() i32 {
   return match run() {
     (e: const ref IError) => {
-      println(e.message());
+      match e.message() {
+        AllocationResult.Ok(message) => println(message),
+        _ => println("unable to allocate error message")
+      };
       1;
     },
     _ => 0

@@ -136,14 +136,27 @@ TEST(MemorySafety_UnsafeMethods, unsafe_cannot_implement_safe_interface) {
 
 TEST(MemorySafety_UnsafeMethods, imported_string_unsafe_access_requires_block) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-    using std;
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var s = String(alloc, "hello");
-      s.unsafe_set_at(0, b'H');
-      return 0;
+using std;
+
+/** Runs the fixture with explicit error propagation. */
+function test_main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var s = try String(alloc, "hello");
+  s.unsafe_set_at(0, b'H');
+  return Result.Ok(0);
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )"),
+  };
+}
+)"),
                                 "requires an unsafe block");
 }
 
@@ -177,56 +190,113 @@ TEST(MemorySafety_UnsafeMethods, block_does_not_make_nested_lambda_unsafe) {
 
 TEST(MemorySafety_UnsafeMethods, unsafe_callback_cannot_be_spawned_as_safe) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-    using std.thread;
-    class Reader {
-      public unsafe method read() i32 { return 42; }
+using std;
+
+using std.thread;
+
+class Reader {
+  public unsafe method read() i32 {
+    return 42;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+function test_main() Result<i32> {
+  var r = Reader();
+  var t = try spawn(r.read);
+  return Result.Ok(t.join());
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-    function main() i32 {
-      var r = Reader();
-      var t = spawn(r.read);
-      return t.join();
-    }
-  )"),
+  };
+}
+)"),
                                 "spawned function must be safe");
 }
 
 TEST(MemorySafety_UnsafeMethods, imported_string_unsafe_read_requires_block) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-    using std;
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var s = String(alloc, "hello");
-      return _convert<i32>(s.unsafe_at(0));
+using std;
+
+/** Runs the fixture with explicit error propagation. */
+function test_main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var s = try String(alloc, "hello");
+  return Result.Ok(_convert<i32>(s.unsafe_at(0)));
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )"),
+  };
+}
+)"),
                                 "requires an unsafe block");
 }
 
 TEST(MemorySafety_UnsafeMethods,
      imported_buffer_unchecked_call_requires_block) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-    using std;
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var b = ContiguousBuffer<i32>(alloc, 1);
-      b.set_unchecked(0, 42);
-      return 0;
+using std;
+
+/** Runs the fixture with explicit error propagation. */
+function test_main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var b = try ContiguousBuffer<i32>(alloc, 1);
+  b.set_unchecked(0, 42);
+  return Result.Ok(0);
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )"),
+  };
+}
+)"),
                                 "requires an unsafe block");
 }
 
 TEST(MemorySafety_UnsafeMethods,
      imported_vector_unchecked_call_requires_block) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-    using std;
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var v = Vec<i32>(alloc, 1);
-      v.push(42);
-      return v.get_unchecked(0);
+using std;
+
+/** Runs the fixture with explicit error propagation. */
+function test_main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var v = try Vec<i32>(alloc, 1);
+  try v.push(42);
+  return Result.Ok(v.get_unchecked(0));
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )"),
+  };
+}
+)"),
                                 "requires an unsafe block");
 }
 

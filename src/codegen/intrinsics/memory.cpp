@@ -109,7 +109,10 @@ Value* IntrinsicsGenerator::codegenMallocIntrinsic(const CallExprAST& expr) {
   llvm::FunctionCallee mallocFunc =
       module->getOrInsertFunction("malloc", mallocType);
 
-  return ctx.builder->CreateCall(mallocFunc, {size}, "malloc.result");
+  auto* allocation = ctx.builder->CreateCall(mallocFunc, {size}, "malloc.result");
+  // Allocation failure is observable in Sun, even when success is discarded.
+  allocation->addFnAttr(llvm::Attribute::NoBuiltin);
+  return allocation;
 }
 
 Value* IntrinsicsGenerator::codegenFreeIntrinsic(const CallExprAST& expr) {

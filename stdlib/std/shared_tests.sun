@@ -69,17 +69,17 @@ public module std {
     }
 
     /** Returns an owned explanation of the fixture's error. */
-    const method message() String {
-      return String("boom");
+    const method message() AllocationResult<String> {
+      return AllocationResult.Ok(try String("boom"));
     }
   }
 
   /**
      * Builds a Shared value and hands out a clone; the original drops here.
      */
-  function hand_out(alloc: const ref HeapAllocator) Shared<Res> {
-    var s = Shared<Res>(alloc, Res(9));
-    return s.clone();  // s drops here; the clone carries on
+  function hand_out(alloc: const ref HeapAllocator) AllocationResult<Shared<Res>> {
+    var s = try Shared<Res>(alloc, Res(9));
+    return AllocationResult.Ok(s.clone());  // s drops here; the clone carries on
   }
 
   /**
@@ -106,14 +106,14 @@ public module std {
   /** Checks one handle starts at one. */
   test_function one_handle_starts_at_one() {
     var alloc = make_heap_allocator();
-    var s = Shared<Res>(alloc, Res(5));
+    var s = try Shared<Res>(alloc, Res(5));
     try std.test.assert_eq(s.count(), 1);
   }
 
   /** Checks clone raises and scope exit lowers the count. */
   test_function clone_raises_and_scope_exit_lowers_the_count() {
     var alloc = make_heap_allocator();
-    var s = Shared<Res>(alloc, Res(5));
+    var s = try Shared<Res>(alloc, Res(5));
     var inner: i32 = 0;
     if (true) {
       var c = s.clone();
@@ -128,7 +128,7 @@ public module std {
     var alloc = make_heap_allocator();
     var afterClone: i32 = 0;
     if (true) {
-      var s = Shared<DropRes>(alloc, DropRes(5));
+      var s = try Shared<DropRes>(alloc, DropRes(5));
       if (true) {
         var c = s.clone();
       }
@@ -141,7 +141,7 @@ public module std {
   /** Checks a clone keeps the value alive. */
   test_function a_clone_keeps_the_value_alive() {
     var alloc = make_heap_allocator();
-    var kept = hand_out(alloc);
+    var kept = try hand_out(alloc);
     var g = kept.lock();
     try std.test.assert_eq(g.get().v, 9);
     try std.test.assert_eq(kept.count(), 1);
@@ -150,7 +150,7 @@ public module std {
   /** Checks binding a handle to a new name moves it. */
   test_function binding_a_handle_to_a_new_name_moves_it() {
     var alloc = make_heap_allocator();
-    var s = Shared<Res>(alloc, Res(3));
+    var s = try Shared<Res>(alloc, Res(3));
     var s2 = s;  // a move, not another owner
     try std.test.assert_eq(s2.count(), 1);
   }
@@ -163,12 +163,12 @@ public module std {
     var alloc = make_heap_allocator();
     var total: i64 = 0;
     if (true) {
-      var s = Shared<Vec<i64>>(alloc, Vec<i64>(alloc, 4));
+      var s = try Shared<Vec<i64>>(alloc, try Vec<i64>(alloc, 4));
       if (true) {
         var c = s.clone();
         var g = c.lock();
-        g.get().push(11);
-        g.get().push(31);
+        try g.get().push(11);
+        try g.get().push(31);
       }
       var g = s.lock();
       total = g.get().size();
@@ -183,7 +183,7 @@ public module std {
   /** Checks write through the guard and read it back. */
   test_function write_through_the_guard_and_read_it_back() {
     var alloc = make_heap_allocator();
-    var s = Shared<SharedCounter>(alloc, SharedCounter());
+    var s = try Shared<SharedCounter>(alloc, SharedCounter());
     if (true) {
       var g = s.lock();
       g.get().n = 42;
@@ -198,7 +198,7 @@ public module std {
      */
   test_function the_guard_unlocks_at_scope_exit() {
     var alloc = make_heap_allocator();
-    var s = Shared<SharedCounter>(alloc, SharedCounter());
+    var s = try Shared<SharedCounter>(alloc, SharedCounter());
     if (true) {
       var g = s.lock();
       g.get().n = g.get().n + 1;
@@ -220,7 +220,7 @@ public module std {
      */
   test_function the_guard_unlocks_while_unwinding() {
     var alloc = make_heap_allocator();
-    var s = Shared<SharedCounter>(alloc, SharedCounter());
+    var s = try Shared<SharedCounter>(alloc, SharedCounter());
     var got: i64 = 0;
     match lock_then_throw(s) {
       SharedResult.Ok(_) => {},
@@ -238,7 +238,7 @@ public module std {
      */
   test_function lock_works_through_a_const_ref_handle() {
     var alloc = make_heap_allocator();
-    var s = Shared<SharedCounter>(alloc, SharedCounter());
+    var s = try Shared<SharedCounter>(alloc, SharedCounter());
     bump(s);
     bump(s);
     var g = s.lock();
@@ -255,10 +255,10 @@ public module std {
      */
   test_function two_threads_write_one_value() {
     var alloc = make_heap_allocator();
-    var s = Shared<SharedCounter>(alloc, SharedCounter());
+    var s = try Shared<SharedCounter>(alloc, SharedCounter());
     var c1 = s.clone();
     var c2 = s.clone();
-    var t1 = spawn(
+    var t1 = try spawn(
       [c1]() => i32 {
         var i: i64 = 0;
         while (i < 20000) {
@@ -269,7 +269,7 @@ public module std {
         return 0;
       }
     );
-    var t2 = spawn(
+    var t2 = try spawn(
       [c2]() => i32 {
         var i: i64 = 0;
         while (i < 20000) {
@@ -289,12 +289,12 @@ public module std {
   /** Checks four threads write one value. */
   test_function four_threads_write_one_value() {
     var alloc = make_heap_allocator();
-    var s = Shared<SharedCounter>(alloc, SharedCounter());
+    var s = try Shared<SharedCounter>(alloc, SharedCounter());
     var c1 = s.clone();
     var c2 = s.clone();
     var c3 = s.clone();
     var c4 = s.clone();
-    var t1 = spawn(
+    var t1 = try spawn(
       [c1]() => i32 {
         var i: i64 = 0;
         while (i < 5000) {
@@ -305,7 +305,7 @@ public module std {
         return 0;
       }
     );
-    var t2 = spawn(
+    var t2 = try spawn(
       [c2]() => i32 {
         var i: i64 = 0;
         while (i < 5000) {
@@ -316,7 +316,7 @@ public module std {
         return 0;
       }
     );
-    var t3 = spawn(
+    var t3 = try spawn(
       [c3]() => i32 {
         var i: i64 = 0;
         while (i < 5000) {
@@ -327,7 +327,7 @@ public module std {
         return 0;
       }
     );
-    var t4 = spawn(
+    var t4 = try spawn(
       [c4]() => i32 {
         var i: i64 = 0;
         while (i < 5000) {
@@ -352,8 +352,8 @@ public module std {
      */
   test_function threads_share_one_handle_by_const_ref() {
     var alloc = make_heap_allocator();
-    var s = Shared<SharedCounter>(alloc, SharedCounter());
-    var t1 = spawn(
+    var s = try Shared<SharedCounter>(alloc, SharedCounter());
+    var t1 = try spawn(
       [const ref s]() => i32 {
         var i: i64 = 0;
         while (i < 20000) {
@@ -364,7 +364,7 @@ public module std {
         return 0;
       }
     );
-    var t2 = spawn(
+    var t2 = try spawn(
       [const ref s]() => i32 {
         var i: i64 = 0;
         while (i < 20000) {
@@ -388,10 +388,10 @@ public module std {
      */
   test_function an_unjoined_thread_finishes_before_its_clone_drops() {
     var alloc = make_heap_allocator();
-    var s = Shared<SharedCounter>(alloc, SharedCounter());
+    var s = try Shared<SharedCounter>(alloc, SharedCounter());
     if (true) {
       var c = s.clone();
-      var t = spawn(
+      var t = try spawn(
         [c]() => i32 {
           var i: i64 = 0;
           while (i < 50000) {

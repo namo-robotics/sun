@@ -1,135 +1,125 @@
-// stdlib/std/allocator.sun - Memory allocator interface and implementations
-// Following Zig-style allocator pattern: allocator.create<Type>(args...)
-//
-// Use raw_ptr<T> for manual memory management.
-// Use Unique<T> for automatic cleanup via deinit().
-
-// Memory allocation intrinsics:
-// _malloc(size: i64) raw_ptr<u8> - allocate size bytes
-// _free(ptr: raw_ptr<u8>) void - free previously allocated memory
-// _sizeof<T>() i64 - size of type T in bytes
-// _init<T>(ptr, args...) - call T's constructor at ptr
-
-/** Provides the standard-library declarations implemented in this source file. */
+/** Provides checked system heap allocation and the shared default allocator. */
 public module std {
 
-  /**
-   * Interface for memory allocators
-   * All allocators must implement this interface
-   */
+  /** Allocates storage explicitly; callers own successful allocations. */
   public interface IAllocator {
-    /**
-     * Allocate an array of count elements with storage aligned to _alignof<T>().
-     * Returns raw_ptr<T> - caller is responsible for freeing
-     */
-    public method alloc<T>(count: i64) raw_ptr<T>;
+    /** Allocate aligned storage for count elements, checking the byte size. */
+    public const method alloc<T>(count: i64) AllocationResult<raw_ptr<T>>;
 
-    /**
-     * Low-level raw allocation - returns raw_ptr<u8>
-     */
-    public method alloc_raw(size: i64) raw_ptr<u8>;
+    /** Allocate uninitialized bytes, reporting invalid sizes and allocation failures. */
+    public const method alloc_raw(size: i64) AllocationResult<raw_ptr<u8>>;
 
-    /**
-     * Free previously allocated memory (typed version)
-     */
-    public method dealloc<T>(p: raw_ptr<T>, count: i64) void;
+    /** Release typed storage after its initialized elements have been destroyed. */
+    public const method dealloc<T>(p: raw_ptr<T>, count: i64) void;
 
-    /**
-     * Free previously allocated memory (raw bytes)
-     */
-    public method dealloc_raw(p: raw_ptr<u8>, size: i64) void;
+    /** Release raw storage obtained from this allocator. */
+    public const method dealloc_raw(p: raw_ptr<u8>, size: i64) void;
 
-    /**
-     * Create a single instance of T, calling its constructor
-     * Returns raw_ptr<T> - caller manages lifetime
-     */
-    public method create<T>(args...: _params_of<T>) raw_ptr<T>;
+    /** Allocate and initialize a value, propagating supported constructor errors. */
+    public const method create<T>(args...: _params_of<T>) Result<raw_ptr<T>>;
 
-    /**
-     * Create a single instance of T owned by a Unique<T> (freed on scope exit)
-     */
-    public method create_unique<T>(args...: _params_of<T>) Unique<T>;
+    /** Allocate an initialized value with automatic destruction and deallocation. */
+    public const method create_unique<T>(args...: _params_of<T>) Result<Unique<T>>;
   }
 
-  /**
-   * HeapAllocator is the default system allocator using malloc and free.
-   * It implements the IAllocator interface.
-   */
+  /** Owns uninitialized storage until construction succeeds or fails. */
+  class AllocationStorage {
+    var pointer: raw_ptr<u8>;
+
+    /** Take responsibility for freeing raw storage without destroying a value. */
+    init(pointer: raw_ptr<u8>) {
+      this.pointer = pointer;
+    }
+
+    /** Transfer storage to the successfully constructed value's owner. */
+    method release() raw_ptr<u8> {
+      var pointer = this.pointer;
+      this.pointer = null;
+      return pointer;
+    }
+
+    /** Free storage after failed construction; the constructor drops initialized fields. */
+    deinit() {
+      unsafe { _free(this.pointer); };
+    }
+  }
+
+  /** A stateless allocator backed by the system heap; copies are interchangeable. */
   public class HeapAllocator implements IAllocator {
-    /**
-     * Build the default heap allocator. It holds no state, so copies of it are
-     * interchangeable.
-     */
-    init() {
-      // No initialization needed for system malloc
+    /** Construct an allocator without allocating storage. */
+    init() {}
+
+    /** Allocate aligned storage; zero-sized requests still own a freeable pointer. */
+    public const method alloc<T>(count: i64) AllocationResult<raw_ptr<T>> {
+      if (count < 0) {
+        return AllocationResult.InvalidArgument(InvalidArgumentError("negative size"));
+      }
+      var width = _sizeof<T>();
+      if (width != 0 and count > std.I64_MAX / width) {
+        return AllocationResult.Overflow(OverflowError());
+      }
+      var size = count * width;
+      var physical_size = size;
+      if (physical_size == 0) {
+        physical_size = 1;
+      }
+      var pointer = unsafe { _aligned_malloc<T>(physical_size); };
+      if (pointer == null) {
+        return AllocationResult.Allocation(AllocationError(size));
+      }
+      return AllocationResult.Ok(unsafe { _ptr_as_raw<T>(pointer); });
     }
 
-    /**
-     * Allocate array of count elements, returns typed raw pointer
-     */
-    public method alloc<T>(count: i64) raw_ptr<T> {
-      var size: i64 = count * _sizeof<T>();
-      return unsafe { _aligned_malloc<T>(size); };
+    /** Allocate bytes; negative requests fail and zero requests own one physical byte. */
+    public const method alloc_raw(size: i64) AllocationResult<raw_ptr<u8>> {
+      if (size < 0) {
+        return AllocationResult.InvalidArgument(InvalidArgumentError("negative size"));
+      }
+      var physical_size = size;
+      if (physical_size == 0) {
+        physical_size = 1;
+      }
+      var pointer: raw_ptr<u8> = unsafe { _ptr_as_raw<u8>(_malloc(physical_size)); };
+      if (pointer == null) {
+        return AllocationResult.Allocation(AllocationError(size));
+      }
+      return AllocationResult.Ok(pointer);
     }
 
-    /**
-     * Low-level raw byte allocation
-     */
-    public method alloc_raw(size: i64) raw_ptr<u8> {
-      return unsafe { _malloc(size); };
-    }
-
-    /**
-     * Free typed memory allocated with alloc<T>
-     */
-    public method dealloc<T>(p: raw_ptr<T>, count: i64) void {
+    /** Release typed storage; the count does not affect system heap deallocation. */
+    public const method dealloc<T>(p: raw_ptr<T>, count: i64) void {
       unsafe { _free(p); };
     }
 
-    /**
-     * Free raw bytes allocated with alloc_raw
-     */
-    public method dealloc_raw(p: raw_ptr<u8>, size: i64) void {
+    /** Release raw storage; the size does not affect system heap deallocation. */
+    public const method dealloc_raw(p: raw_ptr<u8>, size: i64) void {
       unsafe { _free(p); };
     }
 
-    /**
-     * Create a single instance of T
-     * Allocates memory, calls T's constructor, returns raw_ptr<T>
-     */
-    public method create<T>(args...: _params_of<T>) raw_ptr<T> {
-      var size: i64 = _sizeof<T>();
-      var memory: raw_ptr<u8> = unsafe { _aligned_malloc<T>(size); };
-      unsafe { _init<T>(memory, args...); };
-      return memory;
+    /** Construct a value only after allocation succeeds. Arguments are consumed normally. */
+    public const method create<T>(args...: _params_of<T>) Result<raw_ptr<T>> {
+      var pointer = try this.alloc<T>(1);
+      var storage = AllocationStorage(unsafe { _ptr_as_raw<u8>(pointer); });
+      unsafe { try _init<T>(pointer, args...); };
+      return Result.Ok(unsafe { _ptr_as_raw<T>(storage.release()); });
     }
 
-    /**
-     * Create a single instance of T wrapped in Unique<T>
-     * Preferred over create<T> when the object has a single owner
-     */
-    public method create_unique<T>(args...: _params_of<T>) Unique<T> {
-      return Unique<T>(this.create<T>(args...));
+    /** Return sole ownership of a successfully initialized value. */
+    public const method create_unique<T>(args...: _params_of<T>) Result<Unique<T>> {
+      return Result.Ok(Unique<T>(try this.create<T>(args...)));
     }
 
-    /**
-     * Create a copy of this allocator
-     * Since HeapAllocator has no state, this just returns a new instance
-     */
+    /** Explicitly copy the stateless allocator without allocating. */
     public const method copy() HeapAllocator {
       return HeapAllocator();
     }
   }
 
-  /**
-   * Factory function to create a heap allocator
-   * Usage: import "stdlib/std/allocator.sun";
-   *        using std;
-   *        var allocator = make_heap_allocator();
-   *        var p = allocator.create_unique<Point>(3, 4);
-   *        // p.deinit() called automatically at scope exit
-   */
+  /** The immutable system heap allocator, passed explicitly to allocating APIs. */
+  public const global_allocator: HeapAllocator = HeapAllocator();
+
+  /** Construct an interchangeable system heap allocator without allocating. */
   public function make_heap_allocator() HeapAllocator {
     return HeapAllocator();
   }
-}  // module std
+}

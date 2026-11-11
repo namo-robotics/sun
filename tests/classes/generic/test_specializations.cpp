@@ -19,16 +19,42 @@ using sun::driver::executeStringWithStdlib;
 // (stdlib only pre-declares Vec<i8/i32/i64/f32/f64>)
 TEST(Classes_Generic_Specializations, vec_new_primitive_specialization) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    function main() i32 {
-        var allocator = make_heap_allocator();
-        var v = Vec<u32>(allocator, 4);
-        v.push(100);
-        v.push(200);
-        return (match v.get(0) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) + (match v.get(1) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } });
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var v = try Vec<u32>(allocator, 4);
+  try v.push(100);
+  try v.push(200);
+  return Result.Ok(_convert<i32>(
+    (match v.get(0) {
+      std.AccessResult.Ok(value) => value,
+      std.AccessResult.OutOfBounds(_) => {
+        return Result.Ok(-100);
+      }
+    }) +
+      (match v.get(1) {
+        std.AccessResult.Ok(value) => value,
+        std.AccessResult.OutOfBounds(_) => {
+          return Result.Ok(-100);
+        }
+      })
+  ));
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )");
+  };
+}
+)");
   EXPECT_EQ(value, 300);
 }
 
@@ -41,24 +67,38 @@ TEST(Classes_Generic_Specializations, vec_new_primitive_specialization) {
 // class type - full functionality (push/get) may have limitations
 TEST(Classes_Generic_Specializations, vec_with_custom_class) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    class Point {
-        var x: i32;
-        var y: i32;
-        init(x_: i32, y_: i32) {
-            this.x = x_;
-            this.y = y_;
-        }
-    }
+class Point {
+  var x: i32;
+  var y: i32;
 
-    function main() i32 {
-        var allocator = make_heap_allocator();
-        // Just instantiate Vec<Point> to test specialization is created
-        var v = Vec<Point>(allocator, 4);
-        return v.capacity();
+  init(x_: i32, y_: i32) {
+    this.x = x_;
+    this.y = y_;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
+  var allocator = make_heap_allocator();
+  // Just instantiate Vec<Point> to test specialization is created
+  var v = try Vec<Point>(allocator, 4);
+  return Result.Ok(_convert<i32>(v.capacity()));
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )");
+  };
+}
+)");
   EXPECT_EQ(value, 4);
 }
 
@@ -69,24 +109,39 @@ TEST(Classes_Generic_Specializations, vec_with_custom_class) {
 // Test using allocator.create<T>() with a custom class type
 TEST(Classes_Generic_Specializations, generic_method_new_specialization) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    class Counter {
-        var count: i32;
-        init(start: i32) {
-            this.count = start;
-        }
-        method get() i32 {
-            return this.count;
-        }
-    }
+class Counter {
+  var count: i32;
 
-    function main() i32 {
-        var allocator = make_heap_allocator();
-        var counter_ptr = allocator.create<Counter>(42);
-        return unsafe { counter_ptr.get(); };
+  init(start: i32) {
+    this.count = start;
+  }
+
+  method get() i32 {
+    return this.count;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var counter_ptr = try allocator.create<Counter>(42);
+  return Result.Ok(unsafe { counter_ptr.get(); });
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )");
+  };
+}
+)");
   EXPECT_EQ(value, 42);
 }
 
@@ -98,17 +153,30 @@ TEST(Classes_Generic_Specializations, generic_method_new_specialization) {
 // (stdlib only pre-declares Map<i64, i32> and Map<i64, i64>)
 TEST(Classes_Generic_Specializations, map_new_key_value_specialization) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    function main() i32 {
-        var allocator = make_heap_allocator();
-        var m = Map<i32, i32>(allocator, 16);
-        m.insert(1, 100);
-        m.insert(2, 200);
-        // Verify size works with new key/value types
-        return m.size();
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var m = try Map<i32, i32>(allocator, 16);
+  try m.insert(1, 100);
+  try m.insert(2, 200);
+  // Verify size works with new key/value types
+  return Result.Ok(_convert<i32>(m.size()));
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )");
+  };
+}
+)");
   EXPECT_EQ(value, 2);
 }
 

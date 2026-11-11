@@ -20,9 +20,9 @@ public module std.process {
      */
   test_function output_captures_stdout_and_status() {
     var alloc = make_heap_allocator();
-    var cmd = std.process.Command(alloc, "/bin/sh");
-    cmd.add_arg("-c");
-    cmd.add_arg("printf hello");
+    var cmd = try std.process.Command(alloc, "/bin/sh");
+    try cmd.add_arg("-c");
+    try cmd.add_arg("printf hello");
     var out = try std.test.expect_system(cmd.output());
     try std.test.assert_eq(out.status(), 0);
     try std.test.assert(out.stdout().equals_literal("hello"), "stdout captured");
@@ -34,9 +34,9 @@ public module std.process {
      */
   test_function non_zero_exit_is_reported() {
     var alloc = make_heap_allocator();
-    var cmd = std.process.Command(alloc, "/bin/sh");
-    cmd.add_arg("-c");
-    cmd.add_arg("exit 3");
+    var cmd = try std.process.Command(alloc, "/bin/sh");
+    try cmd.add_arg("-c");
+    try cmd.add_arg("exit 3");
     try std.test.assert_eq((try std.test.expect_system(cmd.output())).status(), 3);
   }
 
@@ -45,9 +45,9 @@ public module std.process {
      */
   test_function stderr_is_captured_separately() {
     var alloc = make_heap_allocator();
-    var cmd = std.process.Command(alloc, "/bin/sh");
-    cmd.add_arg("-c");
-    cmd.add_arg("printf out; printf err >&2");
+    var cmd = try std.process.Command(alloc, "/bin/sh");
+    try cmd.add_arg("-c");
+    try cmd.add_arg("printf out; printf err >&2");
     var res = try std.test.expect_system(cmd.output());
     try std.test.assert(res.stdout().equals_literal("out"), "stdout is out");
     try std.test.assert(res.stderr().equals_literal("err"), "stderr is err");
@@ -60,9 +60,9 @@ public module std.process {
      */
   test_function large_output_does_not_deadlock() {
     var alloc = make_heap_allocator();
-    var cmd = std.process.Command(alloc, "/bin/sh");
-    cmd.add_arg("-c");
-    cmd.add_arg("yes abcdefgh | head -c 200000; printf e >&2");
+    var cmd = try std.process.Command(alloc, "/bin/sh");
+    try cmd.add_arg("-c");
+    try cmd.add_arg("yes abcdefgh | head -c 200000; printf e >&2");
     var res = try std.test.expect_system(cmd.output());
     try std.test.assert_eq(res.stdout().length(), 200000);
     try std.test.assert(res.stderr().equals_literal("e"), "stderr captured alongside");
@@ -77,9 +77,9 @@ public module std.process {
   test_function child_starts_with_default_sigpipe() {
     var alloc = make_heap_allocator();
     var previous: i64 = unsafe { c_signal(SIGPIPE, 1); };
-    var cmd = std.process.Command(alloc, "/bin/sh");
-    cmd.add_arg("-c");
-    cmd.add_arg("yes | head -c 1");
+    var cmd = try std.process.Command(alloc, "/bin/sh");
+    try cmd.add_arg("-c");
+    try cmd.add_arg("yes | head -c 1");
     var res = try std.test.expect_system(cmd.output());
     unsafe { c_signal(SIGPIPE, previous); };
     try std.test.assert(res.stdout().equals_literal("y"), "head still read one byte");
@@ -92,12 +92,12 @@ public module std.process {
      */
   test_function arguments_are_passed_separately_not_reparsed() {
     var alloc = make_heap_allocator();
-    var cmd = std.process.Command(alloc, "/bin/sh");
-    cmd.add_arg("-c");
-    cmd.add_arg("printf '%s|%s' \"$1\" \"$2\"");
-    cmd.add_arg("sh");
-    cmd.add_arg("one two");
-    cmd.add_arg("three");
+    var cmd = try std.process.Command(alloc, "/bin/sh");
+    try cmd.add_arg("-c");
+    try cmd.add_arg("printf '%s|%s' \"$1\" \"$2\"");
+    try cmd.add_arg("sh");
+    try cmd.add_arg("one two");
+    try cmd.add_arg("three");
     var res = try std.test.expect_system(cmd.output());
     try std.test.assert(res.stdout().equals_literal("one two|three"), "arguments kept separate");
   }
@@ -108,10 +108,10 @@ public module std.process {
      */
   test_function string_arguments_are_accepted() {
     var alloc = make_heap_allocator();
-    var script = String(alloc, "printf built-at-runtime");
-    var cmd = std.process.Command(alloc, "/bin/sh");
-    cmd.add_arg("-c");
-    cmd.add_arg(script);
+    var script = try String(alloc, "printf built-at-runtime");
+    var cmd = try std.process.Command(alloc, "/bin/sh");
+    try cmd.add_arg("-c");
+    try cmd.add_arg(script);
     var res = try std.test.expect_system(cmd.output());
     try std.test.assert(
       res.stdout().equals_literal("built-at-runtime"),
@@ -125,9 +125,9 @@ public module std.process {
      */
   test_function status_runs_with_inherited_streams() {
     var alloc = make_heap_allocator();
-    var cmd = std.process.Command(alloc, "/bin/sh");
-    cmd.add_arg("-c");
-    cmd.add_arg("exit 7");
+    var cmd = try std.process.Command(alloc, "/bin/sh");
+    try cmd.add_arg("-c");
+    try cmd.add_arg("exit 7");
     try std.test.assert_eq(try std.test.expect_system(cmd.status()), 7);
   }
 
@@ -136,9 +136,9 @@ public module std.process {
      */
   test_function start_then_wait_gives_the_exit_code() {
     var alloc = make_heap_allocator();
-    var cmd = std.process.Command(alloc, "/bin/sh");
-    cmd.add_arg("-c");
-    cmd.add_arg("exit 5");
+    var cmd = try std.process.Command(alloc, "/bin/sh");
+    try cmd.add_arg("-c");
+    try cmd.add_arg("exit 5");
     var child = try std.test.expect_system(cmd.start());
     try std.test.assert(child.id() > 0, "child has a positive pid");
     try std.test.assert_eq(try std.test.expect_system(child.wait()), 5);
@@ -150,14 +150,14 @@ public module std.process {
      */
   test_function child_stdin_can_be_written() {
     var alloc = make_heap_allocator();
-    var cmd = std.process.Command(alloc, "/bin/sh");
-    cmd.add_arg("-c");
-    cmd.add_arg("cat");
+    var cmd = try std.process.Command(alloc, "/bin/sh");
+    try cmd.add_arg("-c");
+    try cmd.add_arg("cat");
     cmd.set_stdin(Stdio.Piped);
     cmd.set_stdout(Stdio.Piped);
     var child = try std.test.expect_system(cmd.start());
-    var payload = String(alloc, "echoed back");
-    child.write_stdin(payload);
+    var payload = try String(alloc, "echoed back");
+    try child.write_stdin(payload);
     child.close_stdin();
     var res = try std.test.expect_system(child.collect(alloc));
     try std.test.assert(res.stdout().equals_literal("echoed back"), "stdin round-tripped");
@@ -169,9 +169,9 @@ public module std.process {
      */
   test_function a_signalled_child_reports_128_plus_the_signal() {
     var alloc = make_heap_allocator();
-    var cmd = std.process.Command(alloc, "/bin/sh");
-    cmd.add_arg("-c");
-    cmd.add_arg("kill -9 $$");
+    var cmd = try std.process.Command(alloc, "/bin/sh");
+    try cmd.add_arg("-c");
+    try cmd.add_arg("kill -9 $$");
     cmd.set_stdout(Stdio.Null);
     cmd.set_stderr(Stdio.Null);
     try std.test.assert_eq(try std.test.expect_system(cmd.status()), 137);  // 128 + SIGKILL
@@ -183,7 +183,7 @@ public module std.process {
      */
   test_function missing_program_exits_127() {
     var alloc = make_heap_allocator();
-    var cmd = std.process.Command(alloc, "/no/such/program/anywhere");
+    var cmd = try std.process.Command(alloc, "/no/such/program/anywhere");
     cmd.set_stderr(Stdio.Null);
     try std.test.assert_eq(try std.test.expect_system(cmd.status()), 127);
   }
@@ -198,9 +198,9 @@ public module std.process {
      */
   test_function ids_match_the_host_process() {
     var alloc = make_heap_allocator();
-    var cmd = std.process.Command(alloc, "/bin/sh");
-    cmd.add_arg("-c");
-    cmd.add_arg("echo $PPID");
+    var cmd = try std.process.Command(alloc, "/bin/sh");
+    try cmd.add_arg("-c");
+    try cmd.add_arg("echo $PPID");
     var out = try std.test.expect_system(cmd.output());
     try std.test.assert_eq(out.status(), 0);
     out.stdout().trim();
@@ -232,7 +232,7 @@ public module std.process {
     var p = try std.test.expect_system(std.process.open_pipe(alloc));
     var writer = std.io.File();
     writer.adopt(p.write_fd());
-    var msg = String(alloc, "through the pipe");
+    var msg = try String(alloc, "through the pipe");
     try std.test.assert_eq(writer.write(msg), 16);
     writer.close();
 
@@ -274,7 +274,7 @@ public module std.process {
     try std.test.expect_system_success(std.process.dup_fd(p.write_fd(), 199));
     var writer = std.io.File();
     writer.adopt(199);
-    var msg = String(alloc, "via dup");
+    var msg = try String(alloc, "via dup");
     writer.write(msg);
     writer.close();
     p.close_write();

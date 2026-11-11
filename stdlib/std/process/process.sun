@@ -3,7 +3,7 @@
 // Usage:
 //   using std.process;
 //
-//   var cmd = Command(alloc, "/bin/sh");
+//   var cmd = Command(global_allocator, "/bin/sh");
 //   cmd.add_arg("-c");
 //   cmd.add_arg("echo hello");
 //   var out = cmd.output();
@@ -140,7 +140,7 @@ public module std.process {
    * failure.
    */
   public function exec(cmd: ref Command) SystemResult<void> {
-    var argv: ContiguousBuffer<raw_ptr<u8>> = cmd.build_argv_array();
+    var argv: ContiguousBuffer<raw_ptr<u8>> = try cmd.build_argv_array();
     unsafe { c_execvp(cmd.program(), argv.raw_data()); };
     return SystemResult.Error(Error(errno(), "failed to exec"));
   }
@@ -248,8 +248,8 @@ public module std.process {
   /**
    * Create a pipe and return its two ends. Throws if the system refuses.
    */
-  public function open_pipe(alloc: ref HeapAllocator) SystemResult<Pipe> {
-    var fds: ContiguousBuffer<i32> = ContiguousBuffer<i32>(alloc, 2);
+  public function open_pipe(alloc: const ref HeapAllocator) SystemResult<Pipe> {
+    var fds: ContiguousBuffer<i32> = try ContiguousBuffer<i32>(alloc, 2);
     unsafe { fds.set_unchecked(0, 0); };
     unsafe { fds.set_unchecked(1, 0); };
     if (unsafe { c_pipe(_ptr_as_raw<i32>(fds.raw_data())); } != 0) {
@@ -301,40 +301,56 @@ public module std.process {
      * Build a command for a program named by a literal. The name also becomes
      * argv[0].
      */
-    init(allocator: ref HeapAllocator, program: static_ptr<u8>) {
+    init(allocator: const ref HeapAllocator, program: static_ptr<u8>) AllocationResult<void> {
       this.alloc = allocator.copy();
-      this.blob = String(allocator, "");
-      this.offsets = Vec<i64>(allocator, 4);
-      this.add_arg(program);
+      this.blob = try String(allocator, "");
+      this.offsets = try Vec<i64>(allocator, 4);
+      try this.add_arg(program);
     }
 
     /**
      * Build a command for a program named at runtime. The name also becomes
      * argv[0].
      */
-    init(allocator: ref HeapAllocator, program: const ref String) {
+    init(allocator: const ref HeapAllocator, program: const ref String) AllocationResult<void> {
       this.alloc = allocator.copy();
-      this.blob = String(allocator, "");
-      this.offsets = Vec<i64>(allocator, 4);
-      this.add_arg(program);
+      this.blob = try String(allocator, "");
+      this.offsets = try Vec<i64>(allocator, 4);
+      try this.add_arg(program);
     }
 
     /**
      * Append one argument. The program itself is argv[0].
      */
-    public method add_arg(value: static_ptr<u8>) void {
-      this.offsets.push(this.blob.length());
-      this.blob.append(value);
-      this.blob.append_char(b'\0');
+    public method add_arg(value: static_ptr<u8>) AllocationResult<void> {
+      var length: i64 = value.length();
+      if (length >= std.I64_MAX - this.blob.length()) {
+        return AllocationResult.Overflow(OverflowError());
+      }
+      try this.offsets.reserve(this.offsets.size() + 1);
+      try this.blob.reserve(this.blob.length() + length + 1);
+      try this.offsets.push(this.blob.length());
+      try this.blob.append(value);
+      try this.blob.append_char(b'\0');
+
+      return AllocationResult.Ok;
     }
 
     /**
      * Append one argument built at runtime. The text is copied in.
      */
-    public method add_arg(value: const ref String) void {
-      this.offsets.push(this.blob.length());
-      this.blob.append(value);
-      this.blob.append_char(b'\0');
+    public method add_arg(value: const ref String) AllocationResult<void> {
+      var length: i64 = value.length();
+      if (length >= std.I64_MAX - this.blob.length()) {
+        return AllocationResult.Overflow(OverflowError());
+      }
+      try this.offsets.reserve(this.offsets.size() + 1);
+      try this.blob.reserve(this.blob.length() + length + 1);
+      try this.offsets.push(this.blob.length());
+      try this.blob.append(value);
+      try this.blob.append_char(b'\0');
+
+      return AllocationResult.Ok;
     }
 
     /**
@@ -359,29 +375,30 @@ public module std.process {
     }
 
     /**
-     * The program name as a C string.
+     * Borrow the program name, which construction already NUL-terminated.
+     * This does not allocate, so it can be used after fork.
      */
     public method program() raw_ptr<u8> {
-      return this.blob.c_str();
+      return this.blob.bytes();
     }
 
     /**
      * A NUL-terminated char** for execvp. Built from one base pointer, so
      * it stays valid as long as the blob is not appended to.
      */
-    public method build_argv_array() ContiguousBuffer<raw_ptr<u8>> {
+    public method build_argv_array() AllocationResult<ContiguousBuffer<raw_ptr<u8>>> {
       var count: i64 = this.offsets.size();
-      var argv: ContiguousBuffer<raw_ptr<u8>> = ContiguousBuffer<raw_ptr<u8>>(
+      var argv: ContiguousBuffer<raw_ptr<u8>> = try ContiguousBuffer<raw_ptr<u8>>(
         this.alloc,
         count + 1
       );
-      var base: raw_ptr<u8> = this.blob.c_str();
+      var base: raw_ptr<u8> = this.blob.bytes();
       for (var i: i64 = 0; i < count; i = i + 1) {
         var at: i64 = unsafe { this.offsets.get_unchecked(i); };
         unsafe { argv.set_unchecked(i, unsafe { _ptr_offset(base, at); }); };
       }
       unsafe { argv.set_unchecked(count, null); };
-      return argv;
+      return AllocationResult.Ok(argv);
     }
 
     /**
@@ -391,7 +408,7 @@ public module std.process {
     public method start() SystemResult<Child> {
       // Everything the child touches is prepared first: after fork it may
       // only call things that are safe in a signal handler.
-      var argv: ContiguousBuffer<raw_ptr<u8>> = this.build_argv_array();
+      var argv: ContiguousBuffer<raw_ptr<u8>> = try this.build_argv_array();
       var prog: raw_ptr<u8> = unsafe { _load<raw_ptr<u8>>(argv.raw_data(), 0); };
 
       var in_read: i32 = 0;
@@ -548,11 +565,13 @@ public module std.process {
     /**
      * Write to the child's stdin. Requires stdin(Stdio.Piped).
      */
-    public method write_stdin(data: ref String) i64 {
+    public method write_stdin(data: ref String) AllocationResult<i64> {
       if (this.stdin_fd <= 0) {
-        return -1;
+        return AllocationResult.Ok(-1);
       }
-      return unsafe { c_write(this.stdin_fd, data.c_str(), data.length()); };
+      return AllocationResult.Ok(
+        unsafe { c_write(this.stdin_fd, try data.c_str(), data.length()); }
+      );
     }
 
     /**
@@ -648,11 +667,11 @@ public module std.process {
      * other: a child that fills the stderr pipe while the parent is stuck
      * reading stdout would deadlock.
      */
-    public method collect(alloc: ref HeapAllocator) SystemResult<Output> {
-      var out: String = String(alloc, "");
-      var err: String = String(alloc, "");
-      var buf: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 4096);
-      var poller: Poller = Poller(alloc);
+    public method collect(alloc: const ref HeapAllocator) SystemResult<Output> {
+      var out: String = try String(alloc, "");
+      var err: String = try String(alloc, "");
+      var buf: ContiguousBuffer<u8> = try ContiguousBuffer<u8>(alloc, 4096);
+      var poller: Poller = try Poller(alloc);
 
       var out_open: bool = this.stdout_fd > 0;
       var err_open: bool = this.stderr_fd > 0;
@@ -660,10 +679,10 @@ public module std.process {
       while (out_open or err_open) {
         poller.clear();
         if (out_open) {
-          poller.add_read(this.stdout_fd);
+          try poller.add_read(this.stdout_fd);
         }
         if (err_open) {
-          poller.add_read(this.stderr_fd);
+          try poller.add_read(this.stderr_fd);
         }
         try poller.wait(-1);
 
@@ -683,7 +702,7 @@ public module std.process {
               out_open = false;
             } else {
               for (var i: i64 = 0; i < n; i = i + 1) {
-                out.append_char(unsafe { buf.get_unchecked(i); });
+                try out.append_char(unsafe { buf.get_unchecked(i); });
               }
             }
           }
@@ -704,7 +723,7 @@ public module std.process {
               err_open = false;
             } else {
               for (var i: i64 = 0; i < n; i = i + 1) {
-                err.append_char(unsafe { buf.get_unchecked(i); });
+                try err.append_char(unsafe { buf.get_unchecked(i); });
               }
             }
           }

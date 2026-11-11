@@ -8,6 +8,9 @@ public module tls {
   /** An operation's progress, peer closure, or fatal transport/TLS error. */
   public enum ServerResult<T> {
     Ok(T),
+    Allocation(AllocationError),
+    InvalidArgument(InvalidArgumentError),
+    Overflow(OverflowError),
     WantRead,
     WantWrite,
     Closed,
@@ -48,6 +51,11 @@ public module tls {
       return SSL_TLSEXT_ERR_OK;
     }
     return SSL_TLSEXT_ERR_NOACK;
+  }
+
+  /** Captures a TLS failure while allowing callers to close resources before reporting it. */
+  function make_server_error(reason: i32) AllocationResult<TlsError> {
+    return TlsError(reason, try take_openssl_error("server TLS operation failed"));
   }
 
   /**
@@ -96,13 +104,14 @@ public module tls {
       var method: raw_ptr<u8> = unsafe { c_tls_server_method(); };
       var next: raw_ptr<u8> = unsafe { c_ssl_ctx_new(method); };
       if (next == null) {
-        return ClientResult.Tls(TlsError(-1, take_openssl_error("SSL_CTX_new failed")));
+        return ClientResult.Tls(try TlsError(-1, try take_openssl_error("SSL_CTX_new failed")));
       }
+      var pending = TlsServerContext();
+      pending.ctx = next;
       if (unsafe { c_ssl_ctx_ctrl(next, SSL_CTRL_SET_MIN_PROTO_VERSION, TLS1_2_VERSION, null); } !=
         1) {
-        var error = TlsError(-1, take_openssl_error("failed to set minimum TLS version"));
-        unsafe { c_ssl_ctx_free(next); };
-        return ClientResult.Tls(error);
+        var error = TlsError(-1, try take_openssl_error("failed to set minimum TLS version"));
+        return ClientResult.Tls(try error);
       }
       unsafe {
         c_ssl_ctx_ctrl(
@@ -112,28 +121,26 @@ public module tls {
           null
         );
       };
-      if (unsafe { c_ssl_ctx_use_certificate_chain_file(next, cert_path.c_str()); } != 1) {
-        var error = TlsError(-1, take_openssl_error("failed to load certificate chain"));
-        unsafe { c_ssl_ctx_free(next); };
-        return ClientResult.Tls(error);
+      if (unsafe { c_ssl_ctx_use_certificate_chain_file(next, try cert_path.c_str()); } != 1) {
+        var error = TlsError(-1, try take_openssl_error("failed to load certificate chain"));
+        return ClientResult.Tls(try error);
       }
       unsafe { c_ssl_ctx_set_default_passwd_cb(next, reject_key_password); };
-      if (unsafe { c_ssl_ctx_use_private_key_file(next, key_path.c_str(), SSL_FILETYPE_PEM); } !=
+      if (unsafe { c_ssl_ctx_use_private_key_file(next, try key_path.c_str(), SSL_FILETYPE_PEM); } !=
         1) {
-        var error = TlsError(-1, take_openssl_error("failed to load private key"));
-        unsafe { c_ssl_ctx_free(next); };
-        return ClientResult.Tls(error);
+        var error = TlsError(-1, try take_openssl_error("failed to load private key"));
+        return ClientResult.Tls(try error);
       }
       if (unsafe { c_ssl_ctx_check_private_key(next); } != 1) {
-        var error = TlsError(-1, take_openssl_error("private key does not match certificate"));
-        unsafe { c_ssl_ctx_free(next); };
-        return ClientResult.Tls(error);
+        var error = TlsError(-1, try take_openssl_error("private key does not match certificate"));
+        return ClientResult.Tls(try error);
       }
       if (alpn.length() > 0) {
         unsafe { c_ssl_ctx_set_alpn_select_cb(next, select_server_alpn, alpn.raw()); };
       }
       this.close();
-      this.ctx = next;
+      this.ctx = pending.ctx;
+      pending.ctx = null;
       return ClientResult.Ok;
     }
 
@@ -149,7 +156,7 @@ public module tls {
       unsafe { c_err_clear_error(); };
       var ssl: raw_ptr<u8> = unsafe { c_ssl_new(this.ctx); };
       if (ssl == null) {
-        return ClientResult.Tls(TlsError(-1, take_openssl_error("SSL_new failed")));
+        return ClientResult.Tls(try TlsError(-1, try take_openssl_error("SSL_new failed")));
       }
       var stream = TlsServerStream();
       stream.tcp = tcp;
@@ -183,21 +190,23 @@ public module tls {
 
     /** Allocates a socket adapter whose borrowed descriptor survives stream moves. */
     method attach_socket() ClientResult<void> {
-      var socket_data = ContiguousBuffer<i32>(make_heap_allocator(), 1);
+      var socket_data = try ContiguousBuffer<i32>(global_allocator, 1);
       unsafe { _store<i32>(socket_data.raw_data(), 0, this.tcp.get_fd()); };
       // This private method is never looked up by type, so no global index is needed.
       this.bio_method = unsafe { c_bio_meth_new(BIO_TYPE_SOURCE_SINK, "Sun TLS socket".raw()); };
       if (this.bio_method == null) {
-        return ClientResult.Tls(TlsError(-1, take_openssl_error("BIO_meth_new failed")));
+        return ClientResult.Tls(try TlsError(-1, try take_openssl_error("BIO_meth_new failed")));
       }
       if (unsafe { c_bio_meth_set_write(this.bio_method, tls_socket_write); } != 1 or
         unsafe { c_bio_meth_set_read(this.bio_method, tls_socket_read); } != 1 or
         unsafe { c_bio_meth_set_ctrl(this.bio_method, tls_socket_ctrl); } != 1) {
-        return ClientResult.Tls(TlsError(-1, take_openssl_error("BIO callback setup failed")));
+        return ClientResult.Tls(
+          try TlsError(-1, try take_openssl_error("BIO callback setup failed"))
+        );
       }
       var bio: raw_ptr<u8> = unsafe { c_bio_new(this.bio_method); };
       if (bio == null) {
-        return ClientResult.Tls(TlsError(-1, take_openssl_error("BIO_new failed")));
+        return ClientResult.Tls(try TlsError(-1, try take_openssl_error("BIO_new failed")));
       }
       unsafe {
         c_bio_set_data(bio, socket_data.raw_data());
@@ -226,9 +235,14 @@ public module tls {
         return ServerResult.Closed;
       }
       // An unannounced EOF is a failure, not an authenticated TLS shutdown.
-      var error = TlsError(reason, take_openssl_error("server TLS operation failed"));
+      var error = make_server_error(reason);
       this.close();
-      return ServerResult.Tls(error);
+      return match error {
+        AllocationResult.Ok(value) => ServerResult.Tls(value),
+        AllocationResult.Allocation(value) => ServerResult.Allocation(value),
+        AllocationResult.InvalidArgument(value) => ServerResult.InvalidArgument(value),
+        AllocationResult.Overflow(value) => ServerResult.Overflow(value)
+      };
     }
 
     /** Advances the handshake; Ok(0) means application I/O can begin. */
@@ -319,10 +333,10 @@ public module tls {
     }
 
     /** Returns an owned ALPN name, or an empty string when none was selected. */
-    public method alpn() String {
-      var out = String("");
+    public method alpn() AllocationResult<String> {
+      var out = try String("");
       if (this.ssl == null) {
-        return out;
+        return AllocationResult.Ok(out);
       }
       var data: raw_ptr<u8> = null;
       var length: u32 = 0;
@@ -335,10 +349,10 @@ public module tls {
       };
       var index: i64 = 0;
       while (index < _convert<i64>(length)) {
-        out.append_char(unsafe { _load<u8>(data, index); });
+        try out.append_char(unsafe { _load<u8>(data, index); });
         index = index + 1;
       }
-      return out;
+      return AllocationResult.Ok(out);
     }
 
     /** Borrows the socket descriptor for an event loop; do not close it directly. */

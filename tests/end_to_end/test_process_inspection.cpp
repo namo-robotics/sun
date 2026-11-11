@@ -52,10 +52,22 @@ void expectProcessError(int syscallNumber, int error) {
           var identity = match process_identity(alloc, pid()) {
             SystemResult.Ok(value) => value,
             SystemResult.Error(error) => { return 120; }
+          ,
+SystemResult.Allocation(error) => { return 120; }
+          ,
+SystemResult.InvalidArgument(error) => { return 120; }
+          ,
+SystemResult.Overflow(error) => { return 120; }
           };
           var before = match std.io.read_dir(alloc, "/proc/self/fd") {
             SystemResult.Ok(value) => value,
             SystemResult.Error(error) => { return 123; }
+          ,
+SystemResult.Allocation(error) => { return 123; }
+          ,
+SystemResult.InvalidArgument(error) => { return 123; }
+          ,
+SystemResult.Overflow(error) => { return 123; }
           };
           var code: i32 = 0;
           for (var i: i32 = 0; i < 20; i = i + 1) {
@@ -63,11 +75,23 @@ void expectProcessError(int syscallNumber, int error) {
             code = match handle.open(identity) {
               SystemResult.Ok => { return 121; },
               SystemResult.Error(error) => error.code()
+            ,
+SystemResult.Allocation(error) => error.code()
+            ,
+SystemResult.InvalidArgument(error) => error.code()
+            ,
+SystemResult.Overflow(error) => error.code()
             };
           }
           var after = match std.io.read_dir(alloc, "/proc/self/fd") {
             SystemResult.Ok(value) => value,
             SystemResult.Error(error) => { return 124; }
+          ,
+SystemResult.Allocation(error) => { return 124; }
+          ,
+SystemResult.InvalidArgument(error) => { return 124; }
+          ,
+SystemResult.Overflow(error) => { return 124; }
           };
           return before.size() == after.size() ? code : 125;
         }
@@ -125,6 +149,12 @@ TEST(EndToEnd_ProcessInspection, OwnsDescriptorZero) {
       var identity = match process_identity(alloc, pid()) {
         SystemResult.Ok(value) => value,
         SystemResult.Error(error) => { return 1; }
+      ,
+SystemResult.Allocation(error) => { return 1; }
+      ,
+SystemResult.InvalidArgument(error) => { return 1; }
+      ,
+SystemResult.Overflow(error) => { return 1; }
       };
       var saved = unsafe { process_test_dup(0); };
       var handle = ProcessHandle(alloc);
@@ -132,6 +162,12 @@ TEST(EndToEnd_ProcessInspection, OwnsDescriptorZero) {
       var code = match handle.open(identity) {
         SystemResult.Ok => 0,
         SystemResult.Error(error) => error.code()
+      ,
+SystemResult.Allocation(error) => error.code()
+      ,
+SystemResult.InvalidArgument(error) => error.code()
+      ,
+SystemResult.Overflow(error) => error.code()
       };
       var opened = unsafe { process_test_fcntl(0, 1); } >= 0;
       handle.close();

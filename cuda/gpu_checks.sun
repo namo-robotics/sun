@@ -12,7 +12,25 @@ using std;
 using cuda;
 
 /** Combines assertion and GPU failures for integration checks. */
-enum CheckResult<T> { Ok(T), Gpu(GpuError), Assertion(std.test.AssertionError) }
+enum CheckResult<T> {
+  Ok(T),
+  Allocation(AllocationError),
+  InvalidArgument(InvalidArgumentError),
+  Overflow(OverflowError),
+  Assertion(std.test.AssertionError),
+  System(Error),
+  OutOfBounds(IndexOutOfBoundsError),
+  NotFound(NotFoundError),
+  Empty(EmptyError),
+  Io(IOError),
+  Conversion(ConversionError),
+  DivisionByZero(DivisionByZeroError),
+  Arithmetic(ArithmeticError),
+  Json(std.json.JsonError),
+  Xml(std.xml.XmlError),
+  Decode(ProtoDecodeError),
+  Gpu(GpuError)
+}
 
 /** Compares floating-point results without requiring identical reduction order. */
 function near(actual: f64, expected: f64) CheckResult<void> {
@@ -22,9 +40,8 @@ function near(actual: f64, expected: f64) CheckResult<void> {
 
 /** Checks each operation and allocation reuse for one supported precision. */
 function check_precision<T: _Float>(device: const ref Device) CheckResult<void> {
-  var alloc = make_heap_allocator();
-  var host_a = Matrix<T>(alloc, [2, 3]);
-  var host_b = Matrix<T>(alloc, [3, 2]);
+  var host_a = try Matrix<T>(global_allocator, [2, 3]);
+  var host_b = try Matrix<T>(global_allocator, [3, 2]);
   for (var i: i64 = 0; i < 2; i = i + 1) {
     for (var j: i64 = 0; j < 3; j = j + 1) {
       host_a[i, j] = _convert<T>(i * 3 + j + 1);
@@ -37,7 +54,7 @@ function check_precision<T: _Float>(device: const ref Device) CheckResult<void> 
   try b.copy_from_host(host_b);
   var c = try a.matmul(b);
   var operator_c = try (a * b);
-  var result = Matrix<T>(alloc, [2, 2]);
+  var result = try Matrix<T>(global_allocator, [2, 2]);
   try c.copy_to_host(result);
   try near(_convert<f64>(result[0, 0]), 22.0);
   try near(_convert<f64>(result[0, 1]), 28.0);
@@ -55,7 +72,7 @@ function check_precision<T: _Float>(device: const ref Device) CheckResult<void> 
   try near(_convert<f64>(result[1, 1]), 384.0);
   try c.copy_to_host(result);
   try near(_convert<f64>(result[1, 1]), 64.0);
-  var vector_host = Matrix<T>(alloc, [3]);
+  var vector_host = try Matrix<T>(global_allocator, [3]);
   vector_host[0] = _convert<T>(1);
   vector_host[1] = _convert<T>(2);
   vector_host[2] = _convert<T>(3);
@@ -64,7 +81,7 @@ function check_precision<T: _Float>(device: const ref Device) CheckResult<void> 
   try near(_convert<f64>(try vector.dot(vector)), 14.0);
   var product = try a.matvec(vector);
   try a.matvec_into(vector, product);
-  var product_host = Matrix<T>(alloc, [2]);
+  var product_host = try Matrix<T>(global_allocator, [2]);
   try product.copy_to_host(product_host);
   try near(_convert<f64>(product_host[0]), 14.0);
   try near(_convert<f64>(product_host[1]), 32.0);
@@ -109,11 +126,10 @@ function check_errors(device: const ref Device) CheckResult<void> {
   var second = try open_device(0);
   var other = try second.allocate<f32>([2i64, 3i64]);
   try expect_error<DeviceMatrix<f32>>(a.add(other), -3);
-  var alloc = make_heap_allocator();
-  var wrong_shape = Matrix<f32>(alloc, [2, 2]);
+  var wrong_shape = try Matrix<f32>(global_allocator, [2, 2]);
   try expect_error<void>(a.copy_to_host(wrong_shape), -1);
   try expect_error<void>(a.copy_from_host(wrong_shape), -1);
-  var scalar_host = Matrix<f32>(alloc, [1, 1]);
+  var scalar_host = try Matrix<f32>(global_allocator, [1, 1]);
   scalar_host[0, 0] = 3.0f32;
   var scalar = try device.upload(scalar_host);
   var squared = try scalar.matmul(scalar);
@@ -137,7 +153,7 @@ function run_checks(device: const ref Device) CheckResult<void> {
   try check_precision<f64>(device);
   var matrix = try retained_matrix();
   try matrix.scale_in_place(2.0f32);
-  var worker = std.thread.spawn(scale_on_worker, matrix);
+  var worker = try std.thread.spawn(scale_on_worker, matrix);
   try std.test.assert(worker.join());
   return CheckResult.Ok;
 }
@@ -146,15 +162,22 @@ function run_checks(device: const ref Device) CheckResult<void> {
 function main() i32 {
   return match open_device(0) {
     GpuResult.Error(error) => {
-      println(error.message());
+      match error.message() {
+        AllocationResult.Ok(text) => println(text),
+        _ => println("unable to allocate error message")
+      };
       77;
     },
     GpuResult.Ok(device) => match run_checks(device) {
       (error: const ref IError) => {
-        println(error.message());
+        match error.message() {
+          AllocationResult.Ok(text) => println(text),
+          _ => println("unable to allocate error message")
+        };
         1;
       },
       _ => 0
-    }
+    },
+    _ => 1
   };
 }

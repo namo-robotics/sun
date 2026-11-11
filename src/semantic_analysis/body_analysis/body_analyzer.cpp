@@ -176,7 +176,8 @@ static void checkResultHandling(const BlockExprAST& body,
           return;
         }
         forEachChild(expression, [&](const ExprAST& child) {
-          visit(child, child.getType() != ASTNodeType::BLOCK);
+          const auto* block = dynamic_cast<const BlockExprAST*>(&child);
+          visit(child, !block || block->producesValue());
         });
       };
   visit(body, false);

@@ -798,6 +798,7 @@ TEST(Tooling_Serialization, ModuleDefinitionRoundtrip) {
 
 TEST(Tooling_Serialization, TryCatchRoundtrip) {
   auto block = parseCode(R"(
+
     function test() Result<i32> {
       return Result.Ok(try work());
     }

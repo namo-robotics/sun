@@ -24,100 +24,181 @@ TEST(BoundedIo, raw_file_io_requires_unsafe) {
  * use. */
 TEST(BoundedIo, slice_prevents_moving_storage) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeStringWithStdlib(R"(
-    using std;
-    /** Attempts to move storage while a slice still borrows it. */
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var buffer = ContiguousBuffer<u8>(alloc, 4);
-      var bytes = ByteSlice(buffer);
-      var moved = buffer;
-      return _convert<i32>(bytes.size());
+using std;
+
+/** Attempts to move storage while a slice still borrows it. */
+/** Runs the fixture with explicit error propagation. */
+function test_main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var buffer = try ContiguousBuffer<u8>(alloc, 4);
+  var bytes = ByteSlice(buffer);
+  var moved = buffer;
+  return Result.Ok(_convert<i32>(bytes.size()));
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )"),
+  };
+}
+)"),
                                 "Borrow check failed");
 }
 
 /** Read-only storage cannot be passed to the mutable slice constructor. */
 TEST(BoundedIo, mutable_slice_rejects_const_storage) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeStringWithStdlib(R"(
-    using std;
-    /** Attempts to acquire write access through a const buffer. */
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      const buffer = ContiguousBuffer<u8>(alloc, 4);
-      var bytes = MutableByteSlice(buffer);
-      return _convert<i32>(bytes.size());
+using std;
+
+/** Attempts to acquire write access through a const buffer. */
+/** Runs the fixture with explicit error propagation. */
+function test_main() Result<i32> {
+  var alloc = make_heap_allocator();
+  const buffer = try ContiguousBuffer<u8>(alloc, 4);
+  var bytes = MutableByteSlice(buffer);
+  return Result.Ok(_convert<i32>(bytes.size()));
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )"),
+  };
+}
+)"),
                                 "const");
 }
 
 /** Resizing cannot invalidate storage while a bounded view is still in use. */
 TEST(BoundedIo, slice_prevents_resizing_storage) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeStringWithStdlib(R"(
-    using std;
-    /** Attempts to replace the allocation while its slice is alive. */
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var buffer = ContiguousBuffer<u8>(alloc, 4);
-      var bytes = ByteSlice(buffer);
-      buffer.resize_to(1);
-      return _convert<i32>(bytes.size());
+using std;
+
+/** Attempts to replace the allocation while its slice is alive. */
+/** Runs the fixture with explicit error propagation. */
+function test_main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var buffer = try ContiguousBuffer<u8>(alloc, 4);
+  var bytes = ByteSlice(buffer);
+  try buffer.resize_to(1);
+  return Result.Ok(_convert<i32>(bytes.size()));
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )"),
+  };
+}
+)"),
                                 "Borrow check failed");
 }
 
 /** Read-only methods remain usable while a slice borrows the buffer. */
 TEST(BoundedIo, slice_allows_reading_storage_size) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
-    using std;
-    /** Reads both sizes while the shared borrow is alive. */
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var buffer = ContiguousBuffer<u8>(alloc, 4);
-      var bytes = ByteSlice(buffer);
-      return _convert<i32>(buffer.size() + bytes.size());
+using std;
+
+/** Reads both sizes while the shared borrow is alive. */
+/** Runs the fixture with explicit error propagation. */
+function test_main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var buffer = try ContiguousBuffer<u8>(alloc, 4);
+  var bytes = ByteSlice(buffer);
+  return Result.Ok(_convert<i32>(buffer.size() + bytes.size()));
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )"),
+  };
+}
+)"),
             8);
 }
 
 /** Releasing a slice's scope permits replacing the buffer allocation. */
 TEST(BoundedIo, storage_can_resize_after_slice_scope) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
-    using std;
-    /** Resizes only after the slice and its borrow have ended. */
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var buffer = ContiguousBuffer<u8>(alloc, 4);
-      if (true) {
-        var bytes = ByteSlice(buffer);
-        if (bytes.size() != 4) { return -1; }
-      };
-      buffer.resize_to(1);
-      return _convert<i32>(buffer.size());
+using std;
+
+/** Resizes only after the slice and its borrow have ended. */
+/** Runs the fixture with explicit error propagation. */
+function test_main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var buffer = try ContiguousBuffer<u8>(alloc, 4);
+  if (true) {
+    var bytes = ByteSlice(buffer);
+    if (bytes.size() != 4) {
+      return Result.Ok(-1);
     }
-  )"),
+  }
+  try buffer.resize_to(1);
+  return Result.Ok(_convert<i32>(buffer.size()));
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
+    }
+  };
+}
+)"),
             1);
 }
 
 /** Mutable views cannot outlive the local allocation they reference. */
 TEST(BoundedIo, slice_cannot_escape_local_storage) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeStringWithStdlib(R"(
-    using std;
-    /** Attempts to return a dangling slice. */
-    function escape() MutableByteSlice {
-      var alloc = make_heap_allocator();
-      var buffer = ContiguousBuffer<u8>(alloc, 4);
-      return MutableByteSlice(buffer);
+using std;
+
+/** Attempts to return a dangling slice. */
+function escape() Result<MutableByteSlice> {
+  var alloc = make_heap_allocator();
+  var buffer = try ContiguousBuffer<u8>(alloc, 4);
+  return Result.Ok(MutableByteSlice(buffer));
+}
+
+/** Forces the invalid function to be checked. */
+/** Runs the fixture with explicit error propagation. */
+function test_main() Result<i32> {
+  var bytes = try escape();
+  return Result.Ok(_convert<i32>(bytes.size()));
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-    /** Forces the invalid function to be checked. */
-    function main() i32 {
-      var bytes = escape();
-      return _convert<i32>(bytes.size());
-    }
-  )"),
+  };
+}
+)"),
                                 "cannot return a value that stores references");
 }
 
@@ -125,22 +206,48 @@ TEST(BoundedIo, slice_cannot_escape_local_storage) {
  * API. */
 TEST(BoundedIo, imported_bounded_read) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
-    using std;
-    /** Reads initialized bytes through a File imported from stdlib.moon. */
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var file = std.io.File();
-      match file.open("/dev/zero", std.io.FileMode.Read) {
-        SystemResult.Ok => {},
-        SystemResult.Error(_) => { return -1; }
-      };
-      var buffer = ContiguousBuffer<u8>(alloc, 4);
-      var bytes = MutableByteSlice(buffer);
-      return match file.read(bytes) {
-        std.io.ReadResult.Data(n) => _convert<i32>(n),
-        _ => -2
-      };
+using std;
+
+/** Reads initialized bytes through a File imported from stdlib.moon. */
+/** Runs the fixture with explicit error propagation. */
+function test_main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var file = std.io.File();
+  match file.open("/dev/zero", std.io.FileMode.Read) {
+    SystemResult.Ok => {},
+    SystemResult.Error(_) => {
+      return Result.Ok(-1);
+    },
+    SystemResult.Allocation(_) => {
+      return Result.Ok(-1);
+    },
+    SystemResult.InvalidArgument(_) => {
+      return Result.Ok(-1);
+    },
+    SystemResult.Overflow(_) => {
+      return Result.Ok(-1);
     }
-  )"),
+  };
+  var buffer = try ContiguousBuffer<u8>(alloc, 4);
+  var bytes = MutableByteSlice(buffer);
+  return Result.Ok(_convert<i32>(
+    match file.read(bytes) {
+      std.io.ReadResult.Data(n) => _convert<i32>(n),
+      _ => -2
+    }
+  ));
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
+    }
+  };
+}
+)"),
             4);
 }

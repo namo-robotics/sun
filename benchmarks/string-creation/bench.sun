@@ -7,7 +7,20 @@ using std;
 enum BenchmarkResult<T> {
   Ok(T),
   OutOfBounds(IndexOutOfBoundsError),
-  Assertion(std.test.AssertionError)
+  Assertion(std.test.AssertionError),
+  Allocation(AllocationError),
+  InvalidArgument(InvalidArgumentError),
+  Overflow(OverflowError),
+  System(Error),
+  NotFound(NotFoundError),
+  Empty(EmptyError),
+  Io(IOError),
+  Conversion(ConversionError),
+  DivisionByZero(DivisionByZeroError),
+  Arithmetic(ArithmeticError),
+  Json(std.json.JsonError),
+  Xml(std.xml.XmlError),
+  Decode(ProtoDecodeError)
 }
 
 const N: i64 = 100000000;
@@ -15,11 +28,11 @@ const RING_SIZE: i64 = 1024;
 const RUNS: i64 = 5;
 
 /** Create an owned decimal string and replace one ring slot on every iteration. */
-function from_int(buf: ref Vec<String>, n: i64) AccessResult<void> {
+function from_int(buf: ref Vec<String>, n: i64) Result<void> {
   for (var i: i64 = 0; i < n; i = i + 1) {
-    try buf.set(i & (RING_SIZE - 1), `${i}`);
+    try buf.set(i & (RING_SIZE - 1), try `${i}`);
   }
-  return AccessResult.Ok;
+  return Result.Ok;
 }
 
 /** Check every retained decimal value outside the timed region. */
@@ -40,10 +53,9 @@ function verify(buf: const ref Vec<String>, n: i64) BenchmarkResult<i64> {
 
 /** Warm up, time repeated conversions, and report throughput and a checksum. */
 function run_benchmark() BenchmarkResult<void> {
-  var allocator = make_heap_allocator();
-  var buf = Vec<String>(allocator, RING_SIZE);
+  var buf = try Vec<String>(global_allocator, RING_SIZE);
   for (var slot: i64 = 0; slot < RING_SIZE; slot = slot + 1) {
-    buf.push(String(allocator, ""));
+    try buf.push(try String(global_allocator, ""));
   }
   try from_int(buf, 1000000);
   try verify(buf, 1000000);
@@ -56,12 +68,12 @@ function run_benchmark() BenchmarkResult<void> {
       best = elapsed;
     }
     try verify(buf, N);
-    println(`sample ${run}: ${elapsed} ns`);
+    println(try `sample ${run}: ${elapsed} ns`);
   }
   var total: i64 = try verify(buf, N);
   var ns: f64 = _convert<f64>(best) / _convert<f64>(N);
   var rate: f64 = 1000.0 / ns;
-  println(`Sun interpolation: ${ns} ns/string  ${rate} M/s   (check ${total})`);
+  println(try `Sun interpolation: ${ns} ns/string  ${rate} M/s   (check ${total})`);
   return BenchmarkResult.Ok;
 }
 
@@ -70,7 +82,10 @@ function main() i32 {
   return match run_benchmark() {
     BenchmarkResult.Ok => 0,
     (error: const ref IError) => {
-      eprintln(error.message());
+      match error.message() {
+        AllocationResult.Ok(message) => eprintln(message),
+        _ => eprintln("unable to allocate error message")
+      };
       1;
     }
   };

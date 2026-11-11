@@ -107,49 +107,66 @@ class Modules_GenericRegressions : public ::testing::Test {
 /** Compiles byte literals quietly and preserves them in imported templates. */
 TEST_F(Modules_GenericRegressions, RawByteStringLiterals) {
   const std::string body = R"(
+
     using std;
     var alloc = make_heap_allocator();
-    var value = String(alloc, "\xff\xfe\0\x80");
-    if (value.length() != 4) { return 1; }
+    var value = try String(alloc, "\xff\xfe\0\x80");
+    if (value.length() != 4) { return std.Result.Ok(1); }
     if (true) {
       var byte0 = match value.at(0) {
         AccessResult.Ok(byte) => byte,
-        AccessResult.OutOfBounds(_) => { return 6; }
+        AccessResult.OutOfBounds(_) => { return std.Result.Ok(6); }
       };
-      if (byte0 != 255u8) { return 2; }
+      if (byte0 != 255u8) { return std.Result.Ok(2); }
       var byte1 = match value.at(1) {
         AccessResult.Ok(byte) => byte,
-        AccessResult.OutOfBounds(_) => { return 6; }
+        AccessResult.OutOfBounds(_) => { return std.Result.Ok(6); }
       };
-      if (byte1 != 254u8) { return 3; }
+      if (byte1 != 254u8) { return std.Result.Ok(3); }
       var byte2 = match value.at(2) {
         AccessResult.Ok(byte) => byte,
-        AccessResult.OutOfBounds(_) => { return 6; }
+        AccessResult.OutOfBounds(_) => { return std.Result.Ok(6); }
       };
-      if (byte2 != 0u8) { return 4; }
+      if (byte2 != 0u8) { return std.Result.Ok(4); }
       var byte3 = match value.at(3) {
         AccessResult.Ok(byte) => byte,
-        AccessResult.OutOfBounds(_) => { return 6; }
+        AccessResult.OutOfBounds(_) => { return std.Result.Ok(6); }
       };
-      if (byte3 != 128u8) { return 5; }
+      if (byte3 != 128u8) { return std.Result.Ok(5); }
     }
-    return 0;
+    return std.Result.Ok(0);
   )";
-  write("direct.sun", "/** Checks literal bytes. */\nfunction main() i32 {" +
+  const std::string boundary = R"(
+    /** Reports unexpected setup or execution errors once. */
+    function main() i32 {
+      return match test_main() {
+        std.Result.Ok(value) => value,
+        _ => { std.panic("unexpected test error"); 1; }
+      };
+    }
+  )";
+  write("direct.sun", "/** Checks literal bytes. */\nfunction test_main() std.Result<i32> {" +
                           body +
-                          "}\nmanifest { libraries: [\"stdlib.moon\"] }");
+                          "}" + boundary + "\nmanifest { libraries: [\"stdlib.moon\"] }");
   ASSERT_NO_FATAL_FAILURE(buildLibrary(
       "/** Exports a template containing byte literals. */\npublic module lib {"
       "/** Checks bytes after template deserialization. */\n"
-      "public function check<T>(unused: T) i32 {" +
+      "public function check<T>(unused: T) std.Result<i32> {" +
       body + "}}\nmanifest { libraries: [\"stdlib.moon\"] }"));
   EXPECT_EQ(readFile(dir / "log").find("libprotobuf"), std::string::npos)
       << readFile(dir / "log");
-  write("consumer.sun", R"(
-    /** Instantiates the imported template. */
-    function main() i32 { return lib.check<i32>(0); }
-    manifest { libraries: ["stdlib.moon", "lib.moon"] }
-  )");
+  write("consumer.sun", boundary + R"(
+/** Instantiates the imported template. */
+function test_main() std.Result<i32> {
+  return lib.check<i32>(0);
+}
+manifest {
+  libraries: [
+    "stdlib.moon",
+    "lib.moon"
+  ]
+}
+)");
   for (const std::string name : {"direct.sun", "consumer.sun"}) {
     SCOPED_TRACE(name);
     const auto source = (dir / name).string();
@@ -432,28 +449,48 @@ manifest { libraries: ["lib.moon"] }
 TEST_F(Modules_GenericRegressions, ModuleContainerFunction) {
   write("container.sun", R"(
 using std;
+
 /** Provides a generic operation on a standard container. */
 public module lib {
+
   /** Moves an element out of the vector. */
   public function rem<T>(v: ref Vec<T>, index: i64) _Result<T, IndexOutOfBoundsError> {
     return _Result.Ok(try v.remove(index));
   }
+
   /** Calls the sibling function from another generic body. */
-  public function nested<T>(v: ref Vec<T>) _Result<T, IndexOutOfBoundsError> { return rem<T>(v, 0); }
+  public function nested<T>(v: ref Vec<T>) _Result<T, IndexOutOfBoundsError> {
+    return rem<T>(v, 0);
+  }
+
   /** Exercises explicit, inferred and nested generic calls. */
-  public function check() _Result<i32, IndexOutOfBoundsError> {
+  public function check() Result<i32> {
     var a = make_heap_allocator();
-    var v = Vec<i64>(a, 3);
-    v.push(1); v.push(2); v.push(3);
+    var v = try Vec<i64>(a, 3);
+    try v.push(1);
+    try v.push(2);
+    try v.push(3);
     var first = try rem<i64>(v, 0);
     var second = try rem(v, 0);
     var third = try nested<i64>(v);
-    if (first == 1 and second == 2 and third == 3 and v.size() == 0) { return _Result.Ok(0); }
-    return _Result.Ok(1);
+    if (first == 1 and second == 2 and third == 3 and v.size() == 0) {
+      return Result.Ok(0);
+    }
+    return Result.Ok(1);
   }
 }
-function main() i32 { return match lib.check() { _Result.Ok(code) => code, _Result.Err(_) => -100 }; }
-manifest { libraries: ["stdlib.moon"] }
+
+function main() i32 {
+  return match lib.check() {
+    Result.Ok(code) => code,
+    _ => -100
+  };
+}
+manifest {
+  libraries: [
+    "stdlib.moon"
+  ]
+}
 )");
   ASSERT_NO_FATAL_FAILURE(checkProgram("container.sun"));
 }
@@ -522,19 +559,20 @@ TEST_P(Modules_NestedTypeArguments, DirectAndImported) {
         }
       };
       replace("Option<T>", "Vec<T>");
-      replace("var none: Vec<T> = Option.None;", "var none = Vec<T>(a, 1);");
-      replace("out.push(Sample<T>(Info(), Option.Some(v)));",
-              "var some = Vec<T>(a, 1); some.push(v); "
-              "out.push(Sample<T>(Info(), some));");
-      const auto begin = source.find("return match sample.data");
-      const auto end = source.find("};", begin);
+      replace("var none: Vec<T> = Option.None;", "var none = try Vec<T>(global_allocator, 1);");
+      replace("try out.push(Sample<T>(Info(), Option.Some(v)));",
+              "var some = try Vec<T>(global_allocator, 1); try some.push(v); "
+              "try out.push(Sample<T>(Info(), some));");
+      const auto match = source.find("match sample.data");
+      const auto begin = source.rfind("return AllocationResult.Ok(", match);
+      const auto end = source.find(");", match);
       ASSERT_NE(begin, std::string::npos);
       ASSERT_NE(end, std::string::npos);
       source.replace(begin, end + 2 - begin,
                      "var value = match sample.data.remove(0) { "
                      "std.AccessResult.Ok(v) => v, "
-                     "std.AccessResult.OutOfBounds(_) => { return -100; } }; "
-                     "return value.v - 7;");
+                     "std.AccessResult.OutOfBounds(_) => { return AllocationResult.Ok(-100); } }; "
+                     "return AllocationResult.Ok(value.v - 7);");
     }
     // Keep native coverage on the original; run every variant through the JIT.
     const bool checkNative = variant == 0;
@@ -732,9 +770,17 @@ TEST_F(Modules_GenericRegressions,
 /** Standard library generic parameters cannot shadow a consumer allocator. */
 TEST_F(Modules_GenericRegressions, GlobalAllocatorWithGenericVector) {
   write("consumer.sun", R"(
+
     using std;
     var alloc: HeapAllocator = HeapAllocator();
-    var values: Vec<i64> = Vec<i64>(alloc, 8);
+    /** Handles this global initializer’s failure at the startup boundary. */
+function initialize_values() Vec<i64> {
+ return match Vec<i64>(alloc, 8) {
+ AllocationResult.Ok(value) => value,
+ _ => { std.panic("unexpected global initialization failure"); initialize_values(); }
+ };
+}
+var values: Vec<i64> = initialize_values();
     /** Confirms the vector can be initialized using the global allocator. */
     function main() i32 { return 0; }
     manifest { libraries: ["stdlib.moon"] }

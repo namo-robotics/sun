@@ -162,32 +162,50 @@ TEST(Classes_Alignment, globals_and_enum_payloads) {
 TEST(Classes_Alignment, stdlib_typed_heap_storage) {
   registerAlignmentProbe();
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
-    using std;
-    /** Probes pointer alignment in the native test harness. */
-    extern function sun_test_alignment_remainder(p: raw_ptr<u8>, alignment: i64) i64;
-    /** A typed heap allocation with an explicit alignment requirement. */
-    class A {
-      alignment: 256
-      var value: i64;
-      /** Initializes the value in its final storage. */
-      init(value: i64) { this.value = value; }
+using std;
+
+/** Probes pointer alignment in the native test harness. */
+extern function sun_test_alignment_remainder(p: raw_ptr<u8>, alignment: i64) i64;
+
+/** A typed heap allocation with an explicit alignment requirement. */
+class A {
+  alignment: 256
+  var value: i64;
+
+  /** Initializes the value in its final storage. */
+  init(value: i64) {
+    this.value = value;
+  }
+}
+
+/** Allocates and frees a typed value and a typed array. */
+/** Runs the fixture with explicit error propagation. */
+function test_main() Result<i64> {
+  var alloc = HeapAllocator();
+  var one = try alloc.create<A>(42);
+  var many = try alloc.alloc<A>(3);
+  var result: i64 = 0;
+  unsafe {
+    result = sun_test_alignment_remainder(_bitcast<raw_ptr<u8>>(one), 256) +
+      sun_test_alignment_remainder(_bitcast<raw_ptr<u8>>(many), 256);
+    _deinit<A>(one);
+  };
+  alloc.dealloc<A>(one, 1);
+  alloc.dealloc<A>(many, 3);
+  return Result.Ok(result);
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i64 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-    /** Allocates and frees a typed value and a typed array. */
-    function main() i64 {
-      var alloc = HeapAllocator();
-      var one = alloc.create<A>(42);
-      var many = alloc.alloc<A>(3);
-      var result: i64 = 0;
-      unsafe {
-        result = sun_test_alignment_remainder(_bitcast<raw_ptr<u8>>(one), 256)
-          + sun_test_alignment_remainder(_bitcast<raw_ptr<u8>>(many), 256);
-        _deinit<A>(one);
-      };
-      alloc.dealloc<A>(one, 1);
-      alloc.dealloc<A>(many, 3);
-      return result;
-    }
-  )"),
+  };
+}
+)"),
             0);
 }
 
@@ -195,24 +213,49 @@ TEST(Classes_Alignment, stdlib_typed_heap_storage) {
 TEST(Classes_Alignment, thread_arguments_and_results) {
   registerAlignmentProbe();
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
-    using std;
-    /** Probes pointer alignment in the native test harness. */
-    extern function sun_test_alignment_remainder(p: raw_ptr<u8>, alignment: i64) i64;
-    /** A value moved between threads. */
-    class A { alignment: 64 var value: i64; }
-    /** Checks the worker's parameter storage and returns ownership. */
-    function worker(value: A) A {
-      if (unsafe { sun_test_alignment_remainder(_bitcast<raw_ptr<u8>>(_address_of<A>(value)), 64); } != 0) { value.value = 0; }
-      return value;
+using std;
+
+/** Probes pointer alignment in the native test harness. */
+extern function sun_test_alignment_remainder(p: raw_ptr<u8>, alignment: i64) i64;
+
+/** A value moved between threads. */
+class A {
+  alignment: 64
+  var value: i64;
+}
+
+/** Checks the worker's parameter storage and returns ownership. */
+function worker(value: A) A {
+  if (unsafe { sun_test_alignment_remainder(_bitcast<raw_ptr<u8>>(_address_of<A>(value)), 64); } !=
+    0) {
+    value.value = 0;
+  }
+  return value;
+}
+
+/** Moves a value to a worker and checks its returned storage. */
+/** Runs the fixture with explicit error propagation. */
+function test_main() Result<i64> {
+  var value: A = { value: 42 };
+  var thread = try std.thread.spawn(worker, value);
+  var result = thread.join();
+  if (unsafe { sun_test_alignment_remainder(_bitcast<raw_ptr<u8>>(_address_of<A>(result)), 64); } !=
+    0) {
+    return Result.Ok(0);
+  }
+  return Result.Ok(result.value);
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i64 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-    /** Moves a value to a worker and checks its returned storage. */
-    function main() i64 {
-      var value: A = {value: 42};
-      var thread = std.thread.spawn(worker, value);
-      var result = thread.join();
-      if (unsafe { sun_test_alignment_remainder(_bitcast<raw_ptr<u8>>(_address_of<A>(result)), 64); } != 0) { return 0; }
-      return result.value;
-    }
-  )"),
+  };
+}
+)"),
             42);
 }

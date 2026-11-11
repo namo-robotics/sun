@@ -253,14 +253,33 @@ TEST(Modules_FileImports,
 
 TEST(Modules_FileImports, interpolation_keeps_enclosing_file_imports) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
-    using std;
-    public module lib { public function answer() i32 { return 42; } }
-    using lib;
-    function main() i32 {
-      var text = `${answer()}`;
-      return text.length();
+using std;
+
+public module lib {
+
+  public function answer() i32 {
+    return 42;
+  }
+}
+using lib;
+
+/** Runs the fixture with explicit error propagation. */
+function test_main() Result<i32> {
+  var text = try `${answer()}`;
+  return Result.Ok(_convert<i32>(text.length()));
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )"),
+  };
+}
+)"),
             2);
 }
 

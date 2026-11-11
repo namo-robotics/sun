@@ -55,29 +55,29 @@ public module cuda {
     }
 
     /** Allocates a readable diagnostic only when requested. */
-    public const method message() String {
-      var text = String(this.operation_);
+    public const method message() AllocationResult<String> {
+      var text = try String(this.operation_);
       if (this.status == -1) {
-        text.append(": invalid shape or argument");
+        try text.append(": invalid shape or argument");
       } else if (this.status == -2) {
-        text.append(": dimensions exceed backend limits");
+        try text.append(": dimensions exceed backend limits");
       } else if (this.status == -3) {
-        text.append(": matrices belong to different contexts");
+        try text.append(": matrices belong to different contexts");
       } else if (this.status == -4) {
-        text.append(": output aliases an input");
+        try text.append(": output aliases an input");
       } else if (this.status == -5) {
-        text.append(": device context is unavailable");
+        try text.append(": device context is unavailable");
       } else if (this.status == -6) {
-        text.append(": host resource allocation failed");
+        try text.append(": host resource allocation failed");
       } else {
-        text.append(": NVIDIA backend failed; inspect native_code()");
+        try text.append(": NVIDIA backend failed; inspect native_code()");
       }
-      return text;
+      return AllocationResult.Ok(text);
     }
   }
 
   /** Carries an owned successful result or a GPU operation failure. */
-  public enum GpuResult<T> { Ok(T), Error(GpuError) }
+  public enum GpuResult<T> { Ok(T), Error(GpuError), Allocation(AllocationError), InvalidArgument(InvalidArgumentError), Overflow(OverflowError) }
 
   /** Prevents callers outside this module from adopting arbitrary handles. */
   class HandleKey {

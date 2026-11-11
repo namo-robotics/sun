@@ -64,7 +64,7 @@ public module std.thread {
 
   /** Checks mutex two threads sequential. */
   test_function mutex_two_threads_sequential() {
-    var t1 = spawn(
+    var t1 = try spawn(
       () => i32 {
         var i: i32 = 0;
         while (i < 100) {
@@ -75,7 +75,7 @@ public module std.thread {
       }
     );
 
-    var t2 = spawn(
+    var t2 = try spawn(
       () => i32 {
         var i: i32 = 0;
         while (i < 100) {
@@ -95,7 +95,7 @@ public module std.thread {
 
   /** Checks mutex three threads. */
   test_function mutex_three_threads() {
-    var t1 = spawn(
+    var t1 = try spawn(
       () => i32 {
         var i: i32 = 0;
         while (i < 50) {
@@ -108,7 +108,7 @@ public module std.thread {
       }
     );
 
-    var t2 = spawn(
+    var t2 = try spawn(
       () => i32 {
         var i: i32 = 0;
         while (i < 50) {
@@ -121,7 +121,7 @@ public module std.thread {
       }
     );
 
-    var t3 = spawn(
+    var t3 = try spawn(
       () => i32 {
         var i: i32 = 0;
         while (i < 50) {
@@ -150,7 +150,7 @@ public module std.thread {
     for (var run: i32 = 0; run < 5; run = run + 1) {
       races_counter = 0;
 
-      var t1 = spawn(
+      var t1 = try spawn(
         () => i32 {
           var i: i32 = 0;
           while (i < 1000) {
@@ -163,7 +163,7 @@ public module std.thread {
         }
       );
 
-      var t2 = spawn(
+      var t2 = try spawn(
         () => i32 {
           var i: i32 = 0;
           while (i < 1000) {
@@ -203,7 +203,7 @@ public module std.thread {
     }
     // The guard is gone, so another thread can take the lock. This would
     // block forever if the guard had not released it.
-    var t = spawn(
+    var t = try spawn(
       () => i32 {
         increment_under_guard();
         return 0;

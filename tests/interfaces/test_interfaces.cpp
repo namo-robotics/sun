@@ -750,38 +750,65 @@ TEST(Interfaces_DynamicDispatch,
      for_in_borrows_concrete_elements_as_interfaces) {
   // Iterate over a Vec of interface-typed objects with for-in
   auto value = executeStringWithStdlib(R"(
-    using std;
-    
-    interface IValue {
-      method get() i32;
+using std;
+
+interface IValue {
+  method get() i32;
+}
+
+class NumA implements IValue {
+  var n: i32;
+
+  init(v: i32) {
+    this.n = v;
+  }
+
+  method get() i32 {
+    return this.n;
+  }
+}
+
+class NumB implements IValue {
+  var n: i32;
+
+  init(v: i32) {
+    this.n = v;
+  }
+
+  method get() i32 {
+    return this.n * 2;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+function test_main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var items = try Vec<NumA>(alloc, 8);
+  var a = NumA(10);
+  var b = NumA(10);
+  var c = NumA(3);
+  try items.push(a);
+  try items.push(b);
+  try items.push(c);
+  var sum: i32 = 0;
+  for (var item: ref NumA in items) {
+    var view: ref IValue = item;
+    sum = sum + view.get();
+  }
+  return Result.Ok(sum);
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-    class NumA implements IValue {
-      var n: i32;
-      init(v: i32) { this.n = v; }
-      method get() i32 { return this.n; }
-    }
-    class NumB implements IValue {
-      var n: i32;
-      init(v: i32) { this.n = v; }
-      method get() i32 { return this.n * 2; }
-    }
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var items = Vec<NumA>(alloc, 8);
-      var a = NumA(10);
-      var b = NumA(10);
-      var c = NumA(3);
-      items.push(a);
-      items.push(b);
-      items.push(c);
-      var sum: i32 = 0;
-      for (var item: ref NumA in items) {
-        var view: ref IValue = item;
-        sum = sum + view.get();
-      }
-      return sum;
-    }
-  )");
+  };
+}
+)");
   // Concrete elements are borrowed through the interface during iteration.
   EXPECT_EQ(value, 23);
 }
@@ -1899,6 +1926,7 @@ TEST(Interfaces, throwing_generic_inherited_default) {
 interface IError {
   /** Returns the fixture error code. */
   const method code() i32;
+
   /** Returns the fixture diagnostic. */
   const method message() static_ptr<u8>;
 }
@@ -1910,36 +1938,44 @@ enum Outcome<T> { Ok(T), Failure(Failure) }
 interface Source<T> {
   /** Obtains the value. */
   method read() Outcome<T>;
+
   /** Forwards the operation. */
   method forward() Outcome<T> {
     return Outcome.Ok(try this.read());
   }
 }
+
 /** Inherits the specialized contract. */
 interface Child extends Source<i32> {
 }
+
 /** Identifies a failed read. */
 class Failure implements IError {
   /** Creates the error. */
   init() {}
+
   /** Returns the error code. */
   const method code() i32 {
     return 42;
   }
+
   /** Describes the error. */
   const method message() static_ptr<u8> {
     return "failed";
   }
 }
+
 /** Uses an inherited default. */
 class Reader implements Child {
   /** Creates the reader. */
   init() {}
+
   /** Reports failure. */
   method read() Outcome<i32> {
     return Outcome.Failure(Failure());
   }
 }
+
 /** Catches failure through an inherited vtable slot. */
 function invoke(reader: ref Child) i32 {
   return match reader.forward() {
@@ -1949,6 +1985,7 @@ function invoke(reader: ref Child) i32 {
     }
   };
 }
+
 /** Exercises the default on concrete and erased receivers. */
 function main() i32 {
   var reader = Reader();
@@ -1970,6 +2007,7 @@ TEST(Interfaces, nonthrowing_method_implements_throwing_contract) {
 interface IError {
   /** Returns the fixture error code. */
   const method code() i32;
+
   /** Returns the fixture diagnostic. */
   const method message() static_ptr<u8>;
 }
@@ -1978,15 +2016,18 @@ interface IError {
 class Error implements IError {
   /** Creates the fixture failure. */
   init() {}
+
   /** Returns its numeric code. */
   const method code() i32 {
     return 1;
   }
+
   /** Returns a static description. */
   const method message() static_ptr<u8> {
     return "failure";
   }
 }
+
 /** Owns successes and concrete fixture errors. */
 enum Outcome<T> { Ok(T), Error(Error) }
 
@@ -1995,39 +2036,48 @@ interface Source {
   /** Reads a value. */
   method read() Outcome<i32>;
 }
+
 /** Narrows the inherited error contract. */
 interface Child extends Source {
   /** Reads without failure. */
   method read() Outcome<i32>;
 }
+
 /** Always produces a value. */
 class Reader implements Child {
   /** Creates the reader. */
   init() {}
+
   /** Returns the value. */
   method read() Outcome<i32> {
     return Outcome.Ok(42);
   }
 }
+
 /** Directly satisfies the fallible requirement without throwing. */
 class DirectReader implements Source {
   /** Creates the reader. */
   init() {}
+
   /** Returns the value. */
   method read() Outcome<i32> {
     return Outcome.Ok(21);
   }
 }
+
 /** Calls through the fallible parent contract. */
 function invoke(reader: ref Source) Outcome<i32> {
   return reader.read();
 }
+
 /** Handles the declared possibility of failure. */
 function main() i32 {
   var reader = Reader();
   var direct = DirectReader();
   /** Propagates each operation before adding successful values. */
-  var combine = [ref reader, ref direct]() => Outcome<i32> { return Outcome.Ok(try invoke(reader) + try invoke(direct)); };
+  var combine = [ref reader, ref direct]() => Outcome<i32> {
+    return Outcome.Ok(try invoke(reader) + try invoke(direct));
+  };
   return match combine() {
     Outcome.Ok(value) => value,
     (error: ref IError) => {

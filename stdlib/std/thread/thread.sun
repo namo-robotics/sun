@@ -127,8 +127,15 @@ public module std.thread {
    * `fn` may be a lambda or a named function passed as a value. A worker can
    * return a _Result; join() hands that result to the joining thread.
    */
-  public function spawn<F: _Callable>(fn: F, args...: _params_of<F>) Thread<_return_type_of<F>> {
-    return Thread<_return_type_of<F>>(unsafe { _spawn<F>(fn, args...); });
+  public function spawn<F: _Callable>(
+    fn: F,
+    args...: _params_of<F>
+  ) AllocationResult<Thread<_return_type_of<F>>> {
+    var context = unsafe { _spawn<F>(fn, args...); };
+    if (context == null) {
+      return AllocationResult.Allocation(AllocationError(0));
+    }
+    return AllocationResult.Ok(Thread<_return_type_of<F>>(context));
   }
 
   // Mutual exclusion built on an atomic compare-and-swap for the

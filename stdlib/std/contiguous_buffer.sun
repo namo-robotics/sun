@@ -9,8 +9,7 @@
 //   import "stdlib/std/contiguous_buffer.sun";
 //   using std;
 //   
-//   var allocator = make_heap_allocator();
-//   var buf = ContiguousBuffer<i32>(allocator, 10);
+//   var buf = try ContiguousBuffer<i32>(global_allocator, 10);
 //   try buf.set(0, 42);
 //   var val: ref i32 = try buf.get(0);  // borrows 42
 //   var len = buf.size();  // 10
@@ -31,10 +30,10 @@ public module std {
     /**
      * Constructor with allocator and size
      */
-    init(allocator: const ref HeapAllocator, size: i64) {
+    init(allocator: const ref HeapAllocator, size: i64) AllocationResult<void> {
       this.alloc = allocator.copy();
       this.size_ = size;
-      this.data = Unique<u8>(_bitcast<raw_ptr<u8>>(this.alloc.alloc<T>(size)));
+      this.data = Unique<u8>(_bitcast<raw_ptr<u8>>(try this.alloc.alloc<T>(size)));
     }
 
     // ========================================================================
@@ -120,13 +119,13 @@ public module std {
     /**
      * Create a deep copy of this buffer
      */
-    public const method clone() ContiguousBuffer<T> {
-      var copy: ContiguousBuffer<T> = ContiguousBuffer<T>(this.alloc, this.size_);
+    public const method clone() AllocationResult<ContiguousBuffer<T>> {
+      var copy: ContiguousBuffer<T> = try ContiguousBuffer<T>(this.alloc, this.size_);
       var byte_count: i64 = this.size_ * _sizeof<T>();
       unsafe {
         _memcpy(copy.raw_data(), this.data.get_raw(), byte_count);
       };
-      return copy;
+      return AllocationResult.Ok(copy);
     }
 
     /**
@@ -188,13 +187,13 @@ public module std {
      * Resize buffer to new size, preserving min(old_size, new_size) elements
      * New elements (if growing) are uninitialized
      */
-    public method resize_to(new_size: i64) void {
+    public method resize_to(new_size: i64) AllocationResult<void> {
       if (new_size == this.size_) {
-        return;
+        return AllocationResult.Ok;
       }
 
       // Allocate new buffer
-      var new_data: raw_ptr<u8> = _bitcast<raw_ptr<u8>>(this.alloc.alloc<T>(new_size));
+      var new_data: raw_ptr<u8> = _bitcast<raw_ptr<u8>>(try this.alloc.alloc<T>(new_size));
 
       // Copy existing elements (up to min of old and new size)
       var copy_count: i64 = this.size_;
@@ -208,6 +207,8 @@ public module std {
       // Replace old data with new (Unique handles freeing old buffer)
       this.data = Unique<u8>(new_data);
       this.size_ = new_size;
+
+      return AllocationResult.Ok;
     }
 
     /**

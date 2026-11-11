@@ -92,6 +92,58 @@ static int tokenKindToLSPType(TokenKind kind) {
   }
 }
 
+/** Distinguish generic calls from comparisons after an opening angle bracket. */
+static bool startsGenericCall(sun::parsing::Lexer& lexer) {
+  const auto saved = lexer.getPosition();
+  /** Require a balanced argument list followed by a call, stopping at expressions. */
+  const bool result = [&] {
+    int depth = 1;
+    while (true) {
+      const auto kind = lexer.getNextToken().kind;
+      switch (kind) {
+        case TokenKind::COMMENT:
+        case TokenKind::BLOCK_COMMENT:
+          continue;
+        case TokenKind::LESS:
+          ++depth;
+          break;
+        case TokenKind::LEFT_SHIFT:
+          depth += 2;
+          break;
+        case TokenKind::GREATER:
+          --depth;
+          break;
+        case TokenKind::RIGHT_SHIFT:
+          depth -= 2;
+          break;
+        case TokenKind::TOK_EOF:
+        case TokenKind::SEMI_COLON:
+        case TokenKind::BRACE_OPEN:
+        case TokenKind::BRACE_CLOSE:
+        case TokenKind::AND:
+        case TokenKind::OR:
+        case TokenKind::EQUAL:
+        case TokenKind::EQUAL_EQUAL:
+        case TokenKind::NOT_EQUAL:
+        case TokenKind::LESS_EQUAL:
+        case TokenKind::GREATER_EQUAL:
+          return false;
+        default:
+          break;
+      }
+      if (depth <= 0) {
+        auto next = lexer.getNextToken().kind;
+        while (next == TokenKind::COMMENT || next == TokenKind::BLOCK_COMMENT) {
+          next = lexer.getNextToken().kind;
+        }
+        return depth == 0 && next == TokenKind::PAREN_OPEN;
+      }
+    }
+  }();
+  lexer.setPosition(saved);
+  return result;
+}
+
 /**
  * Compute semantic tokens for a document
  * Returns encoded token data as per LSP spec: [deltaLine, deltaStartChar,
@@ -113,6 +165,8 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
   // Implements and extends accept a list that ends at the declaration body.
   bool inInterfaceList = false;
   bool afterFunction = false;
+  bool afterMethod = false;
+  int previousTokenType = -1;
   bool afterColon = false;
   bool afterArrow = false;
   bool afterDot = false;  // For method calls: obj.method()
@@ -185,9 +239,14 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
     // Try the simple mapping first
     int tokenType = tokenKindToLSPType(tok.kind);
 
+    const bool opensGeneric = tok.kind == TokenKind::LESS &&
+        (angleBracketDepth > 0 || previousTokenType == Type ||
+         previousTokenType == Class || previousTokenType == Interface ||
+         previousTokenType == Enum || startsGenericCall(lexer));
+
     // Check if previous identifier should be reclassified as function/method
     if (lastIdent.valid) {
-      if (tok.kind == TokenKind::PAREN_OPEN || tok.kind == TokenKind::LESS) {
+      if (tok.kind == TokenKind::PAREN_OPEN || opensGeneric) {
         // Previous identifier is a function/method call
         // Find and update it in tokens. Constructors and destructors (init /
         // deinit) get their own token type so they stand apart from both
@@ -196,7 +255,13 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
             lastIdent.text == "init" || lastIdent.text == "deinit";
         for (auto& t : tokens) {
           if (t.line == lastIdent.line && t.startChar == lastIdent.col) {
-            t.tokenType = isLifecycle ? Lifecycle : Function;
+            if (isLifecycle) {
+              t.tokenType = Lifecycle;
+            } else if (t.tokenType == Property || t.tokenType == Method) {
+              t.tokenType = Method;
+            } else {
+              t.tokenType = Function;
+            }
             break;
           }
         }
@@ -229,10 +294,8 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
     } else if (tok.kind == TokenKind::DOT) {
       afterDot = true;
     } else if (tok.kind == TokenKind::LESS) {
-      // Could be generic or comparison - check context
-      if (prevKind == TokenKind::IDENTIFIER || afterClass || afterInterface ||
-          afterFunction) {
-        angleBracketDepth++;
+      if (opensGeneric) {
+        ++angleBracketDepth;
       }
     } else if (tok.kind == TokenKind::GREATER && angleBracketDepth > 0) {
       angleBracketDepth--;
@@ -246,13 +309,13 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
       // Reset declaration context but keep angle brackets for generic calls
       afterEnum = afterModule = false;
       afterClass = afterInterface = inInterfaceList = afterFunction = false;
-      afterColon = afterArrow = afterDot = false;
+      afterColon = afterArrow = afterDot = afterMethod = false;
     } else if (tok.kind == TokenKind::PAREN_CLOSE ||
                tok.kind == TokenKind::BRACE_OPEN ||
                tok.kind == TokenKind::SEMI_COLON) {
       afterEnum = afterModule = false;
       afterClass = afterInterface = inInterfaceList = afterFunction = false;
-      afterColon = afterArrow = afterDot = false;
+      afterColon = afterArrow = afterDot = afterMethod = false;
       if (tok.kind == TokenKind::BRACE_OPEN ||
           tok.kind == TokenKind::SEMI_COLON) {
         angleBracketDepth = 0;
@@ -274,9 +337,9 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
           (prevKind == TokenKind::BRACE_OPEN ||
            prevKind == TokenKind::BRACE_CLOSE ||
            prevKind == TokenKind::SEMI_COLON || prevKind == TokenKind::PUBLIC ||
-           prevKind == TokenKind::CONST)) {
+           prevKind == TokenKind::CONST || prevKind == TokenKind::UNSAFE)) {
         tokenType = -1;
-        afterFunction = true;
+        afterFunction = afterMethod = true;
       } else if (afterEnum) {
         tokenType = Enum;
         afterEnum = false;
@@ -290,8 +353,8 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
         tokenType = Interface;
         afterInterface = false;
       } else if (afterFunction) {
-        tokenType = Function;
-        afterFunction = false;
+        tokenType = afterMethod ? Method : Function;
+        afterFunction = afterMethod = false;
         // Track this - might be followed by < for generics
         lastIdent = {true, line, col, length, tok.text};
       } else if (isTypeContext) {
@@ -331,6 +394,7 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
       afterColon = afterArrow = false;
     }
     prevKind = tok.kind;
+    previousTokenType = tokenType;
   }
 
   // Encode as delta format

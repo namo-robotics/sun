@@ -18,7 +18,7 @@ public module std.net {
       sender.send_str_to("ping", here, try std.test.expect_system(receiver.local_port()))
     );
     try std.test.assert_eq(sent, 4);
-    var buf = ContiguousBuffer<u8>(alloc, 64);
+    var buf = try ContiguousBuffer<u8>(alloc, 64);
     var datagram = try std.test.expect_system(receiver.recv_from(buf));
     try std.test.assert_eq(datagram.length(), 4);
     try std.test.assert_eq(datagram.port(), try std.test.expect_system(sender.local_port()));
@@ -42,6 +42,18 @@ public module std.net {
     match contender.bind(here, port) {
       SystemResult.Ok => {},
       SystemResult.Error(e) => {
+        rejected = true;
+        try std.test.assert_eq(e.code(), ADDRESS_IN_USE_ERRNO);
+      },
+      SystemResult.Allocation(e) => {
+        rejected = true;
+        try std.test.assert_eq(e.code(), ADDRESS_IN_USE_ERRNO);
+      },
+      SystemResult.InvalidArgument(e) => {
+        rejected = true;
+        try std.test.assert_eq(e.code(), ADDRESS_IN_USE_ERRNO);
+      },
+      SystemResult.Overflow(e) => {
         rejected = true;
         try std.test.assert_eq(e.code(), ADDRESS_IN_USE_ERRNO);
       }
@@ -74,6 +86,18 @@ public module std.net {
       SystemResult.Error(e) => {
         rejected = true;
         try std.test.assert_eq(e.code(), ADDRESS_IN_USE_ERRNO);
+      },
+      SystemResult.Allocation(e) => {
+        rejected = true;
+        try std.test.assert_eq(e.code(), ADDRESS_IN_USE_ERRNO);
+      },
+      SystemResult.InvalidArgument(e) => {
+        rejected = true;
+        try std.test.assert_eq(e.code(), ADDRESS_IN_USE_ERRNO);
+      },
+      SystemResult.Overflow(e) => {
+        rejected = true;
+        try std.test.assert_eq(e.code(), ADDRESS_IN_USE_ERRNO);
       }
     };
     try std.test.assert(rejected, "exclusive bind should reject a shared port");
@@ -88,12 +112,21 @@ public module std.net {
     try std.test.expect_system_success(socket.bind(here, 0));
     var timeout = std.time.create_duration_millis(50);
     try std.test.expect_system_success(socket.set_recv_timeout(timeout));
-    var buf = ContiguousBuffer<u8>(alloc, 16);
+    var buf = try ContiguousBuffer<u8>(alloc, 16);
     match socket.recv_from(buf) {
       SystemResult.Ok(_) => {
         try std.test.fail("recv on an empty socket should time out");
       },
       SystemResult.Error(e) => {
+        try std.test.assert(is_would_block(e.code()), "timeout should report would-block");
+      },
+      SystemResult.Allocation(e) => {
+        try std.test.assert(is_would_block(e.code()), "timeout should report would-block");
+      },
+      SystemResult.InvalidArgument(e) => {
+        try std.test.assert(is_would_block(e.code()), "timeout should report would-block");
+      },
+      SystemResult.Overflow(e) => {
         try std.test.assert(is_would_block(e.code()), "timeout should report would-block");
       }
     };
@@ -123,24 +156,42 @@ public module std.net {
     try std.test.assert_eq(_convert<i32>(loopback.octet(0)), 127);
     try std.test.assert_eq(_convert<i32>(loopback.octet(3)), 1);
     var lan = Ipv4Addr(192, 168, 1, 10);
-    var text = lan.to_string(alloc);
+    var text = try lan.to_string(alloc);
     try std.test.assert(text.equals_literal("192.168.1.10"), "address renders dotted");
     var parsed = try std.test.expect_system(parse_ipv4(text));
     try std.test.assert_eq(parsed.to_network_i32(), lan.to_network_i32());
-    var truncated = String(alloc, "192.168.1");
+    var truncated = try String(alloc, "192.168.1");
     var threw_truncated = false;
     match parse_ipv4(truncated) {
       SystemResult.Ok(_) => {},
       SystemResult.Error(e) => {
         threw_truncated = true;
+      },
+      SystemResult.Allocation(e) => {
+        threw_truncated = true;
+      },
+      SystemResult.InvalidArgument(e) => {
+        threw_truncated = true;
+      },
+      SystemResult.Overflow(e) => {
+        threw_truncated = true;
       }
     };
     try std.test.assert(threw_truncated, "three octets should not parse");
-    var overflow = String(alloc, "1.2.3.400");
+    var overflow = try String(alloc, "1.2.3.400");
     var threw_overflow = false;
     match parse_ipv4(overflow) {
       SystemResult.Ok(_) => {},
       SystemResult.Error(e) => {
+        threw_overflow = true;
+      },
+      SystemResult.Allocation(e) => {
+        threw_overflow = true;
+      },
+      SystemResult.InvalidArgument(e) => {
+        threw_overflow = true;
+      },
+      SystemResult.Overflow(e) => {
         threw_overflow = true;
       }
     };
@@ -156,6 +207,18 @@ public module std.net {
         try std.test.fail("send on a never-opened socket should throw");
       },
       SystemResult.Error(e) => {
+        // EBADF is 9 on every supported target.
+        try std.test.assert_eq(e.code(), 9);
+      },
+      SystemResult.Allocation(e) => {
+        // EBADF is 9 on every supported target.
+        try std.test.assert_eq(e.code(), 9);
+      },
+      SystemResult.InvalidArgument(e) => {
+        // EBADF is 9 on every supported target.
+        try std.test.assert_eq(e.code(), 9);
+      },
+      SystemResult.Overflow(e) => {
         // EBADF is 9 on every supported target.
         try std.test.assert_eq(e.code(), 9);
       }

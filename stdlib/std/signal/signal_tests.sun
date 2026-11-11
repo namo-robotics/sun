@@ -30,19 +30,28 @@ public module std.signal {
       },
       SystemResult.Error(error) => {
         try std.test.assert_eq(error.code(), 16);
+      },
+      SystemResult.Allocation(error) => {
+        try std.test.assert_eq(error.code(), 16);
+      },
+      SystemResult.InvalidArgument(error) => {
+        try std.test.assert_eq(error.code(), 16);
+      },
+      SystemResult.Overflow(error) => {
+        try std.test.assert_eq(error.code(), 16);
       }
     };
-    var poller = std.io.Poller(alloc);
-    poller.add_read(fd);
-    var loop = std.io.EventLoop(alloc, 4);
+    var poller = try std.io.Poller(alloc);
+    try poller.add_read(fd);
+    var loop = try std.io.EventLoop(alloc, 4);
     try std.test.expect_system_success(loop.open());
     try std.test.expect_system_success(loop.add(fd, std.io.POLLIN, 7u64));
-    var sender = std.thread.spawn(delayed_signal);
+    var sender = try std.thread.spawn(delayed_signal);
     try std.test.assert((try std.test.expect_system(loop.wait(1000))) > 0);
     try std.test.assert_eq(sender.join(), 0);
     var wakeup = try std.test.expect_system(subscription.take_pending());
     try std.test.assert(wakeup.terminated());
-    var poll_sender = std.thread.spawn(delayed_signal);
+    var poll_sender = try std.thread.spawn(delayed_signal);
     try std.test.assert_eq(try std.test.expect_system(poller.wait(1000)), 1);
     try std.test.assert_eq(poll_sender.join(), 0);
     var poll_wakeup = try std.test.expect_system(subscription.take_pending());

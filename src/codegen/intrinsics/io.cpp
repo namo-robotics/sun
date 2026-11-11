@@ -202,6 +202,15 @@ static Function* getOrCreateFileReadHelper(llvm::Module* module,
   Value* bufPtr = builder.CreateCall(sun::codegen::intrinsics::malloc(module),
                                      {bufSize}, "buf");
 
+  auto* allocated = BasicBlock::Create(llvmCtx, "allocated", func);
+  auto* failed = BasicBlock::Create(llvmCtx, "allocation.failed", func);
+  auto* nullPointer = ConstantPointerNull::get(cast<PointerType>(ptrTy));
+  builder.CreateCondBr(builder.CreateICmpEQ(bufPtr, nullPointer), failed,
+                       allocated);
+  builder.SetInsertPoint(failed);
+  builder.CreateRet(nullPointer);
+  builder.SetInsertPoint(allocated);
+
   Value* readResult = builder.CreateCall(sun::codegen::intrinsics::read(module),
                                          {fd, bufPtr, countExt}, "bytes_read");
 

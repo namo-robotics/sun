@@ -4,7 +4,7 @@ public module std {
   /** Checks boundaries, unaligned decoding, signed values, and overflow-sized offsets. */
   test_function native_decoding_checks_slice_bounds() {
     var alloc = make_heap_allocator();
-    var buffer = ContiguousBuffer<u8>(alloc, 12);
+    var buffer = try ContiguousBuffer<u8>(alloc, 12);
     buffer.fill(255);
     var bytes = try std.test.expect_access(ByteSlice(buffer, 1, 8));
     try std.test.assert_eq(bytes.size(), 8);
@@ -32,7 +32,7 @@ public module std {
       try std.test.expect_access(std.byte_order.read_native_u64(bytes, 0)),
       18446744073709551615
     );
-    var offsets: array<i64, 4> = [-1, 1, 8, 9223372036854775807];
+    var offsets: array<i64, 4> = [-1, 1, 8, std.I64_MAX];
     for (var i: i64 = 0; i < 4; i = i + 1) {
       var offset = offsets[i];
       match std.byte_order.read_native_i64(bytes, offset) {
@@ -47,8 +47,8 @@ public module std {
   /** Rejects invalid slice ranges without adding potentially overflowing bounds. */
   test_function byte_slices_reject_invalid_ranges() {
     var alloc = make_heap_allocator();
-    var buffer = ContiguousBuffer<u8>(alloc, 8);
-    var starts: array<i64, 3> = [-1, 9, 9223372036854775807];
+    var buffer = try ContiguousBuffer<u8>(alloc, 8);
+    var starts: array<i64, 3> = [-1, 9, std.I64_MAX];
     for (var i: i64 = 0; i < 3; i = i + 1) {
       var start = starts[i];
       match ByteSlice(buffer, start, 0) {
@@ -64,7 +64,7 @@ public module std {
         AccessResult.OutOfBounds(_) => {}
       };
     }
-    var counts: array<i64, 3> = [-1, 8, 9223372036854775807];
+    var counts: array<i64, 3> = [-1, 8, std.I64_MAX];
     for (var i: i64 = 0; i < 3; i = i + 1) {
       var count = counts[i];
       match ByteSlice(buffer, 1, count) {
@@ -85,7 +85,7 @@ public module std {
   /** Copies the host representation at an unaligned offset and decodes exactly that value. */
   test_function native_decoding_preserves_host_order() {
     var alloc = make_heap_allocator();
-    var buffer = ContiguousBuffer<u8>(alloc, 10);
+    var buffer = try ContiguousBuffer<u8>(alloc, 10);
     buffer.fill(0);
     var expected: i64 = -72623859790382856;
     unsafe {

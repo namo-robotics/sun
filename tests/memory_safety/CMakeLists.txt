@@ -1,4 +1,5 @@
 target_sources(sun_tests PRIVATE
+    test_allocation_failure.cpp
     test_allocator.cpp
     test_array_views.cpp
     test_borrow_checker.cpp

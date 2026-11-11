@@ -40,10 +40,9 @@ class ScratchBuffer {
   public var data: Vec<i64>;
 
   /** Initializes the fixture fields used by this example or regression test. */
-  init() {
-    var alloc = make_heap_allocator();
-    this.data = Vec<i64>(alloc, 4);
-    this.data.push(1);
+  init() AllocationResult<void> {
+    this.data = try Vec<i64>(global_allocator, 4);
+    try this.data.push(1);
   }
 
   /** Records fixture teardown so the test can check cleanup behavior. */
@@ -60,11 +59,11 @@ test_function startsWithOneEntry() {
 }
 
 /** Runs the example that uses functions exercised by the example tests. */
-function main() i32 {
+function run_main() AllocationResult<i32> {
   // The production binary never contains the tests above.
   var m = distance.midpoint(2, 10);
-  println(`midpoint(2, 10) = ${m}`);
-  return 0;
+  println(try `midpoint(2, 10) = ${m}`);
+  return AllocationResult.Ok(0);
 }
 
 manifest {
@@ -74,4 +73,18 @@ manifest {
   libraries: [
     "stdlib.moon"
   ]
+}
+
+/** Reports entrypoint failures without requiring diagnostic allocation to succeed. */
+function main() i32 {
+  return match run_main() {
+    AllocationResult.Ok(code) => code,
+    (error: const ref std.IError) => {
+      match error.message() {
+        std.AllocationResult.Ok(message) => std.io.eprintln(message),
+        _ => std.io.eprintln("unable to allocate error message")
+      };
+      1;
+    }
+  };
 }

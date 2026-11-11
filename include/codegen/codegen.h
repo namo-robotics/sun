@@ -9,6 +9,7 @@ class PrototypeAST;
 #include <stdexcept>
 
 #include "driver/sun_jit.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/BasicBlock.h"
@@ -136,6 +137,19 @@ class CodegenContext {
     // when optimizing code embedded from another bundle.
     PassBuilder PB(nullptr, PipelineTuningOptions(), std::nullopt, pic.get());
     PB.registerModuleAnalyses(*mam);
+    // Sun exposes allocation failure as a value. LLVM's libc allocation
+    // elision is allowed to assume success, so disable that model here.
+    const std::string allocationTriple =
+        targetTriple_.empty() ? llvm::sys::getDefaultTargetTriple() : targetTriple_;
+    fam->registerPass([allocationTriple] {
+      llvm::TargetLibraryInfoImpl info{llvm::Triple(allocationTriple)};
+      info.setUnavailable(llvm::LibFunc_malloc);
+      info.setUnavailable(llvm::LibFunc_calloc);
+      info.setUnavailable(llvm::LibFunc_realloc);
+      info.setUnavailable(llvm::LibFunc_aligned_alloc);
+      info.setUnavailable(llvm::LibFunc_posix_memalign);
+      return llvm::TargetLibraryAnalysis(info);
+    });
     PB.registerFunctionAnalyses(*fam);
     PB.registerLoopAnalyses(*lam);
     PB.registerCGSCCAnalyses(*cgam);

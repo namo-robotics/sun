@@ -98,8 +98,8 @@ public module std.process {
   /** A bound handle kills its child, then rejects signaling after the child is reaped. */
   test_function handle_exit_and_kill() {
     var alloc = make_heap_allocator();
-    var cmd = Command(alloc, "/bin/sleep");
-    cmd.add_arg("30");
+    var cmd = try Command(alloc, "/bin/sleep");
+    try cmd.add_arg("30");
     var child = try std.test.expect_system(cmd.start());
     var identity = try std.test.expect_system(process_identity(alloc, child.id()));
     var handle = ProcessHandle(alloc);
@@ -115,8 +115,8 @@ public module std.process {
   /** SIGTERM is delivered through an identity-bound handle. */
   test_function handle_terminate() {
     var alloc = make_heap_allocator();
-    var cmd = Command(alloc, "/bin/sleep");
-    cmd.add_arg("30");
+    var cmd = try Command(alloc, "/bin/sleep");
+    try cmd.add_arg("30");
     var child = try std.test.expect_system(cmd.start());
     var identity = try std.test.expect_system(process_identity(alloc, child.id()));
     var handle = ProcessHandle(alloc);
@@ -128,15 +128,15 @@ public module std.process {
   /** NUL-delimited argv keeps spaces and empty arguments without a trailing fake argument. */
   test_function argument_boundaries() {
     var alloc = make_heap_allocator();
-    var bytes = String(alloc, "program\0two words\0\0last\0");
+    var bytes = try String(alloc, "program\0two words\0\0last\0");
     var args = try std.test.expect_system(std.process.process_arguments(alloc, bytes));
     try std.test.assert_eq(args.size(), 4);
     try std.test.assert(args[1].equals_literal("two words"), "spaces remain in one argument");
     try std.test.assert(args[2].is_empty(), "empty argument preserved");
-    var empty = String(alloc, "");
+    var empty = try String(alloc, "");
     var none = try std.test.expect_system(std.process.process_arguments(alloc, empty));
     try std.test.assert_eq(none.size(), 0);
-    var truncated = String(alloc, "missing terminator");
+    var truncated = try String(alloc, "missing terminator");
     try std.test.assert_eq(
       try error_code(std.process.process_arguments(alloc, truncated)),
       22

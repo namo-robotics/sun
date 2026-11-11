@@ -40,6 +40,38 @@ using sun::support::SunError;
 /** Checks ownership and lifetimes so references cannot outlive their values. */
 namespace sun::borrow_checker {
 
+/** Find the source whose captured environment survives parentheses and try. */
+static const ExprAST* unwrapFrameSource(const ExprAST& expr) {
+  const ExprAST* source = &expr;
+  while (true) {
+    if (source->getType() == ASTNodeType::PAREN_EXPR) {
+      source = static_cast<const ParenExprAST&>(*source).getInner();
+    } else if (source->getType() == ASTNodeType::MATCH &&
+               static_cast<const sun::ast::MatchExprAST&>(*source)
+                   .isPropagation()) {
+      source =
+          static_cast<const sun::ast::MatchExprAST&>(*source).getDiscriminant();
+    } else {
+      return source;
+    }
+  }
+}
+
+/** Find a match arm's returned value, ignoring parentheses and value blocks. */
+static const ExprAST* matchArmValue(const ExprAST* value) {
+  while (value) {
+    if (value->getType() == ASTNodeType::PAREN_EXPR) {
+      value = static_cast<const ParenExprAST&>(*value).getInner();
+    } else if (value->getType() == ASTNodeType::BLOCK) {
+      const auto& block = static_cast<const BlockExprAST&>(*value);
+      value = block.producesValue() ? block.getLastExpr() : nullptr;
+    } else {
+      return value;
+    }
+  }
+  return nullptr;
+}
+
 BorrowChecker::BorrowChecker() {}
 
 std::vector<BorrowError> BorrowChecker::check(const BlockExprAST& program) {
@@ -1687,8 +1719,16 @@ bool BorrowChecker::forEachHolderInput(
 
   if (calleeType->isEnum()) {
     const auto* access = dynamic_cast<const MemberAccessAST*>(callee);
+    // Inferred enum constructors retain the generic callee type. Their result
+    // carries the concrete payload types, including any borrowed references.
+    const auto resultType = call.getResolvedType();
+    const auto enumType =
+        resultType && resultType->isEnum() ? resultType : calleeType;
+    if (!classStoresRefs(enumType)) {
+      return false;
+    }
     const auto* variant =
-        access ? static_cast<const sun::types::EnumType&>(*calleeType)
+        access ? static_cast<const sun::types::EnumType&>(*enumType)
                      .getVariant(access->getMemberName())
                : nullptr;
     if (!variant) {
@@ -2176,9 +2216,30 @@ bool BorrowChecker::isRefCapturingLambdaExpr(const ExprAST& expr) const {
 // returns — so a compound call result built from one must not outlive the
 // frame the lambda's environment lives in.
 bool BorrowChecker::isFrameBoundExpr(const ExprAST& expr) const {
-  const ExprAST* e = &expr;
-  while (e->getType() == ASTNodeType::PAREN_EXPR) {
-    e = static_cast<const ParenExprAST&>(*e).getInner();
+  const ExprAST* e = unwrapFrameSource(expr);
+  if (e->getType() == ASTNodeType::MATCH) {
+    const auto& match = static_cast<const sun::ast::MatchExprAST&>(*e);
+    const bool boundPayload = isFrameBoundExpr(*match.getDiscriminant());
+    for (const auto& arm : match.getArms()) {
+      const ExprAST* value = matchArmValue(arm.body.get());
+      if (!value) {
+        continue;
+      }
+      if (isFrameBoundExpr(*value)) {
+        return true;
+      }
+      if (boundPayload && value->getType() == ASTNodeType::VARIABLE_REFERENCE) {
+        const auto& name =
+            static_cast<const VariableReferenceAST&>(*value).getName();
+        for (const auto& binding : arm.bindings) {
+          if (!binding.isWildcard && binding.name == name &&
+              binding.resolvedType && binding.resolvedType->isCompound()) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
   }
   if (e->getType() == ASTNodeType::VARIABLE_REFERENCE) {
     return frameBoundVars_.count(
@@ -2242,10 +2303,7 @@ bool BorrowChecker::isFrameBoundExpr(const ExprAST& expr) const {
 // frame-sourced: its environment lives in an ancestor frame that outlives
 // this one, so the callee may call it or keep it in frame-local storage.
 bool BorrowChecker::isFrameSourcedLambdaExpr(const ExprAST& expr) const {
-  const ExprAST* e = &expr;
-  while (e->getType() == ASTNodeType::PAREN_EXPR) {
-    e = static_cast<const ParenExprAST&>(*e).getInner();
-  }
+  const ExprAST* e = unwrapFrameSource(expr);
   if (e->getType() == ASTNodeType::LAMBDA) {
     return static_cast<const LambdaAST&>(*e).getProto().hasRefCaptures();
   }
@@ -2313,11 +2371,23 @@ size_t BorrowChecker::lookupDeclDepth(const std::string& name) const {
 // bound method to its receiver's declaration; a tracked local to its
 // recorded bound. functionScopeDepth_ means "valid anywhere in the frame".
 size_t BorrowChecker::inferEnvDepth(const ExprAST& expr) const {
-  const ExprAST* e = &expr;
-  while (e->getType() == ASTNodeType::PAREN_EXPR) {
-    e = static_cast<const ParenExprAST&>(*e).getInner();
-  }
+  const ExprAST* e = unwrapFrameSource(expr);
   switch (e->getType()) {
+    case ASTNodeType::MATCH: {
+      const auto& match = static_cast<const sun::ast::MatchExprAST&>(*e);
+      size_t depth = functionScopeDepth_;
+      if (isFrameBoundExpr(*match.getDiscriminant())) {
+        depth = std::max(depth, inferEnvDepth(*match.getDiscriminant()));
+      }
+      for (const auto& arm : match.getArms()) {
+        const ExprAST* value = matchArmValue(arm.body.get());
+        if (value && isFrameBoundExpr(*value)) {
+          depth = std::max(depth, inferEnvDepth(*value));
+        }
+      }
+      return depth;
+    }
+
     case ASTNodeType::LAMBDA: {
       size_t depth = functionScopeDepth_;
       for (const auto& cap :

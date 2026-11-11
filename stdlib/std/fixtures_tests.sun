@@ -27,10 +27,10 @@ public module std {
       /** Creates the scratch directory or returns its filesystem error. */
       init(allocator: ref HeapAllocator, tag: static_ptr<u8>) SystemResult<void> {
         this.alloc = allocator.copy();
-        var p = String("/tmp/sun_stdlib_");
-        p.append_literal(tag);
-        p.append_char(b'_');
-        p.append(std.process.pid());
+        var p = try String("/tmp/sun_stdlib_");
+        try p.append_literal(tag);
+        try p.append_char(b'_');
+        try p.append(std.process.pid());
         this.path = p;
         try std.io.make_dir(this.path, 493);
       }
@@ -38,23 +38,28 @@ public module std {
       /**
        * A path for `name` inside the directory, owned by the caller.
        */
-      public method file(name: static_ptr<u8>) String {
-        var p = this.path.clone(this.alloc);
-        p.append_char(b'/');
-        p.append_literal(name);
-        return p;
+      public method file(name: static_ptr<u8>) AllocationResult<String> {
+        var p = try this.path.clone(this.alloc);
+        try p.append_char(b'/');
+        try p.append_literal(name);
+        return AllocationResult.Ok(p);
       }
 
       /** Records fixture destruction so tests can verify ownership and cleanup. */
       deinit() {
+        ignore_error(this.cleanup());
+      }
+
+      /** Remove temporary files while allowing the destructor to discard cleanup errors. */
+      method cleanup() SystemResult<void> {
         // Best-effort cleanup: remove the entries we can, then the
         // directory itself. deinit must not throw.
         match std.io.read_dir(this.alloc, this.path) {
           SystemResult.Ok(entries) => {
             for (var i: i64 = 0; i < entries.size(); i = i + 1) {
-              var entry_path = this.path.clone(this.alloc);
-              entry_path.append_char(b'/');
-              entry_path.append(unsafe { entries.get_unchecked(i); }.name());
+              var entry_path = try this.path.clone(this.alloc);
+              try entry_path.append_char(b'/');
+              try entry_path.append(unsafe { entries.get_unchecked(i); }.name());
               if (unsafe { entries.get_unchecked(i); }.is_dir()) {
                 ignore_error(std.io.remove_dir(entry_path));
               } else {
@@ -62,9 +67,10 @@ public module std {
               }
             }
           },
-          SystemResult.Error(_) => {}
+          _ => {}
         };
         ignore_error(std.io.remove_dir(this.path));
+        return SystemResult.Ok;
       }
     }
 
@@ -72,12 +78,12 @@ public module std {
      * A /tmp file path unique to the calling test, owned by the caller.
      * Nothing is created; the test makes and removes the file itself.
      */
-    public function unique_path(tag: static_ptr<u8>) String {
-      var p = String("/tmp/sun_stdlib_");
-      p.append_literal(tag);
-      p.append_char(b'_');
-      p.append(std.process.pid());
-      return p;
+    public function unique_path(tag: static_ptr<u8>) AllocationResult<String> {
+      var p = try String("/tmp/sun_stdlib_");
+      try p.append_literal(tag);
+      try p.append_char(b'_');
+      try p.append(std.process.pid());
+      return AllocationResult.Ok(p);
     }
   }  // module tests
 }  // module std

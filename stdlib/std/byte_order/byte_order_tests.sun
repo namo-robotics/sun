@@ -66,12 +66,12 @@ public module std.byte_order {
      */
   test_function round_trip_through_a_byte_buffer() {
     var alloc = make_heap_allocator();
-    var buf = Vec<u8>(alloc, 4);
+    var buf = try Vec<u8>(alloc, 4);
 
     var length: u16 = 1024;
     var wire_length: u16 = std.byte_order.to_big_endian_u16(length);
-    buf.push(_convert<u8>(wire_length & 255));
-    buf.push(_convert<u8>((wire_length >> 8) & 255));
+    try buf.push(_convert<u8>(wire_length & 255));
+    try buf.push(_convert<u8>((wire_length >> 8) & 255));
 
     // 1024 big-endian is 0x04 0x00
     try std.test.assert_eq(_convert<i32>((try std.test.expect_access_value(buf.get(0)))), 4);

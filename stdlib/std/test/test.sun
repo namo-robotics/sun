@@ -15,8 +15,8 @@ using std.io;
 //
 // Usage:
 //   test_function growsWhenFull() {
-//       var v = Vec<i32>(make_heap_allocator());
-//       v.push(1);
+//       var v = try Vec<i32>(global_allocator);
+//       try v.push(1);
 //       try std.test.assert_eq(v.size(), 1);
 //   }
 
@@ -27,21 +27,20 @@ public module std.test {
    * Raised by a failed assertion; carries the explanation text.
    */
   public class AssertionError implements IError {
-    var message_: String;
+    var message_: Error;
 
     /**
      * Build the error from a literal explanation.
      */
     init(message: static_ptr<u8>) {
-      this.message_ = String(message);
+      this.message_ = Error(10, message);
     }
 
     /**
      * Build the error from text composed at runtime; the text is copied.
      */
-    init(message: const ref String) {
-      var alloc: HeapAllocator = HeapAllocator();
-      this.message_ = message.clone(alloc);
+    init(message: const ref String) AllocationResult<void> {
+      this.message_ = try Error(10, message);
     }
 
     /**
@@ -54,16 +53,29 @@ public module std.test {
     /**
      * A fresh copy of the explanation, owned by the caller.
      */
-    public const method message() String {
-      var alloc: HeapAllocator = HeapAllocator();
-      return this.message_.clone(alloc);
+    public const method message() AllocationResult<String> {
+      return this.message_.message();
     }
   }
 
   /** Carries a successful assertion value or an owned assertion failure. */
   public enum AssertionResult<T> {
     Ok(T),
-    Error(AssertionError)
+    Allocation(AllocationError),
+    InvalidArgument(InvalidArgumentError),
+    Overflow(OverflowError),
+    Error(AssertionError),
+    System(Error),
+    OutOfBounds(IndexOutOfBoundsError),
+    NotFound(NotFoundError),
+    Empty(EmptyError),
+    Io(IOError),
+    Conversion(ConversionError),
+    DivisionByZero(DivisionByZeroError),
+    Arithmetic(ArithmeticError),
+    Json(std.json.JsonError),
+    Xml(std.xml.XmlError),
+    Decode(ProtoDecodeError)
   }
 
   /**
@@ -92,7 +104,7 @@ public module std.test {
       return std.test.AssertionResult.Ok;
     }
     return std.test.AssertionResult.Error(
-      AssertionError(`assertion failed: expected ${expected}, got ${actual}`)
+      try AssertionError(try `assertion failed: expected ${expected}, got ${actual}`)
     );
   }
 
@@ -107,7 +119,7 @@ public module std.test {
       return std.test.AssertionResult.Ok;
     }
     return std.test.AssertionResult.Error(
-      AssertionError(`assertion failed: expected ${expected}, got ${actual}`)
+      try AssertionError(try `assertion failed: expected ${expected}, got ${actual}`)
     );
   }
 
@@ -115,7 +127,7 @@ public module std.test {
   public function assert_ne<T: _Primitive>(a: T, b: T) std.test.AssertionResult<void> {
     if (a == b) {
       return std.test.AssertionResult.Error(
-        AssertionError(`assertion failed: both values are ${a}`)
+        try AssertionError(try `assertion failed: both values are ${a}`)
       );
     }
     return std.test.AssertionResult.Ok;
@@ -133,7 +145,9 @@ public module std.test {
     return match result {
       _Result.Ok(value) => std.test.AssertionResult.Ok(value),
       _Result.Err(error) => match error {
-        (e: const ref IError) => std.test.AssertionResult.Error(AssertionError(e.message()))
+        (e: const ref IError) => std.test.AssertionResult.Error(
+          try AssertionError(try e.message())
+        )
       }
     };
   }
@@ -145,7 +159,9 @@ public module std.test {
     return match result {
       _Result.Ok(value) => std.test.AssertionResult.Ok(value),
       _Result.Err(error) => match error {
-        (e: const ref IError) => std.test.AssertionResult.Error(AssertionError(e.message()))
+        (e: const ref IError) => std.test.AssertionResult.Error(
+          try AssertionError(try e.message())
+        )
       }
     };
   }
@@ -155,7 +171,9 @@ public module std.test {
     return match result {
       _Result.Ok => std.test.AssertionResult.Ok,
       _Result.Err(error) => match error {
-        (e: const ref IError) => std.test.AssertionResult.Error(AssertionError(e.message()))
+        (e: const ref IError) => std.test.AssertionResult.Error(
+          try AssertionError(try e.message())
+        )
       }
     };
   }
@@ -165,7 +183,7 @@ public module std.test {
     return match result {
       AccessResult.Ok(value) => std.test.AssertionResult.Ok(value),
       AccessResult.OutOfBounds(error) => std.test.AssertionResult.Error(
-        AssertionError(error.message())
+        try AssertionError(try error.message())
       )
     };
   }
@@ -177,7 +195,7 @@ public module std.test {
     return match result {
       AccessResult.Ok(value) => std.test.AssertionResult.Ok(value),
       AccessResult.OutOfBounds(error) => std.test.AssertionResult.Error(
-        AssertionError(error.message())
+        try AssertionError(try error.message())
       )
     };
   }
@@ -187,7 +205,7 @@ public module std.test {
     return match result {
       AccessResult.Ok => std.test.AssertionResult.Ok,
       AccessResult.OutOfBounds(error) => std.test.AssertionResult.Error(
-        AssertionError(error.message())
+        try AssertionError(try error.message())
       )
     };
   }
@@ -197,7 +215,7 @@ public module std.test {
     return match result {
       LookupResult.Ok(value) => std.test.AssertionResult.Ok(value),
       LookupResult.NotFound(error) => std.test.AssertionResult.Error(
-        AssertionError(error.message())
+        try AssertionError(try error.message())
       )
     };
   }
@@ -209,7 +227,7 @@ public module std.test {
     return match result {
       LookupResult.Ok(value) => std.test.AssertionResult.Ok(value),
       LookupResult.NotFound(error) => std.test.AssertionResult.Error(
-        AssertionError(error.message())
+        try AssertionError(try error.message())
       )
     };
   }
@@ -219,7 +237,7 @@ public module std.test {
     return match result {
       LookupResult.Ok => std.test.AssertionResult.Ok,
       LookupResult.NotFound(error) => std.test.AssertionResult.Error(
-        AssertionError(error.message())
+        try AssertionError(try error.message())
       )
     };
   }
@@ -228,7 +246,9 @@ public module std.test {
   public function expect_pop<T>(result: PopResult<T>) std.test.AssertionResult<T> {
     return match result {
       PopResult.Ok(value) => std.test.AssertionResult.Ok(value),
-      PopResult.Empty(error) => std.test.AssertionResult.Error(AssertionError(error.message()))
+      PopResult.Empty(error) => std.test.AssertionResult.Error(
+        try AssertionError(try error.message())
+      )
     };
   }
 
@@ -236,7 +256,9 @@ public module std.test {
   public function expect_json<T>(result: JsonResult<T>) std.test.AssertionResult<T> {
     return match result {
       JsonResult.Ok(value) => std.test.AssertionResult.Ok(value),
-      JsonResult.Error(error) => std.test.AssertionResult.Error(AssertionError(error.message()))
+      JsonResult.Error(error) => std.test.AssertionResult.Error(
+        try AssertionError(try error.message())
+      )
     };
   }
 
@@ -244,7 +266,9 @@ public module std.test {
   public function expect_json_success(result: JsonResult<void>) std.test.AssertionResult<void> {
     return match result {
       JsonResult.Ok => std.test.AssertionResult.Ok,
-      JsonResult.Error(error) => std.test.AssertionResult.Error(AssertionError(error.message()))
+      JsonResult.Error(error) => std.test.AssertionResult.Error(
+        try AssertionError(try error.message())
+      )
     };
   }
 
@@ -253,7 +277,7 @@ public module std.test {
     return match result {
       ConversionResult.Ok(value) => std.test.AssertionResult.Ok(value),
       ConversionResult.Error(error) => std.test.AssertionResult.Error(
-        AssertionError(error.message())
+        try AssertionError(try error.message())
       )
     };
   }
@@ -264,7 +288,9 @@ public module std.test {
   ) std.test.AssertionResult<void> {
     return match result {
       ArithmeticResult.Ok => std.test.AssertionResult.Ok,
-      (error: const ref IError) => std.test.AssertionResult.Error(AssertionError(error.message()))
+      (error: const ref IError) => std.test.AssertionResult.Error(
+        try AssertionError(try error.message())
+      )
     };
   }
 
@@ -272,7 +298,9 @@ public module std.test {
   public function expect_arithmetic<T>(result: ArithmeticResult<T>) std.test.AssertionResult<T> {
     return match result {
       ArithmeticResult.Ok(value) => std.test.AssertionResult.Ok(value),
-      (error: const ref IError) => std.test.AssertionResult.Error(AssertionError(error.message()))
+      (error: const ref IError) => std.test.AssertionResult.Error(
+        try AssertionError(try error.message())
+      )
     };
   }
 
@@ -280,7 +308,18 @@ public module std.test {
   public function expect_system<T>(result: SystemResult<T>) std.test.AssertionResult<T> {
     return match result {
       SystemResult.Ok(value) => std.test.AssertionResult.Ok(value),
-      SystemResult.Error(error) => std.test.AssertionResult.Error(AssertionError(error.message()))
+      SystemResult.Error(error) => std.test.AssertionResult.Error(
+        try AssertionError(try error.message())
+      ),
+      SystemResult.Allocation(error) => std.test.AssertionResult.Error(
+        try AssertionError(try error.message())
+      ),
+      SystemResult.InvalidArgument(error) => std.test.AssertionResult.Error(
+        try AssertionError(try error.message())
+      ),
+      SystemResult.Overflow(error) => std.test.AssertionResult.Error(
+        try AssertionError(try error.message())
+      )
     };
   }
 
@@ -288,7 +327,18 @@ public module std.test {
   public function expect_system_success(result: SystemResult<void>) std.test.AssertionResult<void> {
     return match result {
       SystemResult.Ok => std.test.AssertionResult.Ok,
-      SystemResult.Error(error) => std.test.AssertionResult.Error(AssertionError(error.message()))
+      SystemResult.Error(error) => std.test.AssertionResult.Error(
+        try AssertionError(try error.message())
+      ),
+      SystemResult.Allocation(error) => std.test.AssertionResult.Error(
+        try AssertionError(try error.message())
+      ),
+      SystemResult.InvalidArgument(error) => std.test.AssertionResult.Error(
+        try AssertionError(try error.message())
+      ),
+      SystemResult.Overflow(error) => std.test.AssertionResult.Error(
+        try AssertionError(try error.message())
+      )
     };
   }
 
@@ -299,17 +349,17 @@ public module std.test {
   public class TestResult {
     public var name: static_ptr<u8>;
     public var passed: bool;
-    public var message: String;
+    public var message: AllocationResult<String>;
 
-    /** Initializes the fixture fields used by this example or regression test. */
-    init(name: static_ptr<u8>, passed: bool, message: String) {
+    /** Own a diagnostic result without allocating while recording a test outcome. */
+    init(name: static_ptr<u8>, passed: bool, message: AllocationResult<String>) {
       this.name = name;
       this.passed = passed;
       this.message = message;
     }
   }
 
-  /** Runs a result-returning test and owns its failure text for reporting. */
+  /** Run a test and retain diagnostic allocation failures for reporting. */
   public function run_one<E>(name: static_ptr<u8>, fn: function () _Result<void, E>) TestResult {
     return match fn() {
       _Result.Ok => TestResult(name, true, String("")),
@@ -319,7 +369,7 @@ public module std.test {
     };
   }
 
-  /** Runs a structural result test and groups its concrete error payloads. */
+  /** Run a structural result test without allocating to wrap its outcome. */
   public function run_result<R>(name: static_ptr<u8>, fn: function () R) TestResult {
     return match fn() {
       (error: const ref IError) => TestResult(name, false, error.message()),
@@ -327,49 +377,51 @@ public module std.test {
     };
   }
 
-  /**
-   * Print one result line: "PASS name" or "FAIL name: message". Returns
-   * whether the test passed. Only the main thread reports, so lines from
-   * parallel runs never interleave.
-   */
+  /** Print an outcome without allocating, using fixed text when diagnostic creation failed. */
   public function report(result: const ref TestResult) bool {
     if (result.passed) {
-      println(`PASS ${result.name}`);
+      print("PASS ");
+      println(result.name);
       return true;
     }
-    println(`FAIL ${result.name}: ${result.message}`);
+    print("FAIL ");
+    print(result.name);
+    print(": ");
+    match result.message {
+      AllocationResult.Ok(text) => {
+        println(text);
+      },
+      _ => {
+        println("unable to allocate error message");
+      }
+    };
     return false;
   }
 
-  /**
-   * Print the summary line and hand back the process exit code: 0 when
-   * every test passed, 1 otherwise.
-   */
+  /** Print totals without allocating and return the process exit status. */
   public function finish(total: i64, failed: i64) i32 {
-    var passed: i64 = total - failed;
-    println(`${passed} passed, ${failed} failed`);
-    if (failed > 0) {
-      return 1;
-    }
-    return 0;
+    print(total - failed);
+    print(" passed, ");
+    print(failed);
+    println(" failed");
+    return failed > 0 ? 1 : 0;
   }
 
   /**
    * True when the test binary's arguments ask for sequential execution
    * ("--test-sequential" anywhere in argv).
    */
-  public function wants_sequential(argc: i32, argv: raw_ptr<raw_ptr<i8>>) bool {
-    var alloc: HeapAllocator = HeapAllocator();
-    var env = std.env.Env(alloc);
-    var cli = env.args(argc, argv);
+  public function wants_sequential(argc: i32, argv: raw_ptr<raw_ptr<i8>>) AllocationResult<bool> {
+    var env = try std.env.Env(global_allocator);
+    var cli = try env.args(argc, argv);
     var i: i64 = 0;
     while (i < cli.size()) {
       if (unsafe { cli.get_unchecked(i); }.equals_literal("--test-sequential")) {
-        return true;
+        return AllocationResult.Ok(true);
       }
       i = i + 1;
     }
-    return false;
+    return AllocationResult.Ok(false);
   }
 
   /**
@@ -403,24 +455,27 @@ public module std.test {
    * pattern; a test runs when it matches any of them, and no patterns at
    * all runs every test.
    */
-  public function is_selected(name: static_ptr<u8>, argc: i32, argv: raw_ptr<raw_ptr<i8>>) bool {
-    var alloc: HeapAllocator = HeapAllocator();
-    var env = std.env.Env(alloc);
-    var cli = env.args(argc, argv);
-    var name_text = String(name);
+  public function is_selected(
+    name: static_ptr<u8>,
+    argc: i32,
+    argv: raw_ptr<raw_ptr<i8>>
+  ) AllocationResult<bool> {
+    var env = try std.env.Env(global_allocator);
+    var cli = try env.args(argc, argv);
+    var name_text = try String(name);
     var saw_filter = false;
     var i: i64 = 0;
     while (i + 1 < cli.size()) {
       if (unsafe { cli.get_unchecked(i); }.equals_literal("--test-filter")) {
         saw_filter = true;
         if (matches(name_text, unsafe { cli.get_unchecked(i + 1); })) {
-          return true;
+          return AllocationResult.Ok(true);
         }
         i = i + 2;
         continue;
       }
       i = i + 1;
     }
-    return saw_filter == false;
+    return AllocationResult.Ok(saw_filter == false);
   }
 }

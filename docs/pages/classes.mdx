@@ -316,7 +316,7 @@ class Buffer {
     }
 
     method fill(alloc: ref HeapAllocator) void {
-        this.data = Vec<u8>(alloc, 16);
+        this.data = try Vec<u8>(alloc, 16);
         this.length = 0;
     }
 }
@@ -393,18 +393,16 @@ zero — that silence is exactly the bug this syntax exists to prevent.
 For heap-allocated objects, use an allocator from the standard library:
 
 ```sun
-import "stdlib/std/allocator.sun";
 
 function main() i32 {
-    var allocator = make_heap_allocator();
     
     // Create a Point on the heap
-    var p: raw_ptr<Point> = allocator.create<Point>(3, 4);
+    var p: raw_ptr<Point> = global_allocator.create<Point>(3, 4);
     
-    var result = p.magnitude_squared();  // 25
-    
-    // Manual cleanup required for raw_ptr
-    unsafe { _free(p); };
+    var result = unsafe { _to_ref<Point>(p).magnitude_squared(); };  // 25
+
+    // A raw allocation needs both destruction and deallocation.
+    unsafe { _deinit<Point>(p); _free(p); };
     
     return result;
 }
@@ -415,12 +413,9 @@ function main() i32 {
 For automatic memory management, wrap the raw pointer in `Unique<T>`:
 
 ```sun
-import "stdlib/std/allocator.sun";
-import "stdlib/std/unique.sun";
 
 function main() i32 {
-    var allocator = make_heap_allocator();
-    var p = Unique<Point>(allocator.create<Point>(3, 4));
+    var p = Unique<Point>(global_allocator.create<Point>(3, 4));
     
     return p.get().magnitude_squared();  // 25
 }  // p.deinit() called automatically, memory freed
@@ -431,7 +426,7 @@ function main() i32 {
 | Allocation | Syntax | Type | Memory | Cleanup |
 |------------|--------|------|--------|---------|
 | Stack | `Point(...)` | `Point` | Stack | Automatic (scope exit) |
-| Heap (manual) | `allocator.create<Point>(...)` | `raw_ptr<Point>` | Heap | Manual (`_free`) |
+| Heap (manual) | `allocator.create<Point>(...)` | `raw_ptr<Point>` | Heap | Manual (`_deinit`, then `_free`) |
 | Heap (auto) | `Unique<Point>(allocator.create<Point>(...))` | `Unique<Point>` | Heap | Automatic (`deinit`) |
 
 ## Passing Objects to Functions
@@ -492,6 +487,9 @@ class Bus<'a> {
 }
 
 class Node {
+    /** Handles a message without retaining it. */
+    public method onMsg(value: i32) i32 { return value; }
+
     /* a bus whose slot is bound to this node's lifetime */
     public method attach(bus: ref Bus<'this>) void {
         bus.subscribe(this.onMsg);

@@ -18,7 +18,7 @@ public module std {
     var alloc = make_heap_allocator();
     var wake = try std.test.expect_system(std.io.Wakeup(alloc));
     var other = wake.clone();
-    var loop = std.io.EventLoop(alloc, 4);
+    var loop = try std.io.EventLoop(alloc, 4);
     try std.test.expect_system_success(loop.open());
     try std.test.expect_system_success(loop.add(wake.fd(), std.io.POLLIN, 7u64));
     try std.test.assert_eq(try std.test.expect_system(loop.wait(0)), 0);
@@ -45,6 +45,15 @@ public module std {
         SystemResult.Ok => {},
         SystemResult.Error(error) => {
           return error.code();
+        },
+        SystemResult.Allocation(error) => {
+          return error.code();
+        },
+        SystemResult.InvalidArgument(error) => {
+          return error.code();
+        },
+        SystemResult.Overflow(error) => {
+          return error.code();
         }
       };
     }
@@ -55,15 +64,15 @@ public module std {
   test_function concurrent_wakeup() {
     var alloc = make_heap_allocator();
     var wake = try std.test.expect_system(std.io.Wakeup(alloc));
-    var worker = std.thread.spawn(send_wakeups, wake.clone());
+    var worker = try std.thread.spawn(send_wakeups, wake.clone());
     for (var i: i64 = 0; i < 10000; i = i + 1) {
       try std.test.expect_system_success(wake.drain());
     }
     try std.test.assert_eq(worker.join(), 0);
     try std.test.expect_system_success(wake.drain());
     try std.test.expect_system_success(wake.notify());
-    var poll = std.io.Poller(alloc);
-    poll.add_read(wake.fd());
+    var poll = try std.io.Poller(alloc);
+    try poll.add_read(wake.fd());
     try std.test.assert_eq(try std.test.expect_system(poll.wait(0)), 1);
     try std.test.expect_system_success(wake.drain());
     try std.test.assert_eq(try std.test.expect_system(poll.wait(0)), 0);
@@ -107,7 +116,10 @@ public module std {
   function is_system_error(result: SystemResult<void>) bool {
     return match result {
       SystemResult.Ok => false,
-      SystemResult.Error(error) => true
+      SystemResult.Error(error) => true,
+      SystemResult.Allocation(error) => true,
+      SystemResult.InvalidArgument(error) => true,
+      SystemResult.Overflow(error) => true
     };
   }
 
@@ -129,8 +141,8 @@ public module std {
       client.connect_local(try std.test.expect_system(listener.local_port()))
     );
     // Client connect can finish before the listener has a pending connection.
-    var accept_poll = std.io.Poller(alloc);
-    accept_poll.add_read(listener.get_fd());
+    var accept_poll = try std.io.Poller(alloc);
+    try accept_poll.add_read(listener.get_fd());
     try std.test.assert_eq(try std.test.expect_system(accept_poll.wait(1000)), 1);
     var server = match listener.try_accept() {
       AcceptResult.Accepted(stream) => stream,
@@ -143,7 +155,7 @@ public module std {
     try std.test.assert((unsafe { c_fcntl(fd, 1); } & 1) != 0);
     try std.test.assert((unsafe { c_fcntl(fd, 3); } & O_NONBLOCK) != 0);
     try std.test.expect_system_success(server.set_nodelay(true));
-    var buffer = ContiguousBuffer<u8>(alloc, 32);
+    var buffer = try ContiguousBuffer<u8>(alloc, 32);
     buffer.fill(42);
     var bytes = MutableByteSlice(buffer);
     match server.try_read(bytes) {
@@ -152,7 +164,7 @@ public module std {
         try std.test.fail("empty read must report would-block");
       }
     };
-    var loop = std.io.EventLoop(alloc, 4);
+    var loop = try std.io.EventLoop(alloc, 4);
     try std.test.expect_system_success(loop.open());
     try std.test.expect_system_success(loop.add(fd, std.io.POLLIN, 5u64));
     try std.test.assert_eq(try std.test.expect_system(client.send_str("pending")), 7);
@@ -193,7 +205,7 @@ public module std {
         try std.test.fail("removed registration left a stale batch");
       }
     };
-    var send_buffer = ContiguousBuffer<u8>(alloc, 32);
+    var send_buffer = try ContiguousBuffer<u8>(alloc, 32);
     send_buffer.fill(42);
     var output = ByteSlice(send_buffer);
     match server.try_write(output) {
@@ -222,8 +234,8 @@ public module std {
       client.connect_local(try std.test.expect_system(listener.local_port()))
     );
     // Client connect can finish before the listener has a pending connection.
-    var accept_poll = std.io.Poller(alloc);
-    accept_poll.add_read(listener.get_fd());
+    var accept_poll = try std.io.Poller(alloc);
+    try accept_poll.add_read(listener.get_fd());
     try std.test.assert_eq(try std.test.expect_system(accept_poll.wait(1000)), 1);
     var server = match listener.try_accept() {
       AcceptResult.Accepted(stream) => stream,
@@ -238,7 +250,7 @@ public module std {
       unsafe { __setsockopt(server.get_fd(), SOL_SOCKET, option, _address_of<i32>(size), 4); },
       0
     );
-    var buffer = ContiguousBuffer<u8>(alloc, 1048576);
+    var buffer = try ContiguousBuffer<u8>(alloc, 1048576);
     buffer.fill(42);
     var bytes = ByteSlice(buffer);
     match server.try_write(bytes) {
@@ -255,7 +267,7 @@ public module std {
   test_function stale_registration_reuse() {
     var alloc = make_heap_allocator();
     var wake = try std.test.expect_system(std.io.Wakeup(alloc));
-    var loop = std.io.EventLoop(alloc, 4);
+    var loop = try std.io.EventLoop(alloc, 4);
     try std.test.expect_system_success(loop.open());
     try std.test.expect_system_success(loop.add(wake.fd(), std.io.POLLIN, 1u64));
     try std.test.expect_system_success(wake.notify());
@@ -305,7 +317,7 @@ public module std {
         std.test.AssertionResult.Ok => {
           std.process.exit_now(0);
         },
-        std.test.AssertionResult.Error(error) => {
+        _ => {
           std.process.exit_now(1);
         }
       };

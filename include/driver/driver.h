@@ -393,6 +393,9 @@ class Driver {
    */
   void setExecutable(bool executable) { executable_ = executable; }
 
+  /** Bind a native symbol for this JIT instance before executing source. */
+  void defineJITSymbol(const std::string& name, void* address);
+
   /**
    * Access the underlying module (for emitting object code after compilation)
    */

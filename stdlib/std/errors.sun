@@ -2,7 +2,7 @@
 //
 // All error types implement the IError interface with:
 //   - code() -> i32: numeric error code
-//   - message() -> String: an owned clone of the error description
+//   - message() -> AllocationResult<String>: an owned clone of the error description
 //
 // message() hands back a clone, so the text stays usable for as long as the
 // caller keeps it — independent of the error object and of whatever scope the
@@ -10,7 +10,7 @@
 //
 // Error takes its message either as a literal or as a String built at runtime:
 //   return SystemResult.Error(Error(errno(), "failed to open file"));
-//   return SystemResult.Error(Error(-1, path));   // path: a String built at runtime
+//   return SystemResult.Error(try Error(-1, path));   // path: a String built at runtime
 //
 // Usage:
 //   import "stdlib/std/errors.sun";
@@ -32,7 +32,37 @@ public module std {
     public const method code() i32;
 
     /** Returns diagnostic text owned by the caller. */
-    public const method message() String;
+    public const method message() AllocationResult<String>;
+  }
+
+  /** Retains static diagnostics without allocation and owns dynamic diagnostics. */
+  class ErrorMessage {
+    var literal: static_ptr<u8>;
+    var owned: Option<String>;
+
+    /** Retain a static diagnostic without allocating memory. */
+    init(literal: static_ptr<u8>) {
+      this.literal = literal;
+      this.owned = Option.None;
+    }
+
+    /** Clone a dynamic diagnostic, reporting allocation failure. */
+    init(text: const ref String) AllocationResult<void> {
+      this.literal = "";
+      this.owned = Option.Some(try text.clone(global_allocator));
+    }
+
+    /** Create a diagnostic copy owned by the caller. */
+    const method message() AllocationResult<String> {
+      match this.owned {
+        Option.Some(text) => {
+          return text.clone(global_allocator);
+        },
+        Option.None => {
+          return String(this.literal);
+        }
+      };
+    }
   }
 
   /** Reports checked integer division or remainder without allocating storage. */
@@ -50,7 +80,7 @@ public module std {
     }
 
     /** Creates diagnostic text owned by the caller. */
-    public const method message() String {
+    public const method message() AllocationResult<String> {
       if (this.code_ == 4) {
         return String("integer division by zero");
       }
@@ -70,24 +100,23 @@ public module std {
   /** An error carrying a caller-supplied code and owned message. */
   public class Error implements IError {
     var code_: i32;
-    var message_: String;
+    var message_: ErrorMessage;
 
     /**
      * Build an error from a code and a literal message.
      */
     init(code: i32, message: static_ptr<u8>) {
       this.code_ = code;
-      this.message_ = String(message);
+      this.message_ = ErrorMessage(message);
     }
 
     /**
      * The error keeps its own copy, so the String the caller built can go out
      * of scope before the error is handled.
      */
-    init(code: i32, message: const ref String) {
-      var alloc: HeapAllocator = HeapAllocator();
+    init(code: i32, message: const ref String) AllocationResult<void> {
       this.code_ = code;
-      this.message_ = message.clone(alloc);
+      this.message_ = try ErrorMessage(message);
     }
 
     /**
@@ -100,9 +129,8 @@ public module std {
     /**
      * A fresh copy of the message text, owned by the caller.
      */
-    public const method message() String {
-      var alloc: HeapAllocator = HeapAllocator();
-      return this.message_.clone(alloc);
+    public const method message() AllocationResult<String> {
+      return this.message_.message();
     }
   }
 
@@ -127,7 +155,7 @@ public module std {
     /**
      * Fixed text: the container is empty.
      */
-    public const method message() String {
+    public const method message() AllocationResult<String> {
       return String("container is empty");
     }
   }
@@ -153,7 +181,7 @@ public module std {
     /**
      * Fixed text: the element was not found.
      */
-    public const method message() String {
+    public const method message() AllocationResult<String> {
       return String("element not found");
     }
   }
@@ -183,7 +211,7 @@ public module std {
     /**
      * Fixed text: the index was out of bounds.
      */
-    public const method message() String {
+    public const method message() AllocationResult<String> {
       return String("index out of bounds");
     }
 
@@ -216,7 +244,7 @@ public module std {
     /**
      * Fixed text: division by zero.
      */
-    public const method message() String {
+    public const method message() AllocationResult<String> {
       return String("division by zero");
     }
   }
@@ -242,7 +270,7 @@ public module std {
     /**
      * Fixed text: arithmetic overflow.
      */
-    public const method message() String {
+    public const method message() AllocationResult<String> {
       return String("arithmetic overflow");
     }
   }
@@ -253,22 +281,21 @@ public module std {
 
   /** Reports an unacceptable argument with an explanatory message. */
   public class InvalidArgumentError implements IError {
-    var message_: String;
+    var message_: ErrorMessage;
 
     /**
      * Build the error from a literal explaining what was wrong.
      */
     init(message: static_ptr<u8>) {
-      this.message_ = String(message);
+      this.message_ = ErrorMessage(message);
     }
 
     /**
      * Build the error from a message put together at runtime. The text is
      * copied, so the caller's String can go out of scope.
      */
-    init(message: const ref String) {
-      var alloc: HeapAllocator = HeapAllocator();
-      this.message_ = message.clone(alloc);
+    init(message: const ref String) AllocationResult<void> {
+      this.message_ = try ErrorMessage(message);
     }
 
     /**
@@ -281,9 +308,8 @@ public module std {
     /**
      * A fresh copy of the explanation, owned by the caller.
      */
-    public const method message() String {
-      var alloc: HeapAllocator = HeapAllocator();
-      return this.message_.clone(alloc);
+    public const method message() AllocationResult<String> {
+      return this.message_.message();
     }
   }
 
@@ -312,7 +338,7 @@ public module std {
     /**
      * Fixed text: an I/O call failed.
      */
-    public const method message() String {
+    public const method message() AllocationResult<String> {
       return String("I/O error");
     }
 
@@ -349,7 +375,7 @@ public module std {
     /**
      * Fixed text: the allocator could not satisfy the request.
      */
-    public const method message() String {
+    public const method message() AllocationResult<String> {
       return String("memory allocation failed");
     }
 
@@ -382,7 +408,7 @@ public module std {
     /**
      * Fixed text: the value was out of range for the target type.
      */
-    public const method message() String {
+    public const method message() AllocationResult<String> {
       return String("value out of range for the target type");
     }
   }

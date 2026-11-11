@@ -8,11 +8,10 @@
 //   import "stdlib/std/linked_list.sun";
 //   using std;
 //
-//   var allocator = make_heap_allocator();
-//   var list = LinkedList<i32>(allocator);
-//   list.push_back(10);
-//   list.push_back(20);
-//   list.push_front(5);
+//   var list = LinkedList<i32>(global_allocator);
+//   try list.push_back(10);
+//   try list.push_back(20);
+//   try list.push_front(5);
 //   var val = list.first();     // Option.Some borrowing 5
 //   var last = list.last();     // Option.Some borrowing 20
 //   var popped = list.pop_front(); // 5
@@ -134,8 +133,9 @@ public module std {
     /**
      * Append element to the back
      */
-    public method push_back(value: T) void {
-      var node: raw_ptr<LinkedListNode<T>> = this.alloc.create<LinkedListNode<T>>(value);
+    public method push_back(value: T) AllocationResult<void> {
+      var node: raw_ptr<LinkedListNode<T>> = try this.alloc.alloc<LinkedListNode<T>>(1);
+      unsafe { _init<LinkedListNode<T>>(node, value); };
       if (this.tail != null) {
         unsafe { this.tail.set_next(node); };
         unsafe { node.set_prev(this.tail); };
@@ -145,13 +145,16 @@ public module std {
         this.tail = node;
       }
       this.size_ = this.size_ + 1;
+
+      return AllocationResult.Ok;
     }
 
     /**
      * Prepend element to the front
      */
-    public method push_front(value: T) void {
-      var node: raw_ptr<LinkedListNode<T>> = this.alloc.create<LinkedListNode<T>>(value);
+    public method push_front(value: T) AllocationResult<void> {
+      var node: raw_ptr<LinkedListNode<T>> = try this.alloc.alloc<LinkedListNode<T>>(1);
+      unsafe { _init<LinkedListNode<T>>(node, value); };
       if (this.head != null) {
         unsafe { this.head.set_prev(node); };
         unsafe { node.set_next(this.head); };
@@ -161,6 +164,8 @@ public module std {
         this.tail = node;
       }
       this.size_ = this.size_ + 1;
+
+      return AllocationResult.Ok;
     }
 
     /**

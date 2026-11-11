@@ -188,6 +188,64 @@ class DiscoveryProtocolTests(unittest.TestCase):
                             for item in self.diagnostics(self.entry)))
         self.assertEqual(self.document_tests(self.entry)["entrypoint"], None)
 
+    def semantic_tokens(self, source):
+        """Decode token text and classifications without losing repeated names."""
+        self.entry.write_text(source)
+        self.open_document(self.entry)
+        result = self.request("textDocument/semanticTokens/full", {
+            "textDocument": {"uri": self.entry.as_uri()},
+        })
+        lines = source.splitlines()
+        line = column = 0
+        tokens = []
+        data = result["data"]
+        for index in range(0, len(data), 5):
+            delta_line, delta_column, length, kind, _ = data[index:index + 5]
+            line += delta_line
+            column = delta_column if delta_line else column + delta_column
+            tokens.append((lines[line][column:column + length], self.token_types[kind]))
+        return tokens
+
+    def test_semantic_tokens_keep_comparison_operands_as_variables(self):
+        """Less-than comparisons must not open generic type or call contexts."""
+        for condition in (
+            "length < 0 or length > buffer.size()",
+            "length < count or length > count",
+            "length < buffer.size() and count > 0",
+        ):
+            with self.subTest(condition=condition):
+                tokens = self.semantic_tokens("if (" + condition + ") {}")
+                for name, kind in tokens:
+                    if name in ("length", "count", "buffer"):
+                        self.assertEqual(kind, "variable", (name, condition))
+                    elif name == "size":
+                        self.assertEqual(kind, "method")
+
+    def test_semantic_tokens_preserve_generic_calls(self):
+        """Generic lookahead preserves nested types and later comparisons."""
+        tokens = self.semantic_tokens(
+            "var values = Vec<Vec<i32>>(alloc, 4); "
+            "var copy = values.clone<i32>(); "
+            "if (length < 0 or length > values.size()) {}"
+        )
+        self.assertEqual([kind for name, kind in tokens if name == "Vec"],
+                         ["function", "type"])
+        self.assertIn(("clone", "method"), tokens)
+        self.assertEqual([kind for name, kind in tokens if name == "length"],
+                         ["variable", "variable"])
+
+    def test_semantic_tokens_recognize_modified_methods(self):
+        """Method declarations stay methods through const and unsafe modifiers."""
+        for modifiers in ("", "public", "const", "unsafe", "public const unsafe"):
+            with self.subTest(modifiers=modifiers):
+                tokens = self.semantic_tokens(
+                    "class Text { " + modifiers +
+                    " method unsafe_at(i: i64) u8 { return this.bytes; } }"
+                )
+                self.assertIn(("unsafe_at", "method"), tokens)
+                self.assertNotIn("method", [name for name, _ in tokens])
+                self.assertIn(("bytes", "property"), tokens)
+
     def test_semantic_tokens_cover_interface_lists(self):
         """Every implemented or extended interface stays a type across commas."""
         for declaration in (

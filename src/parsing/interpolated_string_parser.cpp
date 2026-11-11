@@ -243,25 +243,16 @@ std::unique_ptr<sun::ast::BlockExprAST> InterpolatedStringParser::desugar(
   const Position& loc = node.getLocation();
   auto block = std::make_unique<sun::ast::BlockExprAST>();
   // A Value block: the one block kind with no syntax, so the lowering can
-  // hand back the built String as the block's value
+  // return the builder's allocation result as the block's value
   block->setKind(sun::ast::BlockKind::Value);
   block->setLocation(loc);
 
-  // var interp_alloc_ = std.HeapAllocator();
-  auto allocCall = makeCall(
-      makeMemberAccess(makeVarRef("std", loc), "HeapAllocator", loc), {}, loc);
+  // The builder keeps failures inside the expression and returns them at finish.
+  auto builderCall = makeCall(
+      makeMemberAccess(makeVarRef("std", loc), "InterpolationBuilder", loc), {},
+      loc);
   block->addExpression(
-      makeVarCreate("interp_alloc_", std::move(allocCall), loc));
-
-  // var interp_result_ = std.String(interp_alloc_, "");
-  std::vector<std::unique_ptr<ExprAST>> stringArgs;
-  stringArgs.push_back(makeVarRef("interp_alloc_", loc));
-  stringArgs.push_back(makeStringLiteral("", loc));
-  auto stringCall =
-      makeCall(makeMemberAccess(makeVarRef("std", loc), "String", loc),
-               std::move(stringArgs), loc);
-  block->addExpression(
-      makeVarCreate("interp_result_", std::move(stringCall), loc));
+      makeVarCreate("interp_result_", std::move(builderCall), loc));
 
   // interp_result_.reserve(n)
   //
@@ -312,8 +303,9 @@ std::unique_ptr<sun::ast::BlockExprAST> InterpolatedStringParser::desugar(
     block->addExpression(std::move(appendCall));
   }
 
-  // Final expression: interp_result_ (block returns this)
-  block->addExpression(makeVarRef("interp_result_", loc));
+  // Finish returns AllocationResult<String> for the caller to handle explicitly.
+  block->addExpression(makeCall(
+      makeMemberAccess(makeVarRef("interp_result_", loc), "finish", loc), {}, loc));
 
   return block;
 }

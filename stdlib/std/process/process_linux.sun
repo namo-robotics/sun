@@ -2,11 +2,15 @@
 public module std.process {
 
   /** Build a procfs path with an explicitly supplied allocator. */
-  function process_path(alloc: ref HeapAllocator, target: i32, leaf: static_ptr<u8>) String {
-    var path = String(alloc, "/proc/");
-    path.append_i64(_convert<i64>(target));
-    path.append(leaf);
-    return path;
+  function process_path(
+    alloc: const ref HeapAllocator,
+    target: i32,
+    leaf: static_ptr<u8>
+  ) AllocationResult<String> {
+    var path = try String(alloc, "/proc/");
+    try path.append_i64(_convert<i64>(target));
+    try path.append(leaf);
+    return AllocationResult.Ok(path);
   }
 
   /** Parse the selected unsigned stat field after the final parenthesis. */
@@ -50,23 +54,23 @@ public module std.process {
 
   /** Read the process's opaque start tick count from procfs. */
   function native_process_identity(
-    alloc: ref HeapAllocator,
+    alloc: const ref HeapAllocator,
     target: i32
   ) SystemResult<ProcessIdentity> {
-    var path = process_path(alloc, target, "/stat");
+    var path = try process_path(alloc, target, "/stat");
     var text = try std.io.read_to_string(alloc, path);
     return SystemResult.Ok(ProcessIdentity(target, (try process_stat_field(text, 22))));
   }
 
   /** Enumerate numeric procfs entries; no per-process privileges are requested. */
-  function native_process_ids(alloc: ref HeapAllocator) SystemResult<Vec<i32>> {
+  function native_process_ids(alloc: const ref HeapAllocator) SystemResult<Vec<i32>> {
     var entries = try std.io.read_dir(alloc, "/proc");
-    var ids = Vec<i32>(alloc, entries.size());
+    var ids = try Vec<i32>(alloc, entries.size());
     for (var i: i64 = 0; i < entries.size(); i = i + 1) {
       match entries[i].name().parse_i64() {
         Option.Some(value) => {
           if (value > 0 and value <= 2147483647) {
-            ids.push(_convert<i32>(value));
+            try ids.push(_convert<i32>(value));
           }
         },
         Option.None => {}
@@ -111,17 +115,17 @@ public module std.process {
   }
 
   /** Grow readlink storage until the complete path fits, without silent truncation. */
-  function process_executable(alloc: ref HeapAllocator, target: i32) SystemResult<String> {
-    var path = process_path(alloc, target, "/exe");
+  function process_executable(alloc: const ref HeapAllocator, target: i32) SystemResult<String> {
+    var path = try process_path(alloc, target, "/exe");
     var capacity: i64 = 256;
     while (capacity <= 1048576) {
-      var data = ContiguousBuffer<u8>(alloc, capacity);
-      var size = unsafe { c_readlink(path.c_str(), data.raw_data(), capacity); };
+      var data = try ContiguousBuffer<u8>(alloc, capacity);
+      var size = unsafe { c_readlink(try path.c_str(), data.raw_data(), capacity); };
       if (size < 0) {
         return SystemResult.Error(Error(errno(), "process executable unavailable"));
       }
       if (size < capacity) {
-        return SystemResult.Ok(process_text(alloc, data, 0, size));
+        return SystemResult.Ok(try process_text(alloc, data, 0, size));
       }
       capacity = capacity * 2;
     }
@@ -130,20 +134,20 @@ public module std.process {
 
   /** Read argv bytes independently so access failures remain field-specific. */
   function native_process_arguments(
-    alloc: ref HeapAllocator,
+    alloc: const ref HeapAllocator,
     target: i32
   ) SystemResult<Vec<String>> {
-    var path = process_path(alloc, target, "/cmdline");
+    var path = try process_path(alloc, target, "/cmdline");
     var text = try std.io.read_to_string(alloc, path);
     return process_arguments(alloc, text);
   }
 
   /** Read resource fields from one stat record and collect optional text separately. */
   function native_process_snapshot(
-    alloc: ref HeapAllocator,
+    alloc: const ref HeapAllocator,
     target: i32
   ) SystemResult<ProcessSnapshot> {
-    var path = process_path(alloc, target, "/stat");
+    var path = try process_path(alloc, target, "/stat");
     var text = try std.io.read_to_string(alloc, path);
     var identity = ProcessIdentity(target, (try process_stat_field(text, 22)));
     return SystemResult.Ok(
@@ -178,7 +182,7 @@ public module std.process {
 
   /** Open a pidfd, then verify its still-live process matches the requested identity. */
   function native_process_open(
-    alloc: ref HeapAllocator,
+    alloc: const ref HeapAllocator,
     identity: const ref ProcessIdentity
   ) SystemResult<i64> {
     // pidfd syscall numbers agree on the supported Linux x86_64 and aarch64 ABIs.
@@ -197,6 +201,18 @@ public module std.process {
       SystemResult.Error(error) => {
         native_process_close(token);
         return SystemResult.Error(error);
+      },
+      SystemResult.Allocation(error) => {
+        native_process_close(token);
+        return SystemResult.Allocation(error);
+      },
+      SystemResult.InvalidArgument(error) => {
+        native_process_close(token);
+        return SystemResult.InvalidArgument(error);
+      },
+      SystemResult.Overflow(error) => {
+        native_process_close(token);
+        return SystemResult.Overflow(error);
       }
     };
     // A dead pidfd must not validate a newly reused PID read from procfs.
@@ -205,6 +221,18 @@ public module std.process {
       SystemResult.Error(error) => {
         native_process_close(token);
         return SystemResult.Error(error);
+      },
+      SystemResult.Allocation(error) => {
+        native_process_close(token);
+        return SystemResult.Allocation(error);
+      },
+      SystemResult.InvalidArgument(error) => {
+        native_process_close(token);
+        return SystemResult.InvalidArgument(error);
+      },
+      SystemResult.Overflow(error) => {
+        native_process_close(token);
+        return SystemResult.Overflow(error);
       }
     };
     return SystemResult.Ok(token);
@@ -212,7 +240,7 @@ public module std.process {
 
   /** Signal only through the owned pidfd; errno includes EPERM, ESRCH and ENOSYS. */
   function native_process_signal(
-    alloc: ref HeapAllocator,
+    alloc: const ref HeapAllocator,
     identity: const ref ProcessIdentity,
     token: i64,
     signal: i32

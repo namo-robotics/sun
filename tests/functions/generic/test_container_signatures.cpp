@@ -23,78 +23,137 @@ using sun::driver::executeStringWithStdlib;
 
 TEST(Functions_Generic_ContainerSignatures, vec_parameter) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    function count<T>(v: ref Vec<T>) i64 {
-        return v.size();
-    }
+function count<T>(v: ref Vec<T>) i64 {
+  return v.size();
+}
 
-    function main() i32 {
-        var allocator = make_heap_allocator();
-        var v = Vec<i64>(allocator, 4);
-        v.push(10);
-        v.push(20);
-        return count<i64>(v);
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var v = try Vec<i64>(allocator, 4);
+  try v.push(10);
+  try v.push(20);
+  return Result.Ok(_convert<i32>(count<i64>(v)));
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )");
+  };
+}
+)");
   EXPECT_EQ(value, 2);
 }
 
 TEST(Functions_Generic_ContainerSignatures, vec_return_type_and_local) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    function build<T>(allocator: ref HeapAllocator, first: T) Vec<T> {
-        var v = Vec<T>(allocator, 2);
-        v.push(first);
-        return v;
-    }
+function build<T>(allocator: ref HeapAllocator, first: T) Result<Vec<T>> {
+  var v = try Vec<T>(allocator, 2);
+  try v.push(first);
+  return Result.Ok(v);
+}
 
-    function main() i32 {
-        var allocator = make_heap_allocator();
-        var v = build<i64>(allocator, 7);
-        return (match v.get(0) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } });
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var v = try build<i64>(allocator, 7);
+  return Result.Ok(_convert<i32>(
+    (match v.get(0) {
+      std.AccessResult.Ok(value) => value,
+      std.AccessResult.OutOfBounds(_) => {
+        return Result.Ok(-100);
+      }
+    })
+  ));
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )");
+  };
+}
+)");
   EXPECT_EQ(value, 7);
 }
 
 TEST(Functions_Generic_ContainerSignatures, linked_list_parameter) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    function count<T>(l: ref LinkedList<T>) i64 {
-        return l.size();
-    }
+function count<T>(l: ref LinkedList<T>) i64 {
+  return l.size();
+}
 
-    function main() i32 {
-        var allocator = make_heap_allocator();
-        var l = LinkedList<i32>(allocator);
-        l.push_back(3);
-        l.push_back(4);
-        l.push_back(5);
-        return count<i32>(l);
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var l = LinkedList<i32>(allocator);
+  try l.push_back(3);
+  try l.push_back(4);
+  try l.push_back(5);
+  return Result.Ok(_convert<i32>(count<i32>(l)));
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )");
+  };
+}
+)");
   EXPECT_EQ(value, 3);
 }
 
 TEST(Functions_Generic_ContainerSignatures, map_parameter_two_type_params) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    function count<K, V>(m: ref Map<K, V>) i64 {
-        return m.size();
-    }
+function count<K, V>(m: ref Map<K, V>) i64 {
+  return m.size();
+}
 
-    function main() i32 {
-        var allocator = make_heap_allocator();
-        var m = Map<i32, i32>(allocator, 8);
-        m.insert(1, 10);
-        m.insert(2, 20);
-        return count<i32, i32>(m);
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var m = try Map<i32, i32>(allocator, 8);
+  try m.insert(1, 10);
+  try m.insert(2, 20);
+  return Result.Ok(_convert<i32>(count<i32, i32>(m)));
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )");
+  };
+}
+)");
   EXPECT_EQ(value, 2);
 }
 

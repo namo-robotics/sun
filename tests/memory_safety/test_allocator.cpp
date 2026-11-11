@@ -51,82 +51,121 @@ TEST(MemorySafety_Allocator, variadic_method_local_allocator) {
 
 TEST(MemorySafety_Allocator, heap_allocator_create_simple_class) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    
-    class Point {
-        var x: i32;
-        var y: i32;
-        
-        init(x: i32, y: i32) {
-            this.x = x;
-            this.y = y;
-        }
-        
-        method sum() i32 {
-            return this.x + this.y;
-        }
-    }
+using std;
 
-    function main() i32 {
-        var alloc = make_heap_allocator();
-      var rawPtr = alloc.create<Point>(3, 4);
-        var p = Unique<Point>(rawPtr);
-        return p.get().sum();
+class Point {
+  var x: i32;
+  var y: i32;
+
+  init(x: i32, y: i32) {
+    this.x = x;
+    this.y = y;
+  }
+
+  method sum() i32 {
+    return this.x + this.y;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var rawPtr = try alloc.create<Point>(3, 4);
+  var p = Unique<Point>(rawPtr);
+  return Result.Ok(p.get().sum());
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )");
+  };
+}
+)");
   EXPECT_EQ(value, 7);
 }
 
 TEST(MemorySafety_Allocator, heap_allocator_create_generic_class) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    
-    class Box<T> {
-        var value: T;
-        
-        init(v: T) {
-            this.value = v;
-        }
-        
-        method get() T {
-            return this.value;
-        }
-    }
+using std;
 
-    function main() i32 {
-        var alloc = make_heap_allocator();
-        var rawPtr = alloc.create<Box<i32>>(42);
-        var p = Unique<Box<i32>>(rawPtr);
-        return p.get().get();
+class Box<T> {
+  var value: T;
+
+  init(v: T) {
+    this.value = v;
+  }
+
+  method get() T {
+    return this.value;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var rawPtr = try alloc.create<Box<i32>>(42);
+  var p = Unique<Box<i32>>(rawPtr);
+  return Result.Ok(p.get().get());
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )");
+  };
+}
+)");
   EXPECT_EQ(value, 42);
 }
 
 TEST(MemorySafety_Allocator, unique_ptr_automatic_cleanup) {
   // Unique<T> wraps allocator.create<T>() result for automatic cleanup
   auto value = executeStringWithStdlib(R"(
-    using std;
-    
-    class Point {
-        var x: i32;
-        var y: i32;
-        
-        init(x: i32, y: i32) {
-            this.x = x;
-            this.y = y;
-        }
-    }
+using std;
 
-    function main() i32 {
-        var alloc = make_heap_allocator();
-        var rawPtr = alloc.create<Point>(3, 4);
-        var p = Unique<Point>(rawPtr);
-        var result = p.get().x + p.get().y;
-        // p.deinit() is automatically called at scope exit
-        return result;
+class Point {
+  var x: i32;
+  var y: i32;
+
+  init(x: i32, y: i32) {
+    this.x = x;
+    this.y = y;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var rawPtr = try alloc.create<Point>(3, 4);
+  var p = Unique<Point>(rawPtr);
+  var result = p.get().x + p.get().y;
+  // p.deinit() is automatically called at scope exit
+  return Result.Ok(result);
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )");
+  };
+}
+)");
   EXPECT_EQ(value, 7);
 }
 
@@ -136,24 +175,37 @@ TEST(MemorySafety_Allocator, unique_ptr_automatic_cleanup) {
 
 TEST(MemorySafety_Allocator, multiple_heap_allocations) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    
-    class Counter {
-        var value: i32;
-        
-        init(v: i32) {
-            this.value = v;
-        }
-    }
+using std;
 
-    function main() i32 {
-        var alloc = make_heap_allocator();
-        var c1 = Unique<Counter>(alloc.create<Counter>(10));
-        var c2 = Unique<Counter>(alloc.create<Counter>(20));
-        var c3 = Unique<Counter>(alloc.create<Counter>(30));
-        return c1.get().value + c2.get().value + c3.get().value;
+class Counter {
+  var value: i32;
+
+  init(v: i32) {
+    this.value = v;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var c1 = Unique<Counter>(try alloc.create<Counter>(10));
+  var c2 = Unique<Counter>(try alloc.create<Counter>(20));
+  var c3 = Unique<Counter>(try alloc.create<Counter>(30));
+  return Result.Ok(c1.get().value + c2.get().value + c3.get().value);
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )");
+  };
+}
+)");
   EXPECT_EQ(value, 60);
 }
 
@@ -163,28 +215,41 @@ TEST(MemorySafety_Allocator, multiple_heap_allocations) {
 
 TEST(MemorySafety_Allocator, allocator_as_parameter) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    
-    class Point {
-        var x: i32;
-        var y: i32;
-        
-        init(x: i32, y: i32) {
-            this.x = x;
-            this.y = y;
-        }
-    }
-    
-    function create_point(alloc: ref HeapAllocator, x: i32, y: i32) raw_ptr<Point> {
-        return alloc.create<Point>(x, y);
-    }
+using std;
 
-    function main() i32 {
-        var alloc = make_heap_allocator();
-        var p = Unique<Point>(create_point(alloc, 5, 7));
-        return p.get().x + p.get().y;
+class Point {
+  var x: i32;
+  var y: i32;
+
+  init(x: i32, y: i32) {
+    this.x = x;
+    this.y = y;
+  }
+}
+
+function create_point(alloc: ref HeapAllocator, x: i32, y: i32) Result<raw_ptr<Point>> {
+  return Result.Ok(try alloc.create<Point>(x, y));
+}
+
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var p = Unique<Point>(try create_point(alloc, 5, 7));
+  return Result.Ok(p.get().x + p.get().y);
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )");
+  };
+}
+)");
   EXPECT_EQ(value, 12);
 }
 
@@ -231,28 +296,41 @@ TEST(MemorySafety_Allocator, sizeof_intrinsic_class) {
 TEST(MemorySafety_Allocator, init_intrinsic_with_allocator) {
   // Test _init<T> with allocator-allocated memory
   auto value = executeStringWithStdlib(R"(
-    using std;
-    
-    class Point {
-        var x: i32;
-        var y: i32;
-        
-        init(x: i32, y: i32) {
-            this.x = x;
-            this.y = y;
-        }
-        
-        method sum() i32 {
-            return this.x + this.y;
-        }
-    }
+using std;
 
-    function main() i32 {
-        var alloc = make_heap_allocator();
-        var p = alloc.create<Point>(10, 20);
-        return unsafe { p.sum(); };
+class Point {
+  var x: i32;
+  var y: i32;
+
+  init(x: i32, y: i32) {
+    this.x = x;
+    this.y = y;
+  }
+
+  method sum() i32 {
+    return this.x + this.y;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var p = try alloc.create<Point>(10, 20);
+  return Result.Ok(unsafe { p.sum(); });
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )");
+  };
+}
+)");
   EXPECT_EQ(value, 30);  // 10 + 20
 }
 
@@ -264,62 +342,121 @@ TEST(MemorySafety_Allocator, create_selects_init_overload_by_args) {
   // The same create<Point> specialization site is used with two different
   // arities; each must select the matching init overload.
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    class Point {
-        var x: i32;
-        var y: i32;
-        init(x: i32, y: i32) { this.x = x; this.y = y; }
-        init(v: i32) { this.x = v; this.y = v; }
-    }
+class Point {
+  var x: i32;
+  var y: i32;
 
-    function main() i32 {
-        var alloc = make_heap_allocator();
-        var a = Unique<Point>(alloc.create<Point>(7));     // init(i32) -> 14
-        var b = Unique<Point>(alloc.create<Point>(3, 4));  // init(i32,i32) -> 7
-        return a.get().x + a.get().y + b.get().x + b.get().y;
+  init(x: i32, y: i32) {
+    this.x = x;
+    this.y = y;
+  }
+
+  init(v: i32) {
+    this.x = v;
+    this.y = v;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var a = Unique<Point>(try alloc.create<Point>(7));  // init(i32) -> 14
+  var b = Unique<Point>(try alloc.create<Point>(3, 4));  // init(i32,i32) -> 7
+  return Result.Ok(a.get().x + a.get().y + b.get().x + b.get().y);
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )");
+  };
+}
+)");
   EXPECT_EQ(value, 21);  // 14 + 7
 }
 
 TEST(MemorySafety_Allocator, create_single_arg_init_overload) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    class Point {
-        var x: i32;
-        var y: i32;
-        init(x: i32, y: i32) { this.x = x; this.y = y; }
-        init(v: i32) { this.x = v; this.y = v; }
-    }
+class Point {
+  var x: i32;
+  var y: i32;
 
-    function main() i32 {
-        var alloc = make_heap_allocator();
-        var p = Unique<Point>(alloc.create<Point>(9));
-        return p.get().x + p.get().y;  // 9 + 9
+  init(x: i32, y: i32) {
+    this.x = x;
+    this.y = y;
+  }
+
+  init(v: i32) {
+    this.x = v;
+    this.y = v;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var p = Unique<Point>(try alloc.create<Point>(9));
+  return Result.Ok(p.get().x + p.get().y);  // 9 + 9
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )");
+  };
+}
+)");
   EXPECT_EQ(value, 18);
 }
 
 TEST(MemorySafety_Allocator, create_no_matching_init_overload_errors) {
   // No 3-arg init exists; this must be a clean semantic error, not a crash.
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    class Point {
-        var x: i32;
-        var y: i32;
-        init(x: i32, y: i32) { this.x = x; this.y = y; }
-    }
+class Point {
+  var x: i32;
+  var y: i32;
 
-    function main() i32 {
-        var alloc = make_heap_allocator();
-        var p = Unique<Point>(alloc.create<Point>(1, 2, 3));
-        return 0;
+  init(x: i32, y: i32) {
+    this.x = x;
+    this.y = y;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var p = Unique<Point>(try alloc.create<Point>(1, 2, 3));
+  return Result.Ok(0);
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )"),
+  };
+}
+)"),
                sun::support::SunError);
 }
 
@@ -329,42 +466,83 @@ TEST(MemorySafety_Allocator, create_no_matching_init_overload_errors) {
 
 TEST(MemorySafety_Allocator, create_unique_basic) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    class Point {
-        var x: i32;
-        var y: i32;
-        init(x: i32, y: i32) { this.x = x; this.y = y; }
-        method sum() i32 { return this.x + this.y; }
-    }
+class Point {
+  var x: i32;
+  var y: i32;
 
-    function main() i32 {
-        var alloc = make_heap_allocator();
-        var p = alloc.create_unique<Point>(3, 4);
-        return p.get().sum();
+  init(x: i32, y: i32) {
+    this.x = x;
+    this.y = y;
+  }
+
+  method sum() i32 {
+    return this.x + this.y;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var p = try alloc.create_unique<Point>(3, 4);
+  return Result.Ok(p.get().sum());
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )");
+  };
+}
+)");
   EXPECT_EQ(value, 7);
 }
 
 TEST(MemorySafety_Allocator, create_unique_overloaded_init) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    class Point {
-        var x: i32;
-        var y: i32;
-        init(v: i32) { this.x = v; this.y = v; }
-        init(x: i32, y: i32) { this.x = x; this.y = y; }
-    }
+class Point {
+  var x: i32;
+  var y: i32;
 
-    function main() i32 {
-        var alloc = make_heap_allocator();
-        var a = alloc.create_unique<Point>(7);
-        var b = alloc.create_unique<Point>(3, 4);
-        return a.get().x + a.get().y + b.get().x + b.get().y;
+  init(v: i32) {
+    this.x = v;
+    this.y = v;
+  }
+
+  init(x: i32, y: i32) {
+    this.x = x;
+    this.y = y;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var a = try alloc.create_unique<Point>(7);
+  var b = try alloc.create_unique<Point>(3, 4);
+  return Result.Ok(a.get().x + a.get().y + b.get().x + b.get().y);
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-  )");
+  };
+}
+)");
   EXPECT_EQ(value, 21);
 }
 
@@ -372,64 +550,102 @@ TEST(MemorySafety_Allocator, create_unique_deinit_called_once) {
   // Returning Unique<T> by value from create_unique must move, not copy:
   // exactly one deinit per object, no double free.
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    var counter: i32 = 0;
+var counter: i32 = 0;
 
-    class Resource {
-      var value: i32;
-      init(v: i32) { this.value = v; }
-      deinit() { counter = counter + 1; }
+class Resource {
+  var value: i32;
+
+  init(v: i32) {
+    this.value = v;
+  }
+
+  deinit() {
+    counter = counter + 1;
+  }
+}
+
+function helper() Result<i32> {
+  var alloc = make_heap_allocator();
+  var r1 = try alloc.create_unique<Resource>(10);
+  var r2 = try alloc.create_unique<Resource>(20);
+  return Result.Ok(r1.get().value + r2.get().value);
+}
+
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
+  var result = try helper();
+  return Result.Ok(counter * 100 + result);
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-
-    function helper() i32 {
-      var alloc = make_heap_allocator();
-      var r1 = alloc.create_unique<Resource>(10);
-      var r2 = alloc.create_unique<Resource>(20);
-      return r1.get().value + r2.get().value;
-    }
-
-    function main() i32 {
-      var result = helper();
-      return counter * 100 + result;
-    }
-  )");
+  };
+}
+)");
   // 2 deinits, values sum to 30
   EXPECT_EQ(value, 230);
 }
 
 TEST(MemorySafety_Allocator, create_unique_returned_from_function) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    var counter: i32 = 0;
+var counter: i32 = 0;
 
-    class Resource {
-      var value: i32;
-      init(v: i32) { this.value = v; }
-      deinit() { counter = counter + 1; }
+class Resource {
+  var value: i32;
+
+  init(v: i32) {
+    this.value = v;
+  }
+
+  deinit() {
+    counter = counter + 1;
+  }
+}
+
+function make(alloc: ref HeapAllocator, v: i32) Result<Unique<Resource>> {
+  return Result.Ok(try alloc.create_unique<Resource>(v));
+}
+
+var before: i32 = 0;
+
+function use(alloc: ref HeapAllocator) Result<i32> {
+  var r = try make(alloc, 5);
+  var v: i32 = r.get().value;
+  before = counter;  // no deinit yet while r is alive
+  return Result.Ok(v);
+}
+
+/** Runs the fixture with explicit error propagation. */
+
+function test_main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var v = try use(alloc);
+  // deinit ran exactly once, and only after use() returned
+  return Result.Ok(before * 100 + counter * 10 + v);
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
     }
-
-    function make(alloc: ref HeapAllocator, v: i32) Unique<Resource> {
-      return alloc.create_unique<Resource>(v);
-    }
-
-    var before: i32 = 0;
-
-    function use(alloc: ref HeapAllocator) i32 {
-      var r = make(alloc, 5);
-      var v: i32 = r.get().value;
-      before = counter;  // no deinit yet while r is alive
-      return v;
-    }
-
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var v = use(alloc);
-      // deinit ran exactly once, and only after use() returned
-      return before * 100 + counter * 10 + v;
-    }
-  )");
+  };
+}
+)");
   EXPECT_EQ(value, 15);
 }
 
@@ -566,25 +782,48 @@ TEST(MemorySafety_Allocator, init_primitive_rejects_invalid_arguments) {
 
 TEST(MemorySafety_Allocator, heap_allocator_creates_primitive_values) {
   EXPECT_EQ(executeStringWithStdlib(R"(
-    using std;
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var p = alloc.create<i32>(42);
-      var result: i32 = 0;
-      unsafe {
-        if (_load<i32>(p, 0) != 42) { result = 1; }
-      };
-      alloc.dealloc<i32>(p, 1);
-      var zero = alloc.create_unique<i32>(0);
-      var negative = alloc.create_unique<i64>(-42);
-      var floating = alloc.create_unique<f64>(3.5);
-      var boolean = alloc.create_unique<bool>(true);
-      if (zero.get() != 0) { result = 2; }
-      if (negative.get() != -42) { result = 3; }
-      if (floating.get() != 3.5) { result = 4; }
-      if (boolean.get() == false) { result = 5; }
-      return result;
+using std;
+
+/** Runs the fixture with explicit error propagation. */
+function test_main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var p = try alloc.create<i32>(42);
+  var result: i32 = 0;
+  unsafe {
+    if (_load<i32>(p, 0) != 42) {
+      result = 1;
     }
-  )"),
+  };
+  alloc.dealloc<i32>(p, 1);
+  var zero = try alloc.create_unique<i32>(0);
+  var negative = try alloc.create_unique<i64>(-42);
+  var floating = try alloc.create_unique<f64>(3.5);
+  var boolean = try alloc.create_unique<bool>(true);
+  if (zero.get() != 0) {
+    result = 2;
+  }
+  if (negative.get() != -42) {
+    result = 3;
+  }
+  if (floating.get() != 3.5) {
+    result = 4;
+  }
+  if (boolean.get() == false) {
+    result = 5;
+  }
+  return Result.Ok(result);
+}
+
+/** Fail the fixture once if setup or execution returns an unexpected error. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => {
+      std.panic("unexpected error in compiler test");
+      0;
+    }
+  };
+}
+)"),
             0);
 }

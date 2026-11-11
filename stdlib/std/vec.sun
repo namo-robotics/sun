@@ -8,11 +8,10 @@
 //   import "stdlib/std/vec.sun";
 //   using std;
 //   
-//   var allocator = make_heap_allocator();
-//   var v = Vec<i32>(allocator);
-//   v.push(10);
-//   v.push(20);
-//   v.push(30);
+//   var v = try Vec<i32>(global_allocator, 4);
+//   try v.push(10);
+//   try v.push(20);
+//   try v.push(30);
 //   var val = v.get(0);      // borrows element 0 (10)
 //   v.set(1, 25);            // Update index 1 to 25
 //   var last = v.pop();      // Option.Some(30), size decreases
@@ -38,8 +37,8 @@ public module std {
     /**
      * Constructor with allocator and capacity
      */
-    init(allocator: const ref HeapAllocator, capacity: i64) {
-      this.data = ContiguousBuffer<T>(allocator, capacity);
+    init(allocator: const ref HeapAllocator, capacity: i64) AllocationResult<void> {
+      this.data = try ContiguousBuffer<T>(allocator, capacity);
       this.capacity_ = capacity;
     }
 
@@ -66,14 +65,17 @@ public module std {
     // ========================================================================
 
     /**
-     * Append element to end, grows if needed
+     * Append an element, allocating replacement storage before changing the vector.
+     * Failure preserves contents and capacity; the by-value argument remains consumed.
      */
-    public method push(value: T) void {
+    public method push(value: T) AllocationResult<void> {
       if (this.size_ >= this.capacity_) {
-        this.grow();
+        try this.grow();
       }
       unsafe { this.data.set_unchecked(this.size_, value); };
       this.size_ = this.size_ + 1;
+
+      return AllocationResult.Ok;
     }
 
     /**
@@ -154,11 +156,16 @@ public module std {
     /**
      * Reserve capacity for at least n elements (doesn't change size)
      */
-    public method reserve(n: i64) void {
+    public method reserve(n: i64) AllocationResult<void> {
+      if (n < 0) {
+        return AllocationResult.InvalidArgument(InvalidArgumentError("negative size"));
+      }
       if (n > this.capacity_) {
-        this.data.resize_to(n);
+        try this.data.resize_to(n);
         this.capacity_ = n;
       }
+
+      return AllocationResult.Ok;
     }
 
     /**
@@ -251,10 +258,18 @@ public module std {
     /**
      * Double capacity and copy elements
      */
-    method grow() void {
+    method grow() AllocationResult<void> {
+      if (this.capacity_ > std.I64_MAX / 2) {
+        return AllocationResult.Overflow(OverflowError());
+      }
       var new_capacity: i64 = this.capacity_ * 2;
-      this.data.resize_to(new_capacity);
+      if (new_capacity == 0) {
+        new_capacity = 1;
+      }
+      try this.data.resize_to(new_capacity);
       this.capacity_ = new_capacity;
+
+      return AllocationResult.Ok;
     }
 
     // ========================================================================

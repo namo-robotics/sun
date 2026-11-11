@@ -195,7 +195,7 @@ public module std {
         try std.test.fail("expected ConversionError");
       },
       ConversionResult.Error(e) => {
-        var m: String = e.message();
+        var m: String = try e.message();
         try std.test.assert(
           m.equals_literal("value out of range for the target type"),
           "unexpected error message"

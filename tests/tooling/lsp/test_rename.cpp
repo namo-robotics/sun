@@ -602,12 +602,12 @@ TEST(Tooling_Lsp_Rename, LibrarySymbolRefused) {
   }
   std::string source = R"(
 using std;
-function main() i64 {
+function main() AllocationResult<i64> {
     var allocator = make_heap_allocator();
-    var v = Vec<i64>(allocator, 8);
-    v.push(1);
+    var v = try Vec<i64>(allocator, 8);
+    try v.push(1);
     var item: i64 = 0;
-    return item;
+    return AllocationResult.Ok(item);
 }
 )";
   std::optional<Rename> rename = renameAt(source, "Vec<i64>", 0, true);
@@ -619,7 +619,7 @@ function main() i64 {
   ASSERT_TRUE(rename);
   EXPECT_FALSE(rename->refusal.empty());
   // A local in the document is still renamable
-  rename = renameAt(source, "item;", 0, true);
+  rename = renameAt(source, "item);", 0, true);
   ASSERT_TRUE(rename);
   EXPECT_TRUE(rename->refusal.empty()) << rename->refusal;
   EXPECT_EQ(rename->sites.size(), 2u);

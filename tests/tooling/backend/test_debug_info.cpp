@@ -18,6 +18,7 @@
 #include "driver/compiler.h"
 #include "driver/driver.h"
 #include "driver/execution_utils.h"
+#include "moon_bundling/moon_builder.h"
 
 using sun::driver::Driver;
 using sun::driver::initTestEnvironment;
@@ -207,32 +208,38 @@ function main() i32 {
 
 TEST(Tooling_Backend_DebugInfo, moon_bundle_carries_debug_info_into_g_compile) {
   initTestEnvironment();
-  auto imports = sun::driver::getStdlibMoonImports();
-  if (imports.empty()) {
-    GTEST_SKIP() << "stdlib.moon not built";
-  }
-
-  auto driver = Driver::createForAOT("moon_debug_test", "", /*debugInfo=*/true);
-  driver->setMoonImports(imports);
+  const auto directory = std::filesystem::path("tmp") / "moon_debug_metadata";
+  std::filesystem::create_directories(directory);
+  const auto source = directory / "library.sun";
+  const auto bundle = directory / "library.moon";
+  std::ofstream(source) << R"(
+    /** Supplies a function with source metadata to an importing compilation. */
+    public module debug_library {
+      /** Keeps a source-level function available for debugger inspection. */
+      public function increment(value: i32) i32 { return value + 1; }
+    }
+  )";
+  sun::moon_bundling::MoonBuildOptions options;
+  options.debugInfo = true;
+  options.optimize = false;
+  sun::moon_bundling::MoonBuilder::build(source.string(), bundle, options);
+  auto driver = Driver::createForAOT("moon_debug_test", "", /*debugInfo=*/true,
+                                    /*optimize=*/false);
+  driver->setMoonImports({{std::filesystem::absolute(bundle).string(), {}}});
   driver->compileString(R"(
-using std;
-using std.io;
-function main() i32 {
-  println("hi");
-  return 0;
-}
-)");
-
-  // The linked stdlib println must arrive with its subprogram intact.
-  llvm::DISubprogram* printlnSP = nullptr;
-  for (auto& func : driver->getModule()) {
-    if (auto* sp = func.getSubprogram(); sp && sp->getName() == "println") {
-      printlnSP = sp;
+    /** Calls a function whose debug information was loaded from a bundle. */
+    function main() i32 { return debug_library.increment(1); }
+  )");
+  llvm::DISubprogram* imported = nullptr;
+  for (auto& function : driver->getModule()) {
+    if (auto* info = function.getSubprogram(); info && info->getName() == "increment") {
+      imported = info;
     }
   }
-  ASSERT_NE(printlnSP, nullptr);
-  EXPECT_NE(printlnSP->getFile()->getFilename().find("print.sun"),
+  ASSERT_NE(imported, nullptr);
+  EXPECT_NE(imported->getFile()->getFilename().find("library.sun"),
             std::string::npos);
+  std::filesystem::remove_all(directory);
 }
 
 TEST(Tooling_Backend_DebugInfo, moon_debug_info_stripped_from_non_g_compile) {
