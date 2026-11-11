@@ -59,7 +59,7 @@ test_function startsWithOneEntry() {
 }
 
 /** Runs the example that uses functions exercised by the example tests. */
-function run_main() AllocationResult<i32> {
+function main() AllocationResult<i32> {
   // The production binary never contains the tests above.
   var m = distance.midpoint(2, 10);
   println(try `midpoint(2, 10) = ${m}`);
@@ -73,18 +73,4 @@ manifest {
   libraries: [
     "stdlib.moon"
   ]
-}
-
-/** Reports entrypoint failures without requiring diagnostic allocation to succeed. */
-function main() i32 {
-  return match run_main() {
-    AllocationResult.Ok(code) => code,
-    (error: const ref std.IError) => {
-      match error.message() {
-        std.AllocationResult.Ok(message) => std.io.eprintln(message),
-        _ => std.io.eprintln("unable to allocate error message")
-      };
-      1;
-    }
-  };
 }

@@ -22,8 +22,7 @@ TEST(Classes_Generic_Specializations, vec_new_primitive_specialization) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var v = try Vec<u32>(allocator, 4);
   try v.push(100);
@@ -42,17 +41,6 @@ function test_main() Result<i32> {
         }
       })
   ));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 300);
@@ -80,23 +68,11 @@ class Point {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   // Just instantiate Vec<Point> to test specialization is created
   var v = try Vec<Point>(allocator, 4);
   return Result.Ok(_convert<i32>(v.capacity()));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 4);
@@ -124,22 +100,10 @@ class Counter {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var counter_ptr = try allocator.create<Counter>(42);
   return Result.Ok(unsafe { counter_ptr.get(); });
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 42);
@@ -156,25 +120,13 @@ TEST(Classes_Generic_Specializations, map_new_key_value_specialization) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var m = try Map<i32, i32>(allocator, 16);
   try m.insert(1, 100);
   try m.insert(2, 200);
   // Verify size works with new key/value types
   return Result.Ok(_convert<i32>(m.size()));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 2);

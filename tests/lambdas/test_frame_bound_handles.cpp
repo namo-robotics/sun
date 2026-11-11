@@ -43,20 +43,9 @@ class Worker {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var w = try Worker();
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "Borrow check failed");
@@ -81,20 +70,9 @@ class Worker {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var w = try Worker();
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "Borrow check failed");
@@ -113,20 +91,9 @@ function makeThread() Result<Thread<i32>> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var t = try makeThread();
   return Result.Ok(t.join());
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "Borrow check failed");
@@ -148,20 +115,9 @@ function makeThread() Result<Thread<i32>> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var t = try makeThread();
   return Result.Ok(t.join());
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "Borrow check failed");
@@ -193,20 +149,9 @@ function makeThread() Result<Thread<i32>> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var t = try makeThread();
   return Result.Ok(t.join());
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "Borrow check failed");
@@ -233,7 +178,7 @@ function makeThreads(alloc: const ref HeapAllocator) Result<Vec<Thread<i32>>> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var v = try makeThreads(alloc);
   match (v.pop()) {
@@ -245,17 +190,6 @@ function test_main() Result<i32> {
     }
   };
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "Borrow check failed");
@@ -275,21 +209,10 @@ function consume(t: Thread<i32>) i32 {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var x = 3;
   var t = try spawn([ref x]() => i32 { return x; });
   return Result.Ok(consume(t));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "Borrow check failed");
@@ -312,22 +235,11 @@ class Box {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var x = 3;
   var t = try spawn([ref x]() => i32 { return x; });
   var b = Box(t);
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "Borrow check failed");
@@ -342,22 +254,11 @@ using std;
 using std.thread;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var x = 3;
   var t = try spawn([ref x]() => i32 { return x; });
   var o = Option.Some(t);
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "Borrow check failed");
@@ -371,22 +272,11 @@ using std;
 using std.thread;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var x = 3;
   var sink = (t: Thread<i32>) => i32 { return t.join(); };
   var t = try spawn([ref x]() => i32 { return x; });
   return Result.Ok(sink(t));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "Borrow check failed");
@@ -401,22 +291,11 @@ using std;
 using std.thread;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var x = 3;
   var arr = [try spawn(() => i32 { return 0; })];
   arr[0] = try spawn([ref x]() => i32 { return x; });
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "Borrow check failed");
@@ -474,20 +353,9 @@ function park() Result<void> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   try park();
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "Borrow check failed");

@@ -95,21 +95,10 @@ module spike {
 
 /* Checks that the module class uses the imported string type. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var path = try spike.Path(alloc);
   return Result.Ok(_convert<i32>(path.length()));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 1);

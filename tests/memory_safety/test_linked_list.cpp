@@ -41,24 +41,12 @@ class Node {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var first = try allocator.create<Node>(10);
   var second = try allocator.create<Node>(20);
   unsafe { first.set_next(second); };
   return Result.Ok(unsafe { first.get_value(); } + unsafe { first.get_next().get_value(); });
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 30);
@@ -95,8 +83,7 @@ function createNode(alloc: ref HeapAllocator, v: i32) Result<raw_ptr<Node>> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var n1 = try allocator.create<Node>(1);
   // Build chain: n1 -> n2 -> n3
@@ -109,17 +96,6 @@ function test_main() Result<i32> {
   sum = sum + unsafe { n1.get_next().get_value(); };
   sum = sum + unsafe { n1.get_next().get_next().get_value(); };
   return Result.Ok(sum);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 6);
@@ -160,8 +136,7 @@ function createNode(alloc: ref HeapAllocator, v: i32) Result<raw_ptr<Node>> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var head = try allocator.create<Node>(100);
   unsafe { head.set_next(try createNode(allocator, 200)); };
@@ -171,17 +146,6 @@ function test_main() Result<i32> {
 
   // Access through the chain (not through moved var)
   return Result.Ok(unsafe { head.get_next().get_value(); });
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 999);
@@ -218,8 +182,7 @@ function createNode(alloc: ref HeapAllocator, v: i32) Result<raw_ptr<Node>> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var a = try allocator.create<Node>(1);
   // Build chain: a -> b -> c -> d
@@ -229,17 +192,6 @@ function test_main() Result<i32> {
 
   // Access 4th element: a -> b -> c -> d
   return Result.Ok(unsafe { a.get_next().get_next().get_next().get_value(); });
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 4);
@@ -280,8 +232,7 @@ function createNode(alloc: ref HeapAllocator, v: i32) Result<raw_ptr<Node>> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var n1 = try allocator.create<Node>(10);
   // Build chain without reusing moved vars
@@ -298,17 +249,6 @@ function test_main() Result<i32> {
     }
   }
   return Result.Ok(sum);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 60);
@@ -349,8 +289,7 @@ function createNode(alloc: ref HeapAllocator, v: i32) Result<raw_ptr<Node>> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   // Build list: 1 -> 2 -> 3 -> 4 -> 5 -> null
   var head = try allocator.create<Node>(1);
@@ -367,17 +306,6 @@ function test_main() Result<i32> {
     curr = unsafe { curr.get_next(); };
   }
   return Result.Ok(sum);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 15);
@@ -452,8 +380,7 @@ class List {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var list = try allocator.create<List>();
   unsafe { try list.append(allocator, 1); };
@@ -462,17 +389,6 @@ function test_main() Result<i32> {
   unsafe { try list.append(allocator, 4); };
   unsafe { try list.append(allocator, 5); };
   return Result.Ok(unsafe { list.sum(); });
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 15);

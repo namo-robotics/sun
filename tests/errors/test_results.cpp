@@ -1063,23 +1063,12 @@ function describe() Result<String> {
 
 /** Reads the independently owned message after the error was dropped. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var message = try describe();
   if (message.equals_literal("a diagnostic longer than inline storage")) {
     return Result.Ok(42);
   }
   return Result.Ok(-1);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
             42);
@@ -1325,7 +1314,7 @@ function code(index: i64) i32 {
 
 /** Checks library results, the builtin, and explicit discard in one program. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var builtin: _Result<i32,bool> = _Result.Ok(1);
   var alloc = make_heap_allocator();
   var values = try Vec<i32>(alloc, 2);
@@ -1338,17 +1327,6 @@ function test_main() Result<i32> {
       } - 46
   );
 }
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
-}
 )"),
             0);
 }
@@ -1360,22 +1338,11 @@ using std;
 
 /** Attempts to discard a checked vector access. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var values = try Vec<i32>(alloc, 2);
   values.get(0);
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "Error result must be handled");
@@ -1463,21 +1430,10 @@ using std;
 
 /** Attempts to discard an empty-string error. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var text = try String("");
   text.pop();
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "Error result must be handled");
@@ -1638,7 +1594,7 @@ function invalid() Result<void> {
 
 /** Checks a live pipe and the code and message of the propagated failure. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var opened = match open(alloc) {
     Result.Ok(pipe) => pipe.read_fd() >= 0 and pipe.write_fd() >= 0,
@@ -1656,17 +1612,6 @@ function test_main() Result<i32> {
   }
   return Result.Ok(0);
 }
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
-}
 )"),
             0);
 }
@@ -1683,7 +1628,7 @@ function read(alloc: ref HeapAllocator, path: static_ptr<u8>) Result<String> {
 
 /** Checks an empty device read and an invalid empty path without creating files. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var empty = match read(alloc, "/dev/null") {
     Result.Ok(text) => text.length() == 0,
@@ -1700,17 +1645,6 @@ function test_main() Result<i32> {
     return Result.Ok(1);
   }
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
             0);
@@ -1732,7 +1666,7 @@ function parse(text: static_ptr<u8>) Result<Ipv4Addr> {
 
 /** Checks an address and a malformed input without external network access. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var valid = match parse("127.0.0.1") {
     Result.Ok(address) => address.to_network_i32() == ipv4_loopback().to_network_i32(),
     _ => false
@@ -1748,17 +1682,6 @@ function test_main() Result<i32> {
     return Result.Ok(1);
   }
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
             0);
@@ -1777,7 +1700,7 @@ function size() Result<std.terminal.Size> {
 
 /** Checks the original error code and owned diagnostic message. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   return Result.Ok(_convert<i32>(
     match size() {
       Result.Error(error) => {
@@ -1790,17 +1713,6 @@ function test_main() Result<i32> {
       _ => 2
     }
   ));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
             0);

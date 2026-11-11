@@ -121,25 +121,13 @@ function replace() Result<void> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i64> {
+function main() Result<i64> {
   try replace();
   if (unsafe { g.unsafe_at(0); } != 110) {
     // 'n'
     return Result.Ok(-1);
   }
   return Result.Ok(g.length());
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i64 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 12);
@@ -204,8 +192,7 @@ function fill(alloc: ref HeapAllocator) Result<void> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i64> {
+function main() Result<i64> {
   var alloc = make_heap_allocator();
   try fill(alloc);
   var p1 = try queue_pop(alloc);
@@ -227,17 +214,6 @@ function test_main() Result<i64> {
     return Result.Ok(5);
   }
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i64 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 0);
@@ -288,25 +264,13 @@ function initialize_v() Vec<i64> {
 var v: Vec<i64> = initialize_v();
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i64> {
+function main() Result<i64> {
   if (v.capacity() != 8) {
     return Result.Ok(-1);
   }
   try v.push(10);
   try v.push(20);
   return Result.Ok(v.size());
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i64 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 2);
@@ -331,8 +295,7 @@ function initialize_m() Map<String, i32> {
 var m: Map<String, i32> = initialize_m();
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   if (m.capacity() != 64) {
     return Result.Ok(-1);
   }
@@ -352,17 +315,6 @@ function test_main() Result<i32> {
     });
   }
   return Result.Ok(found);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 3);
@@ -407,21 +359,9 @@ using std;
 var alloc: HeapAllocator = HeapAllocator();
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i64> {
+function main() Result<i64> {
   var s = try String(alloc, "hello");
   return Result.Ok(s.length());
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i64 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 5);

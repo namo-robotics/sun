@@ -186,24 +186,12 @@ using std;
 function consume(s: ref String) void {}
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var s1 = try String(allocator, "Hello World");
   var s2 = s1;
   consume(s1);
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                std::exception);
@@ -431,8 +419,7 @@ function first(h: ref Holder) _Result<ref String, IndexOutOfBoundsError> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var items = try Vec<String>(alloc, 2);
   try items.push(try String(alloc, "ab"));
@@ -452,17 +439,6 @@ function test_main() Result<i32> {
     _Result.Err(_) => -100
   };
   return Result.Ok(_convert<i32>(a + b + c));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 6);
@@ -490,21 +466,9 @@ function first(alloc: ref HeapAllocator) Result<ref String> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   return Result.Ok(_convert<i32>((try first(alloc)).length()));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                "Borrow check failed");
@@ -538,22 +502,10 @@ function pick(alloc: ref HeapAllocator, n: i64) Result<Vec<String>> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var v = try pick(alloc, 5);
   return Result.Ok(_convert<i32>(v.size()));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 1);
@@ -580,22 +532,10 @@ function pick(alloc: ref HeapAllocator, n: i64) Result<Vec<String>> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var v = try pick(alloc, 5);
   return Result.Ok(_convert<i32>(v.size()));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 0);
@@ -620,22 +560,10 @@ function pick(alloc: ref HeapAllocator, o: Option<i64>) Result<Vec<String>> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var v = try pick(alloc, Option.None);
   return Result.Ok(_convert<i32>(v.size()));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 1);
@@ -664,22 +592,10 @@ function f(alloc: ref HeapAllocator, n: i64) Result<Vec<String>> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var v = try f(alloc, 1);
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                SunError);
@@ -705,22 +621,10 @@ function f(alloc: ref HeapAllocator, o: Option<i64>) Result<Vec<String>> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var v = try f(alloc, Option.None);
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                SunError);
@@ -750,22 +654,10 @@ function f(alloc: ref HeapAllocator) Result<Vec<String>> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var v = try f(alloc);
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                SunError);
@@ -1319,21 +1211,10 @@ function dangling(alloc: ref HeapAllocator) Result<XmlReader> {
 
 /** Instantiates the invalid borrowing path. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var reader = try dangling(alloc);
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                "Borrow check failed");
@@ -1347,24 +1228,13 @@ using std.xml;
 
 /** Attempts to invalidate input before advancing its reader. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var input = try String(alloc, "<r/>");
   var reader = try XmlReader(alloc, input);
   input.clear();
   var event = try reader.next();
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                "Borrow check failed");

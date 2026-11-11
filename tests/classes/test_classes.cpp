@@ -63,22 +63,10 @@ class Point {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var p = try allocator.create<Point>();
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 0);
@@ -105,23 +93,11 @@ class A {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var a: raw_ptr<A> = try allocator.create<A>(allocator);
   var b: raw_ptr<B> = unsafe { a.b; };
   return Result.Ok(unsafe { b.c; });
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 42);
@@ -142,22 +118,10 @@ class Point {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var p = try allocator.create<Point>(10, 20);
   return Result.Ok(unsafe { p.x; });
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 10);
@@ -178,22 +142,10 @@ class Point {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var p = try allocator.create<Point>(10, 20);
   return Result.Ok(unsafe { p.y; });
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 20);
@@ -220,22 +172,10 @@ class Counter {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var c = try allocator.create<Counter>(42);
   return Result.Ok(unsafe { c.get(); });
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 42);
@@ -258,22 +198,10 @@ class Calculator {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var calc = try allocator.create<Calculator>(10);
   return Result.Ok(unsafe { calc.add(5); });
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 15);
@@ -296,22 +224,10 @@ class Value {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var v1 = try allocator.create<Value>(5);
   return Result.Ok(unsafe { v1.double(); });
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 10);
@@ -338,22 +254,10 @@ class Counter {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var c = try allocator.create<Counter>();
   return Result.Ok(unsafe { c.get(); });
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 100);
@@ -376,22 +280,10 @@ class Point3D {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var p = try allocator.create<Point3D>(1, 2, 3);
   return Result.Ok(unsafe { p.x; } + unsafe { p.y; } + unsafe { p.z; });
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 6);
@@ -424,22 +316,10 @@ class Box {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var box = try allocator.create<Box>(3, 4);
   return Result.Ok(unsafe { box.area(); });
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 12);
@@ -462,23 +342,11 @@ class Number {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var n1 = try allocator.create<Number>(10);
   var n2 = try allocator.create<Number>(20);
   return Result.Ok(unsafe { n1.get(); } + unsafe { n2.get(); });
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 30);
@@ -509,23 +377,11 @@ class Second {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var f = try allocator.create<First>(5);
   var s = try allocator.create<Second>(7);
   return Result.Ok(unsafe { f.a; } + unsafe { s.b; });
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 12);
@@ -550,22 +406,10 @@ class PointF {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<f64> {
+function main() Result<f64> {
   var allocator = make_heap_allocator();
   var p = try allocator.create<PointF>(1.5, 2.5);
   return Result.Ok(unsafe { p.x; } + unsafe { p.y; });
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() f64 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_TRUE(std::holds_alternative<double>(value));
@@ -1442,8 +1286,7 @@ function helper() Result<i32> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var result = try helper();
   // Unique<Widget>.deinit() should have been called, which frees the allocation.
   // Widget.deinit() is called on the *Unique* wrapper (stack class), not directly on Widget.
@@ -1451,17 +1294,6 @@ function test_main() Result<i32> {
   // The Unique wrapper's deinit frees the raw_ptr, but doesn't call Widget.deinit.
   // So counter stays 0, but we verify Unique's scope cleanup works (no crash/leak).
   return Result.Ok(result);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 1);
@@ -1492,22 +1324,10 @@ function helper() Result<i32> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var result = try helper();
   // counter should be 2: both Resources had deinit called before free
   return Result.Ok(counter + result);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   // 2 (deinit calls) + 30 (values) = 32
@@ -1533,24 +1353,12 @@ class Holder {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var h = Holder(try String(alloc, "abc"));
   var t = try String(alloc, "hello");
   var h2 = Holder(t);
   return Result.Ok(_convert<i32>(h.len() + h2.len()));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 8);
@@ -1569,23 +1377,11 @@ class Holder {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var t = try String(alloc, "hello");
   var h = Holder(t);
   return Result.Ok(_convert<i32>(t.length()));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                SunError);
@@ -1618,25 +1414,13 @@ class Box {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var a = Box(Value.Text(try String(alloc, "four")));
   var n = Value.Num(10);
   var b = Box(n);
   var c = Box(Value.Empty);
   return Result.Ok(_convert<i32>(a.size() + b.size() + c.size()));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 14);
@@ -1661,24 +1445,12 @@ function items_of(h: ref Holder) ref Vec<i64> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var h = Holder(try Vec<i64>(alloc, 2));
   try items_of(h).push(5);
   try items_of(h).push(6);
   return Result.Ok(_convert<i32>(items_of(h).size() + h.items.size()));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 4);
@@ -2138,23 +1910,12 @@ class E {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var v = try Vec<i64>(alloc, 4);
   try v.push(7);
   var e = E(unsafe { v.get_unchecked(0); });
   return Result.Ok(_convert<i32>(e.add(unsafe { v.get_unchecked(0); })));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
             14);

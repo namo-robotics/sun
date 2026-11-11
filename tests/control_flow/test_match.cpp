@@ -525,8 +525,7 @@ class Holder {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var h = Holder(Value.Items(try Vec<i64>(alloc, 2)));
   try h.push(1);
@@ -535,17 +534,6 @@ function test_main() Result<i32> {
   var e = Holder(Value.Empty);
   try e.push(9);
   return Result.Ok(_convert<i32>(h.count() + e.count()));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 3);

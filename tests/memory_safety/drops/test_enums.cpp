@@ -466,8 +466,7 @@ TEST(MemorySafety_Drops_Enums, option_of_string_via_stdlib) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var maybe = Option.Some(try String(alloc, "hello"));
   var len: i64 = match maybe {
@@ -477,17 +476,6 @@ function test_main() Result<i32> {
   var maybe2 = maybe;
   var none: Option<String> = Option.None;
   return Result.Ok(_convert<i32>(len));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   // Option<String> compiles, matches, moves, and drops without crashing
@@ -508,21 +496,9 @@ function helper() Result<i32> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   try helper();
   return Result.Ok(counter);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"));
   EXPECT_EQ(value, 2);

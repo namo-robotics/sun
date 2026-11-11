@@ -398,22 +398,11 @@ TEST(MemorySafety_Refs, string_assigned_through_ref_replaces_and_frees_once) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i64> {
+function main() Result<i64> {
   var b: String = try `..`;
   var c: ref String = b;
   c = try `test!`;
   return Result.Ok(b.length());
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i64 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 5);

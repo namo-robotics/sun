@@ -406,23 +406,12 @@ using std;
 using std.io;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var s = try String(allocator, "hi");
   print(s);
   println(s);
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 0);
@@ -627,7 +616,7 @@ using std;
 using std.io;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   eprint(-2147483647 - 1);
   eprint("|");
   eprint(-9223372036854775807i64 - 1i64);
@@ -654,17 +643,6 @@ function test_main() Result<i32> {
   var s = try String(alloc, "borrowed");
   eprintln(s);
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   auto err = testing::internal::GetCapturedStderr();
@@ -697,7 +675,7 @@ function check_empty(s: const ref String) bool {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var s = try String(alloc, "A\0B");
   var empty = try String(alloc, "");
@@ -709,17 +687,6 @@ function test_main() Result<i32> {
     return Result.Ok(2);
   }
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 0);
@@ -733,7 +700,7 @@ using std.linalg;
 
 /** Runs both floating-point specializations from the imported bundle. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var a = try Matrix<f64>([[1.0, 2.0], [3.0, 4.0]], alloc);
   var c = try Matrix<f64>(alloc, [2, 2]);
@@ -787,17 +754,6 @@ function test_main() Result<i32> {
   };
   return Result.Ok(_convert<i32>(c[1, 1]) + _convert<i32>(y[0, 0]));
 }
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
-}
 )"),
             26);
 }
@@ -810,7 +766,7 @@ using std.linalg;
 
 /** Attempts an unsupported integer multiplication. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var a = try Matrix<i32>([[2]], alloc);
   var c = try Matrix<i32>(alloc, [1, 1]);
@@ -824,17 +780,6 @@ function test_main() Result<i32> {
     c
   );
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "does not satisfy constraint '_Float'");
@@ -857,7 +802,7 @@ function calculate() LinalgResult<Matrix<f64>> {
 
 /** Exercises output methods and explicit operator error propagation. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var a = try Matrix<f32>([[1.0f32, 2.0f32], [3.0f32, 4.0f32]], alloc);
   var output = try Matrix<f32>(alloc, [2, 2]);
@@ -909,17 +854,6 @@ function test_main() Result<i32> {
     }
   };
 }
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
-}
 )"),
             162);
 }
@@ -956,24 +890,13 @@ using std.linalg;
 
 /** Attempts to multiply matrices with different element types. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var a = try Matrix<f32>([[2.0f32]], alloc);
   var b = try Matrix<f64>([[3.0]], alloc);
   var result = a * b;
   ignore_error(result);
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                SunError);

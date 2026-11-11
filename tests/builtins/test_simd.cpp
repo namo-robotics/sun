@@ -125,7 +125,7 @@ using std.linalg;
 
 /** Runs register tiles and both row and column tails through bundled Matrix operators. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var a = try Matrix<f32>(
     [
@@ -180,17 +180,6 @@ function test_main() Result<i32> {
     },
     std.linalg.LinalgResult.Overflow(error) => {
       return Result.Ok(-2);
-    }
-  };
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
     }
   };
 }
@@ -280,7 +269,7 @@ using std.linalg;
 
 /** Crosses an inner-panel boundary with initialized inputs and fresh output. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var a = try Matrix<f32>(alloc, [16i64, 65i64]);
   var b = try Matrix<f32>(alloc, [65i64, 16i64]);
@@ -306,17 +295,6 @@ function test_main() Result<i32> {
     },
     std.linalg.LinalgResult.Overflow(error) => {
       return Result.Ok(-1);
-    }
-  };
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
     }
   };
 }

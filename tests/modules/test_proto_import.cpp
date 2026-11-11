@@ -692,7 +692,7 @@ TEST(Modules_ProtoImport, wire_truncated_input_returns_error) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var buf = try Vec<u8>(alloc, 4);
   try buf.push(128);  // continuation bit set, then EOF
@@ -703,17 +703,6 @@ function test_main() Result<i32> {
       ProtoResult.Error(_) => 1
     }
   ));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 1);
@@ -1052,7 +1041,7 @@ using std;
 using t;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var wire = try Vec<u8>(alloc, 8);
   try proto_write_tag(wire, 2, 0 + 2);
@@ -1064,17 +1053,6 @@ function test_main() Result<i32> {
       _ => -2
     }
   ));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 1);

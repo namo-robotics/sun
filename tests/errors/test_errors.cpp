@@ -1471,8 +1471,7 @@ function boom(path: ref String) Outcome<void> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var a = make_heap_allocator();
   var path = try String(a, "/tmp/");
   try path.append("computed.txt");
@@ -1494,17 +1493,6 @@ function test_main() Result<i32> {
     }
   };
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, -7);
@@ -1528,8 +1516,7 @@ function make(a: ref HeapAllocator) Outcome<void> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var a = make_heap_allocator();
   /** Executes a fallible operation. */
   var attempt_0 = [ref a]() => Outcome<void> {
@@ -1553,17 +1540,6 @@ function test_main() Result<i32> {
   };
   return Result.Ok(0);
 }
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
-}
 )");
   EXPECT_EQ(value, 3);
 }
@@ -1573,22 +1549,10 @@ TEST(Errors, error_still_takes_a_literal_message) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var e: Error = Error(5, "plain literal");
   var msg: String = try e.message();
   return Result.Ok(_convert<i32>(e.code() + _convert<i32>(msg.length())));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 18);  // 5 + 13
@@ -1599,25 +1563,13 @@ TEST(Errors, message_returns_an_independent_clone_each_time) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var e: Error = Error(1, "abc");
   var first: String = try e.message();
   try first.append("!");
   // Mutating one clone must not leak into the next.
   var second: String = try e.message();
   return Result.Ok(_convert<i32>(first.length() * 10 + second.length()));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 43);  // first grew to 4, second is a fresh 3

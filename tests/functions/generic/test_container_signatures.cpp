@@ -30,24 +30,12 @@ function count<T>(v: ref Vec<T>) i64 {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var v = try Vec<i64>(allocator, 4);
   try v.push(10);
   try v.push(20);
   return Result.Ok(_convert<i32>(count<i64>(v)));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 2);
@@ -64,8 +52,7 @@ function build<T>(allocator: ref HeapAllocator, first: T) Result<Vec<T>> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var v = try build<i64>(allocator, 7);
   return Result.Ok(_convert<i32>(
@@ -76,17 +63,6 @@ function test_main() Result<i32> {
       }
     })
   ));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 7);
@@ -101,25 +77,13 @@ function count<T>(l: ref LinkedList<T>) i64 {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var l = LinkedList<i32>(allocator);
   try l.push_back(3);
   try l.push_back(4);
   try l.push_back(5);
   return Result.Ok(_convert<i32>(count<i32>(l)));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 3);
@@ -134,24 +98,12 @@ function count<K, V>(m: ref Map<K, V>) i64 {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var m = try Map<i32, i32>(allocator, 8);
   try m.insert(1, 10);
   try m.insert(2, 20);
   return Result.Ok(_convert<i32>(count<i32, i32>(m)));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 2);

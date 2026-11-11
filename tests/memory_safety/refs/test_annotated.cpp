@@ -109,22 +109,11 @@ public class Holder {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i64> {
+function main() Result<i64> {
   var alloc = make_heap_allocator();
   var h = try Holder(alloc);
   var pick: ref String = h.a;
   return Result.Ok(pick.length());
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i64 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 3);
@@ -135,21 +124,10 @@ TEST(MemorySafety_Refs_Annotated, temporary_target_is_error) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var r: ref String = try String(alloc, "temp");
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "Cannot bind reference");
@@ -197,23 +175,12 @@ public class Holder {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var h = try Holder(alloc);
   var moved = h.a;
   var pick: ref String = h.a;
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "Borrow check failed");
@@ -263,24 +230,13 @@ TEST(MemorySafety_Refs_Annotated, conditional_binds_distinct_classes) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i64> {
+function main() Result<i64> {
   var alloc = make_heap_allocator();
   var s1 = try String(alloc, "aaa");
   var s2 = try String(alloc, "bb");
   var takeFirst: bool = false;
   var r: ref String = takeFirst ? s1 : s2;
   return Result.Ok(r.length());
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i64 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 2);

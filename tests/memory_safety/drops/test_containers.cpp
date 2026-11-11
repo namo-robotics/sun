@@ -52,21 +52,9 @@ function helper() Result<i32> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   try helper();
   return Result.Ok(counter);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"));
   EXPECT_EQ(value, 3);
@@ -77,25 +65,13 @@ TEST(MemorySafety_Drops_Containers, vec_clear_drops_elements) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var v = try Vec<Owner>(alloc, 4);
   try v.push(Owner(1));
   try v.push(Owner(2));
   v.clear();
   return Result.Ok(counter);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"));
   EXPECT_EQ(value, 2);
@@ -150,24 +126,12 @@ function helper() Result<i32> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var id: i32 = try helper();
   if (id != 2) {
     return Result.Ok(-2);
   }
   return Result.Ok(counter);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"));
   // Exactly two drops total: one for the popped value, one for the element
@@ -220,8 +184,7 @@ TEST(MemorySafety_Drops_Containers, vec_of_vec_drops_recursively) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   if (true) {
     var outer = try Vec<Vec<Owner>>(alloc, 2);
@@ -234,17 +197,6 @@ function test_main() Result<i32> {
     try outer.push(inner2);
   }
   return Result.Ok(counter);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"));
   // outer's deinit drops each inner Vec, which drops its Owners
@@ -374,25 +326,13 @@ TEST(MemorySafety_Drops_Containers, linked_list_clear_drops_payloads) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var list = LinkedList<Owner>(alloc);
   try list.push_back(Owner(1));
   try list.push_back(Owner(2));
   list.clear();
   return Result.Ok(counter);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"));
   EXPECT_EQ(value, 2);
@@ -412,21 +352,9 @@ function helper() Result<i32> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   try helper();
   return Result.Ok(counter);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"));
   EXPECT_EQ(value, 3);
@@ -501,8 +429,7 @@ TEST(MemorySafety_Drops_Containers, vec_of_string_no_crash) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var v = try Vec<String>(alloc, 4);
   try v.push(try String(alloc, "hello"));
@@ -510,17 +437,6 @@ function test_main() Result<i32> {
   v.clear();
   try v.push(try String(alloc, "again"));
   return Result.Ok(_convert<i32>(v.size()));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   // Vec<String> drops element strings without crashing (heap buffers freed
@@ -573,8 +489,7 @@ TEST(MemorySafety_Drops_Containers,
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var v = try Vec<String>(alloc, 4);
   try v.push(try String(alloc, "aa"));
@@ -594,17 +509,6 @@ function test_main() Result<i32> {
     total = total + s.length();
   }
   return Result.Ok(_convert<i32>(total));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   // 5 (index) + 2 (first) + 3 (last) + 5 (iteration)
@@ -735,23 +639,12 @@ TEST(MemorySafety_Drops_Containers,
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var v = try Vec<String>(alloc, 4);
   try v.push(try String(alloc, "hello"));
   var s: String = unsafe { v.get_unchecked(0); };
   return Result.Ok(_convert<i32>(s.length()));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                std::exception);
@@ -767,22 +660,11 @@ function by_value(s: String) i64 {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var v = try Vec<String>(alloc, 4);
   try v.push(try String(alloc, "hello"));
   return Result.Ok(by_value(unsafe { v.get_unchecked(0); }));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                std::exception);
@@ -837,23 +719,12 @@ function by_value(n: i32) i32 {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var v = try Vec<i32>(alloc, 4);
   try v.push(41);
   var copied: i32 = unsafe { v.get_unchecked(0); };
   return Result.Ok(by_value(copied) - 1);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 41);
@@ -935,8 +806,7 @@ class BagIter implements IIterator<String, Bag> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var b = try Bag(alloc);
   try b.add(try String(alloc, "hello"));
@@ -945,17 +815,6 @@ function test_main() Result<i32> {
     total = total + s.length();
   }
   return Result.Ok(_convert<i32>(total));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                std::exception);
@@ -968,7 +827,7 @@ TEST(MemorySafety_Drops_Containers,
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var v = try Vec<String>(alloc, 4);
   try v.push(try String(alloc, "hello"));
@@ -978,17 +837,6 @@ function test_main() Result<i32> {
     n = n + owned.length();
   }
   return Result.Ok(_convert<i32>(n));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                std::exception);
@@ -1001,7 +849,7 @@ TEST(MemorySafety_Drops_Containers, for_in_over_owning_vec_binds_a_borrow) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var v = try Vec<String>(alloc, 4);
   try v.push(try String(alloc, "hello"));
@@ -1012,17 +860,6 @@ function test_main() Result<i32> {
     n = n + also.length();
   }
   return Result.Ok(_convert<i32>(n));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   // Each element is dropped once, by the Vec
@@ -1045,8 +882,7 @@ class Draining implements IIterator<String, Vec<String>> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var v = try Vec<String>(alloc, 4);
   try v.push(try String(alloc, "hello"));
@@ -1065,17 +901,6 @@ function test_main() Result<i32> {
     };
   }
   return Result.Ok(_convert<i32>(total + v.size()));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   // 5 + 2 drained, Vec left empty

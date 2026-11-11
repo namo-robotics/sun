@@ -21,23 +21,11 @@ TEST(MemorySafety, use_after_move_simple) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i64> {
+function main() Result<i64> {
   var allocator = make_heap_allocator();
   var s = try String(allocator, "Hello");
   var s2 = s;  // s is moved here
   return Result.Ok(s.length());  // ERROR: use of moved variable
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i64 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "Borrow check failed");
@@ -49,23 +37,11 @@ TEST(MemorySafety, use_after_move_field_access) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i64> {
+function main() Result<i64> {
   var allocator = make_heap_allocator();
   var s = try String(allocator, "Test");
   var s2 = s;
   return Result.Ok(s.length());  // ERROR: accessing member of moved variable
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i64 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "Borrow check failed");
@@ -85,23 +61,11 @@ function get_len(s: ref String) i64 {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i64> {
+function main() Result<i64> {
   var allocator = make_heap_allocator();
   var s = try String(allocator, "Hello");
   var len = get_len(s);  // Borrow, not move
   return Result.Ok(s.length());  // OK: s still valid
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i64 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 5);
@@ -199,24 +163,12 @@ TEST(MemorySafety, double_move) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i64> {
+function main() Result<i64> {
   var allocator = make_heap_allocator();
   var s = try String(allocator, "Hello");
   var s2 = s;  // First move
   var s3 = s;  // ERROR: s already moved
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i64 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "Borrow check failed");
@@ -232,23 +184,11 @@ TEST(MemorySafety, use_moved_to_variable) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i64> {
+function main() Result<i64> {
   var allocator = make_heap_allocator();
   var s = try String(allocator, "Hello");
   var s2 = s;
   return Result.Ok(s2.length());  // OK: s2 owns the data now
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i64 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 5);
@@ -295,24 +235,12 @@ using std;
 using std.linalg;
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i64> {
+function main() Result<i64> {
   var allocator = make_heap_allocator();
   var shape: array<i64, 1> = [10];
   var m = try Matrix<i64>(allocator, shape);
   var m2 = m;  // Move
   return Result.Ok(m.size());  // ERROR: m was moved
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i64 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "Borrow check failed");
@@ -329,24 +257,12 @@ function get_size(m: ref Matrix<i64>) i64 {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i64> {
+function main() Result<i64> {
   var allocator = make_heap_allocator();
   var shape: array<i64, 1> = [10];
   var m = try Matrix<i64>(allocator, shape);
   var sz = get_size(m);  // Borrow
   return Result.Ok(m.size());  // OK: m still valid
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i64 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 10);
@@ -359,23 +275,11 @@ using std;
 using std.linalg;
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i64> {
+function main() Result<i64> {
   var allocator = make_heap_allocator();
   var shape: array<i64, 1> = [10];
   var m = try Matrix<i32>(allocator, shape);
   return Result.Ok(m.size());  // OK: m still valid
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i64 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 10);
@@ -391,23 +295,11 @@ TEST(MemorySafety, allocator_use_after_move) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i64> {
+function main() Result<i64> {
   var a = make_heap_allocator();
   var a2 = a;  // Move
   var s = try String(a, "Hello");  // ERROR: a was moved
   return Result.Ok(s.length());
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i64 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "Borrow check failed");
@@ -419,24 +311,12 @@ TEST(MemorySafety, allocator_copy_valid) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i64> {
+function main() Result<i64> {
   var a = make_heap_allocator();
   var a2 = a.copy();  // Get a copy, a still valid
   var s1 = try String(a, "Hello");
   var s2 = try String(a2, "World");
   return Result.Ok(s1.length() + s2.length());
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i64 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 10);
@@ -554,8 +434,7 @@ TEST(MemorySafety, raw_ptr_null_check_pattern) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var p: raw_ptr<i32> = try alloc.alloc<i32>(1);
   // In real code you'd check if p is null before use
@@ -564,17 +443,6 @@ function test_main() Result<i32> {
   var loaded: i32 = unsafe { _load<i32>(p, 0); };
   alloc.dealloc<i32>(p, 1);
   return Result.Ok(loaded);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 42);
@@ -634,22 +502,10 @@ TEST(MemorySafety, owned_value_local_use) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i64> {
+function main() Result<i64> {
   var alloc = make_heap_allocator();
   var s = try String(alloc, "Hello");
   return Result.Ok(s.length());
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i64 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 5);

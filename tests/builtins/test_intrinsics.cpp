@@ -1431,19 +1431,11 @@ TEST(Builtins_SpawnIntrinsic, rejects_a_throwing_function) {
     }
 
     /** Runs the fixture with explicit error propagation. */
-
-    function test_main() Result<i32> {
+    function main() Result<i32> {
         var t = try spawn(explode);
         return Result.Ok( 0);
     }
 
-    /** Fail the fixture once if setup or execution returns an unexpected error. */
-    function main() i32 {
-      return match test_main() {
-        Result.Ok(value) => value,
-        _ => { std.panic("unexpected error in compiler test"); 0; }
-      };
-    }
 )"),
                                 "'throws' is no longer supported");
 }

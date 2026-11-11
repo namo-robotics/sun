@@ -70,7 +70,7 @@ TEST(MemorySafety_Const, for_in_const_binding_reads_elements) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var v = try Vec<i32>(allocator, 4);
   try v.push(1);
@@ -81,17 +81,6 @@ function test_main() Result<i32> {
     sum = sum + x;
   }
   return Result.Ok(sum);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 6);
@@ -178,7 +167,7 @@ TEST(MemorySafety_Const, for_in_const_binding_is_not_assignable) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var v = try Vec<i32>(allocator, 4);
   try v.push(1);
@@ -186,17 +175,6 @@ function test_main() Result<i32> {
     x = 2;
   }
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "Cannot assign to constant 'x'");
@@ -407,7 +385,7 @@ using std;
 using std.io;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   const s = try String(allocator, "hello");
   println(s);
@@ -416,17 +394,6 @@ function test_main() Result<i32> {
     return Result.Ok(-1);
   }
   return Result.Ok(_convert<i32>(s.length()) + _convert<i32>(unsafe { s.unsafe_at(0); }));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 5 + 'h');
@@ -438,22 +405,11 @@ TEST(MemorySafety_Const, const_string_cannot_be_appended) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   const s = try String(allocator, "hello");
   try s.append("!");
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
       "Cannot call non-const method 'append' on constant 's'");

@@ -163,6 +163,11 @@ class Driver {
    */
   void analyzeProgram(BlockExprAST& blockAst, Parser& parser);
 
+  /** Validate main and append an analyzed adapter for a result-enum return.
+   * Returns the adapter, or nullptr when no adaptation is needed.
+   */
+  sun::ast::FunctionAST* prepareMainEntry(BlockExprAST& blockAst, bool execute);
+
   /**
    * Register a source string for error reporting and create its parser
    */

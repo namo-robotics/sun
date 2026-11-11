@@ -72,21 +72,9 @@ TEST(Modules_Interpolation, works_without_using_sun) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i64> {
+function main() Result<i64> {
   var s = try `Hello`;
   return Result.Ok(s.length());
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i64 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 5);
@@ -97,8 +85,7 @@ TEST(Modules_Interpolation, hex_escapes_preserve_bytes_around_expressions) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i64> {
+function main() Result<i64> {
   var protocol = "http/1.1";
   var s = try `\x08${protocol}\x00\x7f\x80\xfF\x41F\\x08`;
   if (s.length() != 19 or
@@ -186,17 +173,6 @@ function test_main() Result<i64> {
   }
   return Result.Ok(0);
 }
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i64 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
-}
 )"),
             0);
 }
@@ -236,20 +212,9 @@ function label<T>(value: T) Result<std.String> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var text = try label(Unprintable());
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
       "Type mismatch in argument 1 of call to 'append'");

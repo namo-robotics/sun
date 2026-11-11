@@ -541,21 +541,10 @@ TEST(Modules_AccessModifiers, stdlib_internals_are_private) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var v = try Vec<i32>(allocator, 4);
   return Result.Ok(v.size_);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )",
                     /*includeStdlib=*/true),

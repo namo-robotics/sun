@@ -180,7 +180,7 @@ class A {
 
 /** Allocates and frees a typed value and a typed array. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i64> {
+function main() Result<i64> {
   var alloc = HeapAllocator();
   var one = try alloc.create<A>(42);
   var many = try alloc.alloc<A>(3);
@@ -193,17 +193,6 @@ function test_main() Result<i64> {
   alloc.dealloc<A>(one, 1);
   alloc.dealloc<A>(many, 3);
   return Result.Ok(result);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i64 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
             0);
@@ -235,7 +224,7 @@ function worker(value: A) A {
 
 /** Moves a value to a worker and checks its returned storage. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i64> {
+function main() Result<i64> {
   var value: A = { value: 42 };
   var thread = try std.thread.spawn(worker, value);
   var result = thread.join();
@@ -244,17 +233,6 @@ function test_main() Result<i64> {
     return Result.Ok(0);
   }
   return Result.Ok(result.value);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i64 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
             42);

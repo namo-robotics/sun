@@ -40,8 +40,7 @@ class Holder {
 }
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var sp: raw_ptr<Holder> = try alloc.create<Holder>();
   unsafe { sp.counter = 42; };
@@ -49,17 +48,6 @@ function test_main() Result<i32> {
   var result = f();
   unsafe { _free(sp); };
   return Result.Ok(_convert<i32>(result));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 42);
@@ -141,25 +129,13 @@ TEST(Lambdas_CaptureDiscovery, scalar_used_in_a_string_interpolation) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-
-function test_main() Result<i32> {
+function main() Result<i32> {
   var n: i32 = 3;
   var f = () => AllocationResult<i32> {
     var s = try `n is ${n}`;
     return AllocationResult.Ok(_convert<i32>(s.length()));
   };
   return Result.Ok(try f());
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 6);

@@ -28,23 +28,12 @@ using std;
 
 /** Attempts to move storage while a slice still borrows it. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var buffer = try ContiguousBuffer<u8>(alloc, 4);
   var bytes = ByteSlice(buffer);
   var moved = buffer;
   return Result.Ok(_convert<i32>(bytes.size()));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "Borrow check failed");
@@ -57,22 +46,11 @@ using std;
 
 /** Attempts to acquire write access through a const buffer. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   const buffer = try ContiguousBuffer<u8>(alloc, 4);
   var bytes = MutableByteSlice(buffer);
   return Result.Ok(_convert<i32>(bytes.size()));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "const");
@@ -85,23 +63,12 @@ using std;
 
 /** Attempts to replace the allocation while its slice is alive. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var buffer = try ContiguousBuffer<u8>(alloc, 4);
   var bytes = ByteSlice(buffer);
   try buffer.resize_to(1);
   return Result.Ok(_convert<i32>(bytes.size()));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "Borrow check failed");
@@ -114,22 +81,11 @@ using std;
 
 /** Reads both sizes while the shared borrow is alive. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var buffer = try ContiguousBuffer<u8>(alloc, 4);
   var bytes = ByteSlice(buffer);
   return Result.Ok(_convert<i32>(buffer.size() + bytes.size()));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
             8);
@@ -142,7 +98,7 @@ using std;
 
 /** Resizes only after the slice and its borrow have ended. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var buffer = try ContiguousBuffer<u8>(alloc, 4);
   if (true) {
@@ -153,17 +109,6 @@ function test_main() Result<i32> {
   }
   try buffer.resize_to(1);
   return Result.Ok(_convert<i32>(buffer.size()));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
             1);
@@ -183,20 +128,9 @@ function escape() Result<MutableByteSlice> {
 
 /** Forces the invalid function to be checked. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var bytes = try escape();
   return Result.Ok(_convert<i32>(bytes.size()));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
                                 "cannot return a value that stores references");
@@ -210,7 +144,7 @@ using std;
 
 /** Reads initialized bytes through a File imported from stdlib.moon. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var file = std.io.File();
   match file.open("/dev/zero", std.io.FileMode.Read) {
@@ -236,17 +170,6 @@ function test_main() Result<i32> {
       _ => -2
     }
   ));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
             4);

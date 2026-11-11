@@ -154,22 +154,11 @@ class Bag {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var b = try Bag(allocator);
   try b.add(1);
   return Result.Ok(_convert<i32>(b.items.size()));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
       "Cannot call non-const method 'push' on 'this' inside a const method");
@@ -460,7 +449,7 @@ function total(v: const ref Vec<i32>) i32 {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var v = try Vec<i32>(allocator, 4);
   try v.push(1);
@@ -472,17 +461,6 @@ function test_main() Result<i32> {
   }
   return Result.Ok(_convert<i32>(total(v) + _convert<i32>(cv.size())));
 }
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
-}
 )");
   EXPECT_EQ(value, 12 + 3);
 }
@@ -493,23 +471,12 @@ TEST(Classes_ConstMethods, const_vec_cannot_push_or_set) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var v = try Vec<i32>(allocator, 4);
   const ref cv = v;
   cv.push(1);
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
       "Cannot call non-const method 'push' on const reference 'cv'");
@@ -519,24 +486,13 @@ function main() i32 {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var v = try Vec<i32>(allocator, 4);
   try v.push(1);
   const ref cv = v;
   cv[0] = 2;
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )"),
       "Cannot assign to an element of const reference 'cv'");
@@ -549,7 +505,7 @@ TEST(Classes_ConstMethods, peek_accessors_are_const_views) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var v = try Vec<i32>(allocator, 4);
   try v.push(5);
@@ -579,17 +535,6 @@ function test_main() Result<i32> {
   };
   return Result.Ok(a + b + c + d);
 }
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
-}
 )");
   EXPECT_EQ(value, 5 + 7 + 30 + 100);
 
@@ -598,7 +543,7 @@ function main() i32 {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var v = try Vec<i32>(allocator, 4);
   try v.push(5);
@@ -611,17 +556,6 @@ function test_main() Result<i32> {
   };
   return Result.Ok(0);
 }
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
-}
 )"),
                                 "Cannot assign through const reference 'x'");
 
@@ -630,7 +564,7 @@ function main() i32 {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var v = try Vec<i32>(allocator, 4);
   try v.push(5);
@@ -648,17 +582,6 @@ function test_main() Result<i32> {
       }
     })
   ));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(written, 42);
@@ -702,7 +625,7 @@ TEST(Classes_ConstMethods, const_map_reads) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var allocator = make_heap_allocator();
   var m = try Map<i64, i32>(allocator, 8);
   try m.insert(1, 10);
@@ -725,17 +648,6 @@ function test_main() Result<i32> {
         }
       }) + _convert<i32>(cm.size())
   ));
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   EXPECT_EQ(value, 32);

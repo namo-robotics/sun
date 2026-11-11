@@ -49,22 +49,11 @@ TEST(Tooling_Diagnostics_TypeNames, lambda_capture_of_moon_class) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var v = try Vec<u8>(alloc, 16);
   var t = try spawn(() => i64 { return v.length(); });
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   expectNames(message, "compound type 'std.Vec<u8>'");
@@ -75,22 +64,11 @@ TEST(Tooling_Diagnostics_TypeNames, assignment_mismatch) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var v = try Vec<u8>(alloc, 16);
   var x: i32 = v;
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   expectNames(message, "value of type 'std.Vec<u8>'");
@@ -101,22 +79,11 @@ TEST(Tooling_Diagnostics_TypeNames, unknown_member_on_moon_class) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var v = try Vec<u8>(alloc, 16);
   v.no_such_method();
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   expectNames(message, "on class 'std.Vec<u8>'");
@@ -127,21 +94,10 @@ TEST(Tooling_Diagnostics_TypeNames, constructor_argument_list) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var v = try Vec<u8>(alloc, "not a size");
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   expectNames(message, "No matching constructor for 'std.Vec<u8>'");
@@ -166,23 +122,12 @@ TEST(Tooling_Diagnostics_TypeNames, ternary_branch_mismatch) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var v = try Vec<u8>(alloc, 16);
   var s = try String("hi");
   var r = true ? v : s;
   return Result.Ok(0);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   expectNames(message, "'std.Vec<u8>' vs 'String'");

@@ -781,7 +781,7 @@ class NumB implements IValue {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function main() Result<i32> {
   var alloc = make_heap_allocator();
   var items = try Vec<NumA>(alloc, 8);
   var a = NumA(10);
@@ -796,17 +796,6 @@ function test_main() Result<i32> {
     sum = sum + view.get();
   }
   return Result.Ok(sum);
-}
-
-/** Fail the fixture once if setup or execution returns an unexpected error. */
-function main() i32 {
-  return match test_main() {
-    Result.Ok(value) => value,
-    _ => {
-      std.panic("unexpected error in compiler test");
-      0;
-    }
-  };
 }
 )");
   // Concrete elements are borrowed through the interface during iteration.
