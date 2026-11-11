@@ -181,19 +181,19 @@ TEST(MemorySafety_BorrowChecker, while_loop_borrow) {
 
 TEST(MemorySafety_BorrowChecker, error_on_string_use_after_move) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    function consume(s: ref String) void {
-    }
+function consume(s: ref String) void {}
 
-    function main() i32 {
-        var allocator = make_heap_allocator();
-        var s1 = String(allocator, "Hello World");
-        var s2 = s1;
-        consume(s1);
-        return 0;
-    };
-  )"),
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var s1 = try String(allocator, "Hello World");
+  var s2 = s1;
+  consume(s1);
+  return Result.Ok(0);
+}
+)"),
                std::exception);
 }
 
@@ -377,74 +377,101 @@ TEST(MemorySafety_BorrowChecker, temporary_with_method_call) {
 // the discriminant is `this` or a ref parameter.
 TEST(MemorySafety_BorrowChecker, ref_return_through_match_binding_of_this) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    enum Value {
-      Items(Vec<String>),
-      Text(String),
-      Empty
-    }
+enum Value {
+  Items(Vec<String>),
+  Text(String),
+  Empty
+}
 
-    class Holder {
-      var v: Value;
-      init(v: Value) { this.v = v; }
-      method at(i: i64) _Result<ref String, IndexOutOfBoundsError> {
-        match this.v {
-          Value.Items(items) => { return _Result.Ok(try items.get(i)); },
-          Value.Text(s) => { return _Result.Ok(s); },
-          _ => { return _Result.Err(IndexOutOfBoundsError(0)); }
-        };
+class Holder {
+  var v: Value;
+
+  init(v: Value) {
+    this.v = v;
+  }
+
+  method at(i: i64) _Result<ref String, IndexOutOfBoundsError> {
+    match this.v {
+      Value.Items(items) => {
+        return _Result.Ok(try items.get(i));
+      },
+      Value.Text(s) => {
+        return _Result.Ok(s);
+      },
+      _ => {
+        return _Result.Err(IndexOutOfBoundsError(0));
       }
-    }
+    };
+  }
+}
 
-    function first(h: ref Holder) _Result<ref String, IndexOutOfBoundsError> {
-      match h.v {
-        Value.Items(items) => { return _Result.Ok(try items.get(0)); },
-        _ => { return _Result.Err(IndexOutOfBoundsError(0)); }
-      };
+function first(h: ref Holder) _Result<ref String, IndexOutOfBoundsError> {
+  match h.v {
+    Value.Items(items) => {
+      return _Result.Ok(try items.get(0));
+    },
+    _ => {
+      return _Result.Err(IndexOutOfBoundsError(0));
     }
+  };
+}
 
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var items = Vec<String>(alloc, 2);
-      items.push(String(alloc, "ab"));
-      items.push(String(alloc, "cde"));
-      var h = Holder(Value.Items(items));
-      var t = Holder(Value.Text(String(alloc, "z")));
-      var a = match h.at(1) { _Result.Ok(s) => s.length(), _Result.Err(_) => -100 };
-      var b = match first(h) { _Result.Ok(s) => s.length(), _Result.Err(_) => -100 };
-      var c = match t.at(0) { _Result.Ok(s) => s.length(), _Result.Err(_) => -100 };
-      return _convert<i32>(a + b + c);
-    }
-  )");
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var items = try Vec<String>(alloc, 2);
+  try items.push(try String(alloc, "ab"));
+  try items.push(try String(alloc, "cde"));
+  var h = Holder(Value.Items(items));
+  var t = Holder(Value.Text(try String(alloc, "z")));
+  var a = match h.at(1) {
+    _Result.Ok(s) => s.length(),
+    _Result.Err(_) => -100
+  };
+  var b = match first(h) {
+    _Result.Ok(s) => s.length(),
+    _Result.Err(_) => -100
+  };
+  var c = match t.at(0) {
+    _Result.Ok(s) => s.length(),
+    _Result.Err(_) => -100
+  };
+  return Result.Ok(_convert<i32>(a + b + c));
+}
+)");
   EXPECT_EQ(value, 6);
 }
 
 TEST(MemorySafety_BorrowChecker,
      ref_return_through_match_binding_of_local_is_dangling) {
-  EXPECT_THROW(executeStringWithStdlib(R"(
-    using std;
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
+using std;
 
-    enum Value {
-      Items(Vec<String>),
-      Empty
-    }
+enum Value {
+  Items(Vec<String>),
+  Empty
+}
 
-    function first(alloc: ref HeapAllocator) ref String {
-      var local = Value.Items(Vec<String>(alloc, 1));
-      match local {
-        Value.Items(items) => { return _Result.Ok(try items.get(0)); },
-        _ => { }
-      };
-      return unsafe { _to_ref<String>(null); };
-    }
+function first(alloc: ref HeapAllocator) Result<ref String> {
+  var local = Value.Items(try Vec<String>(alloc, 1));
+  match local {
+    Value.Items(items) => {
+      return Result.Ok(try items.get(0));
+    },
+    _ => {}
+  };
+  return Result.Ok(unsafe { _to_ref<String>(null); });
+}
 
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      return _convert<i32>(first(alloc).length());
-    }
-  )"),
-               SunError);
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  return Result.Ok(_convert<i32>((try first(alloc)).length()));
+}
+)"),
+               "Borrow check failed");
 }
 
 // ============================================================================
@@ -456,71 +483,89 @@ TEST(MemorySafety_BorrowChecker,
 
 TEST(MemorySafety_BorrowChecker, return_in_catch_does_not_move_on_fallthrough) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    function pick(alloc: ref HeapAllocator, n: i64) Vec<String> {
-      var out = Vec<String>(alloc, 4);
-      var status: PopResult<void> = n == 3 ? PopResult.Empty(EmptyError()) : PopResult.Ok;
-      match status { PopResult.Empty(_) => { return out; }, _ => {} };
-      if (n < 2) { return out; }
-      out.push(String(alloc, "ok"));
-      return out;
-    }
+function pick(alloc: ref HeapAllocator, n: i64) Result<Vec<String>> {
+  var out = try Vec<String>(alloc, 4);
+  var status: PopResult<void> = n == 3 ? PopResult.Empty(EmptyError()) : PopResult.Ok;
+  match status {
+    PopResult.Empty(_) => {
+      return Result.Ok(out);
+    },
+    _ => {}
+  };
+  if (n < 2) {
+    return Result.Ok(out);
+  }
+  try out.push(try String(alloc, "ok"));
+  return Result.Ok(out);
+}
 
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var v = pick(alloc, 5);
-      return _convert<i32>(v.size());
-    }
-  )");
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var v = try pick(alloc, 5);
+  return Result.Ok(_convert<i32>(v.size()));
+}
+)");
   EXPECT_EQ(value, 1);
 }
 
 TEST(MemorySafety_BorrowChecker,
      catch_clauses_are_alternatives_not_a_sequence) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    function pick(alloc: ref HeapAllocator, n: i64) Vec<String> {
-      var out = Vec<String>(alloc, 4);
-      var status: Result<void> = n == 3 ? Result.Empty(EmptyError()) : Result.Ok;
-      match status {
-        (e: ref EmptyError) => { return out; },
-        (e: ref IError) => { return out; },
-        _ => {}
-      };
-      return out;
-    }
+function pick(alloc: ref HeapAllocator, n: i64) Result<Vec<String>> {
+  var out = try Vec<String>(alloc, 4);
+  var status: Result<void> = n == 3 ? Result.Empty(EmptyError()) : Result.Ok;
+  match status {
+    (e: ref EmptyError) => {
+      return Result.Ok(out);
+    },
+    (e: ref IError) => {
+      return Result.Ok(out);
+    },
+    _ => {}
+  };
+  return Result.Ok(out);
+}
 
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var v = pick(alloc, 5);
-      return _convert<i32>(v.size());
-    }
-  )");
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var v = try pick(alloc, 5);
+  return Result.Ok(_convert<i32>(v.size()));
+}
+)");
   EXPECT_EQ(value, 0);
 }
 
 TEST(MemorySafety_BorrowChecker,
      return_in_match_arm_does_not_move_on_fallthrough) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    function pick(alloc: ref HeapAllocator, o: Option<i64>) Vec<String> {
-      var out = Vec<String>(alloc, 4);
-      match o {
-        Option.Some(v) => { return out; },
-        Option.None => { out.push(String(alloc, "x")); }
-      };
-      return out;
+function pick(alloc: ref HeapAllocator, o: Option<i64>) Result<Vec<String>> {
+  var out = try Vec<String>(alloc, 4);
+  match o {
+    Option.Some(v) => {
+      return Result.Ok(out);
+    },
+    Option.None => {
+      try out.push(try String(alloc, "x"));
     }
+  };
+  return Result.Ok(out);
+}
 
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var v = pick(alloc, Option.None);
-      return _convert<i32>(v.size());
-    }
-  )");
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var v = try pick(alloc, Option.None);
+  return Result.Ok(_convert<i32>(v.size()));
+}
+)");
   EXPECT_EQ(value, 1);
 }
 
@@ -528,46 +573,60 @@ TEST(MemorySafety_BorrowChecker, error_on_move_in_falling_through_catch) {
   // The catch clause moves and does NOT diverge, so the later use is a
   // genuine use-after-move and must still be rejected.
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    function consume(v: Vec<String>) i64 { return v.size(); }
+function consume(v: Vec<String>) i64 {
+  return v.size();
+}
 
-    function f(alloc: ref HeapAllocator, n: i64) Vec<String> {
-      var out = Vec<String>(alloc, 4);
-      var result: PopResult<void> = n == 3 ? PopResult.Empty(EmptyError()) : PopResult.Ok;
-      match result { PopResult.Empty(_) => { var k = consume(out); }, _ => {} };
-      return out;
-    }
+function f(alloc: ref HeapAllocator, n: i64) Result<Vec<String>> {
+  var out = try Vec<String>(alloc, 4);
+  var result: PopResult<void> = n == 3 ? PopResult.Empty(EmptyError()) : PopResult.Ok;
+  match result {
+    PopResult.Empty(_) => {
+      var k = consume(out);
+    },
+    _ => {}
+  };
+  return Result.Ok(out);
+}
 
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var v = f(alloc, 1); return 0;
-    }
-  )"),
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var v = try f(alloc, 1);
+  return Result.Ok(0);
+}
+)"),
                SunError);
 }
 
 TEST(MemorySafety_BorrowChecker, error_on_move_in_falling_through_match_arm) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    function consume(v: Vec<String>) i64 { return v.size(); }
+function consume(v: Vec<String>) i64 {
+  return v.size();
+}
 
-    function f(alloc: ref HeapAllocator, o: Option<i64>) Vec<String> {
-      var out = Vec<String>(alloc, 4);
-      match o {
-        Option.Some(v) => { var k = consume(out); },
-        Option.None => { }
-      };
-      return out;
-    }
+function f(alloc: ref HeapAllocator, o: Option<i64>) Result<Vec<String>> {
+  var out = try Vec<String>(alloc, 4);
+  match o {
+    Option.Some(v) => {
+      var k = consume(out);
+    },
+    Option.None => {}
+  };
+  return Result.Ok(out);
+}
 
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var v = f(alloc, Option.None);
-      return 0;
-    }
-  )"),
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var v = try f(alloc, Option.None);
+  return Result.Ok(0);
+}
+)"),
                SunError);
 }
 
@@ -575,23 +634,32 @@ TEST(MemorySafety_BorrowChecker, error_on_move_in_try_block_used_after) {
   // A move inside the try block is on the normal path and still propagates
   // into the catch clauses and past the try/catch.
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    function consume(v: Vec<String>) i64 { return v.size(); }
+function consume(v: Vec<String>) i64 {
+  return v.size();
+}
 
-    function f(alloc: ref HeapAllocator) Vec<String> {
-      var out = Vec<String>(alloc, 4);
-      var k = consume(out);
-      var result: PopResult<void> = PopResult.Empty(EmptyError());
-      match result { PopResult.Empty(_) => { return out; }, _ => {} };
-      return out;
-    }
+function f(alloc: ref HeapAllocator) Result<Vec<String>> {
+  var out = try Vec<String>(alloc, 4);
+  var k = consume(out);
+  var result: PopResult<void> = PopResult.Empty(EmptyError());
+  match result {
+    PopResult.Empty(_) => {
+      return Result.Ok(out);
+    },
+    _ => {}
+  };
+  return Result.Ok(out);
+}
 
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var v = f(alloc); return 0;
-    }
-  )"),
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var v = try f(alloc);
+  return Result.Ok(0);
+}
+)"),
                SunError);
 }
 
@@ -1131,105 +1199,125 @@ TEST(MemorySafety_BorrowChecker, constructor_argument_by_value_moves) {
 
 /** Rejects returning an XML reader that borrows a destroyed local input. */
 TEST(MemorySafety_BorrowChecker, xml_reader_cannot_escape_input) {
-  EXPECT_THROW(executeStringWithStdlib(R"(
-    using std;
-    using std.xml;
-    /** Attempts to return a reader beyond its input's lifetime. */
-    function dangling(alloc: ref HeapAllocator) XmlReader {
-      var input = String(alloc, "<r/>");
-      return XmlReader(alloc, input);
-    }
-    /** Instantiates the invalid borrowing path. */
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var reader = dangling(alloc);
-      return 0;
-    }
-  )"),
-               SunError);
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
+using std;
+using std.xml;
+
+/** Attempts to return a reader beyond its input's lifetime. */
+function dangling(alloc: ref HeapAllocator) Result<XmlReader> {
+  var input = try String(alloc, "<r/>");
+  return Result.Ok(try XmlReader(alloc, input));
+}
+
+/** Instantiates the invalid borrowing path. */
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var reader = try dangling(alloc);
+  return Result.Ok(0);
+}
+)"),
+               "Borrow check failed");
 }
 
 /** Rejects modifying input that a live XML reader still borrows. */
 TEST(MemorySafety_BorrowChecker, xml_reader_prevents_input_mutation) {
-  EXPECT_THROW(executeStringWithStdlib(R"(
-    using std;
-    using std.xml;
-    /** Attempts to invalidate input before advancing its reader. */
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var input = String(alloc, "<r/>");
-      var reader = XmlReader(alloc, input);
-      input.clear();
-      var event = match reader.next() { XmlResult.Ok(value) => value, XmlResult.Error(_) => { return 1; } };
-      return 0;
-    }
-  )"),
-               SunError);
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
+using std;
+using std.xml;
+
+/** Attempts to invalidate input before advancing its reader. */
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var input = try String(alloc, "<r/>");
+  var reader = try XmlReader(alloc, input);
+  input.clear();
+  var event = try reader.next();
+  return Result.Ok(0);
+}
+)"),
+               "Borrow check failed");
 }
 
 /** Rejects destroying an XML document while a child borrow remains live. */
 TEST(MemorySafety_BorrowChecker, xml_child_prevents_document_move) {
-  EXPECT_THROW(executeStringWithStdlib(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
     using std;
     using std.xml;
     /** Consumes the complete owned document. */
     function consume(document: XmlDocument) void {}
     /** Attempts to use a child after consuming its owner. */
-    function main() XmlResult<i32> {
+    function test_main() Result<i32> {
       var alloc = make_heap_allocator();
-      var document = match parse_xml(alloc, "<r>text</r>") {
-        XmlResult.Ok(d) => d, XmlResult.Error(_) => { return XmlResult.Ok(1); }
-      };
+      var document = try parse_xml(alloc, "<r>text</r>");
       var child: ref XmlNode = try document.root().child(0);
       consume(document);
       var text = try child.text();
-      return XmlResult.Ok(0);
+      return Result.Ok(0);
+    }
+    /** Reports unexpected fixture setup errors once. */
+    function main() i32 {
+      return match test_main() {
+        Result.Ok(value) => value,
+        _ => { std.panic("unexpected test error"); 1; }
+      };
     }
   )"),
-               SunError);
+               "Borrow check failed");
 }
 
 /** Rejects invalidating child storage while a borrowed child is still used. */
 TEST(MemorySafety_BorrowChecker, xml_child_prevents_removal) {
-  EXPECT_THROW(executeStringWithStdlib(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
     using std;
     using std.xml;
     /** Attempts to use a child after removing it from its owning element. */
-    function main() XmlResult<i32> {
+    function test_main() Result<i32> {
       var alloc = make_heap_allocator();
-      var document = match parse_xml(alloc, "<r>text</r>") {
-        XmlResult.Ok(d) => d, XmlResult.Error(_) => { return XmlResult.Ok(1); }
-      };
+      var document = try parse_xml(alloc, "<r>text</r>");
       var child: ref XmlNode = try document.root().child(0);
       var removed = try document.root().remove(0);
       var text = try child.text();
-      return XmlResult.Ok(0);
+      return Result.Ok(0);
+    }
+    /** Reports unexpected fixture setup errors once. */
+    function main() i32 {
+      return match test_main() {
+        Result.Ok(value) => value,
+        _ => { std.panic("unexpected test error"); 1; }
+      };
     }
   )"),
-               SunError);
+               "Borrow check failed");
 }
 
 /** Allows chained child borrows while their document remains alive. */
 TEST(MemorySafety_BorrowChecker, xml_child_valid_borrow) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    using std.xml;
-    /** Reads a child through a reference carrying its document's lifetime. */
-    function inspect(document: ref XmlDocument) XmlResult<i64> {
-      var child: ref XmlNode = try document.root().child(0);
-      return XmlResult.Ok((try child.text()).length());
-    }
-    /** Creates the owner before borrowing its contents. */
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var document = match parse_xml(alloc, "<r>text</r>") {
-        XmlResult.Ok(d) => d, XmlResult.Error(_) => { return 1; }
-      };
-      return match inspect(document) {
-        XmlResult.Ok(size) => _convert<i32>(size),
-        XmlResult.Error(_) => -1
-      };
-    }
-  )");
+using std;
+using std.xml;
+
+/** Reads a child through a reference carrying its document's lifetime. */
+function inspect(document: ref XmlDocument) XmlResult<i64> {
+  var child: ref XmlNode = try document.root().child(0);
+  return XmlResult.Ok((try child.text()).length());
+}
+
+/** Creates the owner before borrowing its contents. */
+function test_main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var document = try parse_xml(alloc, "<r>text</r>");
+  return Result.Ok(_convert<i32>(try inspect(document)));
+}
+
+/** Reports unexpected fixture setup errors once. */
+function main() i32 {
+  return match test_main() {
+    Result.Ok(value) => value,
+    _ => { std.panic("unexpected test error"); 1; }
+  };
+}
+)");
   EXPECT_EQ(value, 4);
 }

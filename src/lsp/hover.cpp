@@ -501,6 +501,9 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
 
     case ASTNodeType::MATCH: {
       const auto& match = static_cast<const sun::ast::MatchExprAST&>(node);
+      if (match.isPropagation()) {
+        return std::nullopt;
+      }
       for (const auto& arm : match.getArms()) {
         for (const auto& binding : arm.bindings) {
           if (binding.isWildcard || !binding.resolvedType) {

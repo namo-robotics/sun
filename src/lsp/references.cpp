@@ -372,6 +372,9 @@ class DeclaredNameFinder {
             static_cast<const sun::ast::ForInExprAST&>(node).getLoopVar()});
         break;
       case ASTNodeType::MATCH: {
+        if (static_cast<const sun::ast::MatchExprAST&>(node).isPropagation()) {
+          break;
+        }
         for (const auto& arm :
              static_cast<const sun::ast::MatchExprAST&>(node).getArms()) {
           for (const auto& binding : arm.bindings) {

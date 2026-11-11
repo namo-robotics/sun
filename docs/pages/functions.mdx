@@ -79,9 +79,18 @@ function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
 `raw_ptr<raw_ptr<i8>>` is C's `char**`. The compiler dispatches on the number
 of parameters, so those are the only two shapes it accepts.
 
-An AOT-compiled `main` must return `i32` or `void`. Under the JIT it may also
-return `i1`, `i8`, `i16`, `i64`, `f32`, `f64` or a string — useful for scripts
-and tests.
+An AOT-compiled `main` returns `i32` or `void`, either directly or through a
+result enum such as `Result<i32>` or `Result<void>`. Under the JIT, supported
+values also include other integer types, booleans, characters, floating-point
+values and strings — useful for scripts and tests. Unsupported return values
+are compilation errors.
+
+For result enums, the first variant is success, with zero or one payload;
+each remaining variant carries one error, following the same convention as
+`try`. Empty success returns zero from an executable and `void` under the JIT.
+On failure, the program reports `IError.message()` to stderr (or fixed fallback
+text if allocation fails, or the variant name if the error does not implement
+`IError`), drops the error, and exits with status 1.
 
 Arguments after the script file, or after `--`, are passed through:
 
@@ -106,8 +115,7 @@ using std;
 using std.env;
 
 function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
-    var alloc = make_heap_allocator();
-    var environment = Env(alloc);
+    var environment = try Env(global_allocator);
     var cli = environment.args(argc, argv);
     for (var arg: ref String in cli) { println(arg); }
     return 0;
@@ -123,17 +131,20 @@ type:
 ```sun
 function double(x: i32) i32 { return x * 2; }
 
-function apply(callback: function (i32) i32, value: i32) i32 {
-    return callback(value);
+function apply(fn: function (i32) i32, value: i32) i32 {
+    return fn(value);
 }
 
 function choose() function (i32) i32 {
     return double;
 }
 
-var callback: function (i32) i32 = double;
-callback = choose();
-var answer = callback(21);
+/** Selects and invokes a function pointer. */
+function invoke_selected() i32 {
+    var callback: function (i32) i32 = double;
+    callback = choose();
+    return callback(21);
+}
 ```
 
 Function pointers can be stored in locals, globals, fields, and enum payloads,

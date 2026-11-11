@@ -86,7 +86,7 @@ place. See [Constants](/memory-safety#constants).
 
 ```sun
 const MAX_RETRIES: i32 = 3;
-const greeting = String(alloc, "hello");
+const greeting = try String(alloc, "hello");
 ```
 
 ## Comments

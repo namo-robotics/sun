@@ -137,15 +137,24 @@ TEST(Errors_Results, unique_error_wrapping) {
 /** Ambiguous wrappers cannot silently select a category. */
 TEST(Errors_Results, ambiguous_error_wrapping) {
   EXPECT_THROW(executeString(R"(
-    /** Contains ambiguous categories for the same error type. */
-    enum Failure { First(i32), Second(i32) }
-    /** Produces a concrete error. */
-    function source() _Result<i32, i32> { return _Result.Err(42); }
-    /** Must reject ambiguous propagation. */
-    function caller() _Result<i32, Failure> { return _Result.Ok(try source()); }
-    /** Supplies an entry point. */
-    function main() i32 { return 0; }
-  )"),
+/** Contains ambiguous categories for the same error type. */
+enum Failure { First(i32), Second(i32) }
+
+/** Produces a concrete error. */
+function source() _Result<i32, i32> {
+  return _Result.Err(42);
+}
+
+/** Must reject ambiguous propagation. */
+function caller() _Result<i32, Failure> {
+  return _Result.Ok(try source());
+}
+
+/** Supplies an entry point. */
+function main() i32 {
+  return 0;
+}
+)"),
                sun::support::SunError);
 }
 
@@ -289,17 +298,27 @@ TEST(Errors_Results, reference_success) {
  */
 TEST(Errors_Results, precedence_and_single_evaluation) {
   EXPECT_EQ(executeString(R"(
-    var calls = 0;
-    /** Counts evaluations. */
-    function source() _Result<i32, bool> { calls += 1; return _Result.Ok(20); }
-    /** Uses prefix propagation as an arithmetic operand. */
-    function answer() _Result<i32, bool> { return _Result.Ok(try source() * 2 + 1); }
-    /** Combines the value with the evaluation count. */
-    function main() i32 {
-      var value = match answer() { _Result.Ok(v) => v, _Result.Err(_) => 0 };
-      return value + calls;
-    }
-  )"),
+var calls = 0;
+/** Counts evaluations. */
+function source() _Result<i32, bool> {
+  calls += 1;
+  return _Result.Ok(20);
+}
+
+/** Uses prefix propagation as an arithmetic operand. */
+function answer() _Result<i32, bool> {
+  return _Result.Ok(try source() * 2 + 1);
+}
+
+/** Combines the value with the evaluation count. */
+function main() i32 {
+  var value = match answer() {
+    _Result.Ok(v) => v,
+    _Result.Err(_) => 0
+  };
+  return value + calls;
+}
+)"),
             42);
 }
 
@@ -437,17 +456,17 @@ TEST(Errors_Results, rejects_nested_borrow_escape) {
 /** Formatting preserves prefix propagation and parameter-shaped patterns. */
 TEST(Errors_Results, formatter_roundtrip) {
   const std::string source = R"(
-    /** Propagates a result and handles a borrowed interface. */
-    function example() _Result<i32, i32> {
-      try prepare();
-      var value = try source();
-      try check(try source(), 42);
-      return match value {
-        (e: const ref IError) => _Result.Err(e.code()),
-        _ => _Result.Ok(42)
-      };
-    }
-  )";
+/** Propagates a result and handles a borrowed interface. */
+function example() _Result<i32, i32> {
+  try prepare();
+  var value = try source();
+  try check(try source(), 42);
+  return match value {
+    (e: const ref IError) => _Result.Err(e.code()),
+    _ => _Result.Ok(42)
+  };
+}
+)";
   const auto formatted = sun::parsing::formatSource(source);
   EXPECT_NE(formatted.find("try prepare();"), std::string::npos);
   EXPECT_EQ(formatted.find("(try prepare())"), std::string::npos);
@@ -500,15 +519,24 @@ TEST(Errors_Results, transport_ir) {
   auto driver =
       sun::driver::Driver::createForAOT("result_transport", "", false, false);
   driver->compileString(R"(
-    /** Returns a concrete failure. */
-    function fail() _Result<i32, i32> { return _Result.Err(42); }
-    /** Propagates the returned failure. */
-    function run() _Result<i32, i32> { return _Result.Ok(try fail()); }
-    /** Handles the failure without allocating. */
-    function main() i32 {
-      return match run() { _Result.Ok(v) => v, _Result.Err(e) => e };
-    }
-  )");
+/** Returns a concrete failure. */
+function fail() _Result<i32, i32> {
+  return _Result.Err(42);
+}
+
+/** Propagates the returned failure. */
+function run() _Result<i32, i32> {
+  return _Result.Ok(try fail());
+}
+
+/** Handles the failure without allocating. */
+function main() i32 {
+  return match run() {
+    _Result.Ok(v) => v,
+    _Result.Err(e) => e
+  };
+}
+)");
   for (const auto& function : driver->getModule()) {
     for (const auto& block : function) {
       for (const auto& instruction : block) {
@@ -1018,22 +1046,31 @@ TEST(Errors_Results, incompatible_result_return) {
 /** An owned message survives the result and error that supplied it. */
 TEST(Errors_Results, message_outlives_error) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
-    using std;
-    /** Returns a message while dropping the result's concrete error. */
-    function describe() String {
-      var result: _Result<void, Error> = _Result.Err(Error(42, "a diagnostic longer than inline storage"));
-      return match result {
-        _Result.Ok => String("unexpected success"),
-        _Result.Err(error) => error.message()
-      };
+using std;
+
+/** Returns a message while dropping the result's concrete error. */
+function describe() Result<String> {
+  var result: _Result<void, Error> = _Result.Err(
+    Error(42, "a diagnostic longer than inline storage")
+  );
+  return Result.Ok(
+    match result {
+      _Result.Ok => try String("unexpected success"),
+      _Result.Err(error) => try error.message()
     }
-    /** Reads the independently owned message after the error was dropped. */
-    function main() i32 {
-      var message = describe();
-      if (message.equals_literal("a diagnostic longer than inline storage")) { return 42; }
-      return -1;
-    }
-  )"),
+  );
+}
+
+/** Reads the independently owned message after the error was dropped. */
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var message = try describe();
+  if (message.equals_literal("a diagnostic longer than inline storage")) {
+    return Result.Ok(42);
+  }
+  return Result.Ok(-1);
+}
+)"),
             42);
 }
 
@@ -1257,46 +1294,57 @@ function main() i32 { return match work() { _Result.Ok(_)=>1, _Result.Err(e)=>ma
 TEST(Errors_Results, stdlib_result_and_access_result) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
 using std;
+
 /** Returns a precise vector error through the broader library result. */
-function access(index:i64) Result<i32> {
-  var alloc=make_heap_allocator();
-  var values=Vec<i32>(alloc,2);
-  values.push(42);
+function access(index: i64) Result<i32> {
+  var alloc = make_heap_allocator();
+  var values = try Vec<i32>(alloc, 2);
+  try values.push(42);
   return Result.Ok(try values.get(index));
 }
+
 /** Reads success and bounds errors while grouping other categories by interface. */
-function code(index:i64) i32 {
+function code(index: i64) i32 {
   return match access(index) {
-    Result.Ok(value)=>value,
-    Result.OutOfBounds(error)=>error.code(),
-    _ =>-100
+    Result.Ok(value) => value,
+    Result.OutOfBounds(error) => error.code(),
+    _ => -100
   };
 }
-/** Checks library results, the builtin, and explicit discard in one program. */
-function main() i32 {
-  var builtin:_Result<i32,bool>=_Result.Ok(1);
-  var alloc=make_heap_allocator();
-  var values=Vec<i32>(alloc,2);
-  ignore_error(values.get(0));
-  return code(0)+code(1)+match builtin { _Result.Ok(v)=>v, _Result.Err(_)=>0 }-46;
-}
 
-  )"),
+/** Checks library results, the builtin, and explicit discard in one program. */
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var builtin: _Result<i32,bool> = _Result.Ok(1);
+  var alloc = make_heap_allocator();
+  var values = try Vec<i32>(alloc, 2);
+  ignore_error(values.get(0));
+  return Result.Ok(
+    code(0) + code(1) +
+      match builtin {
+        _Result.Ok(v) => v,
+        _Result.Err(_) => 0
+      } - 46
+  );
+}
+)"),
             0);
 }
 
 /** Library result failures cannot be silently discarded. */
 TEST(Errors_Results, rejects_discarded_library_result) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeStringWithStdlib(R"(
-    using std;
-    /** Attempts to discard a checked vector access. */
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var values = Vec<i32>(alloc, 2);
-      values.get(0);
-      return 0;
-    }
-  )"),
+using std;
+
+/** Attempts to discard a checked vector access. */
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var values = try Vec<i32>(alloc, 2);
+  values.get(0);
+  return Result.Ok(0);
+}
+)"),
                                 "Error result must be handled");
 }
 
@@ -1304,38 +1352,41 @@ TEST(Errors_Results, rejects_discarded_library_result) {
  */
 TEST(Errors_Results, buffer_and_string_access_propagation) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
-    using std;
-    /** Combines checked buffer writes, borrowed reads, and string byte reads. */
-    function read(index: i64) Result<i32> {
-      var alloc = make_heap_allocator();
-      var buffer = ContiguousBuffer<i32>(alloc, 1);
-      try buffer.set(0, 7);
-      var value: i32 = try buffer.get(index);
-      var text = String("A");
-      return Result.Ok(value + (try text.at(index)));
-    }
-    /** Propagates a string failure after successful buffer access. */
-    function read_string() Result<u8> {
-      var text = String("A");
-      return Result.Ok(try text.at(1));
-    }
-    /** Checks both success and the concrete propagated error category. */
-    function main() i32 {
-      var success = match read(0) {
-        Result.Ok(value) => value,
-        _ => -100
-      };
-      var buffer_error = match read(1) {
-        Result.OutOfBounds(_) => 1,
-        _ => 0
-      };
-      var string_error = match read_string() {
-        Result.OutOfBounds(_) => 1,
-        _ => 0
-      };
-      return success + buffer_error + string_error - 74;
-    }
-  )"),
+using std;
+
+/** Combines checked buffer writes, borrowed reads, and string byte reads. */
+function read(index: i64) Result<i32> {
+  var alloc = make_heap_allocator();
+  var buffer = try ContiguousBuffer<i32>(alloc, 1);
+  try buffer.set(0, 7);
+  var value: i32 = try buffer.get(index);
+  var text = try String("A");
+  return Result.Ok(value + try text.at(index));
+}
+
+/** Propagates a string failure after successful buffer access. */
+function read_string() Result<u8> {
+  var text = try String("A");
+  return Result.Ok(try text.at(1));
+}
+
+/** Checks both success and the concrete propagated error category. */
+function main() i32 {
+  var success = match read(0) {
+    Result.Ok(value) => value,
+    _ => -100
+  };
+  var buffer_error = match read(1) {
+    Result.OutOfBounds(_) => 1,
+    _ => 0
+  };
+  var string_error = match read_string() {
+    Result.OutOfBounds(_) => 1,
+    _ => 0
+  };
+  return success + buffer_error + string_error - 74;
+}
+)"),
             0);
 }
 
@@ -1343,16 +1394,17 @@ TEST(Errors_Results, buffer_and_string_access_propagation) {
  */
 TEST(Errors_Results, collection_result_propagation) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
+
     using std;
     /** Looks up a key and then removes a list element. */
     function read(key: i32, populated: bool) Result<i32> {
       var alloc = make_heap_allocator();
-      var values = Map<i32, i32>(alloc, 8);
-      values.insert(1, 40);
+      var values = try Map<i32, i32>(alloc, 8);
+      try values.insert(1, 40);
       var value: i32 = try values.get(key);
       var list = LinkedList<i32>(alloc);
-      if (populated) { list.push_back(2); }
-      return Result.Ok(value + (try list.pop_front()));
+      if (populated) { try list.push_back(2); }
+      return Result.Ok(value + try list.pop_front());
     }
     /** Identifies success and each concrete failure without catching other errors. */
     function code(key: i32, populated: bool) i32 {
@@ -1374,14 +1426,16 @@ TEST(Errors_Results, collection_result_propagation) {
 /** Narrow collection results require handling even when no value is needed. */
 TEST(Errors_Results, rejects_discarded_pop_result) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeStringWithStdlib(R"(
-    using std;
-    /** Attempts to discard an empty-string error. */
-    function main() i32 {
-      var text = String("");
-      text.pop();
-      return 0;
-    }
-  )"),
+using std;
+
+/** Attempts to discard an empty-string error. */
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var text = try String("");
+  text.pop();
+  return Result.Ok(0);
+}
+)"),
                                 "Error result must be handled");
 }
 
@@ -1389,34 +1443,38 @@ TEST(Errors_Results, rejects_discarded_pop_result) {
  */
 TEST(Errors_Results, json_result_propagation) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
-    using std;
-    using std.json;
-    /** Parses a document and propagates either parsing or scalar conversion errors. */
-    function read(text: static_ptr<u8>) Result<i64> {
-      var alloc = make_heap_allocator();
-      var value = try parse_json(alloc, text);
-      return Result.Ok(try value.as_i64());
-    }
-    /** Checks a parsed value, a parse offset, and an accessor error. */
-    function main() i32 {
-      var value = match read("42") {
-        Result.Ok(number) => number,
-        _ => -100
-      };
-      var parse_error = match read("[") {
-        Result.Json(error) => error.offset() >= 0 and error.code() == 60,
-        _ => false
-      };
-      var type_error = match read("true") {
-        Result.Json(error) => error.offset() == -1 and error.code() == 60,
-        _ => false
-      };
-      var alloc = make_heap_allocator();
-      ignore_error(parse_json(alloc, "["));
-      if (value != 42 or not parse_error or not type_error) { return 1; }
-      return 0;
-    }
-  )"),
+using std;
+using std.json;
+
+/** Parses a document and propagates either parsing or scalar conversion errors. */
+function read(text: static_ptr<u8>) Result<i64> {
+  var alloc = make_heap_allocator();
+  var value = try parse_json(alloc, text);
+  return Result.Ok(try value.as_i64());
+}
+
+/** Checks a parsed value, a parse offset, and an accessor error. */
+function main() i32 {
+  var value = match read("42") {
+    Result.Ok(number) => number,
+    _ => -100
+  };
+  var parse_error = match read("[") {
+    Result.Json(error) => error.offset() >= 0 and error.code() == 60,
+    _ => false
+  };
+  var type_error = match read("true") {
+    Result.Json(error) => error.offset() == -1 and error.code() == 60,
+    _ => false
+  };
+  var alloc = make_heap_allocator();
+  ignore_error(parse_json(alloc, "["));
+  if (value != 42 or not parse_error or not type_error) {
+    return 1;
+  }
+  return 0;
+}
+)"),
             0);
 }
 
@@ -1438,13 +1496,14 @@ TEST(Errors_Results, rejects_discarded_json_result) {
 /** Numeric APIs propagate distinct concrete failures into the broad result. */
 TEST(Errors_Results, numeric_result_propagation) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
+
     using std;
     /** Converts input and performs two fallible arithmetic operations. */
     function calculate(input: i64, subtract: u64, divisor: u32) Result<u32> {
       var byte = try safe_convert<u8>(input);
       var alloc = make_heap_allocator();
-      var value = BigUint(alloc, 10);
-      var other = BigUint(alloc, subtract);
+      var value = try BigUint(alloc, 10);
+      var other = try BigUint(alloc, subtract);
       try value.sub(other);
       var remainder = try value.divmod_small(divisor);
       return Result.Ok(remainder + _convert<u32>(byte));
@@ -1483,93 +1542,111 @@ TEST(Errors_Results, rejects_discarded_conversion_result) {
 /** Wire reads propagate their concrete decode errors into std.Result. */
 TEST(Errors_Results, proto_result_propagation) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
-    using std;
-    /** Reads either a complete varint or a truncated one. */
-    function read(truncated: bool) Result<u64> {
-      var alloc = make_heap_allocator();
-      var bytes = Vec<u8>(alloc, 2);
-      if (truncated) { bytes.push(128); }
-      else { bytes.push(42); }
-      var reader = ProtoReader(bytes);
-      return Result.Ok(try reader.read_varint());
-    }
-    /** Checks success and the propagated concrete error category. */
-    function main() i32 {
-      var value = match read(false) {
-        Result.Ok(value) => _convert<i32>(value),
-        _ => -100
-      };
-      var failed = match read(true) {
-        Result.Decode(_) => true,
-        _ => false
-      };
-      if (value != 42 or not failed) { return 1; }
-      return 0;
-    }
-  )"),
+using std;
+
+/** Reads either a complete varint or a truncated one. */
+function read(truncated: bool) Result<u64> {
+  var alloc = make_heap_allocator();
+  var bytes = try Vec<u8>(alloc, 2);
+  if (truncated) {
+    try bytes.push(128);
+  } else {
+    try bytes.push(42);
+  }
+  var reader = ProtoReader(bytes);
+  return Result.Ok(try reader.read_varint());
+}
+
+/** Checks success and the propagated concrete error category. */
+function main() i32 {
+  var value = match read(false) {
+    Result.Ok(value) => _convert<i32>(value),
+    _ => -100
+  };
+  var failed = match read(true) {
+    Result.Decode(_) => true,
+    _ => false
+  };
+  if (value != 42 or not failed) {
+    return 1;
+  }
+  return 0;
+}
+)"),
             0);
 }
 
 /** System operations propagate owned values and native error payloads. */
 TEST(Errors_Results, system_result_propagation) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
-    using std;
-    /** Moves an owned pipe through the broad library result. */
-    function open(alloc: ref HeapAllocator) Result<std.process.Pipe> {
-      return Result.Ok(try std.process.open_pipe(alloc));
-    }
-    /** Propagates a deterministic invalid-descriptor error. */
-    function invalid() Result<void> {
-      try std.process.dup_fd(-1, -1);
-      return Result.Ok;
-    }
-    /** Checks a live pipe and the code and message of the propagated failure. */
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var opened = match open(alloc) {
-        Result.Ok(pipe) => pipe.read_fd() >= 0 and pipe.write_fd() >= 0,
-        _ => false
-      };
-      var failed = match invalid() {
-        Result.Error(error) => {
-          var message = error.message();
-          error.code() != 0 and message.equals_literal("failed to duplicate descriptor");
-        },
-        _ => false
-      };
-      if (not opened or not failed) { return 1; }
-      return 0;
-    }
-  )"),
+using std;
+
+/** Moves an owned pipe through the broad library result. */
+function open(alloc: ref HeapAllocator) Result<std.process.Pipe> {
+  return Result.Ok(try std.process.open_pipe(alloc));
+}
+
+/** Propagates a deterministic invalid-descriptor error. */
+function invalid() Result<void> {
+  try std.process.dup_fd(-1, -1);
+  return Result.Ok;
+}
+
+/** Checks a live pipe and the code and message of the propagated failure. */
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var opened = match open(alloc) {
+    Result.Ok(pipe) => pipe.read_fd() >= 0 and pipe.write_fd() >= 0,
+    _ => false
+  };
+  var failed = match invalid() {
+    Result.Error(error) => {
+      var message = try error.message();
+      error.code() != 0 and message.equals_literal("failed to duplicate descriptor");
+    },
+    _ => false
+  };
+  if (not opened or not failed) {
+    return Result.Ok(1);
+  }
+  return Result.Ok(0);
+}
+)"),
             0);
 }
 
 /** Whole-file reads preserve owned success and errors through broad results. */
 TEST(Errors_Results, file_result_propagation) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
-    using std;
-    /** Reads a path and propagates file failures into the standard error variant. */
-    function read(alloc: ref HeapAllocator, path: static_ptr<u8>) Result<String> {
-      return Result.Ok(try std.io.read_to_string(alloc, path));
-    }
-    /** Checks an empty device read and an invalid empty path without creating files. */
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var empty = match read(alloc, "/dev/null") {
-        Result.Ok(text) => text.length() == 0,
-        _ => false
-      };
-      var failed = match read(alloc, "") {
-        Result.Error(error) => {
-          var message = error.message();
-          error.code() != 0 and message.equals_literal("failed to open file");
-        },
-        _ => false
-      };
-      if (not empty or not failed) { return 1; }
-      return 0;
-    }
-  )"),
+using std;
+
+/** Reads a path and propagates file failures into the standard error variant. */
+function read(alloc: ref HeapAllocator, path: static_ptr<u8>) Result<String> {
+  return Result.Ok(try std.io.read_to_string(alloc, path));
+}
+
+/** Checks an empty device read and an invalid empty path without creating files. */
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var empty = match read(alloc, "/dev/null") {
+    Result.Ok(text) => text.length() == 0,
+    _ => false
+  };
+  var failed = match read(alloc, "") {
+    Result.Error(error) => {
+      var message = try error.message();
+      error.code() != 0 and message.equals_literal("failed to open file");
+    },
+    _ => false
+  };
+  if (not empty or not failed) {
+    return Result.Ok(1);
+  }
+  return Result.Ok(0);
+}
+)"),
             0);
 }
 
@@ -1577,31 +1654,36 @@ TEST(Errors_Results, file_result_propagation) {
  * payloads. */
 TEST(Errors_Results, network_result_propagation) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
-    using std;
-    using std.net;
-    /** Parses an IPv4 address through the broad standard result. */
-    function parse(text: static_ptr<u8>) Result<Ipv4Addr> {
-      var alloc = make_heap_allocator();
-      var input = String(alloc, text);
-      return Result.Ok(try parse_ipv4(input));
-    }
-    /** Checks an address and a malformed input without external network access. */
-    function main() i32 {
-      var valid = match parse("127.0.0.1") {
-        Result.Ok(address) => address.to_network_i32() == ipv4_loopback().to_network_i32(),
-        _ => false
-      };
-      var failed = match parse("256.0.0.1") {
-        Result.Error(error) => {
-          var message = error.message();
-          error.code() == -1 and message.equals_literal("malformed IPv4 address");
-        },
-        _ => false
-      };
-      if (not valid or not failed) { return 1; }
-      return 0;
-    }
-  )"),
+using std;
+using std.net;
+
+/** Parses an IPv4 address through the broad standard result. */
+function parse(text: static_ptr<u8>) Result<Ipv4Addr> {
+  var alloc = make_heap_allocator();
+  var input = try String(alloc, text);
+  return Result.Ok(try parse_ipv4(input));
+}
+
+/** Checks an address and a malformed input without external network access. */
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var valid = match parse("127.0.0.1") {
+    Result.Ok(address) => address.to_network_i32() == ipv4_loopback().to_network_i32(),
+    _ => false
+  };
+  var failed = match parse("256.0.0.1") {
+    Result.Error(error) => {
+      var message = try error.message();
+      error.code() == -1 and message.equals_literal("malformed IPv4 address");
+    },
+    _ => false
+  };
+  if (not valid or not failed) {
+    return Result.Ok(1);
+  }
+  return Result.Ok(0);
+}
+)"),
             0);
 }
 
@@ -1609,25 +1691,30 @@ TEST(Errors_Results, network_result_propagation) {
  */
 TEST(Errors_Results, terminal_result_propagation) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
-    using std;
-    /** Propagates a failed terminal query without changing terminal state. */
-    function size() Result<std.terminal.Size> {
-      return Result.Ok(try std.terminal.get_size(-1));
+using std;
+
+/** Propagates a failed terminal query without changing terminal state. */
+function size() Result<std.terminal.Size> {
+  return Result.Ok(try std.terminal.get_size(-1));
+}
+
+/** Checks the original error code and owned diagnostic message. */
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  return Result.Ok(_convert<i32>(
+    match size() {
+      Result.Error(error) => {
+        var message = try error.message();
+        if (error.code() == 0 or not message.equals_literal("failed to read terminal size")) {
+          return Result.Ok(1);
+        }
+        0;
+      },
+      _ => 2
     }
-    /** Checks the original error code and owned diagnostic message. */
-    function main() i32 {
-      return match size() {
-        Result.Error(error) => {
-          var message = error.message();
-          if (error.code() == 0 or not message.equals_literal("failed to read terminal size")) {
-            return 1;
-          }
-          0;
-        },
-        _ => 2
-      };
-    }
-  )"),
+  ));
+}
+)"),
             0);
 }
 
@@ -1780,21 +1867,63 @@ TEST(Errors_Results, removed_exception_syntax) {
 /** Custom result propagation does not require an error interface. */
 TEST(Errors_Results, concrete_errors_need_no_interface) {
   EXPECT_EQ(executeString(R"(
-    /** Carries a typed failure without a shared interface. */
-    class Failure {
-      public var value: i32;
-      /** Stores the failure code. */
-      init(value: i32) { this.value = value; }
+/** Carries a typed failure without a shared interface. */
+class Failure {
+  public var value: i32;
+
+  /** Stores the failure code. */
+  init(value: i32) {
+    this.value = value;
+  }
+}
+
+/** Owns either a success or a concrete failure. */
+enum Outcome<T> { Ok(T), Failed(Failure) }
+
+/** Returns the concrete error. */
+function source() Outcome<i32> {
+  return Outcome.Failed(Failure(42));
+}
+
+/** Propagates the error as a return value. */
+function forward() Outcome<i32> {
+  return Outcome.Ok(try source());
+}
+
+/** Inspects the concrete error directly. */
+function main() i32 {
+  return match forward() {
+    Outcome.Ok(value) => value,
+    Outcome.Failed(error) => error.value
+  };
+}
+)"), 42);
+}
+
+
+/** Returning a result as its payload must be diagnosed before code generation. */
+TEST(Errors_Results, result_cannot_be_returned_as_its_payload) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    /** Provides a compound success payload. */
+    class Value { var number: i32 = 42; }
+    /** Stores the success payload separately from its variant tag. */
+    enum Outcome { Ok(Value), Failed }
+    /** Incorrectly returns the tagged result instead of extracting its payload. */
+    function invalid() Value { return Outcome.Ok(Value()); }
+    /** Supplies an entry point for analysis. */
+    function main() i32 { return 0; }
+  )"), "Return value has type");
+}
+
+/** The special handling of infallible _init does not allow try on void calls. */
+TEST(Errors_Results, try_rejects_ordinary_void_calls) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::analyzeString(R"(
+    /** Completes without returning a result. */
+    function ready() void {}
+    /** Cannot propagate a failure from a void expression. */
+    function caller() _Result<void, i32> {
+      try ready();
+      return _Result.Ok;
     }
-    /** Owns either a success or a concrete failure. */
-    enum Outcome<T> { Ok(T), Failed(Failure) }
-    /** Returns the concrete error. */
-    function source() Outcome<i32> { return Outcome.Failed(Failure(42)); }
-    /** Propagates the error as a return value. */
-    function forward() Outcome<i32> { return Outcome.Ok(try source()); }
-    /** Inspects the concrete error directly. */
-    function main() i32 {
-      return match forward() { Outcome.Ok(value) => value, Outcome.Failed(error) => error.value };
-    }
-  )"), 42);
+  )"), "'try' requires its operand to be a nonempty enum");
 }

@@ -59,6 +59,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Use the Ubuntu archive directly
+        run: |
+          # Avoid the runner mirror list after repeated Azure mirror DNS failures.
+          sudo sed -i \
+            -e 's|mirror+file:/etc/apt/apt-mirrors.txt|https://archive.ubuntu.com/ubuntu|g' \
+            -e 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' \
+            /etc/apt/sources.list.d/ubuntu.sources
+
       - name: Install LLVM 20 from its signed APT repository
         run: |
           mkdir -p tmp/string-creation-ci
@@ -369,6 +377,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Use the Ubuntu archive directly
+        run: |
+          # Avoid the runner mirror list after repeated Azure mirror DNS failures.
+          sudo sed -i \
+            -e 's|mirror+file:/etc/apt/apt-mirrors.txt|https://archive.ubuntu.com/ubuntu|g' \
+            -e 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' \
+            /etc/apt/sources.list.d/ubuntu.sources
 
       - name: Install LLVM 20
         run: |
@@ -694,6 +710,14 @@ jobs:
         with:
           ref: ${{ env.BUILD_SHA }}
           fetch-depth: 0 # Full history and tags for version detection
+
+      - name: Use the Ubuntu archive directly
+        run: |
+          # Avoid the runner mirror list after repeated Azure mirror DNS failures.
+          sudo sed -i \
+            -e 's|mirror+file:/etc/apt/apt-mirrors.txt|https://archive.ubuntu.com/ubuntu|g' \
+            -e 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' \
+            /etc/apt/sources.list.d/ubuntu.sources
 
       - name: Install LLVM 20 and build dependencies
         run: |

@@ -162,14 +162,14 @@ var maybe: Option<char> = char_of(128512);
 ```sun
 using std.io;
 
-var s = String(alloc, "héllo😀");
+var s = try String(alloc, "héllo😀");
 s.length();      // 10 bytes
 s.count_chars();  // 6 scalar values
 
 var it = s.iterate_chars();
 for (var c: char in it) { print(c); }
 
-s.push('!');            // appends the UTF-8 encoding
+try s.push('!');            // appends the UTF-8 encoding
 s.find('😀');           // byte index, or None
 ```
 
@@ -280,15 +280,14 @@ reference (see [Memory Safety](/memory-safety)).
 
 Sun provides pointer types for working with memory:
 
-### `ptr<T>` - Owning Pointer
+### `std.Unique<T>` - Owning Heap Value
 
-An owning pointer with RAII semantics. Memory is automatically freed when the pointer goes out of scope.
+`Unique<T>` is a standard-library class, not a built-in pointer type. It destroys the owned value and frees its allocation when it goes out of scope.
 
 ```sun
-var allocator = make_heap_allocator();
-var p: ptr<Point> = allocator.create<Point>(3, 4);
-// p.x, p.y accessible directly
-// Memory freed automatically at scope exit
+var p = global_allocator.create_unique<Point>(3, 4);
+var point: ref Point = p.get();  // borrows the owned Point
+// The value is destroyed and its storage freed at scope exit.
 ```
 
 ### `raw_ptr<T>` - Raw Pointer

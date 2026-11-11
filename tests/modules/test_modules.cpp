@@ -73,28 +73,34 @@ TEST(Modules, module_with_using_all) {
 // identically.
 TEST(Modules, file_using_std_reaches_module_class_fields) {
   auto value = sun::driver::executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    /* Exercises a file import inside a module. */
-    module spike {
-      /* Stores a string constructed through the file import. */
-      public class Path {
-        var path: String;
-        init(alloc: const ref HeapAllocator) {
-          this.path = String(alloc, "/");
-        }
-        /* Returns the stored path length. */
-        public method length() i64 { return this.path.length(); }
-      }
+/* Exercises a file import inside a module. */
+module spike {
+
+  /* Stores a string constructed through the file import. */
+  public class Path {
+    var path: String;
+
+    init(alloc: const ref HeapAllocator) Result<void> {
+      this.path = try String(alloc, "/");
     }
 
-    /* Checks that the module class uses the imported string type. */
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var path = spike.Path(alloc);
-      return _convert<i32>(path.length());
+    /* Returns the stored path length. */
+    public method length() i64 {
+      return this.path.length();
     }
-  )");
+  }
+}
+
+/* Checks that the module class uses the imported string type. */
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var path = try spike.Path(alloc);
+  return Result.Ok(_convert<i32>(path.length()));
+}
+)");
   EXPECT_EQ(value, 1);
 }
 
@@ -947,25 +953,30 @@ TEST(Modules, moon_clean_lambda_param_still_rejects_captures) {
 TEST(Modules, moon_free_function_throw_is_caught_by_importer) {
   initTestEnvironment();
   auto moonPath = writeMoonLib("throwlib", R"(
-
 public module throwlib {
+
   /** Owns successes and concrete errors across a library boundary. */
   public enum Outcome<T> { Ok(T), Boom(Boom) }
+
   public class Boom {
     init() {}
+
     public const method code() i32 {
       return 77;
     }
+
     public const method message() static_ptr<u8> {
       return "boom";
     }
   }
+
   public function fail(x: i32) Outcome<i32> {
     if (x > 0) {
       return Outcome.Boom(Boom());
     }
     return Outcome.Ok(1);
   }
+
   public function nested(x: i32) Outcome<i32> {
     return Outcome.Ok(try fail(x));
   }

@@ -9,10 +9,9 @@
 // the queue when it goes out of scope is dropped with it.
 //
 // Usage:
-//   var alloc = make_heap_allocator();
-//   var q = Queue<i64>(alloc);
-//   q.push(1);
-//   q.push(2);
+//   var q = Queue<i64>(global_allocator);
+//   try q.push(1);
+//   try q.push(2);
 //   match (q.pop()) {
 //     Option.Some(v) => println(v),   // 1
 //     Option.None => {},
@@ -32,8 +31,10 @@ public module std {
     /**
      * Add to the back of the queue. The value moves in.
      */
-    public method push(value: T) void {
-      this.items.push_back(value);
+    public method push(value: T) AllocationResult<void> {
+      try this.items.push_back(value);
+
+      return AllocationResult.Ok;
     }
 
     /**

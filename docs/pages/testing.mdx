@@ -196,17 +196,27 @@ does the setup and whose `deinit` does the teardown.
 ```sun
 using std;
 
+/** Tests directory setup and cleanup. */
 module config {
+    /** Owns an empty directory for this test process. */
     class TempDir {
         public var path: String;
-        init() _Result<void, Error> { /* create a unique directory and initialize path */ }
-        deinit() { /* remove it and its contents */ }
+
+        /** Creates a directory whose name includes the process ID. */
+        init() SystemResult<void> {
+            this.path = try String("/tmp/sun_config_test_");
+            this.path.append(std.process.pid());
+            try std.io.make_dir(this.path, 448);
+        }
+
+        /** Removes the empty directory when the fixture leaves scope. */
+        deinit() { ignore_error(std.io.remove_dir(this.path)); }
     }
 
-    test_function writesConfigFile() {
-        var dir = try std.test.expect_ok(config.TempDir());   // setup
-        // ... exercise code that writes into dir.path ...
-        try std.test.assert(true);
+    /** Checks the directory while the fixture keeps it alive. */
+    test_function createsScratchDirectory() {
+        var dir = try std.test.expect_system(config.TempDir());  // setup
+        try std.test.assert(std.io.is_dir(dir.path));
         // teardown runs here or when try returns an assertion failure
     }
 }

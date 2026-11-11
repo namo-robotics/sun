@@ -13,14 +13,13 @@ using cuda;
 
 /** Uploads a matrix twice, multiplies on the GPU, and downloads the product. */
 function run() GpuResult<void> {
-  var alloc = make_heap_allocator();
   var gpu = try open_device(0);
-  var a_cpu = Matrix<f32>([[1.0f32, 2.0f32], [3.0f32, 4.0f32]], alloc);
-  var b_cpu = Matrix<f32>([[1.0f32, 2.0f32], [3.0f32, 4.0f32]], alloc);
+  var a_cpu = try Matrix<f32>([[1.0f32, 2.0f32], [3.0f32, 4.0f32]], global_allocator);
+  var b_cpu = try Matrix<f32>([[1.0f32, 2.0f32], [3.0f32, 4.0f32]], global_allocator);
   var a = try gpu.upload(a_cpu);
   var b = try gpu.upload(b_cpu);
   var c = try (a * b);
-  var c_cpu = Matrix<f32>(alloc, [2, 2]);
+  var c_cpu = try Matrix<f32>(global_allocator, [2, 2]);
   try c.copy_to_host(c_cpu);
   println(c_cpu[0, 0]);
   println(c_cpu[0, 1]);
@@ -33,7 +32,10 @@ function run() GpuResult<void> {
 function main() i32 {
   return match run() {
     (error: const ref IError) => {
-      println(error.message());
+      match error.message() {
+        AllocationResult.Ok(message) => println(message),
+        _ => println("unable to allocate error message")
+      };
       1;
     },
     _ => 0

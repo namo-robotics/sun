@@ -22,9 +22,8 @@ using tls;
 
 /** Fetches a page and reports either error category. */
 function main() i32 {
-    var alloc = make_heap_allocator();
-    var client = HttpsClient(alloc);
-    var host = String(alloc, "example.com");
+    var client = HttpsClient(global_allocator);
+    var host = try String(global_allocator, "example.com");
 
     return match client.get(host, "/") {
         ClientResult.Ok(response) => {
@@ -33,7 +32,7 @@ function main() i32 {
             0;
         },
         (error: const ref IError) => {
-            println(error.message());
+            println(try error.message());
             1;
         }
     };
@@ -84,9 +83,9 @@ take the host as a `String` and the path as a literal; both have an overload
 taking a port, which defaults to 443.
 
 ```sun
-public function get(host: ref String, path: static_ptr<u8>) ClientResult<HttpClientResponse>
-public function get(host: ref String, port: i32, path: static_ptr<u8>) ClientResult<HttpClientResponse>
-public function post(host: ref String, path: static_ptr<u8>, content_type: static_ptr<u8>,
+public method get(host: ref String, path: static_ptr<u8>) ClientResult<HttpClientResponse>
+public method get(host: ref String, port: i32, path: static_ptr<u8>) ClientResult<HttpClientResponse>
+public method post(host: ref String, path: static_ptr<u8>, content_type: static_ptr<u8>,
                      body: const ref String) ClientResult<HttpClientResponse>
 ```
 
@@ -119,7 +118,7 @@ var stream = TlsStream();
 try stream.connect(host, 443);
 try stream.send_str("PING\r\n");
 
-var buf = ContiguousBuffer<u8>(alloc, 4096);
+var buf = try ContiguousBuffer<u8>(alloc, 4096);
 var n = try stream.recv(buf);   // 0 once the peer closes
 stream.close();
 ```
@@ -142,8 +141,8 @@ it does not run the handshake or wait for network traffic.
 using std.net;
 
 var context = TlsServerContext();
-var cert = String("cert.pem");
-var key = String("key.pem");
+var cert = try String("cert.pem");
+var key = try String("key.pem");
 try context.load(cert, key);
 
 var listener = TcpListener();

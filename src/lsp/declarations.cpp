@@ -920,6 +920,9 @@ std::optional<Declaration> ownDeclaration(const ExprAST& node, int offset,
       break;
     }
     case ASTNodeType::MATCH: {
+      if (static_cast<const sun::ast::MatchExprAST&>(node).isPropagation()) {
+        return std::nullopt;
+      }
       for (const auto& arm :
            static_cast<const sun::ast::MatchExprAST&>(node).getArms()) {
         for (const auto& binding : arm.bindings) {

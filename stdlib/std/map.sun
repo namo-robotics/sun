@@ -8,9 +8,8 @@
 //   import "stdlib/std/map.sun";
 //   using std;
 //   
-//   var allocator = make_heap_allocator();
-//   var m = Map<i64, i32>(allocator);
-//   m.insert(42, 100);
+//   var m = try Map<i64, i32>(global_allocator);
+//   try m.insert(42, 100);
 //   var val = m.get(42);              // Borrows 100, returns NotFoundError if not found
 //   var fallback = 0;
 //   var val2 = m.get_or_default(99, fallback); // Borrows the default: 99 absent
@@ -176,14 +175,14 @@ public module std {
     /**
      * Constructor with allocator and capacity
      */
-    init(allocator: const ref HeapAllocator, capacity: i64) {
+    init(allocator: const ref HeapAllocator, capacity: i64) AllocationResult<void> {
       this.alloc = allocator.copy();
       this.capacity_ = capacity;
 
       // Allocate ContiguousBuffer storage - size equals capacity
-      this.keys = ContiguousBuffer<K>(allocator, capacity);
-      this.values = ContiguousBuffer<V>(allocator, capacity);
-      this.states = ContiguousBuffer<i8>(allocator, capacity);
+      this.keys = try ContiguousBuffer<K>(allocator, capacity);
+      this.values = try ContiguousBuffer<V>(allocator, capacity);
+      this.states = try ContiguousBuffer<i8>(allocator, capacity);
 
       // Initialize all states to EMPTY (0)
       this.states.fill(0);
@@ -223,13 +222,17 @@ public module std {
     /**
      * Insert or update a key-value pair.
      */
-    public method insert(key: K, value: V) void {
-      // Check load factor and grow if needed (> 70%)
-      var threshold: i64 = (this.capacity_ * 7) / 10;
+    public method insert(key: K, value: V) AllocationResult<void> {
+      var threshold: i64 = (this.capacity_ / 10) * 7 + (this.capacity_ % 10) * 7 / 10;
       if (this.size_ >= threshold) {
-        this.grow();
+        try this.grow();
       }
+      this.insert_without_growth(key, value);
+      return AllocationResult.Ok;
+    }
 
+    /** Move an entry into a table with available storage; never allocate. */
+    method insert_without_growth(key: K, value: V) void {
       var hash: i64 = hash_map_key(key);
       var start: i64 = compute_mod(hash, this.capacity_);
       var first_deleted: i64 = -1;
@@ -452,17 +455,25 @@ public module std {
     /**
      * Grow capacity and rehash all entries
      */
-    method grow() void {
+    method grow() AllocationResult<void> {
       var old_capacity = this.capacity_;
 
-      // Double capacity
+      if (old_capacity > std.I64_MAX / 2) {
+        return AllocationResult.Overflow(OverflowError());
+      }
       var new_capacity: i64 = old_capacity * 2;
-      this.capacity_ = new_capacity;
+      if (new_capacity < 2) {
+        new_capacity = 2;
+      }
 
-      // Allocate new ContiguousBuffer storage
-      var old_keys = replace(this.keys, ContiguousBuffer<K>(this.alloc, new_capacity));
-      var old_values = replace(this.values, ContiguousBuffer<V>(this.alloc, new_capacity));
-      var old_states = replace(this.states, ContiguousBuffer<i8>(this.alloc, new_capacity));
+      // Finish every allocation before replacing any of the original storage.
+      var next_keys = try ContiguousBuffer<K>(this.alloc, new_capacity);
+      var next_values = try ContiguousBuffer<V>(this.alloc, new_capacity);
+      var next_states = try ContiguousBuffer<i8>(this.alloc, new_capacity);
+      var old_keys = replace(this.keys, next_keys);
+      var old_values = replace(this.values, next_values);
+      var old_states = replace(this.states, next_states);
+      this.capacity_ = new_capacity;
 
       // Initialize new states to EMPTY
       this.states.fill(0);
@@ -476,10 +487,11 @@ public module std {
           // OCCUPIED - rehash into new table
           var key: K = unsafe { old_keys.take_unchecked(i); };
           var value: V = unsafe { old_values.take_unchecked(i); };
-          this.insert(key, value);
+          this.insert_without_growth(key, value);
         }
       }
 
+      return AllocationResult.Ok;
       // old_* go out of scope - their destructor frees the old memory
     }
 

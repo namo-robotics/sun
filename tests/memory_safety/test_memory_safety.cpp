@@ -18,30 +18,32 @@ using sun::driver::executeStringWithStdlib;
 // Simplest case: move to another variable, then use original
 TEST(MemorySafety, use_after_move_simple) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-    using std;
-      
-      function main() i64 {
-          var allocator = make_heap_allocator();
-          var s = String(allocator, "Hello");
-          var s2 = s;        // s is moved here
-          return s.length(); // ERROR: use of moved variable
-      }
-    )"),
+using std;
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i64> {
+  var allocator = make_heap_allocator();
+  var s = try String(allocator, "Hello");
+  var s2 = s;  // s is moved here
+  return Result.Ok(s.length());  // ERROR: use of moved variable
+}
+)"),
                                 "Borrow check failed");
 }
 
 // Move then access field directly
 TEST(MemorySafety, use_after_move_field_access) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-    using std;
-      
-      function main() i64 {
-          var allocator = make_heap_allocator();
-          var s = String(allocator, "Test");
-          var s2 = s;
-          return s.length();  // ERROR: accessing member of moved variable
-      }
-    )"),
+using std;
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i64> {
+  var allocator = make_heap_allocator();
+  var s = try String(allocator, "Test");
+  var s2 = s;
+  return Result.Ok(s.length());  // ERROR: accessing member of moved variable
+}
+)"),
                                 "Borrow check failed");
 }
 
@@ -52,19 +54,20 @@ TEST(MemorySafety, use_after_move_field_access) {
 // Pass by ref doesn't move
 TEST(MemorySafety, ref_param_no_move) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    
-    function get_len(s: ref String) i64 {
-        return s.length();
-    }
-    
-    function main() i64 {
-        var allocator = make_heap_allocator();
-        var s = String(allocator, "Hello");
-        var len = get_len(s);  // Borrow, not move
-        return s.length();     // OK: s still valid
-    }
-  )");
+using std;
+
+function get_len(s: ref String) i64 {
+  return s.length();
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i64> {
+  var allocator = make_heap_allocator();
+  var s = try String(allocator, "Hello");
+  var len = get_len(s);  // Borrow, not move
+  return Result.Ok(s.length());  // OK: s still valid
+}
+)");
   EXPECT_EQ(value, 5);
 }
 
@@ -157,16 +160,17 @@ TEST(MemorySafety, method_call_after_move) {
 // Double move should fail on second move
 TEST(MemorySafety, double_move) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-    using std;
-      
-      function main() i64 {
-          var allocator = make_heap_allocator();
-          var s = String(allocator, "Hello");
-          var s2 = s;  // First move
-          var s3 = s;  // ERROR: s already moved
-          return 0;
-      }
-    )"),
+using std;
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i64> {
+  var allocator = make_heap_allocator();
+  var s = try String(allocator, "Hello");
+  var s2 = s;  // First move
+  var s3 = s;  // ERROR: s already moved
+  return Result.Ok(0);
+}
+)"),
                                 "Borrow check failed");
 }
 
@@ -177,15 +181,16 @@ TEST(MemorySafety, double_move) {
 // Using the moved-to variable is fine
 TEST(MemorySafety, use_moved_to_variable) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    
-    function main() i64 {
-        var allocator = make_heap_allocator();
-        var s = String(allocator, "Hello");
-        var s2 = s;
-        return s2.length();  // OK: s2 owns the data now
-    }
-  )");
+using std;
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i64> {
+  var allocator = make_heap_allocator();
+  var s = try String(allocator, "Hello");
+  var s2 = s;
+  return Result.Ok(s2.length());  // OK: s2 owns the data now
+}
+)");
   EXPECT_EQ(value, 5);
 }
 
@@ -226,54 +231,57 @@ TEST(MemorySafety, ref_scope_ends) {
 // Matrix move then use is error
 TEST(MemorySafety, matrix_use_after_move) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-    using std;
-    using std.linalg;
-      
-      function main() i64 {
-          var allocator = make_heap_allocator();
-          var shape: array<i64, 1> = [10];
-          var m = Matrix<i64>(allocator, shape);
-          var m2 = m;  // Move
-          return m.size();  // ERROR: m was moved
-      }
-    )"),
+using std;
+using std.linalg;
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i64> {
+  var allocator = make_heap_allocator();
+  var shape: array<i64, 1> = [10];
+  var m = try Matrix<i64>(allocator, shape);
+  var m2 = m;  // Move
+  return Result.Ok(m.size());  // ERROR: m was moved
+}
+)"),
                                 "Borrow check failed");
 }
 
 // Matrix ref borrow is fine
 TEST(MemorySafety, matrix_ref_borrow) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    using std.linalg;
-    
-    function get_size(m: ref Matrix<i64>) i64 {
-        return m.size();
-    }
-    
-    function main() i64 {
-        var allocator = make_heap_allocator();
-        var shape: array<i64, 1> = [10];
-        var m = Matrix<i64>(allocator, shape);
-        var sz = get_size(m);  // Borrow
-        return m.size();       // OK: m still valid
-    }
-  )");
+using std;
+using std.linalg;
+
+function get_size(m: ref Matrix<i64>) i64 {
+  return m.size();
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i64> {
+  var allocator = make_heap_allocator();
+  var shape: array<i64, 1> = [10];
+  var m = try Matrix<i64>(allocator, shape);
+  var sz = get_size(m);  // Borrow
+  return Result.Ok(m.size());  // OK: m still valid
+}
+)");
   EXPECT_EQ(value, 10);
 }
 
 // Matrix ref borrow is fine
 TEST(MemorySafety, matrix_okay) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    using std.linalg;
-    
-    function main() i64 {
-        var allocator = make_heap_allocator();
-        var shape: array<i64, 1> = [10];
-        var m = Matrix<i32>(allocator, shape);
-        return m.size();       // OK: m still valid
-    }
-  )");
+using std;
+using std.linalg;
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i64> {
+  var allocator = make_heap_allocator();
+  var shape: array<i64, 1> = [10];
+  var m = try Matrix<i32>(allocator, shape);
+  return Result.Ok(m.size());  // OK: m still valid
+}
+)");
   EXPECT_EQ(value, 10);
 }
 
@@ -284,31 +292,33 @@ TEST(MemorySafety, matrix_okay) {
 // Allocator move then use is error
 TEST(MemorySafety, allocator_use_after_move) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-    using std;
-      
-      function main() i64 {
-          var a = make_heap_allocator();
-          var a2 = a;  // Move
-          var s = String(a, "Hello");  // ERROR: a was moved
-          return s.length();
-      }
-    )"),
+using std;
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i64> {
+  var a = make_heap_allocator();
+  var a2 = a;  // Move
+  var s = try String(a, "Hello");  // ERROR: a was moved
+  return Result.Ok(s.length());
+}
+)"),
                                 "Borrow check failed");
 }
 
 // Use allocator.copy() to get a new allocator
 TEST(MemorySafety, allocator_copy_valid) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    
-    function main() i64 {
-        var a = make_heap_allocator();
-        var a2 = a.copy();  // Get a copy, a still valid
-        var s1 = String(a, "Hello");
-        var s2 = String(a2, "World");
-        return s1.length() + s2.length();
-    }
-  )");
+using std;
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i64> {
+  var a = make_heap_allocator();
+  var a2 = a.copy();  // Get a copy, a still valid
+  var s1 = try String(a, "Hello");
+  var s2 = try String(a2, "World");
+  return Result.Ok(s1.length() + s2.length());
+}
+)");
   EXPECT_EQ(value, 10);
 }
 
@@ -421,19 +431,20 @@ TEST(MemorySafety, raw_ptr_null_assignment) {
 // raw_ptr null check pattern
 TEST(MemorySafety, raw_ptr_null_check_pattern) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    
-    function main() i32 {
-        var alloc = make_heap_allocator();
-        var p: raw_ptr<i32> = alloc.alloc<i32>(1);
-        // In real code you'd check if p is null before use
-        // This test just verifies the allocation works
-        unsafe { _store<i32>(p, 0, 42); };
-        var loaded: i32 = unsafe { _load<i32>(p, 0); };
-        alloc.dealloc<i32>(p, 1);
-        return loaded;
-    }
-  )");
+using std;
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var p: raw_ptr<i32> = try alloc.alloc<i32>(1);
+  // In real code you'd check if p is null before use
+  // This test just verifies the allocation works
+  unsafe { _store<i32>(p, 0, 42); };
+  var loaded: i32 = unsafe { _load<i32>(p, 0); };
+  alloc.dealloc<i32>(p, 1);
+  return Result.Ok(loaded);
+}
+)");
   EXPECT_EQ(value, 42);
 }
 
@@ -488,14 +499,15 @@ TEST(MemorySafety, nested_borrow_sequential) {
 // Creating string and using it locally is fine (no return by value needed)
 TEST(MemorySafety, owned_value_local_use) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    
-    function main() i64 {
-        var alloc = make_heap_allocator();
-        var s = String(alloc, "Hello");
-        return s.length();
-    }
-  )");
+using std;
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i64> {
+  var alloc = make_heap_allocator();
+  var s = try String(alloc, "Hello");
+  return Result.Ok(s.length());
+}
+)");
   EXPECT_EQ(value, 5);
 }
 

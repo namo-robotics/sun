@@ -18,18 +18,21 @@ on a new OS thread:
 
 ```sun
 function main() i32 {
-    var t = spawn(() => i32 { return 42; });
+    var t = match spawn(() => i32 { return 42; }) {
+        AllocationResult.Ok(thread) => thread,
+        _ => { return 1; }
+    };
     return t.join();  // Wait for thread, returns 42
 }
 ```
 
-It hands back a `Thread<T>` handle, where `T` is what the function returns.
+On success, it hands back a `Thread<T>` handle, where `T` is what the function returns.
 
 `spawn` is an ordinary generic function, not a keyword:
 
 ```sun
 public function spawn<F: _Callable>(fn: F, args...: _params_of<F>)
-    Thread<_return_type_of<F>>
+    AllocationResult<Thread<_return_type_of<F>>>
 ```
 
 `_Callable` accepts a lambda or a named function passed as a value, so
@@ -38,6 +41,10 @@ public function spawn<F: _Callable>(fn: F, args...: _params_of<F>)
 arguments you supply are checked against it, and `_return_type_of<F>` is what
 it returns. Both are resolved when the call is compiled, so a wrong argument
 is a compile error like any other.
+
+Thread setup can fail while allocating storage or creating the native thread.
+Handle its `AllocationResult` with `match`, or propagate it with `try` from a
+function with a compatible result type. Arguments remain consumed on failure.
 
 A spawned function can return a result enum. `join()` transfers that result
 to the joining thread, which handles it with `match` or propagates it with
@@ -54,7 +61,10 @@ Give the thread what it should work on as arguments, and they **move** into it:
 
 ```sun
 function main() i32 {
-    var t = spawn((a: i32, b: i32) => i32 { return a + b; }, 40, 2);
+    var t = match spawn((a: i32, b: i32) => i32 { return a + b; }, 40, 2) {
+        AllocationResult.Ok(thread) => thread,
+        _ => { return 1; }
+    };
     return t.join();  // 42
 }
 ```
@@ -68,8 +78,14 @@ like:
 var work = (n: i32) => i32 { return n * 2; };
 
 function main() i32 {
-    var a = spawn(work, 20);
-    var b = spawn(work, 1);
+    var a = match spawn(work, 20) {
+        AllocationResult.Ok(thread) => thread,
+        _ => { return 1; }
+    };
+    var b = match spawn(work, 1) {
+        AllocationResult.Ok(thread) => thread,
+        _ => { return 1; }
+    };
     return a.join() + b.join();  // 42
 }
 ```
@@ -96,7 +112,10 @@ type of the spawned lambda.
 
 ```sun
 function main() i32 {
-    var t: Thread<i64> = spawn(() => i64 { return 100; });
+    var t: Thread<i64> = match spawn(() => i64 { return 100; }) {
+        AllocationResult.Ok(thread) => thread,
+        _ => { return 1; }
+    };
     var result: i64 = t.join();
     return 0;
 }
@@ -114,7 +133,10 @@ ran.
 function main() i32 {
     var x: i32 = 0;
     if (true) {
-        var t = spawn([ref x]() => i32 { x = 7; return 0; });
+        var t = match spawn([ref x]() => i32 { x = 7; return 0; }) {
+        AllocationResult.Ok(thread) => thread,
+        _ => { return 1; }
+    };
     }   // t is dropped here, which joins the thread
     return x;  // 7 — the thread has finished
 }
@@ -136,10 +158,10 @@ borrows. Passing it by `ref` is fine — a borrow cannot be kept.
 ```sun
 class Worker {
     var t: Thread<i32>;
-    init() {
+    init() AllocationResult<void> {
         var x = 3;
         // error: the field could outlive x, which the thread reads
-        this.t = spawn([ref x]() => i32 { return x; });
+        this.t = try spawn([ref x]() => i32 { return x; });
     }
 }
 ```
@@ -153,8 +175,8 @@ object joins the thread when it drops:
 ```sun
 class Worker {
     var t: Thread<i32>;
-    init(cfg: Config) {
-        this.t = spawn((c: Config) => i32 { return c.limit; }, cfg);
+    init(cfg: Config) AllocationResult<void> {
+        this.t = try spawn((c: Config) => i32 { return c.limit; }, cfg);
     }
 }   // dropping a Worker joins its thread
 ```
@@ -173,7 +195,10 @@ class Report {
 }
 
 function main() i32 {
-    var t = spawn(() => Report { return Report(12); });
+    var t = match spawn(() => Report { return Report(12); }) {
+        AllocationResult.Ok(thread) => thread,
+        _ => { return 1; }
+    };
     var r = t.join();  // r owns the report
     return r.rows;     // r is dropped here
 }
@@ -191,7 +216,10 @@ mutate:
 ```sun
 function main() i32 {
     var x: i32 = 10;
-    var t = spawn(() => i32 { return x * 2; });
+    var t = match spawn(() => i32 { return x * 2; }) {
+        AllocationResult.Ok(thread) => thread,
+        _ => { return 1; }
+    };
     return t.join();  // Returns 20
 }
 ```
@@ -205,9 +233,12 @@ so it may change it, and it is dropped when the closure's scope ends:
 ```sun
 function main() i32 {
     var p = Point(3, 4);
-    var t = spawn([p]() => i32 {
+    var t = match spawn([p]() => i32 {
         return p.x + p.y;   // the thread owns p now
-    });
+    }) {
+        AllocationResult.Ok(thread) => thread,
+        _ => { return 1; }
+    };
     // p cannot be used here any more — it was moved into the lambda
     return t.join();
 }
@@ -234,14 +265,17 @@ class Tally {
 
 function main() i32 {
     var s = Tally();
-    var t = spawn([ref s]() => i64 {
+    var t = match spawn([ref s]() => i64 {
         var i: i64 = 0;
         while (i < 100000) {
             s.m.lock(); s.counter = s.counter + 1; s.m.unlock();
             i = i + 1;
         }
         return 0;
-    });
+    }) {
+        AllocationResult.Ok(thread) => thread,
+        _ => { return 1; }
+    };
 
     var i: i64 = 0;
     while (i < 100000) {
@@ -272,8 +306,14 @@ class Config {
 
 function main() i32 {
     var cfg = Config(20);
-    var t1 = spawn([const ref cfg]() => i32 { return cfg.limit; });
-    var t2 = spawn([const ref cfg]() => i32 { return cfg.limit; });
+    var t1 = match spawn([const ref cfg]() => i32 { return cfg.limit; }) {
+        AllocationResult.Ok(thread) => thread,
+        _ => { return 1; }
+    };
+    var t2 = match spawn([const ref cfg]() => i32 { return cfg.limit; }) {
+        AllocationResult.Ok(thread) => thread,
+        _ => { return 1; }
+    };
     return t1.join() + t2.join();  // 40
 }
 ```
@@ -318,11 +358,19 @@ var bump = (h: Shared<Counter>) => i32 {
 };
 
 function main() i32 {
-    var alloc = make_heap_allocator();
-    var s = Shared<Counter>(alloc, Counter());
+    var s = match Shared<Counter>(global_allocator, Counter()) {
+        AllocationResult.Ok(shared) => shared,
+        _ => { return 1; }
+    };
 
-    var t1 = spawn(bump, s.clone());
-    var t2 = spawn(bump, s.clone());
+    var t1 = match spawn(bump, s.clone()) {
+        AllocationResult.Ok(thread) => thread,
+        _ => { return 1; }
+    };
+    var t2 = match spawn(bump, s.clone()) {
+        AllocationResult.Ok(thread) => thread,
+        _ => { return 1; }
+    };
 
     t1.join();
     t2.join();
@@ -377,7 +425,10 @@ handle joins the thread it held first.
 
 ```sun
 function main() i32 {
-    var t = spawn(() => i32 { return 11; });
+    var t = match spawn(() => i32 { return 11; }) {
+        AllocationResult.Ok(thread) => thread,
+        _ => { return 1; }
+    };
     var t2 = t;
     return t2.join();  // t has been moved out of; t.join() would not compile
 }
@@ -389,9 +440,18 @@ You can spawn multiple threads and join them independently:
 
 ```sun
 function main() i32 {
-    var t1 = spawn(() => i32 { return 10; });
-    var t2 = spawn(() => i32 { return 20; });
-    var t3 = spawn(() => i32 { return 30; });
+    var t1 = match spawn(() => i32 { return 10; }) {
+        AllocationResult.Ok(thread) => thread,
+        _ => { return 1; }
+    };
+    var t2 = match spawn(() => i32 { return 20; }) {
+        AllocationResult.Ok(thread) => thread,
+        _ => { return 1; }
+    };
+    var t3 = match spawn(() => i32 { return 30; }) {
+        AllocationResult.Ok(thread) => thread,
+        _ => { return 1; }
+    };
     return t1.join() + t2.join() + t3.join();  // 60
 }
 ```
@@ -461,21 +521,27 @@ ordering rules.
 ```sun
 function main() i32 {
     // Compute two independent values in parallel
-    var t1 = spawn(() => i32 {
+    var t1 = match spawn(() => i32 {
         var sum: i32 = 0;
         for (var i: i32 = 0; i < 1000; i = i + 1) {
             sum = sum + i;
         }
         return sum;
-    });
+    }) {
+        AllocationResult.Ok(thread) => thread,
+        _ => { return 1; }
+    };
 
-    var t2 = spawn(() => i32 {
+    var t2 = match spawn(() => i32 {
         var product: i32 = 1;
         for (var i: i32 = 1; i < 10; i = i + 1) {
             product = product * i;
         }
         return product;
-    });
+    }) {
+        AllocationResult.Ok(thread) => thread,
+        _ => { return 1; }
+    };
 
     var sum = t1.join();
     var product = t2.join();

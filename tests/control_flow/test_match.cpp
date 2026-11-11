@@ -434,7 +434,7 @@ class NotANumber {
   const method code() i32 {
     return 7;
   }
-  const method message() String {
+  const method message() AllocationResult<String> {
     return String("not a number");
   }
 }
@@ -491,41 +491,51 @@ function main() i32 {
 // A match arm whose body is a void statement contributes no value.
 TEST(ControlFlow_Match, statement_arms_with_void_calls) {
   auto value = sun::driver::executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    enum Value {
-      Items(Vec<i64>),
-      Empty
-    }
+enum Value {
+  Items(Vec<i64>),
+  Empty
+}
 
-    class Holder {
-      var v: Value;
-      init(v: Value) { this.v = v; }
-      method push(x: i64) void {
-        match this.v {
-          Value.Items(items) => { items.push(x); },
-          Value.Empty => { }
-        };
-      }
-      method count() i64 {
-        return match this.v {
-          Value.Items(items) => items.size(),
-          Value.Empty => 0
-        };
-      }
-    }
+class Holder {
+  var v: Value;
 
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var h = Holder(Value.Items(Vec<i64>(alloc, 2)));
-      h.push(1);
-      h.push(2);
-      h.push(3);
-      var e = Holder(Value.Empty);
-      e.push(9);
-      return _convert<i32>(h.count() + e.count());
-    }
-  )");
+  init(v: Value) {
+    this.v = v;
+  }
+
+  method push(x: i64) Result<void> {
+    match this.v {
+      Value.Items(items) => {
+        try items.push(x);
+      },
+      Value.Empty => {}
+    };
+
+    return Result.Ok;
+  }
+
+  method count() i64 {
+    return match this.v {
+      Value.Items(items) => items.size(),
+      Value.Empty => 0
+    };
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var h = Holder(Value.Items(try Vec<i64>(alloc, 2)));
+  try h.push(1);
+  try h.push(2);
+  try h.push(3);
+  var e = Holder(Value.Empty);
+  try e.push(9);
+  return Result.Ok(_convert<i32>(h.count() + e.count()));
+}
+)");
   EXPECT_EQ(value, 3);
 }
 

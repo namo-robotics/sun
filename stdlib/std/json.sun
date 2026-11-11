@@ -8,19 +8,18 @@
 //   using std;
 //   using std.json;
 //
-//   var alloc = make_heap_allocator();
-//   var doc = parse_json(alloc, "{\"name\": \"sun\", \"tags\": [1, 2.5]}");
+//   var doc = parse_json(global_allocator, "{\"name\": \"sun\", \"tags\": [1, 2.5]}");
 //   var name: ref String = doc.get("name").as_string();
 //   var second: f64 = doc.get("tags").at(1).as_f64();
 //
-//   var obj = create_json_object(alloc);
-//   obj.set(String(alloc, "ok"), Json(true));
-//   var text = obj.to_string(alloc);          // {"ok":true}
-//   var pretty = obj.to_pretty_string(alloc, 2);
+//   var obj = create_json_object(global_allocator);
+//   obj.set(try String(global_allocator, "ok"), Json(true));
+//   var text = obj.to_string(global_allocator);          // {"ok":true}
+//   var pretty = obj.to_pretty_string(global_allocator, 2);
 //
 // Ownership: the tree owns everything in it. Json(s) and set(key, value)
 // move their String/Json arguments in, so the caller cannot use them after
-// the call. To keep a String, store a copy with create_json_string(alloc, ref s).
+// the call. To keep a String, store a copy with create_json_string(global_allocator, ref s).
 
 /** Provides JSON values, parsing, and serialization. */
 public module std.json {
@@ -62,7 +61,7 @@ public module std.json {
     /**
      * A fresh copy of the explanation, owned by the caller.
      */
-    public const method message() String {
+    public const method message() AllocationResult<String> {
       return String(this.message_);
     }
 
@@ -453,23 +452,23 @@ public module std.json {
     /**
      * Append an item to an array
      */
-    public method push(item: Json) JsonResult<void> {
+    public method push(item: Json) Result<void> {
       match this.value {
         JsonValue.Array(items) => {
-          items.push(item);
+          try items.push(item);
         },
         _ => {
-          return JsonResult.Error(JsonError("JSON value is not an array", -1));
+          return Result.Json(JsonError("JSON value is not an array", -1));
         }
       };
-      return JsonResult.Ok;
+      return Result.Ok;
     }
 
     /**
      * Set an object member: replaces the value of an existing key (the old
      * value is dropped) or appends a new member.
      */
-    public method set(key: String, value: Json) JsonResult<void> {
+    public method set(key: String, value: Json) Result<void> {
       match this.value {
         JsonValue.Object(members) => {
           var index: i64 = -1;
@@ -482,18 +481,18 @@ public module std.json {
             match members.set(index, JsonMember(key, value)) {
               AccessResult.Ok => {},
               AccessResult.OutOfBounds(_) => {
-                return JsonResult.Error(JsonError("JSON member index out of range", -1));
+                return Result.Json(JsonError("JSON member index out of range", -1));
               }
             };
           } else {
-            members.push(JsonMember(key, value));
+            try members.push(JsonMember(key, value));
           }
         },
         _ => {
-          return JsonResult.Error(JsonError("JSON value is not an object", -1));
+          return Result.Json(JsonError("JSON value is not an object", -1));
         }
       };
-      return JsonResult.Ok;
+      return Result.Ok;
     }
 
     // ------------------------------------------------------------------------
@@ -503,63 +502,76 @@ public module std.json {
     /**
      * Append compact JSON text (no whitespace)
      */
-    public method write(out: ref String) void {
-      write_json_value(this, out, -1, 0);
+    public method write(out: ref String) AllocationResult<void> {
+      try write_json_value(this, out, -1, 0);
+
+      return AllocationResult.Ok;
     }
 
     /**
      * Append JSON text with newlines and `indent` spaces per level
      */
-    public method write_pretty(out: ref String, indent: i64) void {
-      write_json_value(this, out, indent, 0);
+    public method write_pretty(out: ref String, indent: i64) AllocationResult<void> {
+      try write_json_value(this, out, indent, 0);
+
+      return AllocationResult.Ok;
     }
 
     /**
      * Render this node as compact JSON text in a new String.
      */
-    public method to_string(alloc: ref HeapAllocator) String {
-      var out = String(alloc, "");
-      this.write(out);
-      return out;
+    public method to_string(alloc: const ref HeapAllocator) AllocationResult<String> {
+      var out = try String(alloc, "");
+      try this.write(out);
+      return AllocationResult.Ok(out);
     }
 
     /**
      * Render this node as JSON text with newlines and `indent` spaces per level.
      */
-    public method to_pretty_string(alloc: ref HeapAllocator, indent: i64) String {
-      var out = String(alloc, "");
-      this.write_pretty(out, indent);
-      return out;
+    public method to_pretty_string(
+      alloc: const ref HeapAllocator,
+      indent: i64
+    ) AllocationResult<String> {
+      var out = try String(alloc, "");
+      try this.write_pretty(out, indent);
+      return AllocationResult.Ok(out);
     }
   }
 
   /**
    * Empty array
    */
-  public function create_json_array(alloc: ref HeapAllocator) Json {
-    return Json(JsonValue.Array(Vec<Json>(alloc, 4)));
+  public function create_json_array(alloc: const ref HeapAllocator) AllocationResult<Json> {
+    return AllocationResult.Ok(Json(JsonValue.Array(try Vec<Json>(alloc, 4))));
   }
 
   /**
    * Empty object
    */
-  public function create_json_object(alloc: ref HeapAllocator) Json {
-    return Json(JsonValue.Object(Vec<JsonMember>(alloc, 4)));
+  public function create_json_object(alloc: const ref HeapAllocator) AllocationResult<Json> {
+    return AllocationResult.Ok(Json(JsonValue.Object(try Vec<JsonMember>(alloc, 4))));
   }
 
   /**
    * String value from a literal
    */
-  public function create_json_string(alloc: ref HeapAllocator, text: static_ptr<u8>) Json {
-    return Json(String(alloc, text));
+  public function create_json_string(
+    alloc: const ref HeapAllocator,
+    text: static_ptr<u8>
+  ) AllocationResult<Json> {
+    return AllocationResult.Ok(Json(try String(alloc, text)));
   }
 
   /**
    * String value copied from a borrowed String; the caller keeps its own.
    * Use Json(s) instead to hand the String over without a copy.
    */
-  public function create_json_string(alloc: ref HeapAllocator, text: const ref String) Json {
-    return Json(text.clone(alloc));
+  public function create_json_string(
+    alloc: const ref HeapAllocator,
+    text: const ref String
+  ) AllocationResult<Json> {
+    return AllocationResult.Ok(Json(try text.clone(alloc)));
   }
 
   // ==========================================================================
@@ -567,144 +579,159 @@ public module std.json {
   // ==========================================================================
 
   /** Appends a newline and indentation when pretty printing is enabled. */
-  function write_json_indent(out: ref String, indent: i64, level: i64) void {
+  function write_json_indent(out: ref String, indent: i64, level: i64) AllocationResult<void> {
     if (indent < 0) {
-      return;
+      return AllocationResult.Ok;
     }
-    out.append_char(b'\n');
+    try out.append_char(b'\n');
     for (var i: i64 = 0; i < indent * level; i = i + 1) {
-      out.append_char(b' ');
+      try out.append_char(b' ');
     }
+
+    return AllocationResult.Ok;
   }
 
   /**
    * Append a code point as exactly four hex digits, for a \u escape.
    */
-  function write_json_hex4(out: ref String, code: i64) void {
+  function write_json_hex4(out: ref String, code: i64) AllocationResult<void> {
     var shift: i64 = 12;
     while (shift >= 0) {
       var nibble: i64 = (code >> shift) & 15;
       if (nibble < 10) {
-        out.append_char(_convert<u8>(b'0' + nibble));
+        try out.append_char(_convert<u8>(b'0' + nibble));
       } else {
-        out.append_char(_convert<u8>(b'a' + nibble - 10));
+        try out.append_char(_convert<u8>(b'a' + nibble - 10));
       }
       shift = shift - 4;
     }
+
+    return AllocationResult.Ok;
   }
 
   /**
    * Quoted string with JSON escapes; bytes >= 0x20 other than '"' and '\'
    * pass through unchanged (UTF-8 stays UTF-8)
    */
-  function write_json_string(s: const ref String, out: ref String) void {
-    out.append_char(b'"');
+  function write_json_string(s: const ref String, out: ref String) AllocationResult<void> {
+    try out.append_char(b'"');
     var n: i64 = s.length();
     for (var i: i64 = 0; i < n; i = i + 1) {
       var ch: u8 = unsafe { s.unsafe_at(i); };
       if (ch == b'"') {
-        out.append_literal("\\\"");
+        try out.append_literal("\\\"");
       } else if (ch == b'\\') {
-        out.append_literal("\\\\");
+        try out.append_literal("\\\\");
       } else if (ch == b'\n') {
-        out.append_literal("\\n");
+        try out.append_literal("\\n");
       } else if (ch == b'\r') {
-        out.append_literal("\\r");
+        try out.append_literal("\\r");
       } else if (ch == b'\t') {
-        out.append_literal("\\t");
+        try out.append_literal("\\t");
       } else if (ch == b'\x08') {
-        out.append_literal("\\b");
+        try out.append_literal("\\b");
       } else if (ch == b'\x0C') {
-        out.append_literal("\\f");
+        try out.append_literal("\\f");
       } else if (ch < b' ') {
-        out.append_literal("\\u");
-        write_json_hex4(out, _convert<i64>(ch));
+        try out.append_literal("\\u");
+        try write_json_hex4(out, _convert<i64>(ch));
       } else {
-        out.append_char(ch);
+        try out.append_char(ch);
       }
     }
-    out.append_char(b'"');
+    try out.append_char(b'"');
+
+    return AllocationResult.Ok;
   }
 
   /**
    * Floats keep a '.'/exponent so they read back as Float; non-finite
    * values have no JSON spelling and are written as null
    */
-  function write_json_float(x: f64, out: ref String) void {
+  function write_json_float(x: f64, out: ref String) AllocationResult<void> {
     if (x != x or x > F64_MAX or x < 0.0 - F64_MAX) {
       // nan / inf
-      out.append_literal("null");
-      return;
+      try out.append_literal("null");
+      return AllocationResult.Ok;
     }
     var start: i64 = out.length();
-    out.append_f64(x);
+    try out.append_f64(x);
     for (var i: i64 = start; i < out.length(); i = i + 1) {
       var ch: u8 = unsafe { out.unsafe_at(i); };
       if (ch == b'.' or ch == b'e') {
         // '.' 'e'
-        return;
+        return AllocationResult.Ok;
       }
     }
-    out.append_literal(".0");
+    try out.append_literal(".0");
+
+    return AllocationResult.Ok;
   }
 
   /**
    * Append one node's JSON text. An indent below zero writes compact output;
    * otherwise each level is indented by that many spaces.
    */
-  function write_json_value(j: const ref Json, out: ref String, indent: i64, level: i64) void {
+  function write_json_value(
+    j: const ref Json,
+    out: ref String,
+    indent: i64,
+    level: i64
+  ) AllocationResult<void> {
     match j.value {
       JsonValue.Null => {
-        out.append_literal("null");
+        try out.append_literal("null");
       },
       JsonValue.Bool(b) => {
-        out.append_bool(b);
+        try out.append_bool(b);
       },
       JsonValue.Int(n) => {
-        out.append_i64(n);
+        try out.append_i64(n);
       },
       JsonValue.Float(x) => {
-        write_json_float(x, out);
+        try write_json_float(x, out);
       },
       JsonValue.String(s) => {
-        write_json_string(s, out);
+        try write_json_string(s, out);
       },
       JsonValue.Array(items) => {
-        out.append_char(b'[');
+        try out.append_char(b'[');
         var n: i64 = items.size();
         for (var i: i64 = 0; i < n; i = i + 1) {
           if (i > 0) {
-            out.append_char(b',');
+            try out.append_char(b',');
           }
-          write_json_indent(out, indent, level + 1);
-          write_json_value(unsafe { items.get_unchecked(i); }, out, indent, level + 1);
+          try write_json_indent(out, indent, level + 1);
+          try write_json_value(unsafe { items.get_unchecked(i); }, out, indent, level + 1);
         }
         if (n > 0) {
-          write_json_indent(out, indent, level);
+          try write_json_indent(out, indent, level);
         }
-        out.append_char(b']');
+        try out.append_char(b']');
       },
       JsonValue.Object(members) => {
-        out.append_char(b'{');
+        try out.append_char(b'{');
         var n: i64 = members.size();
         for (var i: i64 = 0; i < n; i = i + 1) {
           if (i > 0) {
-            out.append_char(b',');
+            try out.append_char(b',');
           }
-          write_json_indent(out, indent, level + 1);
-          write_json_string(unsafe { members.get_unchecked(i); }.key, out);
-          out.append_char(b':');
+          try write_json_indent(out, indent, level + 1);
+          try write_json_string(unsafe { members.get_unchecked(i); }.key, out);
+          try out.append_char(b':');
           if (indent >= 0) {
-            out.append_char(b' ');
+            try out.append_char(b' ');
           }
-          write_json_value(unsafe { members.get_unchecked(i); }.value, out, indent, level + 1);
+          try write_json_value(unsafe { members.get_unchecked(i); }.value, out, indent, level + 1);
         }
         if (n > 0) {
-          write_json_indent(out, indent, level);
+          try write_json_indent(out, indent, level);
         }
-        out.append_char(b'}');
+        try out.append_char(b'}');
       }
     };
+
+    return AllocationResult.Ok;
   }
 
   // ==========================================================================
@@ -723,7 +750,7 @@ public module std.json {
     /**
      * Build a parser positioned at the start of the text.
      */
-    init(alloc: ref HeapAllocator) {
+    init(alloc: const ref HeapAllocator) {
       this.alloc = alloc.copy();
     }
 
@@ -775,36 +802,36 @@ public module std.json {
     /**
      * Parse whatever JSON value starts at the current position.
      */
-    method parse_value(text: const ref String) JsonResult<Json> {
+    method parse_value(text: const ref String) Result<Json> {
       var ch: i64 = this.peek(text);
       if (ch == b'{') {
-        return JsonResult.Ok((try this.parse_object(text)));
+        return Result.Ok((try this.parse_object(text)));
       }
       if (ch == b'[') {
-        return JsonResult.Ok((try this.parse_array(text)));
+        return Result.Ok((try this.parse_array(text)));
       }
       if (ch == b'"') {
-        return JsonResult.Ok(Json((try this.parse_string(text))));
+        return Result.Ok(Json((try this.parse_string(text))));
       }
       if (ch == b't') {
         try this.expect_literal(text, "true", "invalid JSON literal");
-        return JsonResult.Ok(Json(true));
+        return Result.Ok(Json(true));
       }
       if (ch == b'f') {
         try this.expect_literal(text, "false", "invalid JSON literal");
-        return JsonResult.Ok(Json(false));
+        return Result.Ok(Json(false));
       }
       if (ch == b'n') {
         try this.expect_literal(text, "null", "invalid JSON literal");
-        return JsonResult.Ok(Json());
+        return Result.Ok(Json());
       }
       if (ch == b'-' or (ch >= b'0' and ch <= b'9')) {
-        return JsonResult.Ok((try this.parse_number(text)));
+        return Result.Ok((try this.parse_number(text)));
       }
       if (ch < 0) {
-        return JsonResult.Error(JsonError("unexpected end of JSON text", this.pos));
+        return Result.Json(JsonError("unexpected end of JSON text", this.pos));
       }
-      return JsonResult.Error(JsonError("unexpected character in JSON text", this.pos));
+      return Result.Json(JsonError("unexpected character in JSON text", this.pos));
     }
 
     /**
@@ -823,19 +850,19 @@ public module std.json {
     /**
      * Parse an array, from its '[' through its ']'.
      */
-    method parse_array(text: const ref String) JsonResult<Json> {
+    method parse_array(text: const ref String) Result<Json> {
       try this.enter(text);
       this.pos = this.pos + 1;  // '['
-      var items = Vec<Json>(this.alloc, 4);
+      var items = try Vec<Json>(this.alloc, 4);
       this.skip_whitespace(text);
       if (this.peek(text) == b']') {
         this.pos = this.pos + 1;
         this.depth = this.depth - 1;
-        return JsonResult.Ok(Json(JsonValue.Array(items)));
+        return Result.Ok(Json(JsonValue.Array(items)));
       }
       while (true) {
         this.skip_whitespace(text);
-        items.push((try this.parse_value(text)));
+        try items.push((try this.parse_value(text)));
         this.skip_whitespace(text);
         var ch: i64 = this.peek(text);
         if (ch == b',') {
@@ -843,43 +870,43 @@ public module std.json {
         } else if (ch == b']') {
           this.pos = this.pos + 1;
           this.depth = this.depth - 1;
-          return JsonResult.Ok(Json(JsonValue.Array(items)));
+          return Result.Ok(Json(JsonValue.Array(items)));
         } else if (ch < 0) {
-          return JsonResult.Error(JsonError("unterminated JSON array", this.pos));
+          return Result.Json(JsonError("unterminated JSON array", this.pos));
         } else {
-          return JsonResult.Error(JsonError("expected ',' or ']' in JSON array", this.pos));
+          return Result.Json(JsonError("expected ',' or ']' in JSON array", this.pos));
         }
       }
-      return JsonResult.Ok(Json());
+      return Result.Ok(Json());
     }
 
     /**
      * Parse an object, from its '{' through its '}'.
      */
-    method parse_object(text: const ref String) JsonResult<Json> {
+    method parse_object(text: const ref String) Result<Json> {
       try this.enter(text);
       this.pos = this.pos + 1;  // '{'
-      var members = Vec<JsonMember>(this.alloc, 4);
+      var members = try Vec<JsonMember>(this.alloc, 4);
       this.skip_whitespace(text);
       if (this.peek(text) == b'}') {
         this.pos = this.pos + 1;
         this.depth = this.depth - 1;
-        return JsonResult.Ok(Json(JsonValue.Object(members)));
+        return Result.Ok(Json(JsonValue.Object(members)));
       }
       while (true) {
         this.skip_whitespace(text);
         if (this.peek(text) != b'"') {
-          return JsonResult.Error(JsonError("expected string key in JSON object", this.pos));
+          return Result.Json(JsonError("expected string key in JSON object", this.pos));
         }
         var key: String = try this.parse_string(text);
         this.skip_whitespace(text);
         if (this.peek(text) != b':') {
-          return JsonResult.Error(JsonError("expected ':' after JSON object key", this.pos));
+          return Result.Json(JsonError("expected ':' after JSON object key", this.pos));
         }
         this.pos = this.pos + 1;
         this.skip_whitespace(text);
         var value: Json = try this.parse_value(text);
-        members.push(JsonMember(key, value));
+        try members.push(JsonMember(key, value));
         this.skip_whitespace(text);
         var ch: i64 = this.peek(text);
         if (ch == b',') {
@@ -887,14 +914,14 @@ public module std.json {
         } else if (ch == b'}') {
           this.pos = this.pos + 1;
           this.depth = this.depth - 1;
-          return JsonResult.Ok(Json(JsonValue.Object(members)));
+          return Result.Ok(Json(JsonValue.Object(members)));
         } else if (ch < 0) {
-          return JsonResult.Error(JsonError("unterminated JSON object", this.pos));
+          return Result.Json(JsonError("unterminated JSON object", this.pos));
         } else {
-          return JsonResult.Error(JsonError("expected ',' or '}' in JSON object", this.pos));
+          return Result.Json(JsonError("expected ',' or '}' in JSON object", this.pos));
         }
       }
-      return JsonResult.Ok(Json());
+      return Result.Ok(Json());
     }
 
     /**
@@ -930,33 +957,35 @@ public module std.json {
      * The UTF-8 encoder lives in string.sun; privacy is module-scoped and
      * both files are `module std`, so push_code is reachable here.
      */
-    method append_utf8(out: ref String, code: i64) void {
-      out.push_code(code);
+    method append_utf8(out: ref String, code: i64) AllocationResult<void> {
+      try out.push_code(code);
+
+      return AllocationResult.Ok;
     }
 
     /**
      * Parse a quoted string starting at pos, decoding escapes into UTF-8
      */
-    method parse_string(text: const ref String) JsonResult<String> {
+    method parse_string(text: const ref String) Result<String> {
       var start: i64 = this.pos;
       this.pos = this.pos + 1;  // opening '"'
-      var out = String(this.alloc, "");
+      var out = try String(this.alloc, "");
       while (true) {
         var ch: i64 = this.peek(text);
         if (ch < 0) {
-          return JsonResult.Error(JsonError("unterminated JSON string", start));
+          return Result.Json(JsonError("unterminated JSON string", start));
         }
         if (ch == b'"') {
           // closing '"'
           this.pos = this.pos + 1;
-          return JsonResult.Ok(out);
+          return Result.Ok(out);
         }
         if (ch < b' ') {
-          return JsonResult.Error(JsonError("control character in JSON string", this.pos));
+          return Result.Json(JsonError("control character in JSON string", this.pos));
         }
         if (ch != b'\\') {
           // not '\'
-          out.append_char(_convert<u8>(ch));
+          try out.append_char(_convert<u8>(ch));
           this.pos = this.pos + 1;
           continue;
         }
@@ -967,17 +996,17 @@ public module std.json {
         this.pos = this.pos + 1;
         if (esc == b'"' or esc == b'\\' or esc == b'/') {
           // '"' '\' '/'
-          out.append_char(_convert<u8>(esc));
+          try out.append_char(_convert<u8>(esc));
         } else if (esc == b'n') {
-          out.append_char(b'\n');
+          try out.append_char(b'\n');
         } else if (esc == b't') {
-          out.append_char(b'\t');
+          try out.append_char(b'\t');
         } else if (esc == b'r') {
-          out.append_char(b'\r');
+          try out.append_char(b'\r');
         } else if (esc == b'b') {
-          out.append_char(b'\x08');
+          try out.append_char(b'\x08');
         } else if (esc == b'f') {
-          out.append_char(b'\x0C');
+          try out.append_char(b'\x0C');
         } else if (esc == b'u') {
           var code: i64 = try this.parse_hex4(text);
           if (code >= 55296 and code <= 56319) {
@@ -1002,12 +1031,12 @@ public module std.json {
             // lone low surrogate
             code = 65533;
           }
-          this.append_utf8(out, code);
+          try this.append_utf8(out, code);
         } else {
-          return JsonResult.Error(JsonError("invalid escape in JSON string", esc_at));
+          return Result.Json(JsonError("invalid escape in JSON string", esc_at));
         }
       }
-      return JsonResult.Ok(out);
+      return Result.Ok(out);
     }
 
     /**
@@ -1026,7 +1055,7 @@ public module std.json {
     /**
      * number = [-] int [frac] [exp]; int = 0 | [1-9][0-9]*
      */
-    method parse_number(text: const ref String) JsonResult<Json> {
+    method parse_number(text: const ref String) Result<Json> {
       var start: i64 = this.pos;
       if (this.peek(text) == b'-') {
         this.pos = this.pos + 1;
@@ -1036,21 +1065,21 @@ public module std.json {
         // '0' must stand alone
         this.pos = this.pos + 1;
         if (this.peek(text) >= b'0' and this.peek(text) <= b'9') {
-          return JsonResult.Error(
+          return Result.Json(
             JsonError("leading zeros are not allowed in JSON numbers", start)
           );
         }
       } else if (first >= b'1' and first <= b'9') {
         this.parse_digits(text);
       } else {
-        return JsonResult.Error(JsonError("invalid JSON number", start));
+        return Result.Json(JsonError("invalid JSON number", start));
       }
       var is_float: bool = false;
       if (this.peek(text) == b'.') {
         is_float = true;
         this.pos = this.pos + 1;
         if (this.parse_digits(text) == 0) {
-          return JsonResult.Error(JsonError("digits expected after '.' in JSON number", this.pos));
+          return Result.Json(JsonError("digits expected after '.' in JSON number", this.pos));
         }
       }
       if (this.peek(text) == b'e' or this.peek(text) == b'E') {
@@ -1061,27 +1090,27 @@ public module std.json {
           this.pos = this.pos + 1;
         }
         if (this.parse_digits(text) == 0) {
-          return JsonResult.Error(JsonError("digits expected in JSON number exponent", this.pos));
+          return Result.Json(JsonError("digits expected in JSON number exponent", this.pos));
         }
       }
-      var token = String(this.alloc, "");
+      var token = try String(this.alloc, "");
       for (var i: i64 = start; i < this.pos; i = i + 1) {
-        token.append_char(unsafe { text.unsafe_at(i); });
+        try token.append_char(unsafe { text.unsafe_at(i); });
       }
       if (not is_float) {
         match token.parse_i64() {
           Option.Some(n) => {
-            return JsonResult.Ok(Json(n));
+            return Result.Ok(Json(n));
           },
           Option.None => {}
         };
       }
-      match token.parse_f64() {
+      match try token.parse_f64() {
         Option.Some(x) => {
-          return JsonResult.Ok(Json(x));
+          return Result.Ok(Json(x));
         },
         Option.None => {
-          return JsonResult.Error(JsonError("invalid JSON number", start));
+          return Result.Json(JsonError("invalid JSON number", start));
         }
       };
     }
@@ -1091,23 +1120,23 @@ public module std.json {
    * Parse a complete JSON text. Trailing whitespace is allowed, anything else
    * after the value is an error.
    */
-  public function parse_json(alloc: ref HeapAllocator, text: const ref String) JsonResult<Json> {
+  public function parse_json(alloc: const ref HeapAllocator, text: const ref String) Result<Json> {
     var parser = JsonParser(alloc);
     parser.skip_whitespace(text);
     var value: Json = try parser.parse_value(text);
     parser.skip_whitespace(text);
     if (parser.pos < text.length()) {
-      return JsonResult.Error(JsonError("unexpected text after JSON value", parser.pos));
+      return Result.Json(JsonError("unexpected text after JSON value", parser.pos));
     }
-    return JsonResult.Ok(value);
+    return Result.Ok(value);
   }
 
   /**
    * Parse a JSON literal into a tree. Returns JsonError on malformed text.
    */
-  public function parse_json(alloc: ref HeapAllocator, text: static_ptr<u8>) JsonResult<Json> {
-    var owned = String(alloc, text);
-    return JsonResult.Ok((try parse_json(alloc, owned)));
+  public function parse_json(alloc: const ref HeapAllocator, text: static_ptr<u8>) Result<Json> {
+    var owned = try String(alloc, text);
+    return Result.Ok((try parse_json(alloc, owned)));
   }
 
   // ============================================================================

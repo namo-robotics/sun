@@ -280,11 +280,11 @@ TEST(Builtins_IsIntrinsic, is_class_type) {
             this.y = py;
         }
     }
-    
+
     function check(p: ref Point) bool {
         return _is<Point>(p);
     }
-    
+
     function main() i32 {
         var p = Point(1, 2);
         if (check(p)) { return 1; }
@@ -303,7 +303,7 @@ TEST(Builtins_IsIntrinsic, is_interface_implemented) {
     interface Printable {
         method print() void;
     }
-    
+
     class Value implements Printable {
         var data: i32;
         init(d: i32) {
@@ -313,11 +313,11 @@ TEST(Builtins_IsIntrinsic, is_interface_implemented) {
             // no-op
         }
     }
-    
+
     function check(v: ref Value) bool {
         return _is<Printable>(v);
     }
-    
+
     function main() i32 {
         var v = Value(42);
         if (check(v)) { return 1; }
@@ -332,18 +332,18 @@ TEST(Builtins_IsIntrinsic, is_interface_not_implemented) {
     interface Printable {
         method print() void;
     }
-    
+
     class Value {
         var data: i32;
         init(d: i32) {
             this.data = d;
         }
     }
-    
+
     function check(v: ref Value) bool {
         return _is<Printable>(v);
     }
-    
+
     function main() i32 {
         var v = Value(42);
         if (check(v)) { return 1; }
@@ -362,7 +362,7 @@ TEST(Builtins_IsIntrinsic, is_in_generic_function_with_integer) {
     function isInteger<T>(x: T) bool {
         return _is<_Integer>(x);
     }
-    
+
     function main() i32 {
         if (isInteger<i32>(42)) { return 1; }
         return 0;
@@ -376,7 +376,7 @@ TEST(Builtins_IsIntrinsic, is_in_generic_function_with_float) {
     function isInteger<T>(x: T) bool {
         return _is<_Integer>(x);
     }
-    
+
     function main() i32 {
         if (isInteger<f64>(3.14)) { return 1; }
         return 0;
@@ -389,16 +389,16 @@ TEST(Builtins_IsIntrinsic, is_in_generic_class) {
   auto value = executeString(R"(
     class Container<T> {
         var value: T;
-        
+
         init(v: T) {
             this.value = v;
         }
-        
+
         method isNumeric() bool {
             return _is<_Numeric>(this.value);
         }
     }
-    
+
     function main() i32 {
         var c = Container<i32>(42);
         if (c.isNumeric()) { return 1; }
@@ -412,16 +412,16 @@ TEST(Builtins_IsIntrinsic, is_in_generic_class_with_non_numeric) {
   auto value = executeString(R"(
     class Container<T> {
         var value: T;
-        
+
         init(v: T) {
             this.value = v;
         }
-        
+
         method isNumeric() bool {
             return _is<_Numeric>(this.value);
         }
     }
-    
+
     function main() i32 {
         var c = Container<bool>(true);
         if (c.isNumeric()) { return 1; }
@@ -446,7 +446,7 @@ TEST(Builtins_IsIntrinsic, branch_on_type_in_generic) {
         }
         return 0;
     }
-    
+
     function main() i32 {
         var a = get_value<i32>(42);
         var b = get_value<f64>(3.14);
@@ -465,14 +465,14 @@ TEST(Builtins_IsIntrinsic, minimal_narrowing) {
     interface IFoo {
         method foo() i64;
     }
-    
+
     class Foo implements IFoo {
         method foo() i64 {
             return 42;
         }
     }
-    
-    
+
+
     function main() i32 {
         var f = Foo();
         if (_is<IFoo>(f)) { return f.foo(); }
@@ -487,26 +487,26 @@ TEST(Builtins_IsIntrinsic, type_narrowing_with_interface) {
     interface IHashable {
         method hash() i64;
     }
-    
+
     class MyKey implements IHashable {
         var id: i64;
-        
+
         init(x: i64) {
             this.id = x;
         }
-        
+
         method hash() i64 {
             return this.id * 31;
         }
     }
-    
+
     function getHash<T>(key: ref T) i64 {
         if (_is<IHashable>(key)) {
             return key.hash();
         }
         return 0;
     }
-    
+
     function main() i32 {
         var k = MyKey(42);
         var h = getHash<MyKey>(k);
@@ -522,26 +522,26 @@ TEST(Builtins_IsIntrinsic, type_narrowing_method_call_in_generic) {
     interface IValue {
         method get_value() i32;
     }
-    
+
     class Box implements IValue {
         var val: i32;
-        
+
         init(v: i32) {
             this.val = v;
         }
-        
+
         method get_value() i32 {
             return this.val;
         }
     }
-    
+
     function extractValue<T>(obj: ref T) i32 {
         if (_is<IValue>(obj)) {
             return obj.get_value();
         }
         return -1;
     }
-    
+
     function main() i32 {
         var b = Box(99);
         return extractValue<Box>(b);
@@ -557,19 +557,19 @@ TEST(Builtins_IsIntrinsic, type_narrowing_else_branch_no_narrow) {
     interface IFoo {
         method foo() i32;
     }
-    
+
     class Bar implements IFoo {
         init() {}
         method foo() i32 { return 42; }
     }
-    
+
     function check<T>(x: ref T) i32 {
         if (_is<IFoo>(x)) {
             return x.foo();
         }
         return 0;
     }
-    
+
     function main() i32 {
         var b = Bar();
         return check<Bar>(b);
@@ -583,17 +583,17 @@ TEST(Builtins_IsIntrinsic, type_narrowing_nested_if) {
     interface IA {
         method a() i32;
     }
-    
+
     interface IB {
         method b() i32;
     }
-    
+
     class Both implements IA, IB {
         init() {}
         method a() i32 { return 10; }
         method b() i32 { return 20; }
     }
-    
+
     function combine<T>(x: ref T) i32 {
         var result: i32 = 0;
         if (_is<IA>(x)) {
@@ -604,7 +604,7 @@ TEST(Builtins_IsIntrinsic, type_narrowing_nested_if) {
         }
         return result;
     }
-    
+
     function main() i32 {
         var obj = Both();
         return combine<Both>(obj);
@@ -617,9 +617,9 @@ TEST(Builtins_IsIntrinsic, nested_generic_functions) {
   // Minimal: outer<T> calls inner<T>
   auto value = executeString(R"(
     function inner<T>(x: T) T { return x; }
-    
+
     function outer<T>(x: T) T { return inner<T>(x); }
-    
+
     function main() i32 { return outer<i32>(42); }
   )");
   EXPECT_EQ(value, 42);
@@ -636,13 +636,13 @@ TEST(Builtins_IsIntrinsic, nested_generic_classes) {
             public method get() T { return this.val; }
         }
     }
-    
+
     class Outer<T> {
         public var inner: Test.Inner<T>;
         init(v: T) { this.inner = Test.Inner<T>(v); }
         public method get() T { return this.inner.get(); }
     }
-    
+
     function main() i32 { var o = Outer<i32>(42); return o.get(); }
   )");
   EXPECT_EQ(value, 42);
@@ -655,12 +655,12 @@ TEST(Builtins_IsIntrinsic, generic_function_with_captured_param) {
     interface IMultiplier {
         method multiply(x: i32) i32;
     }
-    
+
     class Doubler implements IMultiplier {
         init() {}
         method multiply(x: i32) i32 { return x * 2; }
     }
-    
+
     function applyMultiplier<T>(m: ref T, value: i32) i32 {
         if (_is<IMultiplier>(m)) {
             // 'value' is captured from outer scope into the narrowed block
@@ -668,7 +668,7 @@ TEST(Builtins_IsIntrinsic, generic_function_with_captured_param) {
         }
         return value;
     }
-    
+
     function main() i32 {
         var d = Doubler();
         return applyMultiplier<Doubler>(d, 21);
@@ -683,13 +683,13 @@ TEST(Builtins_IsIntrinsic, generic_function_captures_and_type_narrowing) {
     interface IScalable {
         method scale(factor: i32) i32;
     }
-    
+
     class Number implements IScalable {
         var n: i32;
         init(v: i32) { this.n = v; }
         method scale(factor: i32) i32 { return this.n * factor; }
     }
-    
+
     function processWithFactor<T>(x: ref T, factor: i32) i32 {
         // Capture factor for use inside type-narrowed block
         if (_is<IScalable>(x)) {
@@ -697,7 +697,7 @@ TEST(Builtins_IsIntrinsic, generic_function_captures_and_type_narrowing) {
         }
         return 0;
     }
-    
+
     function main() i32 {
         var num = Number(7);
         return processWithFactor<Number>(num, 6);
@@ -712,41 +712,41 @@ TEST(Builtins_IsIntrinsic, chained_generic_calls_with_different_types) {
     interface IA {
         method getA() i32;
     }
-    
+
     interface IB {
         method getB() i32;
     }
-    
+
     class TypeA implements IA {
         var a: i32;
         init(v: i32) { this.a = v; }
         method getA() i32 { return this.a; }
     }
-    
+
     class TypeB implements IB {
         var b: i32;
         init(v: i32) { this.b = v; }
         method getB() i32 { return this.b; }
     }
-    
+
     function extractA<T>(x: ref T) i32 {
         if (_is<IA>(x)) {
             return x.getA();
         }
         return 0;
     }
-    
+
     function extractB<U>(y: ref U) i32 {
         if (_is<IB>(y)) {
             return y.getB();
         }
         return 0;
     }
-    
+
     function combine<T, U>(a: ref T, b: ref U) i32 {
         return extractA<T>(a) + extractB<U>(b);
     }
-    
+
     function main() i32 {
         var ta = TypeA(20);
         var tb = TypeB(22);
@@ -761,7 +761,7 @@ TEST(Builtins_IsIntrinsic, module_generic_helper_definition) {
     interface IValue {
         method get_value() i32;
     }
-    
+
     class Wrapper implements IValue {
         var data: i32;
         init(d: i32) { this.data = d; }
@@ -774,11 +774,11 @@ TEST(Builtins_IsIntrinsic, module_generic_helper_definition) {
         }
         return 0;
     }
-    
+
     function outer<T>(x: ref T, multiplier: i32) i32 {
         return inner<T>(x) * multiplier;
     }
-    
+
     function main() i32 {
         var w = Wrapper(7);
         return outer<Wrapper>(w, 6);
@@ -1421,6 +1421,8 @@ TEST(Builtins_BitIntrinsics, bswap_u16_u32_u64) {
 // std.thread.spawn, so the program goes through the stdlib.
 TEST(Builtins_SpawnIntrinsic, rejects_a_throwing_function) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::compileStringWithStdlib(R"(
+
+
     using std;
     using std.thread;
 
@@ -1428,11 +1430,13 @@ TEST(Builtins_SpawnIntrinsic, rejects_a_throwing_function) {
         throw Error(1, "boom");
     }
 
-    function main() i32 {
-        var t = spawn(explode);
-        return 0;
+    /** Runs the fixture with explicit error propagation. */
+    function main() Result<i32> {
+        var t = try spawn(explode);
+        return Result.Ok( 0);
     }
-  )"),
+
+)"),
                                 "'throws' is no longer supported");
 }
 

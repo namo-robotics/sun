@@ -13,6 +13,15 @@ public module std.io {
       },
       SystemResult.Error(error) => {
         try std.test.assert_eq(error.code(), code);
+      },
+      SystemResult.Allocation(error) => {
+        try std.test.assert_eq(error.code(), code);
+      },
+      SystemResult.InvalidArgument(error) => {
+        try std.test.assert_eq(error.code(), code);
+      },
+      SystemResult.Overflow(error) => {
+        try std.test.assert_eq(error.code(), code);
       }
     };
     return std.test.AssertionResult.Ok;
@@ -21,9 +30,9 @@ public module std.io {
   /** Check lifecycle, empty waits, invalid arguments, and bounds-checked access. */
   test_function lifecycle_and_empty_wait() {
     var alloc = make_heap_allocator();
-    var invalid = std.io.EventLoop(alloc, 0);
+    var invalid = try std.io.EventLoop(alloc, 0);
     try expect_error(invalid.open(), 22);
-    var loop = std.io.EventLoop(alloc, 8);
+    var loop = try std.io.EventLoop(alloc, 8);
     try expect_error(loop.add(1, std.io.POLLIN, 0u64), 9);
     try std.test.expect_system_success(loop.open());
     try expect_error(loop.open(), 22);
@@ -47,6 +56,15 @@ public module std.io {
       },
       SystemResult.Error(error) => {
         try std.test.assert_eq(error.code(), 22);
+      },
+      SystemResult.Allocation(error) => {
+        try std.test.assert_eq(error.code(), 22);
+      },
+      SystemResult.InvalidArgument(error) => {
+        try std.test.assert_eq(error.code(), 22);
+      },
+      SystemResult.Overflow(error) => {
+        try std.test.assert_eq(error.code(), 22);
       }
     };
     loop.close();
@@ -62,7 +80,7 @@ public module std.io {
     reader.adopt(pipe.read_fd());
     var writer = std.io.File();
     writer.adopt(pipe.write_fd());
-    var loop = std.io.EventLoop(alloc, 4);
+    var loop = try std.io.EventLoop(alloc, 4);
     try std.test.expect_system_success(loop.open());
     try std.test.expect_system_success(
       loop.add(pipe.read_fd(), std.io.POLLIN, 18446744073709551615u64)
@@ -104,7 +122,7 @@ public module std.io {
     reader.adopt(pipe.read_fd());
     var writer = std.io.File();
     writer.adopt(pipe.write_fd());
-    var loop = std.io.EventLoop(alloc, 4);
+    var loop = try std.io.EventLoop(alloc, 4);
     try std.test.expect_system_success(loop.open());
     try expect_error(loop.add(-1, std.io.POLLIN, 0u64), 9);
     try expect_error(loop.add(2147483647, std.io.POLLIN, 0u64), 9);
@@ -135,7 +153,7 @@ public module std.io {
     reader2.adopt(second.read_fd());
     first.close_write();
     second.close_write();
-    var loop = std.io.EventLoop(alloc, 2);
+    var loop = try std.io.EventLoop(alloc, 2);
     try std.test.expect_system_success(loop.open());
     try std.test.expect_system_success(loop.add(first.read_fd(), std.io.POLLIN, 1u64));
     try std.test.expect_system_success(loop.add(second.read_fd(), std.io.POLLIN, 2u64));
@@ -166,7 +184,7 @@ public module std.io {
     reader2.adopt(second.read_fd());
     first.close_write();
     second.close_write();
-    var original = std.io.EventLoop(alloc, 1);
+    var original = try std.io.EventLoop(alloc, 1);
     try std.test.expect_system_success(original.open());
     try std.test.expect_system_success(original.add(first.read_fd(), std.io.POLLIN, 1u64));
     try std.test.expect_system_success(original.add(second.read_fd(), std.io.POLLIN, 2u64));
@@ -185,8 +203,8 @@ public module std.io {
   /** Registration growth and repeated removal keep every token associated with its descriptor. */
   test_function registration_growth_and_reuse() {
     var alloc = make_heap_allocator();
-    var readers = Vec<std.io.File>(alloc, 32);
-    var loop = std.io.EventLoop(alloc, 5);
+    var readers = try Vec<std.io.File>(alloc, 32);
+    var loop = try std.io.EventLoop(alloc, 5);
     try std.test.expect_system_success(loop.open());
     for (var i: i64 = 0; i < 32; i = i + 1) {
       var pipe = try std.test.expect_system(std.process.open_pipe(alloc));
@@ -196,7 +214,7 @@ public module std.io {
       try std.test.expect_system_success(
         loop.add(pipe.read_fd(), std.io.POLLIN, _convert<u64>(pipe.read_fd()))
       );
-      readers.push(reader);
+      try readers.push(reader);
     }
     for (var pass: i32 = 0; pass < 2; pass = pass + 1) {
       while (loop.count() > 0) {
@@ -232,7 +250,7 @@ public module std.io {
       client.connect_local(try std.test.expect_system(listener.local_port()))
     );
     var peer = try std.test.expect_system(listener.accept());
-    var loop = std.io.EventLoop(alloc, 4);
+    var loop = try std.io.EventLoop(alloc, 4);
     try std.test.expect_system_success(loop.open());
     try std.test.expect_system_success(loop.add(peer.get_fd(), std.io.POLLIN, 10u64));
     try std.test.assert_eq(try std.test.expect_system(loop.wait(0)), 0);
@@ -248,8 +266,8 @@ public module std.io {
     );
     try std.test.expect_system(client.send_str("ready"));
     // Write readiness can wake the loop before the sent data reaches the peer.
-    var readable = std.io.Poller(alloc);
-    readable.add_read(peer.get_fd());
+    var readable = try std.io.Poller(alloc);
+    try readable.add_read(peer.get_fd());
     try std.test.assert_eq(try std.test.expect_system(readable.wait(1000)), 1);
     try std.test.assert(
       readable.is_readable(0),
@@ -274,7 +292,7 @@ public module std.io {
     unsafe { c_close(0); };
     var alloc = make_heap_allocator();
     if (true) {
-      var original = std.io.EventLoop(alloc, 1);
+      var original = try std.io.EventLoop(alloc, 1);
       try std.test.expect_system_success(original.open());
       try std.test.assert((unsafe { c_fcntl(0, 1); } & 1) != 0, "queue is close-on-exec");
       var moved = original;
@@ -292,7 +310,7 @@ public module std.io {
         std.test.AssertionResult.Ok => {
           std.process.exit_now(0);
         },
-        std.test.AssertionResult.Error(error) => {
+        _ => {
           std.process.exit_now(1);
         }
       };

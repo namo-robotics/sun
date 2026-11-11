@@ -10,7 +10,7 @@ public module std.linalg {
   /** Checks shape inference and row-major values from a rectangular literal. */
   test_function matrix_from_literal() {
     var allocator = make_heap_allocator();
-    var m = Matrix<f32>([[1.0f32, 2.0f32, 3.0f32], [4.0f32, 5.0f32, 6.0f32]], allocator);
+    var m = try Matrix<f32>([[1.0f32, 2.0f32, 3.0f32], [4.0f32, 5.0f32, 6.0f32]], allocator);
     try std.test.assert_eq(m.ndims(), 2);
     try std.test.assert_eq(m.dim(0), 2);
     try std.test.assert_eq(m.dim(1), 3);
@@ -24,12 +24,12 @@ public module std.linalg {
   /** Checks that integer values remain distinct from shape construction. */
   test_function matrix_from_integer_vector() {
     var allocator = make_heap_allocator();
-    var m = Matrix<i64>([2i64, 3i64], allocator);
+    var m = try Matrix<i64>([2i64, 3i64], allocator);
     try std.test.assert_eq(m.ndims(), 1);
     try std.test.assert_eq(m.size(), 2);
     try std.test.assert_eq(m[0], 2);
     try std.test.assert_eq(m[1], 3);
-    var shaped = Matrix<i64>(allocator, [2, 3]);
+    var shaped = try Matrix<i64>(allocator, [2, 3]);
     try std.test.assert_eq(shaped.ndims(), 2);
     try std.test.assert_eq(shaped.size(), 6);
   }
@@ -38,7 +38,7 @@ public module std.linalg {
   test_function matrix_from_array_owns_values() {
     var allocator = make_heap_allocator();
     var values: array<i32, 2, 1, 2> = [[[1, 2]], [[3, 4]]];
-    var m = Matrix<i32>(values, allocator);
+    var m = try Matrix<i32>(values, allocator);
     values[1, 0, 1] = 99;
     try std.test.assert_eq(m.ndims(), 3);
     try std.test.assert_eq(m.dim(0), 2);
@@ -55,7 +55,7 @@ public module std.linalg {
   /** Checks simple matrix. */
   test_function simple_matrix() {
     var allocator = make_heap_allocator();
-    var m = Matrix<i32>(allocator, [1]);
+    var m = try Matrix<i32>(allocator, [1]);
     var idx: array<i64, 1> = [0];
     m.set(idx, 10);
     try std.test.assert_eq(m.get(idx), 10);
@@ -65,7 +65,7 @@ public module std.linalg {
   test_function matrix_ndims_and_size() {
     var allocator = make_heap_allocator();
     var shape: array<i64, 3> = [2, 3, 4];
-    var m = Matrix<f64>(allocator, shape);
+    var m = try Matrix<f64>(allocator, shape);
     try std.test.assert_eq(m.ndims(), 3);
     try std.test.assert_eq(m.size(), 24);  // 2*3*4
   }
@@ -77,7 +77,7 @@ public module std.linalg {
   test_function matrix_owns_its_shape() {
     var allocator = make_heap_allocator();
     var shape: array<i64, 2> = [2, 3];
-    var m = Matrix<i32>(allocator, shape);
+    var m = try Matrix<i32>(allocator, shape);
     shape[0] = 99;
     try std.test.assert_eq(m.dim(0), 2);
     try std.test.assert_eq(m.dim(1), 3);
@@ -87,18 +87,18 @@ public module std.linalg {
      * Builds a view in its own frame and hands it back; the view's shape and
      * strides must not point into that frame (this was the #196 crash)
      */
-  function slice_middle(m: const ref Matrix<i32>) MatrixView<i32> {
+  function slice_middle(m: const ref Matrix<i32>) AllocationResult<MatrixView<i32>> {
     return m[2:5];
   }
 
   /** Checks view dims survive caller frame. */
   test_function view_dims_survive_caller_frame() {
     var allocator = make_heap_allocator();
-    var m = Matrix<i32>(allocator, [10]);
+    var m = try Matrix<i32>(allocator, [10]);
     for (var i: i64 = 0; i < 10; i = i + 1) {
       m[i] = i;
     }
-    var view = slice_middle(m);
+    var view = try slice_middle(m);
     var scratch: array<i64, 3> = [7, 7, 7];
     var idx2: array<i64, 1> = [2];
     try std.test.assert_eq(view.dim(0), 3);
@@ -111,7 +111,7 @@ public module std.linalg {
      */
   test_function bracket_index_syntax() {
     var allocator = make_heap_allocator();
-    var m = Matrix<i32>(allocator, [2, 3]);
+    var m = try Matrix<i32>(allocator, [2, 3]);
     m[0, 0] = 42;
     try std.test.assert_eq(m[0, 0], 42);
   }
@@ -119,7 +119,7 @@ public module std.linalg {
   /** Checks bracket index 2d. */
   test_function bracket_index_2d() {
     var allocator = make_heap_allocator();
-    var m = Matrix<i32>(allocator, [3, 3]);
+    var m = try Matrix<i32>(allocator, [3, 3]);
     // Fill diagonal with values
     m[0, 0] = 1;
     m[1, 1] = 2;
@@ -157,24 +157,24 @@ public module std.linalg {
   /** Checks slice 1d basic. */
   test_function slice_1d_basic() {
     var allocator = make_heap_allocator();
-    var m = Matrix<i32>(allocator, [10]);
+    var m = try Matrix<i32>(allocator, [10]);
     for (var i: i64 = 0; i < 10; i = i + 1) {
       m[i] = i;
     }
     // Slice [2:5] should give a view of length 3
-    var view = m[2:5];
+    var view = try m[2:5];
     try std.test.assert_eq(view.size(), 3);
   }
 
   /** Checks slice 1d values. */
   test_function slice_1d_values() {
     var allocator = make_heap_allocator();
-    var m = Matrix<i32>(allocator, [10]);
+    var m = try Matrix<i32>(allocator, [10]);
     for (var i: i64 = 0; i < 10; i = i + 1) {
       m[i] = i;
     }
     // Slice [2:5] should give a view with values 2, 3, 4
-    var view = m[2:5];
+    var view = try m[2:5];
     var idx0: array<i64, 1> = [0];
     var idx1: array<i64, 1> = [1];
     var idx2: array<i64, 1> = [2];
@@ -186,14 +186,14 @@ public module std.linalg {
   /** Checks slice 1d from start. */
   test_function slice_1d_from_start() {
     var allocator = make_heap_allocator();
-    var m = Matrix<i32>(allocator, [5]);
+    var m = try Matrix<i32>(allocator, [5]);
     m[0] = 10;
     m[1] = 20;
     m[2] = 30;
     m[3] = 40;
     m[4] = 50;
     // Slice [0:3]
-    var view = m[0:3];
+    var view = try m[0:3];
     var idx0: array<i64, 1> = [0];
     var idx1: array<i64, 1> = [1];
     var idx2: array<i64, 1> = [2];
@@ -204,14 +204,14 @@ public module std.linalg {
   /** Checks slice 1d to end. */
   test_function slice_1d_to_end() {
     var allocator = make_heap_allocator();
-    var m = Matrix<i32>(allocator, [5]);
+    var m = try Matrix<i32>(allocator, [5]);
     m[0] = 10;
     m[1] = 20;
     m[2] = 30;
     m[3] = 40;
     m[4] = 50;
     // Slice [3:5]
-    var view = m[3:5];
+    var view = try m[3:5];
     var idx0: array<i64, 1> = [0];
     var idx1: array<i64, 1> = [1];
     var sum: i64 = view.get(idx0) + view.get(idx1);
@@ -223,14 +223,14 @@ public module std.linalg {
      */
   test_function slice_1d_modify_through_view() {
     var allocator = make_heap_allocator();
-    var m = Matrix<i32>(allocator, [5]);
+    var m = try Matrix<i32>(allocator, [5]);
     m[0] = 1;
     m[1] = 2;
     m[2] = 3;
     m[3] = 4;
     m[4] = 5;
     // Get a view - this MOVES m.data to view
-    var view = m[1:4];  // view now contains [2,3,4]
+    var view = try m[1:4];  // view now contains [2,3,4]
     // Modify through view
     var idx0: array<i64, 1> = [0];
     view.set(idx0, 200);

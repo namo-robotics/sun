@@ -165,17 +165,27 @@ TEST(MemorySafety_Drops_Match, duplicate_and_wildcard_arms_use_first_match) {
 
 TEST(MemorySafety_Drops_Match, string_buffer_survives_match_and_return) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
-    using std;
-    function make(alloc: const ref HeapAllocator, flag: bool) String {
-      return match flag { true => String(alloc, "hello"), _ => String(alloc, "world") };
+using std;
+
+function make(alloc: const ref HeapAllocator, flag: bool) Result<String> {
+  return Result.Ok(
+    match flag {
+      true => try String(alloc, "hello"),
+      _ => try String(alloc, "world")
     }
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var s = make(alloc, true);
-      if (s.equals_literal("hello")) { return 1; }
-      return 0;
-    }
-  )"),
+  );
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var s = try make(alloc, true);
+  if (s.equals_literal("hello")) {
+    return Result.Ok(1);
+  }
+  return Result.Ok(0);
+}
+)"),
             1);
 }
 

@@ -134,6 +134,18 @@ public module std.terminal {
       SystemResult.Error(e) => {
         threw = true;
         code = e.code();
+      },
+      SystemResult.Allocation(e) => {
+        threw = true;
+        code = e.code();
+      },
+      SystemResult.InvalidArgument(e) => {
+        threw = true;
+        code = e.code();
+      },
+      SystemResult.Overflow(e) => {
+        threw = true;
+        code = e.code();
       }
     };
     pipe.close_read();
@@ -222,6 +234,15 @@ public module std.terminal {
       SystemResult.Ok => {},
       SystemResult.Error(e) => {
         threw = true;
+      },
+      SystemResult.Allocation(e) => {
+        threw = true;
+      },
+      SystemResult.InvalidArgument(e) => {
+        threw = true;
+      },
+      SystemResult.Overflow(e) => {
+        threw = true;
       }
     };
     try std.test.assert(threw, "the helper throws from inside the mode");
@@ -256,6 +277,18 @@ public module std.terminal {
     match TerminalMode(pipe.read_fd(), Mode.Raw, SignalPolicy.AsInput) {
       SystemResult.Ok(_) => {},
       SystemResult.Error(e) => {
+        threw = true;
+        code = e.code();
+      },
+      SystemResult.Allocation(e) => {
+        threw = true;
+        code = e.code();
+      },
+      SystemResult.InvalidArgument(e) => {
+        threw = true;
+        code = e.code();
+      },
+      SystemResult.Overflow(e) => {
         threw = true;
         code = e.code();
       }
@@ -317,6 +350,15 @@ public module std.terminal {
     match read_key(pty.slave, std.time.create_duration_millis(1000)) {
       SystemResult.Ok(_) => {},
       SystemResult.Error(e) => {
+        threw = true;
+      },
+      SystemResult.Allocation(e) => {
+        threw = true;
+      },
+      SystemResult.InvalidArgument(e) => {
+        threw = true;
+      },
+      SystemResult.Overflow(e) => {
         threw = true;
       }
     };

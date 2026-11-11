@@ -39,7 +39,7 @@ public module std.io {
   test_function borrowed_stream_short_read_and_ownership() {
     var alloc = make_heap_allocator();
     var pipe = try std.test.expect_system(std.process.open_pipe(alloc));
-    var input = ContiguousBuffer<u8>(alloc, 8);
+    var input = try ContiguousBuffer<u8>(alloc, 8);
     input.fill(90);
     try std.test.expect_access_success(input.set(2, 42));
     if (true) {
@@ -51,7 +51,7 @@ public module std.io {
       unsafe { c_fcntl(pipe.write_fd(), 3); } >= 0,
       "borrowed writer leaves descriptor open"
     );
-    var output = ContiguousBuffer<u8>(alloc, 8);
+    var output = try ContiguousBuffer<u8>(alloc, 8);
     output.fill(99);
     if (true) {
       var reader = std.io.BorrowedStream(pipe.read_fd());
@@ -80,7 +80,7 @@ public module std.io {
   /** Empty slices do no I/O even on invalid descriptors; nonempty slices report errors. */
   test_function borrowed_stream_empty_and_errors() {
     var alloc = make_heap_allocator();
-    var buffer = ContiguousBuffer<u8>(alloc, 8);
+    var buffer = try ContiguousBuffer<u8>(alloc, 8);
     buffer.fill(0);
     var stream = std.io.BorrowedStream(-1);
     if (true) {
@@ -122,7 +122,7 @@ public module std.io {
     try nonblocking(pipe.write_fd());
     var reader = std.io.BorrowedStream(pipe.read_fd());
     var writer = std.io.BorrowedStream(pipe.write_fd());
-    var output = ContiguousBuffer<u8>(alloc, 1048576);
+    var output = try ContiguousBuffer<u8>(alloc, 1048576);
     if (true) {
       var bytes = MutableByteSlice(output);
       match reader.read(bytes) {
@@ -132,7 +132,7 @@ public module std.io {
         }
       };
     }
-    var input = ContiguousBuffer<u8>(alloc, 1048576);
+    var input = try ContiguousBuffer<u8>(alloc, 1048576);
     input.fill(73);
     var written: i64 = 0;
     if (true) {
@@ -167,10 +167,10 @@ public module std.io {
   test_function file_bounded_io() {
     var alloc = make_heap_allocator();
     var td = try std.test.expect_system(std.tests.TempDir(alloc, "bounded_io"));
-    var path = td.file("bytes");
+    var path = try td.file("bytes");
     var file = std.io.File();
     try std.test.expect_system_success(file.open(path, std.io.FileMode.Write));
-    var buffer = ContiguousBuffer<u8>(alloc, 4);
+    var buffer = try ContiguousBuffer<u8>(alloc, 4);
     buffer.fill(37);
     if (true) {
       var bytes = ByteSlice(buffer);
@@ -240,7 +240,7 @@ public module std.io {
   /** Retries interrupted reads and returns the first successful short read. */
   test_function interrupted_read_retries() {
     var alloc = make_heap_allocator();
-    var buffer = ContiguousBuffer<u8>(alloc, 4);
+    var buffer = try ContiguousBuffer<u8>(alloc, 4);
     var bytes = MutableByteSlice(buffer);
     var operation = InterruptedReader();
     try expect_read(std.io.read_slice_using(123, bytes, operation), 1);
@@ -251,7 +251,7 @@ public module std.io {
   /** Retries interruptions between short writes and retains progress on errors or zero writes. */
   test_function interrupted_writes_preserve_progress() {
     var alloc = make_heap_allocator();
-    var buffer = ContiguousBuffer<u8>(alloc, 4);
+    var buffer = try ContiguousBuffer<u8>(alloc, 4);
     buffer.fill(0);
     try std.test.expect_access_success(buffer.set(2, 73));
     var bytes = ByteSlice(buffer);

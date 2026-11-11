@@ -12,10 +12,9 @@ using std.http;
 //   using std.io;
 //   using tls;
 //
-//   var alloc = make_heap_allocator();
-//   var client = HttpsClient(alloc);
-//   var host = String(alloc, "example.com");
-//   var resp = client.get(host, "/");
+//   var client = HttpsClient(global_allocator);
+//   var host = try String(global_allocator, "example.com");
+//   var resp = try client.get(host, "/");
 //   println(resp.status);
 //   println(resp.body);
 
@@ -35,9 +34,9 @@ public module tls {
     public var body: String;  // decoded body
 
     /** Creates the client or response with storage from the supplied allocator. */
-    init(alloc: ref HeapAllocator) {
-      this.headers = String(alloc, "");
-      this.body = String(alloc, "");
+    init(alloc: const ref HeapAllocator) AllocationResult<void> {
+      this.headers = try String(alloc, "");
+      this.body = try String(alloc, "");
     }
   }
 
@@ -123,7 +122,7 @@ public module tls {
       }
       var end: i64 = i + size;
       while (i < end) {
-        out.append_char(unsafe { raw.unsafe_at(i); });
+        try out.append_char(unsafe { raw.unsafe_at(i); });
         i = i + 1;
       }
       i = i + 2;  // CRLF after the chunk data
@@ -137,7 +136,7 @@ public module tls {
    * itself can reuse the framing.
    */
   public function parse_response(
-    alloc: ref HeapAllocator,
+    alloc: const ref HeapAllocator,
     raw: const ref String,
     resp: ref HttpClientResponse
   ) SystemResult<void> {
@@ -175,13 +174,13 @@ public module tls {
     }
     i = i + 1;
     while (i < header_end) {
-      resp.headers.append_char(unsafe { raw.unsafe_at(i); });
+      try resp.headers.append_char(unsafe { raw.unsafe_at(i); });
       i = i + 1;
     }
 
     // Body: chunked when declared, else Content-Length, else read-to-end
     var body_start: i64 = header_end + 4;
-    var lower: String = resp.headers.clone(alloc);
+    var lower: String = try resp.headers.clone(alloc);
     lower.to_lower();
     if (lower.contains("transfer-encoding: chunked")) {
       try decode_chunked(raw, body_start, resp.body);
@@ -194,7 +193,7 @@ public module tls {
     }
     var j: i64 = body_start;
     while (j < body_end) {
-      resp.body.append_char(unsafe { raw.unsafe_at(j); });
+      try resp.body.append_char(unsafe { raw.unsafe_at(j); });
       j = j + 1;
     }
     return SystemResult.Ok;
@@ -209,7 +208,7 @@ public module tls {
     var alloc: HeapAllocator;
 
     /** Creates the client or response with storage from the supplied allocator. */
-    init(allocator: ref HeapAllocator) {
+    init(allocator: const ref HeapAllocator) {
       this.alloc = allocator.copy();
     }
 
@@ -226,12 +225,12 @@ public module tls {
       port: i32,
       path: static_ptr<u8>
     ) ClientResult<HttpClientResponse> {
-      var req = String(this.alloc, "GET ");
-      req.append(path);
-      req.append(" HTTP/1.1");
-      append_crlf(req);
-      this.append_common_headers(req, host);
-      append_crlf(req);
+      var req = try String(this.alloc, "GET ");
+      try req.append(path);
+      try req.append(" HTTP/1.1");
+      try append_crlf(req);
+      try this.append_common_headers(req, host);
+      try append_crlf(req);
       return ClientResult.Ok((try this.exchange(host, port, req)));
     }
 
@@ -255,31 +254,33 @@ public module tls {
       content_type: static_ptr<u8>,
       body: const ref String
     ) ClientResult<HttpClientResponse> {
-      var req = String(this.alloc, "POST ");
-      req.append(path);
-      req.append(" HTTP/1.1");
-      append_crlf(req);
-      this.append_common_headers(req, host);
-      req.append("Content-Type: ");
-      req.append(content_type);
-      append_crlf(req);
-      req.append("Content-Length: ");
-      req.append(body.length());
-      append_crlf(req);
-      append_crlf(req);
-      req.append(body);
+      var req = try String(this.alloc, "POST ");
+      try req.append(path);
+      try req.append(" HTTP/1.1");
+      try append_crlf(req);
+      try this.append_common_headers(req, host);
+      try req.append("Content-Type: ");
+      try req.append(content_type);
+      try append_crlf(req);
+      try req.append("Content-Length: ");
+      try req.append(body.length());
+      try append_crlf(req);
+      try append_crlf(req);
+      try req.append(body);
       return ClientResult.Ok((try this.exchange(host, port, req)));
     }
 
     /** Appends the HTTP headers shared by requests from this client. */
-    method append_common_headers(req: ref String, host: ref String) void {
-      req.append("Host: ");
-      req.append(host);
-      append_crlf(req);
-      req.append("Connection: close");
-      append_crlf(req);
-      req.append("Accept: */*");
-      append_crlf(req);
+    method append_common_headers(req: ref String, host: ref String) AllocationResult<void> {
+      try req.append("Host: ");
+      try req.append(host);
+      try append_crlf(req);
+      try req.append("Connection: close");
+      try append_crlf(req);
+      try req.append("Accept: */*");
+      try append_crlf(req);
+
+      return AllocationResult.Ok;
     }
 
     /**
@@ -294,8 +295,8 @@ public module tls {
       try stream.connect(host, port);
       try stream.send_string(request);
 
-      var raw = String(this.alloc, "");
-      var chunk = ContiguousBuffer<u8>(this.alloc, 8192);
+      var raw = try String(this.alloc, "");
+      var chunk = try ContiguousBuffer<u8>(this.alloc, 8192);
       var done: bool = false;
       while (done == false) {
         var n: i64 = (try stream.recv(chunk));
@@ -309,7 +310,7 @@ public module tls {
       }
       stream.close();
 
-      var resp = HttpClientResponse(this.alloc);
+      var resp = try HttpClientResponse(this.alloc);
       try parse_response(this.alloc, raw, resp);
       return ClientResult.Ok(resp);
     }

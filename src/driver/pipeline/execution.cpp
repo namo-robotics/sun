@@ -202,6 +202,7 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
   }
 
   analyzeProgram(*blockAst, parser);
+  auto* mainAdapter = prepareMainEntry(*blockAst, execute);
 
   // Debug mode: generate scope tree HTML after semantic analysis
   if (debugMode_ && !debugFolder_.empty()) {
@@ -266,6 +267,18 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
   {
     ScopedStage stage("codegen");
     codegenVisitor->codegen(*blockAst);
+    if (mainAdapter) {
+      auto* adapter = codegenVisitor->functionRegistry().lookupFunctionById(
+          mainAdapter->getProto().getDeclarationId());
+      auto* original = ctx->mainModule->getFunction("main");
+      if (!adapter || !original) {
+        sun::support::logAndThrowError("Failed to generate the main result adapter");
+      }
+      original->setName("__sun_main_result_body");
+      adapter->setName("main");
+      codegenVisitor->noteUserDefinedFunction(original->getName().str());
+      codegenVisitor->noteUserDefinedFunction("main");
+    }
     // Emit static initialization function for globals that need runtime init
     codegenVisitor->emitStaticInitFunction(staticInitOrder_, ownBundleHash_);
     codegenVisitor->externCEmitter().finalizeDeclarations();
@@ -405,6 +418,17 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
   // Get the return type and argument count before we clone the module
   llvm::Type* returnType = func->getReturnType();
   size_t mainArgCount = func->arg_size();
+
+  auto* returnStruct = llvm::dyn_cast<llvm::StructType>(returnType);
+  const bool stringReturn = returnStruct && returnStruct->getNumElements() == 2 &&
+      returnStruct->getElementType(0)->isPointerTy() &&
+      returnStruct->getElementType(1)->isIntegerTy(64);
+  if (!returnType->isVoidTy() && !returnType->isPointerTy() &&
+      !returnType->isFloatTy() && !returnType->isDoubleTy() &&
+      !(returnType->isIntegerTy() && returnType->getIntegerBitWidth() <= 64) &&
+      !stringReturn) {
+    sun::support::logAndThrowError("Unsupported JIT return type for 'main'");
+  }
 
   // Create a NEW context for the JIT module
   auto jitStage = std::make_unique<ScopedStage>("jit compile");
@@ -569,18 +593,6 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
           std::string(spResult.data ? spResult.data : "",
                       spResult.data ? static_cast<size_t>(spResult.len) : 0);
     }
-  } else {
-    // Unknown type - default to double for backward compatibility
-    double doubleResult;
-    if (mainHasArgs) {
-      double (*FP)(int, char**) =
-          ExprSymbol.getAddress().toPtr<double (*)(int, char**)>();
-      doubleResult = FP(argc, argv);
-    } else {
-      double (*FP)() = ExprSymbol.getAddress().toPtr<double (*)()>();
-      doubleResult = FP();
-    }
-    result = doubleResult;
   }
 
   // Remove the anonymous module

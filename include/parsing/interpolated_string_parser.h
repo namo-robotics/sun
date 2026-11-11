@@ -3,7 +3,7 @@
 // Parses template strings like `Hello ${name}, age ${age}!` into an
 // InterpolatedStringAST (lossless parse tree). The lowering pass later calls
 // desugar() to turn the node into a block expression with String construction
-// and append() calls.
+// and fallible append operations.
 
 #pragma once
 
@@ -26,14 +26,15 @@ class Parser;
 /**
  * Parser for interpolated template strings.
  * parseToAst: `Hello ${name}!` -> InterpolatedStringAST (kept in parse tree)
+ * The builder uses std.global_allocator and retains the first allocation error.
+ * finish() returns AllocationResult<String>, handled explicitly by the caller.
  * desugar (called by LoweringPass):
  * {
- *   var interp_alloc_ = std.HeapAllocator();
- *   var interp_result_ = std.String(interp_alloc_, "");
- *   interp_result_.append_literal("Hello ");
+ *   var interp_result_ = std.InterpolationBuilder();
+ *   interp_result_.append("Hello ");
  *   interp_result_.append(name);
- *   interp_result_.append_literal("!");
- *   interp_result_
+ *   interp_result_.append("!");
+ *   interp_result_.finish()
  * }
  */
 class InterpolatedStringParser {

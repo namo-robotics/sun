@@ -197,6 +197,7 @@ add_library(sun_lib
     ${PROTO_SRCS}
     # Driver: pipeline orchestration
     src/driver/pipeline/execution.cpp
+    src/driver/pipeline/main_entry.cpp
     src/driver/pipeline/construction.cpp
     src/driver/pipeline/inspection.cpp
     src/driver/pipeline/analysis.cpp

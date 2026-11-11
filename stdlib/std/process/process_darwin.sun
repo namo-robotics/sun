@@ -3,10 +3,10 @@ public module std.process {
 
   /** Read the BSD start timeval as an opaque microsecond start marker. */
   function native_process_identity(
-    alloc: ref HeapAllocator,
+    alloc: const ref HeapAllocator,
     target: i32
   ) SystemResult<ProcessIdentity> {
-    var record = ContiguousBuffer<darwin_process_abi.proc_bsdinfo>(alloc, 1);
+    var record = try ContiguousBuffer<darwin_process_abi.proc_bsdinfo>(alloc, 1);
     var record_size = _convert<i32>(_sizeof<darwin_process_abi.proc_bsdinfo>());
     var got = unsafe { c_proc_pidinfo(target, 3, 0, record.raw_data(), record_size); };
     if (got != record_size) {
@@ -21,14 +21,14 @@ public module std.process {
   }
 
   /** Retry enumeration with more room when concurrent launches fill the buffer. */
-  function native_process_ids(alloc: ref HeapAllocator) SystemResult<Vec<i32>> {
+  function native_process_ids(alloc: const ref HeapAllocator) SystemResult<Vec<i32>> {
     var needed = unsafe { c_proc_listpids(1, 0, null, 0); };
     if (needed <= 0) {
       return SystemResult.Error(Error(errno(), "process enumeration unavailable"));
     }
     var capacity: i64 = _convert<i64>(needed) / 4 + 64;
     while (capacity <= 16777216) {
-      var data = ContiguousBuffer<i32>(alloc, capacity);
+      var data = try ContiguousBuffer<i32>(alloc, capacity);
       var bytes = _convert<i32>(capacity * 4);
       var got = unsafe { c_proc_listpids(1, 0, data.raw_data(), bytes); };
       if (got <= 0) {
@@ -38,10 +38,10 @@ public module std.process {
         if (got % 4 != 0) {
           return SystemResult.Error(Error(22, "invalid process enumeration record"));
         }
-        var ids = Vec<i32>(alloc, _convert<i64>(got) / 4);
+        var ids = try Vec<i32>(alloc, _convert<i64>(got) / 4);
         for (var i: i64 = 0; i < _convert<i64>(got) / 4; i = i + 1) {
           if (data[i] > 0) {
-            ids.push(data[i]);
+            try ids.push(data[i]);
           }
         }
         return SystemResult.Ok(ids);
@@ -52,8 +52,8 @@ public module std.process {
   }
 
   /** Read the libproc path with the platform's maximum supported path buffer. */
-  function process_executable(alloc: ref HeapAllocator, target: i32) SystemResult<String> {
-    var data = ContiguousBuffer<u8>(alloc, 4096);
+  function process_executable(alloc: const ref HeapAllocator, target: i32) SystemResult<String> {
+    var data = try ContiguousBuffer<u8>(alloc, 4096);
     var got = unsafe { c_proc_pidpath(target, data.raw_data(), 4096); };
     if (got <= 0) {
       return SystemResult.Error(Error(errno(), "process executable unavailable"));
@@ -62,12 +62,12 @@ public module std.process {
     while (end < _convert<i64>(got) and data[end] != 0) {
       end = end + 1;
     }
-    return SystemResult.Ok(process_text(alloc, data, 0, end));
+    return SystemResult.Ok(try process_text(alloc, data, 0, end));
   }
 
   /** Decode KERN_PROCARGS2, using argc to exclude the trailing environment. */
   function darwin_process_arguments(
-    alloc: ref HeapAllocator,
+    alloc: const ref HeapAllocator,
     data: ref ContiguousBuffer<u8>,
     size: i64
   ) SystemResult<Vec<String>> {
@@ -86,7 +86,7 @@ public module std.process {
     while (at < size and data[at] == 0) {
       at = at + 1;
     }
-    var args = Vec<String>(alloc, _convert<i64>(count));
+    var args = try Vec<String>(alloc, _convert<i64>(count));
     for (var i: i32 = 0; i < count; i = i + 1) {
       var start = at;
       while (at < size and data[at] != 0) {
@@ -95,7 +95,7 @@ public module std.process {
       if (at >= size) {
         return SystemResult.Error(Error(22, "truncated process arguments"));
       }
-      args.push(process_text(alloc, data, start, at));
+      try args.push(try process_text(alloc, data, start, at));
       at = at + 1;
     }
     return SystemResult.Ok(args);
@@ -103,7 +103,7 @@ public module std.process {
 
   /** Read argv through sysctl; access denial remains a field error. */
   function native_process_arguments(
-    alloc: ref HeapAllocator,
+    alloc: const ref HeapAllocator,
     target: i32
   ) SystemResult<Vec<String>> {
     var max_size: i32 = 0;
@@ -122,8 +122,8 @@ public module std.process {
     if (max_size < 4 or length != 4) {
       return SystemResult.Error(Error(22, "invalid argument limit"));
     }
-    var data = ContiguousBuffer<u8>(alloc, _convert<i64>(max_size));
-    var name = ContiguousBuffer<i32>(alloc, 3);
+    var data = try ContiguousBuffer<u8>(alloc, _convert<i64>(max_size));
+    var name = try ContiguousBuffer<i32>(alloc, 3);
     name[0] = 1;
     name[1] = 49;
     name[2] = target;
@@ -184,11 +184,11 @@ public module std.process {
 
   /** Read libproc cumulative CPU nanoseconds and resident bytes independently of text. */
   function native_process_snapshot(
-    alloc: ref HeapAllocator,
+    alloc: const ref HeapAllocator,
     target: i32
   ) SystemResult<ProcessSnapshot> {
     var identity = try process_identity(alloc, target);
-    var record = ContiguousBuffer<darwin_process_abi.proc_taskinfo>(alloc, 1);
+    var record = try ContiguousBuffer<darwin_process_abi.proc_taskinfo>(alloc, 1);
     var record_size = _convert<i32>(_sizeof<darwin_process_abi.proc_taskinfo>());
     var got = unsafe { c_proc_pidinfo(target, 4, 0, record.raw_data(), record_size); };
     var code = got <= 0 ? errno() : 22;
@@ -237,7 +237,7 @@ public module std.process {
 
   /** Validate the supplied identity before activating a checked handle. */
   function native_process_open(
-    alloc: ref HeapAllocator,
+    alloc: const ref HeapAllocator,
     identity: const ref ProcessIdentity
   ) SystemResult<i64> {
     var observed = try process_identity(alloc, identity.pid);
@@ -249,7 +249,7 @@ public module std.process {
 
   /** Recheck immediately before kill; PID reuse can still occur between the calls. */
   function native_process_signal(
-    alloc: ref HeapAllocator,
+    alloc: const ref HeapAllocator,
     identity: const ref ProcessIdentity,
     token: i64,
     signal: i32

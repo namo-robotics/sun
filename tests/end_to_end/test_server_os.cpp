@@ -60,6 +60,12 @@ void expectMetadata(int fd, const std::string& kind) {
       var info = match file.metadata() {
         SystemResult.Ok(value) => value,
         SystemResult.Error(error) => { return 1; }
+      ,
+SystemResult.Allocation(error) => { return 1; }
+      ,
+SystemResult.InvalidArgument(error) => { return 1; }
+      ,
+SystemResult.Overflow(error) => { return 1; }
       };
       if (info.kind != std.io.FileKind.)" +
                       kind + R"() { return 2; }
@@ -117,7 +123,7 @@ TEST(EndToEnd_ServerOs, NativeOnlineCpuCount) {
       return match std.thread.online_cpu_count() {
         SystemResult.Ok(count) => count == )") +
                       std::to_string(count) + R"( ? 0 : 1,
-        SystemResult.Error(error) => 2
+        _ => 2
       };
     }
   )";
@@ -138,6 +144,12 @@ TEST(EndToEnd_ServerOs, NativeBrokenPipePolicy) {
           return match std.signal.ignore_broken_pipe() {
             SystemResult.Ok => 0,
             SystemResult.Error(error) => 1
+          ,
+SystemResult.Allocation(error) => 1
+          ,
+SystemResult.InvalidArgument(error) => 1
+          ,
+SystemResult.Overflow(error) => 1
           };
         }
       )");
@@ -218,6 +230,12 @@ TEST(EndToEnd_ServerOs, ConfigurationFailureClosesDescriptors) {
             match std.io.Wakeup(alloc) {
               SystemResult.Ok(wake) => { return Result.Ok(1); },
               SystemResult.Error(error) => { if (error.code() != 13) { return Result.Ok(2); } }
+            ,
+SystemResult.Allocation(error) => { if (error.code() != 13) { return Result.Ok(2); } }
+            ,
+SystemResult.InvalidArgument(error) => { if (error.code() != 13) { return Result.Ok(2); } }
+            ,
+SystemResult.Overflow(error) => { if (error.code() != 13) { return Result.Ok(2); } }
             };
             var client = TcpStream();
             try client.connect_local(port);
@@ -227,7 +245,7 @@ TEST(EndToEnd_ServerOs, ConfigurationFailureClosesDescriptors) {
             };
           }
           var after = try std.io.read_dir(alloc, "/proc/self/fd");
-          return Result.Ok(before.size() == after.size() ? 0 : 5);
+          return Result.Ok(_convert<i32>(before.size() == after.size() ? 0 : 5));
         }
         /** Convert unexpected native setup failures to a distinct process status. */
         function main() i32 {

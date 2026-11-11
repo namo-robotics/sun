@@ -652,7 +652,7 @@ its body could replace the backing allocation. For example, inside a function
 with `using std;` and a heap allocator named `alloc`:
 
 ```sun
-var buffer = ContiguousBuffer<u8>(alloc, 4);
+var buffer = try ContiguousBuffer<u8>(alloc, 4);
 var bytes = ByteSlice(buffer);
 buffer.resize_to(1);
 return _convert<i32>(bytes.size());

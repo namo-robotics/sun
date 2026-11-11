@@ -115,6 +115,7 @@ function main() i32 {
 TEST(MemorySafety_Drops_UnwindCleanup,
      local_throw_drops_try_scoped_owner_exactly_once) {
   auto value = executeString(withPreamble(R"(
+
 function helper() Outcome<i32> {
   /** Executes a fallible operation. */
   var attempt_0 = () => Outcome<void> {
@@ -154,6 +155,7 @@ function main() i32 {
 TEST(MemorySafety_Drops_UnwindCleanup,
      local_throw_from_nested_block_drops_all_left_scopes) {
   auto value = executeString(withPreamble(R"(
+
 function helper() Outcome<i32> {
   /** Executes a fallible operation. */
   var attempt_0 = () => Outcome<void> {
@@ -258,6 +260,7 @@ function main() i32 {
 TEST(MemorySafety_Drops_UnwindCleanup,
      caught_locally_then_normal_exit_no_extra_drops) {
   auto value = executeString(withPreamble(R"(
+
 function helper() Outcome<i32> {
   var outside = Owner();
   /** Executes a fallible operation. */

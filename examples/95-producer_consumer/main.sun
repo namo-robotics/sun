@@ -1,82 +1,95 @@
-using std.io;
-
 using std;
+using std.io;
 using std.thread;
 using std.time;
 
-/**
- * Take the front item, if there is one. The lock is held for exactly as long
- * as this function runs: the guard is released when `g` goes out of scope at
- * the end of it, so the caller can wait without stalling the producer.
- */
-function take_one(q: const ref Shared<Queue<i64>>) Option<i64> {
-  var g = q.lock();
-  return g.get().pop();
+/** Owns pending work and records completion even when the producer fails. */
+class WorkQueue {
+  public var items: Queue<i64>;
+  public var done: bool = false;
+
+  /** Creates an empty queue; nodes are allocated when items are pushed. */
+  init() {
+    this.items = Queue<i64>(global_allocator);
+  }
 }
 
-// The two thread bodies, as lambdas at global scope. Each takes the handle it
-// works through as a parameter rather than capturing one: spawn moves its
-// arguments into the thread, so the handle is the thread's from the moment it
-// starts, and is released when the thread ends. A global lambda captures
-// nothing at all — globals are read directly — so the same one can be spawned
-// as often as you like.
+/** Distinguishes temporary emptiness from a producer that has finished. */
+enum NextItem { Value(i64), Waiting, Done }
 
-// Push ten squares onto the queue.
-var produce = (q: Shared<Queue<i64>>) => i32 {
-  var i: i64 = 1;
-  while (i <= 10) {
-    // The lock is held just long enough to push: the guard is released at
-    // the end of each iteration.
-    var g = q.lock();
-    g.get().push(i * i);
-    i = i + 1;
+/** Reads an item and completion under the same lock. */
+function take_one(queue: const ref Shared<WorkQueue>) NextItem {
+  var guard = queue.lock();
+  return match guard.get().items.pop() {
+    Option.Some(value) => NextItem.Value(value),
+    Option.None => guard.get().done ? NextItem.Done : NextItem.Waiting
+  };
+}
+
+/** Enqueues squares, releasing the lock on both success and allocation failure. */
+function produce_items(queue: const ref Shared<WorkQueue>) AllocationResult<void> {
+  for (var i: i64 = 1; i <= 10; i += 1) {
+    var guard = queue.lock();
+    try guard.get().items.push(i * i);
   }
-  return 0;
+  return AllocationResult.Ok;
+}
+
+/** Marks completion after production succeeds or fails, so the consumer can finish. */
+var produce = (queue: Shared<WorkQueue>) => AllocationResult<void> {
+  var result = produce_items(queue);
+  if (true) {
+    var guard = queue.lock();
+    guard.get().done = true;
+  }
+  return result;
 };
 
-// The consumer knows how many items to expect, so it stops after ten rather
-// than needing the producer to tell it when to stop.
-var consume = (q: Shared<Queue<i64>>) => i32 {
-  var received: i64 = 0;
+/** Consumes queued work until the producer has finished and the queue is empty. */
+var consume = (queue: Shared<WorkQueue>) => i32 {
   var total: i64 = 0;
-
-  while (received < 10) {
-    match (take_one(q)) {
-      Option.Some(item) => {
-        received = received + 1;
-        total = total + item;
+  while (true) {
+    match take_one(queue) {
+      NextItem.Value(value) => {
+        total += value;
       },
-      // Nothing queued yet. Step aside rather than spin on the lock —
-      // take_one released it before returning.
-      Option.None => {
+      NextItem.Waiting => {
         sleep(create_duration_micros(100));
+      },
+      NextItem.Done => {
+        return _convert<i32>(total);
       }
     };
   }
-
   return _convert<i32>(total);
 };
 
-/** Runs the example that coordinates producer and consumer threads. */
-function main() i32 {
-  var alloc = make_heap_allocator();
-
-  // One queue, two owners. Sun never copies a class implicitly, so each
-  // thread needs its own handle, made with an explicit clone().
-  var queue = Shared<Queue<i64>>(alloc, Queue<i64>(alloc));
-
-  var producer = spawn(produce, queue.clone());
-  var consumer = spawn(consume, queue.clone());
-
-  producer.join();
+/** Joins both threads and propagates allocation failures after they have finished. */
+function run() AllocationResult<void> {
+  var queue = try Shared<WorkQueue>(global_allocator, WorkQueue());
+  var producer = try spawn(produce, queue.clone());
+  var consumer = try spawn(consume, queue.clone());
+  var result = producer.join();
   var total = consumer.join();
+  try result;
+  var guard = queue.lock();
+  println(try `items left: ${guard.get().items.size()}`);
+  println(try `total: ${total}`);
+  return AllocationResult.Ok;
+}
 
-  // Both threads have finished, so the last handle can read without a race.
-  var g = queue.lock();
-  println(`items left: ${g.get().size()}`);
-  println(`total: ${total}`);
-
-  return 0;
+/** Reports failures even when allocating an error message fails. */
+function main() i32 {
+  return match run() {
+    AllocationResult.Ok => 0,
+    (error: const ref IError) => {
+      match error.message() {
+        AllocationResult.Ok(message) => eprintln(message),
+        _ => eprintln("unable to allocate error message")
+      };
+      1;
+    }
+  };
 }
 
 manifest {

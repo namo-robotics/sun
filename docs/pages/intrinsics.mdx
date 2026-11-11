@@ -26,7 +26,13 @@ Returns the byte size of type `T` as `i64`.
 var size = _sizeof<i32>();   // 4
 var size2 = _sizeof<i64>();  // 8
 
-class Point { x: f64; y: f64; }
+/** Two coordinates stored inline. */
+class Point {
+    var x: f64;
+    var y: f64;
+    /** Initializes both coordinates. */
+    init(x: f64, y: f64) { this.x = x; this.y = y; }
+}
 var pointSize = _sizeof<Point>();  // 16 (two 8-byte floats)
 ```
 
@@ -76,7 +82,7 @@ container can call it on every element without asking what `T` is.
 ```sun
 // Release element i, then reuse its slot
 unsafe {
-    _deinit<T>(_ptr_as_raw<T>(_ptr_offset(this.data, i * _sizeof<T>())));
+    _deinit<T>(_ptr_offset(this.data, i * _sizeof<T>()));
 };
 ```
 
@@ -91,7 +97,7 @@ colon of an `args...` pack in a parameter list, never as a type of its own:
 ```sun
 function make<T>(args...: _params_of<T>) raw_ptr<T> {
     var size: i64 = _sizeof<T>();
-    var memory: raw_ptr<i8> = unsafe { _malloc(size); };
+    var memory: raw_ptr<u8> = unsafe { _aligned_malloc<T>(size); };
     unsafe { _init<T>(memory, args...); };
     return memory;
 }
@@ -157,19 +163,20 @@ Stores `value` of type `T` at `ptr[index]`.
 unsafe { _store<i32>(data, 5, 42); };
 ```
 
-### `_ptr_as_raw<T>(ptr<T>)`
+### Borrowing a raw pointer from an owner
 
-Converts an owning `ptr<T>` to a non-owning `raw_ptr<T>` without transferring ownership. Similar to C++'s `unique_ptr::get()`.
+For a heap value owned by `std.Unique<T>`, use its `get_raw()` method. This
+returns a non-owning pointer without transferring ownership; it is an ordinary
+standard-library method, not an intrinsic.
 
 ```sun
-var owned: ptr<Point> = new Point(1.0, 2.0);
-var raw: raw_ptr<Point> = _ptr_as_raw<Point>(owned);
-// raw points to the same memory, but owned still manages lifetime
+var owned = allocator.create_unique<Point>(1, 2);
+var raw: raw_ptr<Point> = owned.get_raw();
+// Keep owned alive for every use of raw; do not free raw separately.
 ```
 
-<Callout type="warning">
-  Be careful: the raw pointer becomes invalid if the owning pointer is freed or goes out of scope.
-</Callout>
+Use `owned.get()` when a checked Sun reference is sufficient. Raw-pointer
+access must be inside `unsafe`, and the pointer must not outlive its owner.
 
 ### `_is<T>(value)`
 
@@ -181,7 +188,7 @@ Compile-time type check that returns `true` or `false` based on whether the type
 - **An interface** — checks if a class implements the interface
 
 ```sun
-function example(x: i32, y: f64) {
+function example(x: i32, y: f64) void {
     _is<i32>(x);      // true - exact type match
     _is<i64>(x);      // false - i32 is not i64
     _is<_Integer>(x); // true - i32 is an integer
@@ -378,7 +385,7 @@ Returns a `raw_ptr<T>` pointing to the memory location of a reference. Useful fo
 
 ```sun
 var x: i32 = 42;
-var ptr = _address_of<i32>(x);  // raw_ptr<i32> to x's memory
+var address = _address_of<i32>(x);  // raw_ptr<i32> to x's memory
 ```
 
 <Callout type="warning">
@@ -738,43 +745,11 @@ var client: i32 = unsafe { __accept_fd(fd); };
 
 ## Usage in Standard Library
 
-The standard library uses intrinsics to implement generic containers. Here's a simplified example of how `Vec<T>` might use them:
-
-```sun
-class Vec<T> {
-    data: raw_ptr<i8>;
-    len: i64;
-    cap: i64;
-    alloc: HeapAllocator;
-
-    method get(index: i64) T {
-        return unsafe { _load<T>(this.data, index); };
-    }
-
-    method set(index: i64, value: T) void {
-        unsafe { _store<T>(this.data, index, value); };
-    }
-
-    method push(value: T) void {
-        if (this.len >= this.cap) {
-            this.grow();
-        }
-        unsafe { _store<T>(this.data, this.len, value); };
-        this.len = this.len + 1;
-    }
-
-    method grow() void {
-        var newCap = this.cap * 2;
-        var newData = this.alloc.alloc_raw(newCap * _sizeof<T>());
-        unsafe {
-            _memcpy(newData, this.data, this.len * _sizeof<T>());
-            _free(this.data);
-        };
-        this.data = newData;
-        this.cap = newCap;
-    }
-}
-```
+The standard library uses these intrinsics inside its owning containers.
+`stdlib/std/contiguous_buffer.sun` manages raw storage, and
+`stdlib/std/vec.sun` adds element construction, moves, destruction, and growth.
+Use these implementations as references: copying raw bytes alone does not
+implement safe ownership for arbitrary `T`.
 
 ## Summary Table
 
@@ -786,7 +761,6 @@ class Vec<T> {
 | `_params_of<T>` | none | — | The parameter list an `args...` pack stands for |
 | `_load<T>` | `ptr, index` | `T` | Load element at index |
 | `_store<T>` | `ptr, index, value` | `void` | Store element at index |
-| `_ptr_as_raw<T>` | `ptr<T>` | `raw_ptr<T>` | Get raw pointer without ownership transfer |
 | `_is<T>` | `value` | `bool` | Compile-time type check |
 | `_convert<T>` | `value` | `T` | Unchecked numeric conversion (truncate, extend, int ↔ float) |
 | `_bitcast<T>` | `value` | `T` | Reinterpret bits as a same-size numeric type, or retype a `raw_ptr` |

@@ -23,6 +23,14 @@ public module std {
     Decode(ProtoDecodeError)
   }
 
+  /** Reports allocation failure, an invalid size, or a size calculation overflow. */
+  public enum AllocationResult<T> {
+    Ok(T),
+    Allocation(AllocationError),
+    InvalidArgument(InvalidArgumentError),
+    Overflow(OverflowError)
+  }
+
   /** Reports checked element access without unrelated error categories. */
   public enum AccessResult<T> {
     Ok(T),
@@ -63,6 +71,9 @@ public module std {
   /** Reports a failed operating-system call with its code and message. */
   public enum SystemResult<T> {
     Ok(T),
+    Allocation(AllocationError),
+    InvalidArgument(InvalidArgumentError),
+    Overflow(OverflowError),
     Error(Error)
   }
 }

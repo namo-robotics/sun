@@ -34,8 +34,8 @@ public module std {
 
     if (true) {
       var alloc = make_heap_allocator();
-      var slots = Vec<Option<Owner>>(alloc, 1);
-      slots.push(Option.Some(Owner(0)));
+      var slots = try Vec<Option<Owner>>(alloc, 1);
+      try slots.push(Option.Some(Owner(0)));
       var empty: Option<Owner> = Option.None;
       var previous = try std.test.expect_access(slots.replace(0, empty));
       slots.clear();

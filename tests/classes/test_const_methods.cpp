@@ -138,19 +138,29 @@ TEST(Classes_ConstMethods, non_const_call_on_this_in_const_method_is_rejected) {
 TEST(Classes_ConstMethods, mutating_field_object_in_const_method_is_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       executeStringWithStdlib(R"(
-      using std;
-      class Bag {
-          var items: Vec<i32>;
-          init(alloc: ref HeapAllocator) { this.items = Vec<i32>(alloc, 4); }
-          const method add(x: i32) void { this.items.push(x); }
-      }
-      function main() i32 {
-          var allocator = make_heap_allocator();
-          var b = Bag(allocator);
-          b.add(1);
-          return b.items.size();
-      }
-    )"),
+using std;
+
+class Bag {
+  var items: Vec<i32>;
+
+  init(alloc: ref HeapAllocator) Result<void> {
+    this.items = try Vec<i32>(alloc, 4);
+  }
+
+  const method add(x: i32) Result<void> {
+    try this.items.push(x);
+    return Result.Ok;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var b = try Bag(allocator);
+  try b.add(1);
+  return Result.Ok(_convert<i32>(b.items.size()));
+}
+)"),
       "Cannot call non-const method 'push' on 'this' inside a const method");
 }
 
@@ -426,56 +436,65 @@ TEST(Classes_ConstMethods, generic_const_method_body_is_checked) {
 
 TEST(Classes_ConstMethods, const_vec_reads) {
   auto value = executeStringWithStdlib(R"(
-      using std;
-      function total(v: const ref Vec<i32>) i32 {
-          var sum: i32 = 0;
-          var i: i64 = 0;
-          while (i < v.size()) {
-              sum = sum + v[i] + unsafe { v.get_unchecked(i); };
-              i = i + 1;
-          }
-          return sum;
-      }
-      function main() i32 {
-          var allocator = make_heap_allocator();
-          var v = Vec<i32>(allocator, 4);
-          v.push(1);
-          v.push(2);
-          v.push(3);
-          const ref cv = v;
-          if (cv.is_empty()) { return -1; }
-          return total(v) + _convert<i32>(cv.size());
-      }
-    )");
+using std;
+
+function total(v: const ref Vec<i32>) i32 {
+  var sum: i32 = 0;
+  var i: i64 = 0;
+  while (i < v.size()) {
+    sum = sum + v[i] + unsafe { v.get_unchecked(i); };
+    i = i + 1;
+  }
+  return sum;
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var v = try Vec<i32>(allocator, 4);
+  try v.push(1);
+  try v.push(2);
+  try v.push(3);
+  const ref cv = v;
+  if (cv.is_empty()) {
+    return Result.Ok(-1);
+  }
+  return Result.Ok(_convert<i32>(total(v) + _convert<i32>(cv.size())));
+}
+)");
   EXPECT_EQ(value, 12 + 3);
 }
 
 TEST(Classes_ConstMethods, const_vec_cannot_push_or_set) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       executeStringWithStdlib(R"(
-      using std;
-      function main() i32 {
-          var allocator = make_heap_allocator();
-          var v = Vec<i32>(allocator, 4);
-          const ref cv = v;
-          cv.push(1);
-          return 0;
-      }
-    )"),
+using std;
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var v = try Vec<i32>(allocator, 4);
+  const ref cv = v;
+  cv.push(1);
+  return Result.Ok(0);
+}
+)"),
       "Cannot call non-const method 'push' on const reference 'cv'");
 
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       executeStringWithStdlib(R"(
-      using std;
-      function main() i32 {
-          var allocator = make_heap_allocator();
-          var v = Vec<i32>(allocator, 4);
-          v.push(1);
-          const ref cv = v;
-          cv[0] = 2;
-          return 0;
-      }
-    )"),
+using std;
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var v = try Vec<i32>(allocator, 4);
+  try v.push(1);
+  const ref cv = v;
+  cv[0] = 2;
+  return Result.Ok(0);
+}
+)"),
       "Cannot assign to an element of const reference 'cv'");
 }
 
@@ -483,59 +502,88 @@ TEST(Classes_ConstMethods, const_vec_cannot_push_or_set) {
 // inside a payload enum, is `const ref` when the receiver is constant.
 TEST(Classes_ConstMethods, peek_accessors_are_const_views) {
   auto value = executeStringWithStdlib(R"(
-      using std;
-      function main() i32 {
-          var allocator = make_heap_allocator();
-          var v = Vec<i32>(allocator, 4);
-          v.push(5);
-          v.push(7);
-          var m = Map<i64, i32>(allocator, 8);
-          m.insert(1, 30);
-          var l = LinkedList<i32>(allocator);
-          l.push_back(100);
-          const ref cv = v;
-          const ref cm = m;
-          const ref cl = l;
-          var a: i32 = match cv.first() { Option.Some(x) => x, Option.None => -1000 };
-          var b: i32 = match cv.last() { Option.Some(x) => x, Option.None => -1000 };
-          var c: i32 = match cm.find(1) { Option.Some(x) => x, Option.None => -1000 };
-          var d: i32 = match cl.last() { Option.Some(x) => x, Option.None => -1000 };
-          return a + b + c + d;
-      }
-    )");
+using std;
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var v = try Vec<i32>(allocator, 4);
+  try v.push(5);
+  try v.push(7);
+  var m = try Map<i64, i32>(allocator, 8);
+  try m.insert(1, 30);
+  var l = LinkedList<i32>(allocator);
+  try l.push_back(100);
+  const ref cv = v;
+  const ref cm = m;
+  const ref cl = l;
+  var a: i32 = match cv.first() {
+    Option.Some(x) => x,
+    Option.None => -1000
+  };
+  var b: i32 = match cv.last() {
+    Option.Some(x) => x,
+    Option.None => -1000
+  };
+  var c: i32 = match cm.find(1) {
+    Option.Some(x) => x,
+    Option.None => -1000
+  };
+  var d: i32 = match cl.last() {
+    Option.Some(x) => x,
+    Option.None => -1000
+  };
+  return Result.Ok(a + b + c + d);
+}
+)");
   EXPECT_EQ(value, 5 + 7 + 30 + 100);
 
   // Through a constant receiver the peeked element is read-only ...
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-      using std;
-      function main() i32 {
-          var allocator = make_heap_allocator();
-          var v = Vec<i32>(allocator, 4);
-          v.push(5);
-          const ref cv = v;
-          match cv.last() {
-              Option.Some(x) => { x = 1; },
-              Option.None => { }
-          };
-          return 0;
-      }
-    )"),
+using std;
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var v = try Vec<i32>(allocator, 4);
+  try v.push(5);
+  const ref cv = v;
+  match cv.last() {
+    Option.Some(x) => {
+      x = 1;
+    },
+    Option.None => {}
+  };
+  return Result.Ok(0);
+}
+)"),
                                 "Cannot assign through const reference 'x'");
 
   // ... while a mutable receiver still hands out a writable borrow
   auto written = executeStringWithStdlib(R"(
-      using std;
-      function main() i32 {
-          var allocator = make_heap_allocator();
-          var v = Vec<i32>(allocator, 4);
-          v.push(5);
-          match v.last() {
-              Option.Some(x) => { x = 42; },
-              Option.None => { }
-          };
-          return (match v.get(0) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } });
+using std;
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var v = try Vec<i32>(allocator, 4);
+  try v.push(5);
+  match v.last() {
+    Option.Some(x) => {
+      x = 42;
+    },
+    Option.None => {}
+  };
+  return Result.Ok(_convert<i32>(
+    (match v.get(0) {
+      std.AccessResult.Ok(value) => value,
+      std.AccessResult.OutOfBounds(_) => {
+        return Result.Ok(-100);
       }
-    )");
+    })
+  ));
+}
+)");
   EXPECT_EQ(written, 42);
 }
 
@@ -574,16 +622,33 @@ TEST(Classes_ConstMethods, user_const_method_returning_option_ref) {
 
 TEST(Classes_ConstMethods, const_map_reads) {
   auto value = executeStringWithStdlib(R"(
-      using std;
-      function main() i32 {
-          var allocator = make_heap_allocator();
-          var m = Map<i64, i32>(allocator, 8);
-          m.insert(1, 10);
-          m.insert(2, 20);
-          const ref cm = m;
-          if (not cm.contains(2)) { return -1; }
-          return (match cm.get(1) { std.LookupResult.Ok(value) => value, std.LookupResult.NotFound(_) => { return -100; } }) + (match cm.get(2) { std.LookupResult.Ok(value) => value, std.LookupResult.NotFound(_) => { return -100; } }) + _convert<i32>(cm.size());
+using std;
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var m = try Map<i64, i32>(allocator, 8);
+  try m.insert(1, 10);
+  try m.insert(2, 20);
+  const ref cm = m;
+  if (not cm.contains(2)) {
+    return Result.Ok(-1);
+  }
+  return Result.Ok(_convert<i32>(
+    (match cm.get(1) {
+      std.LookupResult.Ok(value) => value,
+      std.LookupResult.NotFound(_) => {
+        return Result.Ok(-100);
       }
-    )");
+    }) +
+      (match cm.get(2) {
+        std.LookupResult.Ok(value) => value,
+        std.LookupResult.NotFound(_) => {
+          return Result.Ok(-100);
+        }
+      }) + _convert<i32>(cm.size())
+  ));
+}
+)");
   EXPECT_EQ(value, 32);
 }

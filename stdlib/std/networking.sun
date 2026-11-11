@@ -27,7 +27,7 @@
 //   socket.bind(ipv4_any(), 0);            // port 0: the OS picks one
 //   var port: i32 = socket.local_port();   // read the picked port back
 //   socket.send_str_to("ping", ipv4_loopback(), 9000);
-//   var buf = ContiguousBuffer<u8>(alloc, 1024);
+//   var buf = try ContiguousBuffer<u8>(global_allocator, 1024);
 //   var datagram = socket.recv_from(buf);  // who sent what
 //   socket.close();
 
@@ -35,10 +35,10 @@
 public module std.net {
 
   /** Nonblocking connection progress; errors close the attempted connection. */
-  public enum ConnectResult { Connected, Pending, Error(Error) }
+  public enum ConnectResult { Connected, Pending, Error(Error), Allocation(AllocationError), InvalidArgument(InvalidArgumentError), Overflow(OverflowError) }
 
   /** A newly owned connection, routine would-block, or an actual accept failure. */
-  public enum AcceptResult { Accepted(TcpStream), WouldBlock, Error(Error) }
+  public enum AcceptResult { Accepted(TcpStream), WouldBlock, Error(Error), Allocation(AllocationError), InvalidArgument(InvalidArgumentError), Overflow(OverflowError) }
 
   /** Configure a newly accepted socket before handing it to application code. */
   function configure_accepted_socket(fd: i32) SystemResult<void> {
@@ -132,12 +132,11 @@ public module std.net {
   public function resolve_host_ipv4(host: ref String) SystemResult<i32> {
     var list: raw_ptr<u8> = null;
     var rc: i32 = unsafe {
-      c_getaddrinfo(host.c_str(), null, null, _address_of<raw_ptr<u8>>(list));
+      c_getaddrinfo(try host.c_str(), null, null, _address_of<raw_ptr<u8>>(list));
     };
     if (rc != 0) {
-      var alloc: HeapAllocator = HeapAllocator();
-      var msg: String = from_c_str(alloc, unsafe { c_gai_strerror(rc); });
-      return SystemResult.Error(Error(rc, msg));
+      var msg: String = try from_c_str(global_allocator, unsafe { c_gai_strerror(rc); });
+      return SystemResult.Error(try Error(rc, msg));
     }
     var entry: raw_ptr<u8> = list;
     while (entry != null) {
@@ -202,16 +201,16 @@ public module std.net {
     /**
      * Format as dotted-quad text, e.g. "192.168.1.10".
      */
-    public const method to_string(alloc: const ref HeapAllocator) String {
-      var text: String = String(alloc, "");
-      text.append(this.octet(0));
-      text.append_char(46);  // '.'
-      text.append(this.octet(1));
-      text.append_char(46);
-      text.append(this.octet(2));
-      text.append_char(46);
-      text.append(this.octet(3));
-      return text;
+    public const method to_string(alloc: const ref HeapAllocator) AllocationResult<String> {
+      var text: String = try String(alloc, "");
+      try text.append(this.octet(0));
+      try text.append_char(46);  // '.'
+      try text.append(this.octet(1));
+      try text.append_char(46);
+      try text.append(this.octet(2));
+      try text.append_char(46);
+      try text.append(this.octet(3));
+      return AllocationResult.Ok(text);
     }
   }
 
@@ -301,6 +300,18 @@ public module std.net {
         SystemResult.Error(error) => {
           this.close();
           return ConnectResult.Error(error);
+        },
+        SystemResult.Allocation(error) => {
+          this.close();
+          return ConnectResult.Allocation(error);
+        },
+        SystemResult.InvalidArgument(error) => {
+          this.close();
+          return ConnectResult.InvalidArgument(error);
+        },
+        SystemResult.Overflow(error) => {
+          this.close();
+          return ConnectResult.Overflow(error);
         }
       };
       if (unsafe { __connect_ipv4(this.fd, addr.to_network_i32(), port); } == 0) {
@@ -431,6 +442,18 @@ public module std.net {
         SystemResult.Error(error) => {
           this.close();
           return SystemResult.Error(error);
+        },
+        SystemResult.Allocation(error) => {
+          this.close();
+          return SystemResult.Allocation(error);
+        },
+        SystemResult.InvalidArgument(error) => {
+          this.close();
+          return SystemResult.InvalidArgument(error);
+        },
+        SystemResult.Overflow(error) => {
+          this.close();
+          return SystemResult.Overflow(error);
         }
       };
 
@@ -458,6 +481,18 @@ public module std.net {
         SystemResult.Error(error) => {
           this.close();
           return SystemResult.Error(error);
+        },
+        SystemResult.Allocation(error) => {
+          this.close();
+          return SystemResult.Allocation(error);
+        },
+        SystemResult.InvalidArgument(error) => {
+          this.close();
+          return SystemResult.InvalidArgument(error);
+        },
+        SystemResult.Overflow(error) => {
+          this.close();
+          return SystemResult.Overflow(error);
         }
       };
 
@@ -600,6 +635,15 @@ public module std.net {
           },
           SystemResult.Error(error) => {
             return AcceptResult.Error(error);
+          },
+          SystemResult.Allocation(error) => {
+            return AcceptResult.Allocation(error);
+          },
+          SystemResult.InvalidArgument(error) => {
+            return AcceptResult.InvalidArgument(error);
+          },
+          SystemResult.Overflow(error) => {
+            return AcceptResult.Overflow(error);
           }
         };
       }
@@ -638,6 +682,18 @@ public module std.net {
         SystemResult.Error(error) => {
           this.close();
           return SystemResult.Error(error);
+        },
+        SystemResult.Allocation(error) => {
+          this.close();
+          return SystemResult.Allocation(error);
+        },
+        SystemResult.InvalidArgument(error) => {
+          this.close();
+          return SystemResult.InvalidArgument(error);
+        },
+        SystemResult.Overflow(error) => {
+          this.close();
+          return SystemResult.Overflow(error);
         }
       };
       return SystemResult.Ok;
@@ -950,6 +1006,18 @@ public module std.net {
           SystemResult.Error(error) => {
             this.close();
             return SystemResult.Error(error);
+          },
+          SystemResult.Allocation(error) => {
+            this.close();
+            return SystemResult.Allocation(error);
+          },
+          SystemResult.InvalidArgument(error) => {
+            this.close();
+            return SystemResult.InvalidArgument(error);
+          },
+          SystemResult.Overflow(error) => {
+            this.close();
+            return SystemResult.Overflow(error);
           }
         };
       }

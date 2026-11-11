@@ -522,23 +522,25 @@ TEST(Classes_Generic_Errors,
 
 TEST(Classes_Generic_Errors, using_inside_module_resolves_generic) {
   auto value = sun::driver::executeStringWithStdlib(R"(
-    public module namo {
-      using std;
+public module namo {
 
-      public function make(a: ref HeapAllocator) Vec<String> {
-        var v = Vec<String>(a, 4);
-        v.push(String(a, "hi"));
-        return v;
-      }
-    }
+  using std;
 
-    using std;
+  public function make(a: ref HeapAllocator) Result<Vec<String>> {
+    var v = try Vec<String>(a, 4);
+    try v.push(try String(a, "hi"));
+    return Result.Ok(v);
+  }
+}
 
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var v = namo.make(alloc);
-      return _convert<i32>(v.size());
-    }
-  )");
+using std;
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var v = try namo.make(alloc);
+  return Result.Ok(_convert<i32>(v.size()));
+}
+)");
   EXPECT_EQ(value, 1);
 }

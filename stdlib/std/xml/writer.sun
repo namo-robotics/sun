@@ -2,27 +2,33 @@
 public module std.xml {
 
   /** Appends escaped character data to an existing buffer. */
-  function xml_escape(out: ref String, text: const ref String, attribute: bool) void {
+  function xml_escape(
+    out: ref String,
+    text: const ref String,
+    attribute: bool
+  ) AllocationResult<void> {
     for (var i: i64 = 0; i < text.length(); i += 1) {
       var c = xml_byte(text, i);
       if (c == 38) {
-        out.append("&amp;");
+        try out.append("&amp;");
       } else if (c == 60) {
-        out.append("&lt;");
+        try out.append("&lt;");
       } else if (c == 62) {
-        out.append("&gt;");
+        try out.append("&gt;");
       } else if (c == 13) {
-        out.append("&#13;");
+        try out.append("&#13;");
       } else if (attribute and c == 34) {
-        out.append("&quot;");
+        try out.append("&quot;");
       } else if (attribute and c == 9) {
-        out.append("&#9;");
+        try out.append("&#9;");
       } else if (attribute and c == 10) {
-        out.append("&#10;");
+        try out.append("&#10;");
       } else {
-        out.append_char(_convert<u8>(c));
+        try out.append_char(_convert<u8>(c));
       }
     }
+
+    return AllocationResult.Ok;
   }
 
   /** Tracks one open writer element and its delayed start tag. */
@@ -33,11 +39,11 @@ public module std.xml {
     var attributes: Vec<XmlName>;
 
     /** Starts an empty frame with explicitly allocated storage. */
-    init(alloc: ref HeapAllocator) {
-      this.qname = String(alloc, "");
-      this.head = String(alloc, "");
-      this.namespaces = Vec<XmlNamespace>(alloc, 4);
-      this.attributes = Vec<XmlName>(alloc, 4);
+    init(alloc: const ref HeapAllocator) AllocationResult<void> {
+      this.qname = try String(alloc, "");
+      this.head = try String(alloc, "");
+      this.namespaces = try Vec<XmlNamespace>(alloc, 4);
+      this.attributes = try Vec<XmlName>(alloc, 4);
     }
   }
 
@@ -54,10 +60,10 @@ public module std.xml {
     var serial: i64 = 0;
 
     /** Borrows output and allocates only through the supplied allocator. */
-    init(alloc: ref HeapAllocator, output: ref String) {
+    init(alloc: const ref HeapAllocator, output: ref String) AllocationResult<void> {
       this.alloc = alloc.copy();
       this.output = output;
-      this.stack = Vec<XmlWriteFrame>(alloc, 4);
+      this.stack = try Vec<XmlWriteFrame>(alloc, 4);
     }
 
     /** Marks an operation failed until it explicitly completes successfully. */
@@ -70,12 +76,14 @@ public module std.xml {
     }
 
     /** Commits an already validated delayed start tag. */
-    method flush() void {
+    method flush() AllocationResult<void> {
       if (this.pending) {
-        this.output.append(this.stack[this.stack.size() - 1].head);
-        this.output.append(">");
+        try this.output.append(this.stack[this.stack.size() - 1].head);
+        try this.output.append(">");
         this.pending = false;
       }
+
+      return AllocationResult.Ok;
     }
 
     /** Finds an effective prefix binding, checking the prospective frame first. */
@@ -99,38 +107,44 @@ public module std.xml {
     }
 
     /** Adds a declaration only when it changes the effective binding. */
-    method bind(frame: ref XmlWriteFrame, prefix: String, uri: String) void {
+    method bind(frame: ref XmlWriteFrame, prefix: String, uri: String) AllocationResult<void> {
       var same = match this.binding(frame, prefix) {
         Option.Some(value) => value.equals(uri),
         Option.None => prefix.is_empty() and uri.is_empty()
       };
       if (not same) {
-        frame.head.append(" xmlns");
+        try frame.head.append(" xmlns");
         if (not prefix.is_empty()) {
-          frame.head.append(":");
-          frame.head.append(prefix);
+          try frame.head.append(":");
+          try frame.head.append(prefix);
         }
-        frame.head.append("=\"");
-        xml_escape(frame.head, uri, true);
-        frame.head.append("\"");
-        frame.namespaces.push(XmlNamespace(prefix, uri));
+        try frame.head.append("=\"");
+        try xml_escape(frame.head, uri, true);
+        try frame.head.append("\"");
+        try frame.namespaces.push(XmlNamespace(prefix, uri));
       }
+
+      return AllocationResult.Ok;
     }
 
     /** Selects a deterministic prefix without reinterpreting expanded name identity. */
-    method qualify(frame: ref XmlWriteFrame, name: const ref XmlName, attribute: bool) String {
+    method qualify(
+      frame: ref XmlWriteFrame,
+      name: const ref XmlName,
+      attribute: bool
+    ) AllocationResult<String> {
       if (name.uri_.is_empty()) {
         if (not attribute) {
-          this.bind(frame, String(this.alloc, ""), String(this.alloc, ""));
+          try this.bind(frame, try String(this.alloc, ""), try String(this.alloc, ""));
         }
-        return name.local_.clone(this.alloc);
+        return AllocationResult.Ok(try name.local_.clone(this.alloc));
       }
       if (name.uri_.equals_literal("http://www.w3.org/XML/1998/namespace")) {
-        var result = String(this.alloc, "xml:");
-        result.append(name.local_);
-        return result;
+        var result = try String(this.alloc, "xml:");
+        try result.append(name.local_);
+        return AllocationResult.Ok(result);
       }
-      var prefix = name.prefix_.clone(this.alloc);
+      var prefix = try name.prefix_.clone(this.alloc);
       var usable = not attribute or not prefix.is_empty();
       if (usable) {
         usable = match this.binding(frame, prefix) {
@@ -141,8 +155,8 @@ public module std.xml {
       if (not usable) {
         while (true) {
           this.serial += 1;
-          prefix = String(this.alloc, "ns");
-          xml_append_number(prefix, this.serial);
+          prefix = try String(this.alloc, "ns");
+          try xml_append_number(prefix, this.serial);
           var available = match this.binding(frame, prefix) {
             Option.Some(_) => false,
             Option.None => true
@@ -152,184 +166,185 @@ public module std.xml {
           }
         }
       }
-      this.bind(frame, prefix.clone(this.alloc), name.uri_.clone(this.alloc));
-      var result = String(this.alloc, "");
+      try this.bind(frame, try prefix.clone(this.alloc), try name.uri_.clone(this.alloc));
+      var result = try String(this.alloc, "");
       if (not prefix.is_empty()) {
-        result.append(prefix);
-        result.append(":");
+        try result.append(prefix);
+        try result.append(":");
       }
-      result.append(name.local_);
-      return result;
+      try result.append(name.local_);
+      return AllocationResult.Ok(result);
     }
 
     /** Writes an optional declaration before any document content. */
-    public method declaration() XmlResult<void> {
+    public method declaration() Result<void> {
       try this.begin();
       if (this.started) {
-        return XmlResult.Error(xml_error("XML declaration must be first"));
+        return Result.Xml(xml_error("XML declaration must be first"));
       }
-      this.output.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+      try this.output.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
       this.started = true;
       this.failed = false;
-      return XmlResult.Ok;
+      return Result.Ok;
     }
 
     /** Opens an element, automatically declaring namespaces as needed. */
-    public method start_element(name: const ref XmlName) XmlResult<void> {
-      var declarations = Vec<XmlNamespace>(this.alloc, 4);
-      return this.start_with_namespaces(name, declarations);
+    public method start_element(name: const ref XmlName) Result<void> {
+      var declarations = try Vec<XmlNamespace>(this.alloc, 4);
+      try this.start_with_namespaces(name, declarations);
+      return Result.Ok;
     }
 
     /** Opens a parsed element while preserving compatible explicit declarations. */
     method start_with_namespaces(
       name: const ref XmlName,
       declarations: const ref Vec<XmlNamespace>
-    ) XmlResult<void> {
+    ) Result<void> {
       try this.begin();
       try name.validate();
       if (this.stack.size() >= 256) {
-        return XmlResult.Error(xml_error("XML nesting too deep"));
+        return Result.Xml(xml_error("XML nesting too deep"));
       }
       if (this.stack.is_empty() and this.roots != 0) {
-        return XmlResult.Error(xml_error("multiple root elements"));
+        return Result.Xml(xml_error("multiple root elements"));
       }
-      var frame = XmlWriteFrame(this.alloc);
+      var frame = try XmlWriteFrame(this.alloc);
       // Namespace declarations are assembled before the lexical element name.
       for (var i: i64 = 0; i < declarations.size(); i += 1) {
         if (name.uri_.is_empty() and declarations[i].prefix.is_empty()) {
           continue;
         }
-        this.bind(
+        try this.bind(
           frame,
-          declarations[i].prefix.clone(this.alloc),
-          declarations[i].uri.clone(this.alloc)
+          try declarations[i].prefix.clone(this.alloc),
+          try declarations[i].uri.clone(this.alloc)
         );
       }
-      var qname = this.qualify(frame, name, false);
-      var head = String(this.alloc, "<");
-      head.append(qname);
-      head.append(frame.head);
+      var qname = try this.qualify(frame, name, false);
+      var head = try String(this.alloc, "<");
+      try head.append(qname);
+      try head.append(frame.head);
       frame.head = head;
       frame.qname = qname;
-      this.flush();
+      try this.flush();
       if (this.stack.is_empty()) {
         this.roots += 1;
       }
-      this.stack.push(frame);
+      try this.stack.push(frame);
       this.pending = true;
       this.started = true;
       this.failed = false;
-      return XmlResult.Ok;
+      return Result.Ok;
     }
 
     /** Adds an attribute while the current start tag remains open. */
-    public method attribute(name: const ref XmlName, value: const ref String) XmlResult<void> {
+    public method attribute(name: const ref XmlName, value: const ref String) Result<void> {
       try this.begin();
       if (not this.pending) {
-        return XmlResult.Error(xml_error("attribute requires an open start tag"));
+        return Result.Xml(xml_error("attribute requires an open start tag"));
       }
       try name.validate();
       try xml_validate_text(value);
       if (name.uri_.is_empty() and name.local_.equals_literal("xmlns")) {
-        return XmlResult.Error(xml_error("namespace declarations are managed automatically"));
+        return Result.Xml(xml_error("namespace declarations are managed automatically"));
       }
       var n = this.stack.size() - 1;
       for (var i: i64 = 0; i < this.stack[n].attributes.size(); i += 1) {
         if (this.stack[n].attributes[i].equals(name)) {
-          return XmlResult.Error(xml_error("duplicate expanded attribute"));
+          return Result.Xml(xml_error("duplicate expanded attribute"));
         }
       }
       // Temporarily remove the current frame to avoid borrowing it through this.
       var frame = match this.stack.pop() {
         Option.Some(f) => f,
         Option.None => {
-          return XmlResult.Error(xml_error("missing writer frame"));
+          return Result.Xml(xml_error("missing writer frame"));
         }
       };
-      var qname = this.qualify(frame, name, true);
-      frame.head.append(" ");
-      frame.head.append(qname);
-      frame.head.append("=\"");
-      xml_escape(frame.head, value, true);
-      frame.head.append("\"");
-      frame.attributes.push(name.clone(this.alloc));
-      this.stack.push(frame);
+      var qname = try this.qualify(frame, name, true);
+      try frame.head.append(" ");
+      try frame.head.append(qname);
+      try frame.head.append("=\"");
+      try xml_escape(frame.head, value, true);
+      try frame.head.append("\"");
+      try frame.attributes.push(try name.clone(this.alloc));
+      try this.stack.push(frame);
       this.failed = false;
-      return XmlResult.Ok;
+      return Result.Ok;
     }
 
     /** Writes character data, permitting only whitespace outside the root. */
-    public method text(value: const ref String) XmlResult<void> {
+    public method text(value: const ref String) Result<void> {
       try this.begin();
       try xml_validate_text(value);
       if (this.stack.is_empty()) {
         for (var i: i64 = 0; i < value.length(); i += 1) {
           if (not xml_space(xml_byte(value, i))) {
-            return XmlResult.Error(xml_error("text outside root"));
+            return Result.Xml(xml_error("text outside root"));
           }
         }
       }
-      this.flush();
+      try this.flush();
       if (this.stack.is_empty()) {
-        this.output.append(value);
+        try this.output.append(value);
       } else {
-        xml_escape(this.output, value, false);
+        try xml_escape(this.output, value, false);
       }
       this.started = true;
       this.failed = false;
-      return XmlResult.Ok;
+      return Result.Ok;
     }
 
     /** Writes a validated comment. */
-    public method comment(value: const ref String) XmlResult<void> {
+    public method comment(value: const ref String) Result<void> {
       try this.begin();
       try xml_validate_comment(value);
-      this.flush();
-      this.output.append("<!--");
-      this.output.append(value);
-      this.output.append("-->");
+      try this.flush();
+      try this.output.append("<!--");
+      try this.output.append(value);
+      try this.output.append("-->");
       this.started = true;
       this.failed = false;
-      return XmlResult.Ok;
+      return Result.Ok;
     }
 
     /** Writes an uninterpreted, validated processing instruction. */
-    public method instruction(target: const ref String, data: const ref String) XmlResult<void> {
+    public method instruction(target: const ref String, data: const ref String) Result<void> {
       try this.begin();
       try xml_validate_instruction(target, data);
-      this.flush();
-      this.output.append("<?");
-      this.output.append(target);
+      try this.flush();
+      try this.output.append("<?");
+      try this.output.append(target);
       if (not data.is_empty()) {
-        this.output.append(" ");
-        this.output.append(data);
+        try this.output.append(" ");
+        try this.output.append(data);
       }
-      this.output.append("?>");
+      try this.output.append("?>");
       this.started = true;
       this.failed = false;
-      return XmlResult.Ok;
+      return Result.Ok;
     }
 
     /** Closes the innermost element, using empty-element syntax when possible. */
-    public method end_element() XmlResult<void> {
+    public method end_element() Result<void> {
       try this.begin();
       var frame = match this.stack.pop() {
         Option.Some(f) => f,
         Option.None => {
-          return XmlResult.Error(xml_error("no open element"));
+          return Result.Xml(xml_error("no open element"));
         }
       };
       if (this.pending) {
-        this.output.append(frame.head);
-        this.output.append("/>");
+        try this.output.append(frame.head);
+        try this.output.append("/>");
         this.pending = false;
       } else {
-        this.output.append("</");
-        this.output.append(frame.qname);
-        this.output.append(">");
+        try this.output.append("</");
+        try this.output.append(frame.qname);
+        try this.output.append(">");
       }
       this.failed = false;
-      return XmlResult.Ok;
+      return Result.Ok;
     }
 
     /** Verifies completion and prevents further writes. */
@@ -345,15 +360,17 @@ public module std.xml {
   }
 
   /** Appends positive decimal digits without allocating temporary strings. */
-  function xml_append_number(out: ref String, value: i64) void {
+  function xml_append_number(out: ref String, value: i64) AllocationResult<void> {
     if (value >= 10) {
-      xml_append_number(out, value / 10);
+      try xml_append_number(out, value / 10);
     }
-    out.append_char(_convert<u8>(48 + value % 10));
+    try out.append_char(_convert<u8>(48 + value % 10));
+
+    return AllocationResult.Ok;
   }
 
   /** Serializes ordered content through the checked writer. */
-  function xml_write_node(writer: ref XmlWriter, node: ref XmlNode) XmlResult<void> {
+  function xml_write_node(writer: ref XmlWriter, node: ref XmlNode) Result<void> {
     return match node.value {
       XmlNodeValue.Element(e) => xml_write_element(writer, e),
       XmlNodeValue.Text(t) => writer.text(t),
@@ -363,7 +380,7 @@ public module std.xml {
   }
 
   /** Serializes one element while preserving semantic names and content order. */
-  function xml_write_element(writer: ref XmlWriter, element: ref XmlElement) XmlResult<void> {
+  function xml_write_element(writer: ref XmlWriter, element: ref XmlElement) Result<void> {
     try writer.start_with_namespaces(element.name_, element.namespaces);
     for (var i: i64 = 0; i < element.attributes.size(); i += 1) {
       try writer.attribute(element.attributes[i].name, element.attributes[i].value);

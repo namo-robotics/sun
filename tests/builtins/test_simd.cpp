@@ -120,35 +120,70 @@ TEST(Builtins_SIMD, overlapping_copy) {
  * bundle. */
 TEST(Builtins_SIMD, matrix_and_vectors_from_bundle) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
-    using std;
-    using std.linalg;
-    /** Runs register tiles and both row and column tails through bundled Matrix operators. */
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var a = Matrix<f32>([[1.0f32, 2.0f32], [3.0f32, 4.0f32],
-                           [5.0f32, 6.0f32], [7.0f32, 8.0f32],
-                           [9.0f32, 10.0f32]], alloc);
-      var b = Matrix<f32>([[1.0f32, 2.0f32, 3.0f32, 4.0f32, 5.0f32],
-                           [6.0f32, 7.0f32, 8.0f32, 9.0f32, 10.0f32]], alloc);
-      var factor = std.simd.splat(2.0f32);
-      var squared = factor * factor;
-      var contracted = factor.mul_add(factor, factor);
-      if (contracted.w != 6.0f32) { return -6; }
-      var fused = factor.fma(factor, factor);
-      if (fused.w != 6.0f32) { return -4; }
-      var wide = std.simd.F32x8(2.0f32);
-      var wide_fused = wide.fma(wide, wide);
-      if (wide_fused.x7 != 6.0f32) { return -5; }
-      if (squared.w != 4.0f32) { return -1; }
-      match a * b {
-        std.linalg.LinalgResult.Ok(c) => {
-          if (c[3, 3] != 100.0f32 or c[4, 4] != 145.0f32) { return -3; }
-          return _convert<i32>(c[0, 0] + c[1, 4]);
-        },
-        std.linalg.LinalgResult.Error(error) => { return -2; }
-      };
+using std;
+using std.linalg;
+
+/** Runs register tiles and both row and column tails through bundled Matrix operators. */
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var a = try Matrix<f32>(
+    [
+      [1.0f32, 2.0f32],
+      [3.0f32, 4.0f32],
+      [5.0f32, 6.0f32],
+      [7.0f32, 8.0f32],
+      [9.0f32, 10.0f32]
+    ],
+    alloc
+  );
+  var b = try Matrix<f32>(
+    [
+      [1.0f32, 2.0f32, 3.0f32, 4.0f32, 5.0f32],
+      [6.0f32, 7.0f32, 8.0f32, 9.0f32, 10.0f32]
+    ],
+    alloc
+  );
+  var factor = std.simd.splat(2.0f32);
+  var squared = factor * factor;
+  var contracted = factor.mul_add(factor, factor);
+  if (contracted.w != 6.0f32) {
+    return Result.Ok(-6);
+  }
+  var fused = factor.fma(factor, factor);
+  if (fused.w != 6.0f32) {
+    return Result.Ok(-4);
+  }
+  var wide = std.simd.F32x8(2.0f32);
+  var wide_fused = wide.fma(wide, wide);
+  if (wide_fused.x7 != 6.0f32) {
+    return Result.Ok(-5);
+  }
+  if (squared.w != 4.0f32) {
+    return Result.Ok(-1);
+  }
+  match a * b {
+    std.linalg.LinalgResult.Ok(c) => {
+      if (c[3, 3] != 100.0f32 or c[4, 4] != 145.0f32) {
+        return Result.Ok(-3);
+      }
+      return Result.Ok(_convert<i32>(c[0, 0] + c[1, 4]));
+    },
+    std.linalg.LinalgResult.Error(error) => {
+      return Result.Ok(-2);
+    },
+    std.linalg.LinalgResult.Allocation(error) => {
+      return Result.Ok(-2);
+    },
+    std.linalg.LinalgResult.InvalidArgument(error) => {
+      return Result.Ok(-2);
+    },
+    std.linalg.LinalgResult.Overflow(error) => {
+      return Result.Ok(-2);
     }
-  )"),
+  };
+}
+)"),
             68);
 }
 
@@ -229,23 +264,41 @@ TEST(Builtins_SIMD, bounded_stack_scratch) {
  * stdlib.moon. */
 TEST(Builtins_SIMD, packed_matrix_from_bundle) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
-    using std;
-    using std.linalg;
-    /** Crosses an inner-panel boundary with initialized inputs and fresh output. */
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var a = Matrix<f32>(alloc, [16i64, 65i64]);
-      var b = Matrix<f32>(alloc, [65i64, 16i64]);
-      var c = Matrix<f32>(alloc, [16i64, 16i64]);
-      for (var i: i64 = 0; i < 16; i = i + 1) {
-        for (var p: i64 = 0; p < 65; p = p + 1) { a[i, p] = 1.0f32; b[p, i] = 1.0f32; }
-      }
-      match a.matmul_into(b, c) {
-        std.linalg.LinalgResult.Ok => { return _convert<i32>(c[0, 0] + c[15, 15]); },
-        std.linalg.LinalgResult.Error(error) => { return -1; }
-      };
+using std;
+using std.linalg;
+
+/** Crosses an inner-panel boundary with initialized inputs and fresh output. */
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var a = try Matrix<f32>(alloc, [16i64, 65i64]);
+  var b = try Matrix<f32>(alloc, [65i64, 16i64]);
+  var c = try Matrix<f32>(alloc, [16i64, 16i64]);
+  for (var i: i64 = 0; i < 16; i = i + 1) {
+    for (var p: i64 = 0; p < 65; p = p + 1) {
+      a[i, p] = 1.0f32;
+      b[p, i] = 1.0f32;
     }
-  )"),
+  }
+  match a.matmul_into(b, c) {
+    std.linalg.LinalgResult.Ok => {
+      return Result.Ok(_convert<i32>(c[0, 0] + c[15, 15]));
+    },
+    std.linalg.LinalgResult.Error(error) => {
+      return Result.Ok(-1);
+    },
+    std.linalg.LinalgResult.Allocation(error) => {
+      return Result.Ok(-1);
+    },
+    std.linalg.LinalgResult.InvalidArgument(error) => {
+      return Result.Ok(-1);
+    },
+    std.linalg.LinalgResult.Overflow(error) => {
+      return Result.Ok(-1);
+    }
+  };
+}
+)"),
             130);
 }
 

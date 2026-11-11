@@ -65,7 +65,9 @@ Value* IntrinsicsGenerator::allocateAlignedBytes(Value* bytes,
   if (alignment <= module->getDataLayout().getPointerABIAlignment(0).value()) {
     auto function = module->getOrInsertFunction(
         "malloc", llvm::FunctionType::get(pointer, {i64}, false));
-    return ctx.builder->CreateCall(function, {bytes});
+    auto* allocation = ctx.builder->CreateCall(function, {bytes});
+    allocation->addFnAttr(llvm::Attribute::NoBuiltin);
+    return allocation;
   }
   llvm::Triple target(module->getTargetTriple());
   if (!target.isOSLinux() && !target.isOSDarwin()) {

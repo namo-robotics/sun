@@ -6,7 +6,6 @@ The Sun standard library is distributed as a precompiled `stdlib.moon` file. Inc
 using std;
 
 function main() void {
-    var allocator = make_heap_allocator();
     // Use stdlib types...
 }
 
@@ -15,14 +14,14 @@ manifest {
 }
 ```
 
-import { Callout } from 'nextra/components'
+import { Callout } from "nextra/components";
 
 <Callout type="info">
   An installed compiler finds `stdlib.moon` on its own — the Homebrew and Debian
   packages put it where the compiler already looks. `SUN_PATH` is only needed
-  when you built from source, where it points at the `build/` directory:
-  `export SUN_PATH=/path/to/sun/build`. See
-  [Path Resolution](/modules#path-resolution) for every place that is searched.
+  when you built from source, where it points at the `build/` directory: `export
+  SUN_PATH=/path/to/sun/build`. See [Path Resolution](/modules#path-resolution)
+  for every place that is searched.
 </Callout>
 
 The library's own tests are Sun code: each `stdlib/<area>_tests.sun` sits
@@ -35,14 +34,14 @@ next to the file it tests, listed under `test_files:` in the manifest (see
 Import the module for the API you use. `using std;` provides core types such
 as `String`, `Vec`, `Option`, and `Result`; it does not import child modules.
 
-| Module | APIs |
-| --- | --- |
-| `std.io` | Printing, files, streams, and readiness polling |
-| `std.net` | IPv4, TCP, UDP, and socket configuration |
-| `std.http` | HTTP requests, responses, and servers |
-| `std.json` | JSON values, parsing, and serialization |
-| `std.xml` | XML documents, parsing, and serialization |
-| `std.linalg` | Matrices, matrix views, and linear algebra |
+| Module       | APIs                                            |
+| ------------ | ----------------------------------------------- |
+| `std.io`     | Printing, files, streams, and readiness polling |
+| `std.net`    | IPv4, TCP, UDP, and socket configuration        |
+| `std.http`   | HTTP requests, responses, and servers           |
+| `std.json`   | JSON values, parsing, and serialization         |
+| `std.xml`    | XML documents, parsing, and serialization       |
+| `std.linalg` | Matrices, matrix views, and linear algebra      |
 
 For example, printing now needs `using std.io;`, and TCP sockets need
 `using std.net;`. Qualified calls use names such as `std.io.println` and
@@ -50,25 +49,49 @@ For example, printing now needs `using std.io;`, and TCP sockets need
 
 ## HeapAllocator
 
-The standard memory allocator using system `malloc`/`free`. Many stdlib types require an allocator for construction.
+`global_allocator` is the immutable system heap allocator. Pass it explicitly to
+allocating APIs; it can be shared across functions and modules without constructing
+an allocator in each function. `HeapAllocator()` and `make_heap_allocator()` remain
+available and do not allocate.
 
 ```sun
-var allocator = make_heap_allocator();
+function build_values() Result<Vec<i32>> {
+    var values = try Vec<i32>(global_allocator, 4);
+    try values.push(42);
+    return Result.Ok(values);
+}
 ```
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `alloc<T>(count)` | `(i64) raw_ptr<T>` | Allocate array of `count` elements |
-| `alloc_raw(size)` | `(i64) raw_ptr<i8>` | Allocate `size` raw bytes |
-| `dealloc(ptr, size)` | `(raw_ptr<i8>, i64) void` | Free allocated memory |
-| `create<T>(args...)` | `(...) raw_ptr<T>` | Allocate and construct a single T |
-| `copy()` | `() HeapAllocator` | Create a copy of the allocator |
+Allocation returns `AllocationResult<T>`: `Ok(T)`, `Allocation(AllocationError)`,
+`InvalidArgument(InvalidArgumentError)`, or `Overflow(OverflowError)`. Negative
+sizes are rejected before calling the system allocator; typed size multiplication
+is checked. Zero-sized requests own at least one physical byte and are freed normally.
+
+| Method | Return type | Behavior |
+| --- | --- | --- |
+| `alloc<T>(count)` | `AllocationResult<raw_ptr<T>>` | Allocate aligned, uninitialized element storage |
+| `alloc_raw(size)` | `AllocationResult<raw_ptr<u8>>` | Allocate uninitialized bytes |
+| `dealloc<T>(pointer, count)` | `void` | Free storage after destroying initialized values |
+| `dealloc_raw(pointer, size)` | `void` | Free raw storage |
+| `create<T>(args...)` | `Result<raw_ptr<T>>` | Allocate and initialize a value |
+| `create_unique<T>(args...)` | `Result<Unique<T>>` | Allocate and initialize an automatically owned value |
+| `copy()` | `HeapAllocator` | Explicitly copy the stateless allocator |
+
+`create` and `create_unique` propagate supported constructor errors. A failed
+allocation never runs the constructor. Failed construction releases raw storage
+and drops initialized fields without calling the incomplete object's destructor.
+Unsupported constructor error payloads are rejected during compilation.
+
+String and container construction, growth, cloning, and serialization also return
+results when they can allocate. Use `try` in a function with a compatible result
+return type, or `match` to handle failure locally. Failed vector or map growth
+preserves existing contents and capacity. Arguments passed by value are still
+consumed according to the usual ownership rules.
 
 ```sun
-var allocator = make_heap_allocator();
-var p: raw_ptr<Point> = allocator.create<Point>(3, 4);
-// p points to a heap-allocated, initialized Point
-_free(p);  // Manual cleanup
+function make_point() Result<Unique<Point>> {
+    return global_allocator.create_unique<Point>(3, 4);
+}
 ```
 
 ## Unique\<T\>
@@ -76,20 +99,19 @@ _free(p);  // Manual cleanup
 A smart pointer that automatically frees its data when `deinit` is called (at scope exit). Provides safe access to heap-allocated objects without manual `unsafe` blocks.
 
 ```sun
-var allocator = make_heap_allocator();
-var p = Unique<Point>(allocator.create<Point>(3, 4));
+var p = try global_allocator.create_unique<Point>(3, 4);
 p.get().x;     // Safe access - returns ref T
 p.get_raw();   // Get raw pointer for low-level operations
 p.is_null();   // Check if null
 // p.deinit() called automatically at scope exit
 ```
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `get()` | `() ref T` | Safe dereference - returns a reference to the value |
-| `get_raw()` | `() raw_ptr<T>` | Get the underlying raw pointer |
-| `is_null()` | `() bool` | Check if pointer is null |
-| `deinit()` | `() void` | Free memory (called automatically) |
+| Method      | Signature       | Description                                         |
+| ----------- | --------------- | --------------------------------------------------- |
+| `get()`     | `() ref T`      | Safe dereference - returns a reference to the value |
+| `get_raw()` | `() raw_ptr<T>` | Get the underlying raw pointer                      |
+| `is_null()` | `() bool`       | Check if pointer is null                            |
+| `deinit()`  | `() void`       | Free memory (called automatically)                  |
 
 ## Shared\<T\>
 
@@ -104,8 +126,7 @@ The value is reachable only through `lock()`, which waits for the lock and
 returns a guard that releases it when dropped.
 
 ```sun
-var allocator = make_heap_allocator();
-var s = Shared<Counter>(allocator, Counter());
+var s = try Shared<Counter>(global_allocator, Counter());
 
 var c = s.clone();        // two owners now
 s.count();                // 2
@@ -116,18 +137,18 @@ if (true) {
 }                         // g is dropped here, which unlocks
 ```
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `clone()` | `() Shared<T>` | Another owner of the same value |
-| `lock()` | `() SharedGuard<T>` | Wait for the lock, return a guard that holds it |
-| `count()` | `() i32` | How many owners there are right now |
-| `is_null()` | `() bool` | Whether the handle has been moved out of |
-| `deinit()` | `() void` | Drop one owner (called automatically) |
+| Method      | Signature           | Description                                     |
+| ----------- | ------------------- | ----------------------------------------------- |
+| `clone()`   | `() Shared<T>`      | Another owner of the same value                 |
+| `lock()`    | `() SharedGuard<T>` | Wait for the lock, return a guard that holds it |
+| `count()`   | `() i32`            | How many owners there are right now             |
+| `is_null()` | `() bool`           | Whether the handle has been moved out of        |
+| `deinit()`  | `() void`           | Drop one owner (called automatically)           |
 
-| `SharedGuard<T>` method | Signature | Description |
-|--------|-----------|-------------|
-| `get()` | `() ref T` | The shared value, as a reference |
-| `deinit()` | `() void` | Release the lock (called automatically) |
+| `SharedGuard<T>` method | Signature  | Description                             |
+| ----------------------- | ---------- | --------------------------------------- |
+| `get()`                 | `() ref T` | The shared value, as a reference        |
+| `deinit()`              | `() void`  | Release the lock (called automatically) |
 
 See [Threads](/threads) for sharing one value between several threads.
 
@@ -136,31 +157,30 @@ See [Threads](/threads) for sharing one value between several threads.
 A generic growable array backed by contiguous memory. Implements `IIterable<T, Vec<T>>` for use with for-in loops.
 
 ```sun
-var allocator = make_heap_allocator();
-var v = Vec<i32>(allocator, 8);  // Initial capacity 8
-v.push(10);
-v.push(20);
-v.push(30);
-var val = v.get(0);       // 10
-v.set(1, 25);             // Update index 1
+var v = try Vec<i32>(global_allocator, 8);  // Initial capacity 8
+try v.push(10);
+try v.push(20);
+try v.push(30);
+try v.set(1, 25);         // Update index 1
 var last = v.pop();       // Option.Some(30) (removes last element)
 var len = v.size();       // 2
+var val = try v.get(0);   // Borrows 10; keep the Vec unchanged while using val
 ```
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `push(value)` | `(T) void` | Append element (grows if needed) |
-| `pop()` | `() Option<T>` | Remove and return last element; `None` when empty (ownership moves to the caller) |
-| `get(index)` | `(i64) T` | Get element at index |
-| `set(index, value)` | `(i64, T) void` | Set element at index |
-| `size()` | `() i64` | Current number of elements |
-| `capacity()` | `() i64` | Current allocated capacity |
-| `is_empty()` | `() bool` | Check if empty |
-| `reserve(n)` | `(i64) void` | Ensure capacity for at least n elements |
-| `clear()` | `() void` | Remove all elements (doesn't deallocate) |
-| `first()` | `() Option<T>` | Get first element; `None` when empty |
-| `last()` | `() Option<T>` | Get last element; `None` when empty |
-| `iter()` | `() VecIterator<T>` | Get iterator for for-in loops |
+| Method              | Signature                     | Description                                                                       |
+| ------------------- | ----------------------------- | --------------------------------------------------------------------------------- |
+| `push(value)`       | `(T) AllocationResult<void>`                    | Append element (grows if needed)                                                  |
+| `pop()`             | `() Option<T>`                | Remove and return last element; `None` when empty (ownership moves to the caller) |
+| `get(index)`        | `(i64) AccessResult<ref T>`   | Borrow an element or report an invalid index                                      |
+| `set(index, value)` | `(i64, T) AccessResult<void>` | Replace an element or report an invalid index                                     |
+| `size()`            | `() i64`                      | Current number of elements                                                        |
+| `capacity()`        | `() i64`                      | Current allocated capacity                                                        |
+| `is_empty()`        | `() bool`                     | Check if empty                                                                    |
+| `reserve(n)`        | `(i64) AllocationResult<void>`                  | Ensure capacity for at least n elements                                           |
+| `clear()`           | `() void`                     | Remove all elements (doesn't deallocate)                                          |
+| `first()`           | `() Option<ref T>`            | Borrow the first element; `None` when empty                                       |
+| `last()`            | `() Option<ref T>`            | Borrow the last element; `None` when empty                                        |
+| `iter()`            | `() VecIterator<T>`           | Get iterator for for-in loops                                                     |
 
 ### Indexing
 
@@ -176,8 +196,8 @@ var x = v[0];    // Calls __index__
 ```sun
 using std.io;
 
-var v = Vec<i32>(allocator, 4);
-v.push(1); v.push(2); v.push(3);
+var v = try Vec<i32>(allocator, 4);
+try v.push(1); try v.push(2); try v.push(3);
 
 for (var x: i32 in v) {
     println(x);
@@ -189,27 +209,26 @@ for (var x: i32 in v) {
 A generic hash map using open addressing with linear probing. Implements `IIterable<V, Map<K, V>>` for iterating over values. Supports `i32`, `i64`, and `String` keys.
 
 ```sun
-var allocator = make_heap_allocator();
-var m = Map<i64, i32>(allocator, 16);  // Initial capacity 16
-m.insert(42, 100);
+var m = try Map<i64, i32>(global_allocator, 16);  // Initial capacity 16
+try m.insert(42, 100);
 var fallback: i32 = 0;
-var val = m.get_or_default(42, fallback);   // 100
+var val: i32 = m.get_or_default(42, fallback);   // 100
 ignore_error(m.remove(42));
 ```
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `insert(key, value)` | `(K, V) void` | Insert or update a key-value pair |
-| `get(key)` | `(K) LookupResult<ref V>` | Borrow the value or return `NotFound` |
-| `find(key)` | `(K) Option<ref V>` | Get value by key; `None` if not present |
-| `get_or_default(key, default)` | `(K, ref V) ref V` | Get value or return default |
-| `remove(key)` | `(K) LookupResult<V>` | Remove the value or return `NotFound` |
-| `contains(key)` | `(K) bool` | Check if key exists |
-| `size()` | `() i64` | Number of entries |
-| `capacity()` | `() i64` | Number of buckets |
-| `is_empty()` | `() bool` | Check if empty |
-| `clear()` | `() void` | Remove all entries |
-| `iter()` | `() MapIterator<K, V>` | Get iterator over values |
+| Method                         | Signature                 | Description                             |
+| ------------------------------ | ------------------------- | --------------------------------------- |
+| `insert(key, value)`           | `(K, V) AllocationResult<void>`             | Insert or update a key-value pair       |
+| `get(key)`                     | `(K) LookupResult<ref V>` | Borrow the value or return `NotFound`   |
+| `find(key)`                    | `(K) Option<ref V>`       | Get value by key; `None` if not present |
+| `get_or_default(key, default)` | `(K, ref V) ref V`        | Get value or return default             |
+| `remove(key)`                  | `(K) LookupResult<V>`     | Remove the value or return `NotFound`   |
+| `contains(key)`                | `(K) bool`                | Check if key exists                     |
+| `size()`                       | `() i64`                  | Number of entries                       |
+| `capacity()`                   | `() i64`                  | Number of buckets                       |
+| `is_empty()`                   | `() bool`                 | Check if empty                          |
+| `clear()`                      | `() void`                 | Remove all entries                      |
+| `iter()`                       | `() MapIterator<K, V>`    | Get iterator over values                |
 
 Handle `get` and `remove` with `match`, or propagate their `LookupResult`
 with `try` from a function that returns a compatible result enum.
@@ -219,9 +238,9 @@ with `try` from a function that returns a compatible result enum.
 ```sun
 using std.io;
 
-var m = Map<i64, i32>(allocator, 16);
-m.insert(1, 10);
-m.insert(2, 20);
+var m = try Map<i64, i32>(allocator, 16);
+try m.insert(1, 10);
+try m.insert(2, 20);
 
 for (var v: i32 in m) {
     println(v);  // Iterates over values
@@ -229,7 +248,8 @@ for (var v: i32 in m) {
 ```
 
 <Callout type="warning">
-  The map automatically grows when load factor exceeds 70%. Initial capacity should be chosen based on expected size for best performance.
+  The map automatically grows when load factor exceeds 70%. Initial capacity
+  should be chosen based on expected size for best performance.
 </Callout>
 
 ## String
@@ -238,14 +258,12 @@ A heap-allocated mutable string backed by `Matrix<u8>`. Supports slicing via the
 
 ```sun
 using std.io;
-
-var allocator = make_heap_allocator();
-var s = String(allocator, "Hello");
-var t = String("literal only");  // allocator-less: uses a fresh HeapAllocator
+var s = try String(global_allocator, "Hello");
+var t = try String("literal only");  // uses global_allocator
 println(s.length());   // 5
-var ch = s.at(0);          // b'H'
-s.append_char(b'!');       // Append a byte
-s.push('😀');              // Append a char, UTF-8 encoded
+var ch = try s.at(0);          // b'H'
+try s.append_char(b'!');       // Append a byte
+try s.push('😀');              // Append a char, UTF-8 encoded
 ```
 
 A `String` holds UTF-8 and is indexed by **byte**: `at`, `length` and the
@@ -254,38 +272,38 @@ The methods that speak in Unicode scalar values — `push`, `iterate_chars`,
 `count_chars`, and the `char` overloads of `find` / `rfind` / `contains` — take
 and yield `char`. See [Characters and Bytes](/builtin-types#characters-and-bytes).
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `length()` | `() i64` | Current string length |
-| `capacity()` | `() i64` | Allocated capacity |
-| `is_empty()` | `() bool` | True when the string has no bytes |
-| `at(i)` | `(i64) AccessResult<u8>` | Read a byte; reject indices outside `length()` |
-| `set_at(i, val)` | `(i64, u8) AccessResult<void>` | Write a byte; reject indices outside `length()` |
-| `unsafe_at(i)` | `(i64) u8` | Unchecked read; requires an unsafe block |
-| `unsafe_set_at(i, val)` | `(i64, u8) void` | Unchecked write; requires an unsafe block |
-| `append_char(ch)` | `(u8) void` | Append a single byte |
-| `append(other)` | `(const ref String) void` | Append another String |
-| `append_literal(s)` | `(static_ptr<u8>) void` | Append a string literal |
-| `equals_literal(s)` | `(static_ptr<u8>) bool` | Compare with a string literal |
-| `find_char(ch)` | `(u8) Option<i64>` | Index of first occurrence; `None` if absent |
-| `rfind_char(ch)` | `(u8) Option<i64>` | Index of last occurrence; `None` if absent |
-| `contains_char(ch)` | `(u8) bool` | Check if the byte occurs |
-| `push(c)` | `(char) void` | Append the UTF-8 encoding of a char (1 to 4 bytes) |
-| `iterate_chars()` | `() Chars` | Iterate the string as Unicode scalar values |
-| `count_chars()` | `() i64` | Number of scalar values, which is `length()` only for ASCII |
-| `find(c)` | `(char) Option<i64>` | Byte index of the first occurrence of a char; `None` if absent |
-| `rfind(c)` | `(char) Option<i64>` | Byte index of the last occurrence of a char; `None` if absent |
-| `contains(c)` | `(char) bool` | Check if the char occurs |
-| `find(needle)` | `(static_ptr<u8>) Option<i64>`, `(const ref String) Option<i64>` | Index of first occurrence of a substring; `None` if absent |
-| `contains(needle)` | `(static_ptr<u8>) bool`, `(const ref String) bool` | Check if the substring occurs |
-| `starts_with(s)` / `ends_with(s)` | `(static_ptr<u8>) bool`, `(const ref String) bool` | Prefix / suffix check |
-| `append_i64(n)` / `append_u64(n)` | `(i64) void` | Append an integer in decimal |
-| `append_f64(x)` | `(f64) void` | Append a float in its shortest round-trip form (`0.1`, `1e+21`) |
-| `append(x)` | `(f64) void`, `(f32) void`, ... | Overloads used by `${x}` interpolation for every primitive |
-| `parse_i64()` | `() Option<i64>` | Whole string as a decimal integer; `None` if malformed or out of range |
-| `parse_f64()` | `() Option<f64>` | Whole string as a decimal float; `None` if malformed |
-| `bytes()` | `() raw_ptr<u8>` (const method) | Borrow the bytes without allocating or adding a NUL terminator |
-| `c_str()` | `() raw_ptr<u8>` | NUL-terminated pointer for C, valid until the next mutation |
+| Method                            | Signature                                                        | Description                                                            |
+| --------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `length()`                        | `() i64`                                                         | Current string length                                                  |
+| `capacity()`                      | `() i64`                                                         | Allocated capacity                                                     |
+| `is_empty()`                      | `() bool`                                                        | True when the string has no bytes                                      |
+| `at(i)`                           | `(i64) AccessResult<u8>`                                         | Read a byte; reject indices outside `length()`                         |
+| `set_at(i, val)`                  | `(i64, u8) AccessResult<void>`                                   | Write a byte; reject indices outside `length()`                        |
+| `unsafe_at(i)`                    | `(i64) u8`                                                       | Unchecked read; requires an unsafe block                               |
+| `unsafe_set_at(i, val)`           | `(i64, u8) void`                                                 | Unchecked write; requires an unsafe block                              |
+| `append_char(ch)`                 | `(u8) AllocationResult<void>`                                                      | Append a single byte                                                   |
+| `append(other)`                   | `(const ref String) AllocationResult<void>`                                        | Append another String                                                  |
+| `append_literal(s)`               | `(static_ptr<u8>) AllocationResult<void>`                                          | Append a string literal                                                |
+| `equals_literal(s)`               | `(static_ptr<u8>) bool`                                          | Compare with a string literal                                          |
+| `find_char(ch)`                   | `(u8) Option<i64>`                                               | Index of first occurrence; `None` if absent                            |
+| `rfind_char(ch)`                  | `(u8) Option<i64>`                                               | Index of last occurrence; `None` if absent                             |
+| `contains_char(ch)`               | `(u8) bool`                                                      | Check if the byte occurs                                               |
+| `push(c)`                         | `(char) AllocationResult<void>`                                                    | Append the UTF-8 encoding of a char (1 to 4 bytes)                     |
+| `iterate_chars()`                 | `() Chars`                                                       | Iterate the string as Unicode scalar values                            |
+| `count_chars()`                   | `() i64`                                                         | Number of scalar values, which is `length()` only for ASCII            |
+| `find(c)`                         | `(char) Option<i64>`                                             | Byte index of the first occurrence of a char; `None` if absent         |
+| `rfind(c)`                        | `(char) Option<i64>`                                             | Byte index of the last occurrence of a char; `None` if absent          |
+| `contains(c)`                     | `(char) bool`                                                    | Check if the char occurs                                               |
+| `find(needle)`                    | `(static_ptr<u8>) Option<i64>`, `(const ref String) Option<i64>` | Index of first occurrence of a substring; `None` if absent             |
+| `contains(needle)`                | `(static_ptr<u8>) bool`, `(const ref String) bool`               | Check if the substring occurs                                          |
+| `starts_with(s)` / `ends_with(s)` | `(static_ptr<u8>) bool`, `(const ref String) bool`               | Prefix / suffix check                                                  |
+| `append_i64(n)` / `append_u64(n)` | `(i64) AllocationResult<void>`                                                     | Append an integer in decimal                                           |
+| `append_f64(x)`                   | `(f64) AllocationResult<void>`                                                     | Append a float in its shortest round-trip form (`0.1`, `1e+21`)        |
+| `append(x)`                       | `(f64) AllocationResult<void>`, `(f32) AllocationResult<void>`, ...                                  | Overloads used by `${x}` interpolation for every primitive             |
+| `parse_i64()`                     | `() Option<i64>`                                                 | Whole string as a decimal integer; `None` if malformed or out of range |
+| `parse_f64()`                     | `() Option<f64>`                                                 | Whole string as a decimal float; `None` if malformed                   |
+| `bytes()`                         | `() raw_ptr<u8>` (const method)                                  | Borrow the bytes without allocating or adding a NUL terminator         |
+| `c_str()`                         | `() raw_ptr<u8>`                                                 | NUL-terminated pointer for C, valid until the next mutation            |
 
 `bytes()` works on a `const ref String`. Read only `length()` bytes and do not
 write through the pointer. The pointer remains valid until the next mutation or
@@ -298,9 +316,9 @@ NUL-terminated C string into an owned `String`, which is how `Env` and
 `read_dir` keep text returned by libc.
 
 ```sun
-var path = String(alloc, "/tmp/");
-path.append_literal("out.txt");
-write_string(path.c_str(), body);
+var path = try String(alloc, "/tmp/");
+try path.append_literal("out.txt");
+write_string(try path.c_str(), body);
 ```
 
 ### Text Manipulation
@@ -309,7 +327,7 @@ Methods that keep the same bytes, or fewer, edit the string in place. Methods
 that produce new strings take the allocator to build them with.
 
 ```sun
-var line = String(allocator, "  name = Ada  ");
+var line = try String(allocator, "  name = Ada  ");
 line.trim();                              // "name = Ada"
 line.replace(" = ", "=");                 // "name=Ada"
 line.to_upper();                          // "NAME=ADA"
@@ -318,19 +336,19 @@ var fields = line.split(allocator, 61);   // ['=' is 61] -> ["NAME", "ADA"]
 var again = join(allocator, fields, "=");  // "NAME=ADA"
 ```
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `to_lower()` / `to_upper()` | `() void` | Convert ASCII letters in place |
-| `trim()` | `() void` | Drop leading and trailing ASCII whitespace in place |
-| `trim_start()` / `trim_end()` | `() void` | Drop whitespace from one end in place |
-| `reverse()` | `() void` | Reverse the bytes in place |
-| `replace(from, to)` | `(static_ptr<u8>, static_ptr<u8>) void`, `(const ref String, const ref String) void` | Replace every occurrence in place; an empty `from` does nothing |
-| `clone(alloc)` | `(const ref HeapAllocator) String` | Copy into a new String |
-| `substr(alloc, start, count)` | `(const ref HeapAllocator, i64, i64) AccessResult<String>` | Copy a byte range or return `OutOfBounds` |
-| `split(alloc, sep)` | `(const ref HeapAllocator, u8) Vec<String>`, `(const ref HeapAllocator, static_ptr<u8>) Vec<String>` | Split into owned pieces; always yields one piece more than there are separators |
-| `split_nonempty(alloc, sep)` | `(const ref HeapAllocator, u8) Vec<String>`, `(const ref HeapAllocator, static_ptr<u8>) Vec<String>` | Like `split`, but empty pieces are dropped: adjacent, leading, and trailing separators yield nothing |
-| `split_whitespace(alloc)` | `(const ref HeapAllocator) Vec<String>` | Split on runs of ASCII whitespace; never yields an empty piece |
-| `join(alloc, parts, sep)` | `(const ref HeapAllocator, const ref Vec<String>, static_ptr<u8>) String` | Free function: concatenate pieces with a separator between them |
+| Method                        | Signature                                                                                            | Description                                                                                          |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `to_lower()` / `to_upper()`   | `() void`                                                                                            | Convert ASCII letters in place                                                                       |
+| `trim()`                      | `() void`                                                                                            | Drop leading and trailing ASCII whitespace in place                                                  |
+| `trim_start()` / `trim_end()` | `() void`                                                                                            | Drop whitespace from one end in place                                                                |
+| `reverse()`                   | `() void`                                                                                            | Reverse the bytes in place                                                                           |
+| `replace(from, to)`           | `(static_ptr<u8>, static_ptr<u8>) AllocationResult<void>`, `(const ref String, const ref String) AllocationResult<void>`                 | Replace every occurrence in place; an empty `from` does nothing                                      |
+| `clone(alloc)`                | `(const ref HeapAllocator) AllocationResult<String>`                                                                   | Copy into a new String                                                                               |
+| `substr(alloc, start, count)` | `(const ref HeapAllocator, i64, i64) Result<String>`                                           | Copy a byte range or return `OutOfBounds`                                                            |
+| `split(alloc, sep)`           | `(const ref HeapAllocator, u8) AllocationResult<Vec<String>>`, `(const ref HeapAllocator, static_ptr<u8>) AllocationResult<Vec<String>>` | Split into owned pieces; always yields one piece more than there are separators                      |
+| `split_nonempty(alloc, sep)`  | `(const ref HeapAllocator, u8) AllocationResult<Vec<String>>`, `(const ref HeapAllocator, static_ptr<u8>) AllocationResult<Vec<String>>` | Like `split`, but empty pieces are dropped: adjacent, leading, and trailing separators yield nothing |
+| `split_whitespace(alloc)`     | `(const ref HeapAllocator) AllocationResult<Vec<String>>`                                                              | Split on runs of ASCII whitespace; never yields an empty piece                                       |
+| `join(alloc, parts, sep)`     | `(const ref HeapAllocator, const ref Vec<String>, static_ptr<u8>) AllocationResult<String>`                            | Free function: concatenate pieces with a separator between them                                      |
 
 ### Slicing
 
@@ -339,7 +357,7 @@ String slicing returns a `StringView` (non-owning view, no copy):
 ```sun
 using std.io;
 
-var s = String(allocator, "Hello, World!");
+var s = try String(allocator, "Hello, World!");
 var view = s[0:5];   // StringView of "Hello"
 println(view.length());  // 5
 ```
@@ -348,12 +366,12 @@ println(view.length());  // 5
 
 Free functions in `std` for moving between `char` and code points.
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `char_of(code)` | `(i64) Option<char>` | A char from a code point; `None` for a surrogate or anything above `U+10FFFF` |
-| `code_of(c)` | `(char) i64` | The code point of a char |
-| `compute_utf8_len(code)` | `(i64) i64` | Bytes the UTF-8 encoding of a code point occupies |
-| `encode_utf8_byte(code, j)` | `(i64, i64) u8` | Byte `j` of that encoding |
+| Function                    | Signature            | Description                                                                   |
+| --------------------------- | -------------------- | ----------------------------------------------------------------------------- |
+| `char_of(code)`             | `(i64) Option<char>` | A char from a code point; `None` for a surrogate or anything above `U+10FFFF` |
+| `code_of(c)`                | `(char) i64`         | The code point of a char                                                      |
+| `compute_utf8_len(code)`    | `(i64) i64`          | Bytes the UTF-8 encoding of a code point occupies                             |
+| `encode_utf8_byte(code, j)` | `(i64, i64) u8`      | Byte `j` of that encoding                                                     |
 
 `char_of` is the checked counterpart to `_convert<char>(n)`, which does not
 verify that `n` is a Unicode scalar value.
@@ -366,7 +384,7 @@ Obtained from `String.iterate_chars()`.
 ```sun
 using std.io;
 
-var s = String(alloc, "héllo😀");
+var s = try String(alloc, "héllo😀");
 s.length();       // 10 bytes
 s.count_chars();   // 6 scalar values
 
@@ -376,10 +394,10 @@ for (var c: char in it) {
 }
 ```
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `next(self)` | `(ref Chars) Option<char>` | Next scalar value; `None` at the end |
-| `offset()` | `() i64` | Byte offset of the scalar value `next` will return |
+| Method       | Signature                  | Description                                        |
+| ------------ | -------------------------- | -------------------------------------------------- |
+| `next(self)` | `(ref Chars) Option<char>` | Next scalar value; `None` at the end               |
+| `offset()`   | `() i64`                   | Byte offset of the scalar value `next` will return |
 
 Bytes that are not well-formed UTF-8 decode as `U+FFFD` and advance one byte,
 so iteration always terminates and always covers the whole string.
@@ -391,23 +409,24 @@ mutation of that `String` invalidates it.
 
 A non-owning view into a `String`. Provides read-only access to a substring without copying.
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `length()` | `() i64` | View length |
-| `at(i)` | `(i64) AccessResult<u8>` | Read a byte; reject indices outside the view |
-| `unsafe_at(i)` | `(i64) u8` | Unchecked read relative to the view; requires an unsafe block |
-| `equals_literal(s)` | `(static_ptr<u8>) bool` | Compare with a string literal |
-| `find_char(ch)` | `(u8) Option<i64>` | Index of first occurrence; `None` if absent |
-| `rfind_char(ch)` | `(u8) Option<i64>` | Index of last occurrence; `None` if absent |
-| `contains_char(ch)` | `(u8) bool` | Check if the byte occurs |
-| `append_i64(n)` / `append_u64(n)` | `(i64) void` | Append an integer in decimal |
-| `append_f64(x)` | `(f64) void` | Append a float in its shortest round-trip form (`0.1`, `1e+21`) |
-| `append(x)` | `(f64) void`, `(f32) void`, ... | Overloads used by `${x}` interpolation for every primitive |
-| `parse_i64()` | `() Option<i64>` | Whole string as a decimal integer; `None` if malformed or out of range |
-| `parse_f64()` | `() Option<f64>` | Whole string as a decimal float; `None` if malformed |
+| Method                            | Signature                       | Description                                                            |
+| --------------------------------- | ------------------------------- | ---------------------------------------------------------------------- |
+| `length()`                        | `() i64`                        | View length                                                            |
+| `at(i)`                           | `(i64) AccessResult<u8>`        | Read a byte; reject indices outside the view                           |
+| `unsafe_at(i)`                    | `(i64) u8`                      | Unchecked read relative to the view; requires an unsafe block          |
+| `equals_literal(s)`               | `(static_ptr<u8>) bool`         | Compare with a string literal                                          |
+| `find_char(ch)`                   | `(u8) Option<i64>`              | Index of first occurrence; `None` if absent                            |
+| `rfind_char(ch)`                  | `(u8) Option<i64>`              | Index of last occurrence; `None` if absent                             |
+| `contains_char(ch)`               | `(u8) bool`                     | Check if the byte occurs                                               |
+| `append_i64(n)` / `append_u64(n)` | `(i64) AllocationResult<void>`                    | Append an integer in decimal                                           |
+| `append_f64(x)`                   | `(f64) AllocationResult<void>`                    | Append a float in its shortest round-trip form (`0.1`, `1e+21`)        |
+| `append(x)`                       | `(f64) AllocationResult<void>`, `(f32) AllocationResult<void>`, ... | Overloads used by `${x}` interpolation for every primitive             |
+| `parse_i64()`                     | `() Option<i64>`                | Whole string as a decimal integer; `None` if malformed or out of range |
+| `parse_f64()`                     | `() Option<f64>`                | Whole string as a decimal float; `None` if malformed                   |
 
 <Callout type="warning">
-  A `StringView` must not outlive the parent `String`. The view holds a reference to the String's internal memory.
+  A `StringView` must not outlive the parent `String`. The view holds a
+  reference to the String's internal memory.
 </Callout>
 
 ## Matrix\<T\>
@@ -416,21 +435,19 @@ N-dimensional matrices backed by contiguous heap memory. Supports bracket indexi
 
 ```sun
 using std.linalg;
-
-var allocator = make_heap_allocator();
-var m = Matrix<i32>(allocator, [3, 3]);   // 3x3 matrix
+var m = try Matrix<i32>(global_allocator, [3, 3]);   // 3x3 matrix
 m[0, 0] = 1;
 m[1, 1] = 5;
 var val = m[1, 1];  // 5
 ```
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `get(indices)` | `(ref array<i64>) T` | Get element at indices |
-| `set(indices, value)` | `(ref array<i64>, T) void` | Set element at indices |
-| `dim(i)` | `(i64) i64` | Size of dimension i |
-| `size()` | `() i64` | Total number of elements |
-| `ndims()` | `() i64` | Number of dimensions |
+| Method                | Signature                  | Description              |
+| --------------------- | -------------------------- | ------------------------ |
+| `get(indices)`        | `(ref array<i64>) T`       | Get element at indices   |
+| `set(indices, value)` | `(ref array<i64>, T) void` | Set element at indices   |
+| `dim(i)`              | `(i64) i64`                | Size of dimension i      |
+| `size()`              | `() i64`                   | Total number of elements |
+| `ndims()`             | `() i64`                   | Number of dimensions     |
 
 See [Matrices](/matrices) for detailed documentation.
 
@@ -443,17 +460,17 @@ the scope that started it.
 ```sun
 using std.thread;
 
-var t = spawn((n: i32) => i32 { return n * 2; }, 21);
+var t = try spawn((n: i32) => i32 { return n * 2; }, 21);
 var answer = t.join();   // 42
 ```
 
-| Function | Signature | Description |
-|--------|-----------|-------------|
-| `spawn()` | `<F: _Lambda>(fn: F, args...: _params_of<F>) Thread<_return_type_of<F>>` | Run `fn` on a new thread with `args`, which move into it |
+| Function  | Signature                                                                | Description                                              |
+| --------- | ------------------------------------------------------------------------ | -------------------------------------------------------- |
+| `spawn()` | `<F: _Callable>(fn: F, args...: _params_of<F>) AllocationResult<Thread<_return_type_of<F>>>` | Run `fn` on a new thread with `args`, which move into it |
 
-| `Thread<T>` method | Signature | Description |
-|--------|-----------|-------------|
-| `join()` | `() T` | Block until the thread finishes, and take its result |
+| `Thread<T>` method | Signature | Description                                          |
+| ------------------ | --------- | ---------------------------------------------------- |
+| `join()`           | `() T`    | Block until the thread finishes, and take its result |
 
 ### Online CPU count
 
@@ -468,10 +485,10 @@ own fallback if needed.
 its value inline and allocates nothing. On supported x86-64 and AArch64 targets,
 its naturally aligned 32-bit operations are lock-free, with no lock fallback.
 
-| Method | Ordering | Result |
-|--------|----------|--------|
-| `load()` | Acquire | Current Boolean |
-| `store(value)` | Release | Sets the Boolean |
+| Method                                | Ordering                                       | Result                         |
+| ------------------------------------- | ---------------------------------------------- | ------------------------------ |
+| `load()`                              | Acquire                                        | Current Boolean                |
+| `store(value)`                        | Release                                        | Sets the Boolean               |
 | `compare_exchange(expected, desired)` | Acquire-release on success; acquire on failure | Whether the value was replaced |
 
 A release store followed by an acquire load that observes it publishes preceding
@@ -493,10 +510,10 @@ m.lock();
 m.unlock();
 ```
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `lock()` | `() void` | Acquire the lock (blocks if contended) |
-| `unlock()` | `() void` | Release the lock |
+| Method     | Signature | Description                            |
+| ---------- | --------- | -------------------------------------- |
+| `lock()`   | `() void` | Acquire the lock (blocks if contended) |
+| `unlock()` | `() void` | Release the lock                       |
 
 See [Threads](/threads) for the whole picture.
 
@@ -520,28 +537,28 @@ f.close();
 var text = try read_to_string(alloc, "notes.txt");
 
 // A runtime path
-var path = String(alloc, "/tmp/");
-path.append_literal("report.csv");
+var path = try String(alloc, "/tmp/");
+try path.append_literal("report.csv");
 try write_string(path, text);
 ```
 
 `FileMode` is `Read` (must exist), `Write` (create or truncate) or `Append`.
 `Whence` is `Start`, `Current` or `End`.
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `open` | `(path: Path, mode: FileMode) SystemResult<void>` | Open a file |
-| `adopt` | `(fd: i32) void` | Take ownership of an open descriptor |
-| `write` | `(data: static_ptr<u8>) i64` / `(data: ref String) i64` | Bytes written |
-| `write_all` | `(bytes: const ref ByteSlice) WriteResult` | Write a bounded slice, retrying short writes and interruptions |
-| `write_bytes` | `unsafe (buf: raw_ptr<u8>, len: i64) i64` | Write caller-validated raw storage |
-| `read_all` | `(alloc: ref HeapAllocator) SystemResult<String>` | Read to end of file |
-| `read` | `(bytes: ref MutableByteSlice) ReadResult` | Read into a bounded slice, retrying interruptions |
-| `read_into` | `unsafe (buf: raw_ptr<u8>, len: i64) i64` | Read into caller-validated raw storage |
-| `seek` | `(offset: i64, whence: Whence) i64` | New offset from the start |
-| `tell` / `size` | `() i64` | Current position / total length |
-| `sync` / `truncate` | `() SystemResult<void>` / `(length: i64) SystemResult<void>` | Flush / resize |
-| `close` / `is_open` / `get_fd` | | Close (idempotent), query, borrow the fd |
+| Method                         | Signature                                                    | Description                                                    |
+| ------------------------------ | ------------------------------------------------------------ | -------------------------------------------------------------- |
+| `open`                         | `(path: Path, mode: FileMode) SystemResult<void>`            | Open a file                                                    |
+| `adopt`                        | `(fd: i32) void`                                             | Take ownership of an open descriptor                           |
+| `write`                        | `(data: static_ptr<u8>) i64` / `(data: ref String) i64`      | Bytes written                                                  |
+| `write_all`                    | `(bytes: const ref ByteSlice) WriteResult`                   | Write a bounded slice, retrying short writes and interruptions |
+| `write_bytes`                  | `unsafe (buf: raw_ptr<u8>, len: i64) i64`                    | Write caller-validated raw storage                             |
+| `read_all`                     | `(alloc: const ref HeapAllocator) SystemResult<String>`            | Read to end of file                                            |
+| `read`                         | `(bytes: ref MutableByteSlice) ReadResult`                   | Read into a bounded slice, retrying interruptions              |
+| `read_into`                    | `unsafe (buf: raw_ptr<u8>, len: i64) i64`                    | Read into caller-validated raw storage                         |
+| `seek`                         | `(offset: i64, whence: Whence) i64`                          | New offset from the start                                      |
+| `tell` / `size`                | `() i64`                                                     | Current position / total length                                |
+| `sync` / `truncate`            | `() SystemResult<void>` / `(length: i64) SystemResult<void>` | Flush / resize                                                 |
+| `close` / `is_open` / `get_fd` |                                                              | Close (idempotent), query, borrow the fd                       |
 
 A `File` closes itself at scope exit. The descriptor it holds is `0` when it
 holds nothing, so a moved-from `File` — which is zeroed — closes nothing rather
@@ -565,16 +582,17 @@ using std.io;
 using std;
 
 /** Reads a bounded chunk from standard input. */
-function read_chunk(alloc: ref HeapAllocator) void {
-    var buffer = ContiguousBuffer<u8>(alloc, 4096);
+function read_chunk(alloc: const ref HeapAllocator) Result<void> {
+    var buffer = try ContiguousBuffer<u8>(alloc, 4096);
     var bytes = MutableByteSlice(buffer);
     var input = std.io.stdin();
     match input.read(bytes) {
         std.io.ReadResult.Data(count) => println(count),
         std.io.ReadResult.Eof => println("end of input"),
         std.io.ReadResult.WouldBlock => println("try again when readable"),
-        std.io.ReadResult.Error(error) => println(error.message())
+        std.io.ReadResult.Error(error) => println(try error.message())
     };
+    return Result.Ok;
 }
 ```
 
@@ -598,16 +616,16 @@ copying the integer in the target's native byte order. No allocation is needed.
 
 Free functions:
 
-| Function | Signature |
-|----------|-----------|
-| `read_to_string` | `(alloc: ref HeapAllocator, path: Path) SystemResult<String>` |
-| `write_string` | `(path: Path, contents: ref String) SystemResult<void>` |
-| `remove_file` / `remove_dir` | `(path: Path) SystemResult<void>` |
-| `rename_file` | `(old_path: Path, new_path: Path) SystemResult<void>` |
-| `make_dir` | `(path: Path, mode: i32) SystemResult<void>` |
-| `exists` / `is_dir` / `is_file` | `(path: Path) bool` |
-| `get_file_size` | `(path: Path) SystemResult<i64>` |
-| `read_line` | `(alloc: ref HeapAllocator) Option<String>` |
+| Function                        | Signature                                                     |
+| ------------------------------- | ------------------------------------------------------------- |
+| `read_to_string`                | `(alloc: const ref HeapAllocator, path: Path) SystemResult<String>` |
+| `write_string`                  | `(path: Path, contents: ref String) SystemResult<void>`       |
+| `remove_file` / `remove_dir`    | `(path: Path) SystemResult<void>`                             |
+| `rename_file`                   | `(old_path: Path, new_path: Path) SystemResult<void>`         |
+| `make_dir`                      | `(path: Path, mode: i32) SystemResult<void>`                  |
+| `exists` / `is_dir` / `is_file` | `(path: Path) bool`                                           |
+| `get_file_size`                 | `(path: Path) SystemResult<i64>`                              |
+| `read_line`                     | `(alloc: const ref HeapAllocator) AllocationResult<Option<String>>`                   |
 
 `Path` stands for the two overloads each of these has: `static_ptr<u8>` (a
 string literal) and `ref String` (a path built at runtime). `rename_file` has
@@ -624,12 +642,12 @@ find on the descriptor.
 that subsequent reads use, including after rename or unlink. It does not resolve
 the path again or change the seek position. A closed file returns an error.
 
-| Field | Type | Meaning |
-|-------|------|---------|
-| `kind` | `FileKind` | Regular file, directory, symlink, or another native file kind |
-| `size` | `i64` | Byte size; interpretation for nonregular files is OS-specific |
-| `modified.seconds` | `i64` | Unix seconds, including negative values before the epoch |
-| `modified.nanoseconds` | `i64` | Subsecond remainder, from zero through 999,999,999 |
+| Field                  | Type       | Meaning                                                       |
+| ---------------------- | ---------- | ------------------------------------------------------------- |
+| `kind`                 | `FileKind` | Regular file, directory, symlink, or another native file kind |
+| `size`                 | `i64`      | Byte size; interpretation for nonregular files is OS-specific |
+| `modified.seconds`     | `i64`      | Unix seconds, including negative values before the epoch      |
+| `modified.nanoseconds` | `i64`      | Subsecond remainder, from zero through 999,999,999            |
 
 Metadata is a snapshot, not a lock against concurrent writes. Filesystem timestamp
 precision varies. Normally opened symlinks describe their targets. The private
@@ -656,7 +674,7 @@ match reader.next() {
     LineReadResult.TooLong => println("record exceeds the byte limit"),
     LineReadResult.Eof => {},
     LineReadResult.WouldBlock => {},
-    LineReadResult.Error(e) => println(e.message())
+    LineReadResult.Error(e) => println(try e.message())
 };
 ```
 
@@ -693,12 +711,12 @@ for (var e: DirEntry in entries) {
 }
 ```
 
-| Item | Signature | Description |
-|------|-----------|-------------|
-| `read_dir` | `(alloc: ref HeapAllocator, path: Path) SystemResult<Vec<DirEntry>>` | `.` and `..` excluded, filesystem order |
-| `DirEntry.name` | `() ref String` | Borrowed — the entry keeps it |
-| `DirEntry.kind` | `() FileKind` | `File`, `Dir`, `Symlink`, `Other` or `Unknown` |
-| `DirEntry.is_dir` / `is_file` | `() bool` | |
+| Item                          | Signature                                                            | Description                                    |
+| ----------------------------- | -------------------------------------------------------------------- | ---------------------------------------------- |
+| `read_dir`                    | `(alloc: const ref HeapAllocator, path: Path) SystemResult<Vec<DirEntry>>` | `.` and `..` excluded, filesystem order        |
+| `DirEntry.name`               | `() ref String`                                                      | Borrowed — the entry keeps it                  |
+| `DirEntry.kind`               | `() FileKind`                                                        | `File`, `Dir`, `Symlink`, `Other` or `Unknown` |
+| `DirEntry.is_dir` / `is_file` | `() bool`                                                            |                                                |
 
 Some filesystems do not report a kind, giving `FileKind.Unknown`; `is_dir(path)`
 answers it with a syscall when that matters.
@@ -780,17 +798,17 @@ poller.modify(sock_fd, POLLOUT); // replaces interest in every matching registra
 poller.remove(sock_fd);       // removes every registration for sock_fd
 ```
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `add_read` / `add_write` / `add_read_write` | `(fd: i32) void` | Watch a descriptor |
-| `add` | `(fd: i32, events: i16) void` | Watch with an explicit `POLL*` mask |
-| `modify` | `(fd: i32, events: i16) bool` | Replace interest and clear readiness for every matching registration |
-| `remove` | `(fd: i32) bool` | Remove every matching registration; report whether one existed |
-| `wait` | `(timeout_ms: i32) SystemResult<i32>` | Number ready; -1 blocks |
-| `wait` | `(timeout: const ref Duration) SystemResult<Vec<Event>>` | Ready descriptors in registration order |
-| `is_readable` / `is_writable` / `is_hup` / `is_error` | `(i: i64) bool` | |
-| `fd_at` / `revents` | `(i: i64) i32` / `(i: i64) i16` | |
-| `clear` / `count` | | Reset, or how many are watched |
+| Method                                                | Signature                                                | Description                                                          |
+| ----------------------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------------------- |
+| `add_read` / `add_write` / `add_read_write`           | `(fd: i32) void`                                         | Watch a descriptor                                                   |
+| `add`                                                 | `(fd: i32, events: i16) void`                            | Watch with an explicit `POLL*` mask                                  |
+| `modify`                                              | `(fd: i32, events: i16) bool`                            | Replace interest and clear readiness for every matching registration |
+| `remove`                                              | `(fd: i32) bool`                                         | Remove every matching registration; report whether one existed       |
+| `wait`                                                | `(timeout_ms: i32) SystemResult<i32>`                    | Number ready; -1 blocks                                              |
+| `wait`                                                | `(timeout: const ref Duration) SystemResult<Vec<Event>>` | Ready descriptors in registration order                              |
+| `is_readable` / `is_writable` / `is_hup` / `is_error` | `(i: i64) bool`                                          |                                                                      |
+| `fd_at` / `revents`                                   | `(i: i64) i32` / `(i: i64) i16`                          |                                                                      |
+| `clear` / `count`                                     |                                                          | Reset, or how many are watched                                       |
 
 The bits are `POLLIN`, `POLLPRI`, `POLLOUT`, `POLLERR`, `POLLHUP` and
 `POLLNVAL`. Do not call `add` while a `wait` is in flight: growing the set
@@ -840,9 +858,8 @@ using std;
 
 /** Wait for an interrupt or termination request, then restore both handlers. */
 function wait_for_shutdown() SystemResult<void> {
-    var alloc = make_heap_allocator();
     var signals = try std.signal.SignalSubscription();
-    var loop = std.io.EventLoop(alloc, 4);
+    var loop = std.io.EventLoop(global_allocator, 4);
     try loop.open();
     try loop.add(signals.fd(), std.io.POLLIN, 1u64);
     var stopping = false;
@@ -915,10 +932,10 @@ restores nothing, so handing a guard to another owner moves the duty with it.
 Constructing one on a descriptor that is not a terminal returns an error with `ENOTTY`
 and changes nothing.
 
-| `Mode` | Clears | Keeps |
-|--------|--------|-------|
-| `Raw` | echo, line editing, CR/NL translation, Ctrl-S/Ctrl-Q flow control, output processing | |
-| `Cbreak` | echo, line editing | output processing and CR/NL translation |
+| `Mode`   | Clears                                                                               | Keeps                                   |
+| -------- | ------------------------------------------------------------------------------------ | --------------------------------------- |
+| `Raw`    | echo, line editing, CR/NL translation, Ctrl-S/Ctrl-Q flow control, output processing |                                         |
+| `Cbreak` | echo, line editing                                                                   | output processing and CR/NL translation |
 
 In `Raw` mode a `"\n"` no longer returns to column 0; write `"\r\n"`. Both
 modes set `VMIN=1, VTIME=0`, so a read returns as soon as one byte arrives, and
@@ -931,10 +948,10 @@ The terminal library never installs a signal handler. Signal subscriptions are
 an explicit, separate operation through `std.signal`. What the interrupt keys
 do is a choice the caller makes when constructing the terminal guard:
 
-| `SignalPolicy` | Meaning |
-|----------------|---------|
-| `Passthrough` | `ISIG` stays on. Ctrl-C, Ctrl-\ and Ctrl-Z raise `SIGINT`, `SIGQUIT` and `SIGTSTP` for the foreground process group and never arrive as bytes. |
-| `AsInput` | `ISIG` is off. The same keys arrive as bytes 3, 28 and 26, and the program decides what they mean. |
+| `SignalPolicy` | Meaning                                                                                                                                        |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Passthrough`  | `ISIG` stays on. Ctrl-C, Ctrl-\ and Ctrl-Z raise `SIGINT`, `SIGQUIT` and `SIGTSTP` for the foreground process group and never arrive as bytes. |
+| `AsInput`      | `ISIG` is off. The same keys arrive as bytes 3, 28 and 26, and the program decides what they mean.                                             |
 
 A process killed by a signal runs no destructors, so under `Passthrough` a
 Ctrl-C leaves the terminal in raw mode; the shell's `reset` or `stty sane`
@@ -946,20 +963,20 @@ terminal left behind is still usable.
 `SIGWINCH` is not used. A resize is observed by calling `get_size` again, for
 example whenever `read_key` returns `None`.
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `is_terminal` | `(fd: i32) bool` | `isatty`; false for pipes, files and invalid descriptors |
-| `get_size` | `(fd: i32) SystemResult<Size>` | `rows` and `cols`; returns `ENOTTY` on a non-terminal |
-| `read_key` | `(fd: i32, timeout: const ref Duration) SystemResult<Option<u8>>` | One byte, `None` on timeout; returns an error once input has closed |
-| `try_read_key` | `(fd: i32) SystemResult<Option<u8>>` | `read_key` with a zero timeout |
-| `read_attributes` | `(fd: i32) SystemResult<Termios>` | Snapshot of the line-discipline settings |
-| `has_echo` / `is_canonical` / `delivers_signals` | `(const ref Termios) bool` | Read the `ECHO` / `ICANON` / `ISIG` bits of a snapshot |
+| Function                                         | Signature                                                         | Description                                                         |
+| ------------------------------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `is_terminal`                                    | `(fd: i32) bool`                                                  | `isatty`; false for pipes, files and invalid descriptors            |
+| `get_size`                                       | `(fd: i32) SystemResult<Size>`                                    | `rows` and `cols`; returns `ENOTTY` on a non-terminal               |
+| `read_key`                                       | `(fd: i32, timeout: const ref Duration) SystemResult<Option<u8>>` | One byte, `None` on timeout; returns an error once input has closed |
+| `try_read_key`                                   | `(fd: i32) SystemResult<Option<u8>>`                              | `read_key` with a zero timeout                                      |
+| `read_attributes`                                | `(fd: i32) SystemResult<Termios>`                                 | Snapshot of the line-discipline settings                            |
+| `has_echo` / `is_canonical` / `delivers_signals` | `(const ref Termios) bool`                                        | Read the `ECHO` / `ICANON` / `ISIG` bits of a snapshot              |
 
-| `TerminalMode` | Signature | Description |
-|----------------|-----------|-------------|
-| `init` | `(fd: i32, mode: Mode, signals: SignalPolicy) _Result<void, Error>` | Save and switch |
-| `restore` | `() SystemResult<void>` | Put the saved settings back now; idempotent |
-| `is_active` | `() bool` | Whether the terminal is still in the applied mode |
+| `TerminalMode` | Signature                                                           | Description                                       |
+| -------------- | ------------------------------------------------------------------- | ------------------------------------------------- |
+| `init`         | `(fd: i32, mode: Mode, signals: SignalPolicy) _Result<void, Error>` | Save and switch                                   |
+| `restore`      | `() SystemResult<void>`                                             | Put the saved settings back now; idempotent       |
+| `is_active`    | `() bool`                                                           | Whether the terminal is still in the applied mode |
 
 `read_key` allocates nothing and never touches a descriptor the caller did not
 pass, so it is safe to use on stdin alongside a child process. A multi-byte key
@@ -986,7 +1003,7 @@ using std.io;
 using std;
 using std.env;
 
-var environment = Env(alloc);
+var environment = try Env(alloc);
 match environment.get("HOME") {
     Option.Some(value) => { println(value); },
     Option.None => { }
@@ -1000,18 +1017,18 @@ try environment.set("LANG", "C");
 var here = try environment.cwd();
 ```
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `get` | `(name: Name) Option<ref String>` | First matching entry, or `None` |
-| `has` | `(name: Name) bool` | Whether the snapshot contains the name |
-| `set` | `(name: Name, value: Name) SystemResult<void>` | Mutate libc, then refresh |
-| `remove` | `(name: Name) SystemResult<void>` | Mutate libc, then refresh |
-| `refresh` | `() void` | Observe changes made outside this `Env` |
-| `size` / `is_empty` | `() i64` / `() bool` | Snapshot size |
-| `iter` | `() EnvIterator` | Borrow entries in native order |
-| `cwd` | `() SystemResult<String>` | Working directory |
-| `set_cwd` | `(path: Name) SystemResult<void>` | Change it process-wide |
-| `args` | `(argc, argv) Vec<String>` | Copy argv, with `argv[0]` first |
+| Method              | Signature                                      | Description                             |
+| ------------------- | ---------------------------------------------- | --------------------------------------- |
+| `get`               | `(name: Name) Option<ref String>`              | First matching entry, or `None`         |
+| `has`               | `(name: Name) bool`                            | Whether the snapshot contains the name  |
+| `set`               | `(name: Name, value: Name) SystemResult<void>` | Mutate libc, then refresh               |
+| `remove`            | `(name: Name) SystemResult<void>`              | Mutate libc, then refresh               |
+| `refresh`           | `() void`                                      | Observe changes made outside this `Env` |
+| `size` / `is_empty` | `() i64` / `() bool`                           | Snapshot size                           |
+| `iter`              | `() EnvIterator`                               | Borrow entries in native order          |
+| `cwd`               | `() SystemResult<String>`                      | Working directory                       |
+| `set_cwd`           | `(path: Name) SystemResult<void>`              | Change it process-wide                  |
+| `args`              | `(argc, argv) AllocationResult<Vec<String>>`                     | Copy argv, with `argv[0]` first         |
 
 `Name` means either `static_ptr<u8>` or `ref String`; `set` provides all
 four combinations. A snapshot is not automatically live: external changes
@@ -1022,8 +1039,7 @@ automatically.
 using std.io;
 
 function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
-    var alloc = make_heap_allocator();
-    var environment = Env(alloc);
+    var environment = std.env.Env(global_allocator);
     var cli = environment.args(argc, argv);
     for (var s: ref String in cli) { println(s); }
     return 0;
@@ -1042,7 +1058,7 @@ using std.io;
 
 using std.process;
 
-var cmd = Command(alloc, "/bin/sh");
+var cmd = try Command(alloc, "/bin/sh");
 cmd.add_arg("-c");
 cmd.add_arg("printf hello");
 var out = try cmd.output();
@@ -1053,14 +1069,14 @@ println(out.stdout());     // hello
 
 ### Command
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `init` | `(alloc: ref HeapAllocator, program: static_ptr<u8> \| ref String)` | The program is `argv[0]` |
-| `arg` | `(value: static_ptr<u8>) void` / `(value: ref String) void` | Append one argument |
-| `stdin` / `stdout` / `stderr` | `(mode: Stdio) void` | `Inherit`, `Piped` or `Null` |
-| `start` | `() SystemResult<Child>` | Run it, return immediately |
-| `status` | `() SystemResult<i32>` | Run to completion, inheriting the streams |
-| `output` | `() SystemResult<Output>` | Run to completion, capturing both streams |
+| Method                        | Signature                                                           | Description                               |
+| ----------------------------- | ------------------------------------------------------------------- | ----------------------------------------- |
+| `init`                        | `(alloc: const ref HeapAllocator, program: static_ptr<u8> \| ref String)` | The program is `argv[0]`                  |
+| `arg`                         | `(value: static_ptr<u8>) AllocationResult<void>` / `(value: ref String) AllocationResult<void>`         | Append one argument                       |
+| `stdin` / `stdout` / `stderr` | `(mode: Stdio) void`                                                | `Inherit`, `Piped` or `Null`              |
+| `start`                       | `() SystemResult<Child>`                                            | Run it, return immediately                |
+| `status`                      | `() SystemResult<i32>`                                              | Run to completion, inheriting the streams |
+| `output`                      | `() SystemResult<Output>`                                           | Run to completion, capturing both streams |
 
 Arguments are passed to the program as they are given — a space inside one
 argument stays inside it, with no shell reparsing.
@@ -1071,15 +1087,15 @@ reader goes away would then see `EPIPE` and complain instead of exiting quietly.
 
 ### Child
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `id` | `() i32` | Process id |
-| `wait` | `() SystemResult<i32>` | Exit code; a killed child reports 128 + signal |
-| `try_wait` | `() SystemResult<Option<i32>>` | `None` while it is still running |
-| `kill` | `(sig: i32) SystemResult<void>` | |
-| `write_stdin` / `close_stdin` | `(data: ref String) i64` / `() void` | Needs `stdin(Stdio.Piped)` |
-| `take_stdout` / `take_stderr` | `() i32` | Hand the pipe over |
-| `collect` | `(alloc: ref HeapAllocator) SystemResult<Output>` | Drain both pipes and wait |
+| Method                        | Signature                                         | Description                                    |
+| ----------------------------- | ------------------------------------------------- | ---------------------------------------------- |
+| `id`                          | `() i32`                                          | Process id                                     |
+| `wait`                        | `() SystemResult<i32>`                            | Exit code; a killed child reports 128 + signal |
+| `try_wait`                    | `() SystemResult<Option<i32>>`                    | `None` while it is still running               |
+| `kill`                        | `(sig: i32) SystemResult<void>`                   |                                                |
+| `write_stdin` / `close_stdin` | `(data: ref String) i64` / `() void`              | Needs `stdin(Stdio.Piped)`                     |
+| `take_stdout` / `take_stderr` | `() i32`                                          | Hand the pipe over                             |
+| `collect`                     | `(alloc: const ref HeapAllocator) SystemResult<Output>` | Drain both pipes and wait                      |
 
 `collect` polls the two pipes rather than draining one and then the other: a
 child that fills the stderr pipe while the parent is stuck reading stdout would
@@ -1105,13 +1121,13 @@ OS-defined resolution; they are not globally unique identifiers.
 
 `ProcessSnapshot` owns these public fields:
 
-| Field | Type | Meaning |
-|-------|------|---------|
-| `identity` | `ProcessIdentity` | Identity checked again after collecting the fields |
-| `cpu_time_ns` | `SystemResult<u64>` | Cumulative user plus system CPU time in nanoseconds, excluding children; Linux precision is clock ticks |
-| `rss_bytes` | `SystemResult<u64>` | Resident memory in bytes |
-| `executable` | `SystemResult<String>` | Executable path, if visible |
-| `arguments` | `SystemResult<Vec<String>>` | Arguments including argv[0], preserving spaces and empty arguments |
+| Field         | Type                        | Meaning                                                                                                 |
+| ------------- | --------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `identity`    | `ProcessIdentity`           | Identity checked again after collecting the fields                                                      |
+| `cpu_time_ns` | `SystemResult<u64>`         | Cumulative user plus system CPU time in nanoseconds, excluding children; Linux precision is clock ticks |
+| `rss_bytes`   | `SystemResult<u64>`         | Resident memory in bytes                                                                                |
+| `executable`  | `SystemResult<String>`      | Executable path, if visible                                                                             |
+| `arguments`   | `SystemResult<Vec<String>>` | Arguments including argv[0], preserving spaces and empty arguments                                      |
 
 Each field error preserves the native error code when an OS call fails, so
 unavailable data is distinct from zero or an empty value. An identity read
@@ -1141,10 +1157,10 @@ on failure. `close()` is idempotent; destruction closes automatically. Neither
 operation signals nor reaps the process. Closed handles reject signaling with
 `EBADF`. The allocator passed to the constructor is retained for identity queries.
 
-| Platform | `protection()` | Guarantee |
-|----------|----------------|-----------|
-| Linux | `ProcessProtection.Atomic` | Uses `pidfd_open` and `pidfd_send_signal`; after opening, PID reuse cannot redirect a signal. Missing kernel facilities return `ENOSYS`; there is no fallback to POSIX `kill`. |
-| macOS | `ProcessProtection.Checked` | Checks the saved identity immediately before POSIX `kill`. A process can exit and its PID can be reused between these calls; signaling is **not atomically protected**. |
+| Platform | `protection()`              | Guarantee                                                                                                                                                                      |
+| -------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Linux    | `ProcessProtection.Atomic`  | Uses `pidfd_open` and `pidfd_send_signal`; after opening, PID reuse cannot redirect a signal. Missing kernel facilities return `ENOSYS`; there is no fallback to POSIX `kill`. |
+| macOS    | `ProcessProtection.Checked` | Checks the saved identity immediately before POSIX `kill`. A process can exit and its PID can be reused between these calls; signaling is **not atomically protected**.        |
 
 Opening validates the caller's observed start marker. Linux also checks that the
 pidfd still refers to a live process after reading its identity. The kernel still
@@ -1153,20 +1169,20 @@ arbitrary processes do not provide the child-specific waiting behavior of `Child
 
 ### Identity, signals and raw control
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `pid` / `parent_pid` | `() i32` | |
-| `uid` / `euid` | `() u32` | |
-| `kill` | `(target: i32, sig: i32) SystemResult<void>` | |
-| `set_pgid` | `(target: i32, pgid: i32) SystemResult<void>` | 0 means "this one" |
-| `create_new_session` | `() SystemResult<i32>` | `setsid` |
-| `exit` / `exit_now` | `(code: i32) void` | With / without atexit handlers |
-| `fork` | `() SystemResult<i32>` | 0 in the child, the child's pid in the parent |
-| `exec` | `(cmd: ref Command) SystemResult<void>` | Only returns on failure |
-| `wait_pid` | `(target: i32, options: i32) SystemResult<i32>` | Raw wait status; -1 = any child |
-| `exited` / `exit_status` / `signaled` / `get_term_signal` | `(status: i32)` | Read a wait status |
-| `open_pipe` | `(alloc: ref HeapAllocator) SystemResult<Pipe>` | `read_fd()` / `write_fd()` |
-| `dup_fd` | `(old_fd: i32, new_fd: i32) SystemResult<void>` | `dup2` |
+| Function                                                  | Signature                                       | Description                                   |
+| --------------------------------------------------------- | ----------------------------------------------- | --------------------------------------------- |
+| `pid` / `parent_pid`                                      | `() i32`                                        |                                               |
+| `uid` / `euid`                                            | `() u32`                                        |                                               |
+| `kill`                                                    | `(target: i32, sig: i32) SystemResult<void>`    |                                               |
+| `set_pgid`                                                | `(target: i32, pgid: i32) SystemResult<void>`   | 0 means "this one"                            |
+| `create_new_session`                                      | `() SystemResult<i32>`                          | `setsid`                                      |
+| `exit` / `exit_now`                                       | `(code: i32) void`                              | With / without atexit handlers                |
+| `fork`                                                    | `() SystemResult<i32>`                          | 0 in the child, the child's pid in the parent |
+| `exec`                                                    | `(cmd: ref Command) SystemResult<void>`         | Only returns on failure                       |
+| `wait_pid`                                                | `(target: i32, options: i32) SystemResult<i32>` | Raw wait status; -1 = any child               |
+| `exited` / `exit_status` / `signaled` / `get_term_signal` | `(status: i32)`                                 | Read a wait status                            |
+| `open_pipe`                                               | `(alloc: const ref HeapAllocator) SystemResult<Pipe>` | `read_fd()` / `write_fd()`                    |
+| `dup_fd`                                                  | `(old_fd: i32, new_fd: i32) SystemResult<void>` | `dup2`                                        |
 
 Signal numbers are `SIGHUP`, `SIGINT`, `SIGQUIT`, `SIGKILL`, `SIGSEGV`,
 `SIGPIPE`, `SIGALRM`, `SIGTERM`, `SIGCHLD`, `SIGCONT`, `SIGSTOP`; `wait_pid`
@@ -1192,20 +1208,20 @@ println(start.elapsed().as_millis());
 println(format(alloc, convert_to_utc(read_unix_time()), "%Y-%m-%d %H:%M:%S"));
 ```
 
-| Item | Signature | Description |
-|------|-----------|-------------|
-| `nanos` / `micros` / `millis` / `seconds` | `(n: i64) Duration` | Build a `Duration` |
-| `Duration.as_secs` / `as_millis` / `as_micros` / `as_nanos` | `() i64` | |
-| `Duration.as_secs_f64` | `() f64` | |
-| `Duration.subsec_nanos` | `() i64` | Remainder on top of `as_secs` |
-| `now` | `() Instant` | Monotonic clock |
-| `Instant.elapsed` | `() Duration` | Time since it was taken |
-| `Instant.since` | `(earlier: const ref Instant) Duration` | Zero if this is the earlier |
-| `read_unix_time` / `read_unix_time_millis` | `() i64` | Wall clock, since the epoch |
-| `sleep` | `(d: const ref Duration) void` | A signal can cut it short |
-| `utc` / `local` | `(unix_secs: i64) DateTime` | Break into calendar fields |
-| `to_unix_utc` / `to_unix_local` | `(dt: const ref DateTime) i64` | And back |
-| `format` | `(alloc, dt: const ref DateTime, fmt: raw_ptr<u8>) String` | strftime |
+| Item                                                        | Signature                                                  | Description                   |
+| ----------------------------------------------------------- | ---------------------------------------------------------- | ----------------------------- |
+| `nanos` / `micros` / `millis` / `seconds`                   | `(n: i64) Duration`                                        | Build a `Duration`            |
+| `Duration.as_secs` / `as_millis` / `as_micros` / `as_nanos` | `() i64`                                                   |                               |
+| `Duration.as_secs_f64`                                      | `() f64`                                                   |                               |
+| `Duration.subsec_nanos`                                     | `() i64`                                                   | Remainder on top of `as_secs` |
+| `now`                                                       | `() Instant`                                               | Monotonic clock               |
+| `Instant.elapsed`                                           | `() Duration`                                              | Time since it was taken       |
+| `Instant.since`                                             | `(earlier: const ref Instant) Duration`                    | Zero if this is the earlier   |
+| `read_unix_time` / `read_unix_time_millis`                  | `() i64`                                                   | Wall clock, since the epoch   |
+| `sleep`                                                     | `(d: const ref Duration) void`                             | A signal can cut it short     |
+| `utc` / `local`                                             | `(unix_secs: i64) DateTime`                                | Break into calendar fields    |
+| `to_unix_utc` / `to_unix_local`                             | `(dt: const ref DateTime) i64`                             | And back                      |
+| `format`                                                    | `(alloc, dt: const ref DateTime, fmt: raw_ptr<u8>) AllocationResult<String>` | strftime                      |
 
 Only differences between `Instant`s mean anything: the zero point is arbitrary,
 and the clock never jumps backwards when the system time is adjusted.
@@ -1213,7 +1229,6 @@ and the clock never jumps backwards when the system time is adjusted.
 `DateTime` uses human units — `year` is the full year and `month` is 1-12, not
 C's `tm_year`/`tm_mon` offsets. It also carries `day`, `hour`, `minute`,
 `second`, `weekday` (Sunday = 0), `yearday` and `utc_offset`.
-
 
 ## Networking
 
@@ -1229,7 +1244,7 @@ using std;
 
 // Client
 var stream = TcpStream();
-var host = String(alloc, "example.com");
+var host = try String(alloc, "example.com");
 try stream.connect_host(host, 80);       // resolve a name, then connect
 try stream.connect_ip(ip, 80);           // or an address already in hand
 try stream.connect_local(8080);          // or 127.0.0.1
@@ -1237,7 +1252,7 @@ try stream.set_nonblocking(true);         // configure the chosen connection
 
 try stream.send_str("ping");
 try stream.send_string(message);
-var buf = ContiguousBuffer<u8>(alloc, 4096);
+var buf = try ContiguousBuffer<u8>(alloc, 4096);
 var n = try stream.recv(buf);            // bytes read; 0 at end of stream
 stream.close();
 
@@ -1271,11 +1286,11 @@ configuration require external synchronization when sharing a socket across
 threads. `set_nonblocking(false)` restores blocking behavior without changing
 unrelated descriptor flags.
 
-| Operation | Result |
-|-----------|--------|
-| `TcpListener.try_accept()` | `AcceptResult.Accepted(TcpStream)`, `WouldBlock`, or `Error(Error)` |
-| `TcpStream.try_read(MutableByteSlice)` | `std.io.ReadResult.Data(count)`, `WouldBlock`, `Eof`, or `Error(Error)` |
-| `TcpStream.try_write(ByteSlice)` | `std.io.WriteResult.Complete(count)`, `WouldBlock(count)`, or `Error(count, error)` |
+| Operation                              | Result                                                                              |
+| -------------------------------------- | ----------------------------------------------------------------------------------- |
+| `TcpListener.try_accept()`             | `AcceptResult.Accepted(TcpStream)`, `WouldBlock`, or `Error(Error)`                 |
+| `TcpStream.try_read(MutableByteSlice)` | `std.io.ReadResult.Data(count)`, `WouldBlock`, `Eof`, or `Error(Error)`             |
+| `TcpStream.try_write(ByteSlice)`       | `std.io.WriteResult.Complete(count)`, `WouldBlock(count)`, or `Error(count, error)` |
 
 Set the listener nonblocking before calling `try_accept()` to avoid waiting.
 Accepted streams are always nonblocking and close-on-exec, regardless of native
@@ -1375,7 +1390,7 @@ var dest = Ipv4Addr(192, 168, 1, 20);
 try socket.send_str_to("ping", dest, 9000);      // a literal
 try socket.send_to(data, len, dest, 9000);       // raw bytes
 
-var buf = ContiguousBuffer<u8>(alloc, 2048);
+var buf = try ContiguousBuffer<u8>(alloc, 2048);
 var datagram = try socket.recv_from(buf);        // one datagram, cut to fit buf
 datagram.length();                           // bytes received
 datagram.addr();                             // sender's Ipv4Addr
@@ -1417,15 +1432,16 @@ the response.
 ```sun
 using std.http;
 
-var server = HttpServer(alloc);
-try server.bind(8080);
-server.serve((req: ref HttpRequest, resp: ref HttpResponse) => void {
+var server = HttpServer(global_allocator);
+try server.bind_loopback(8080);
+try server.serve((req: ref HttpRequest, resp: ref HttpResponse) => Result<void> {
     if (req.path.equals_literal("/")) {
-        resp.set_body("<h1>Hello</h1>");
+        try resp.set_body("<h1>Hello</h1>");
     } else {
         resp.set_status(404);
-        resp.set_body("not found");
+        try resp.set_body("not found");
     }
+    return Result.Ok;
 });
 ```
 
@@ -1458,7 +1474,6 @@ For fallible operations, prefer the result enums defined in `result.sun`:
 Use `match` to handle results or prefix `try` to propagate failures. `try` treats
 the first declared variant as success; it does not depend on stdlib names.
 The builtin `_Result<T, E>` remains available without importing the stdlib.
-
 
 ## Iteration: IIterator\<T, Container\> and IIterable\<T, Self\>
 
@@ -1542,7 +1557,7 @@ class RangeIterator implements IIterator<i32, Range> {
 
 Because `iter()` returns a class rather than the `IIterator<T, Self>` fat
 pointer the interface names, an `IIterable` implemented this way is
-*static-only*: it drives `for-in`, but a `Range` cannot be converted to an
+_static-only_: it drives `for-in`, but a `Range` cannot be converted to an
 `IIterable<i32, Range>` value (there is no way to dispatch `iter()` through
 it soundly).
 
@@ -1557,27 +1572,27 @@ owned (`clone()` to copy); the by-`ref` argument of a binary operation is never
 modified.
 
 ```sun
-var n = BigUint(alloc, 1);
+var n = try BigUint(alloc, 1);
 for (var i: u64 = 2; i <= 30; i = i + 1) { n.mul_small(i); }   // 30!
-var text = String(alloc, "");
-n.append_decimal(text);   // 265252859812191058636308480000000
+var text = try String(alloc, "");
+try n.append_decimal(text);   // 265252859812191058636308480000000
 ```
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `BigUint(alloc)` / `BigUint(alloc, v)` | `(const ref HeapAllocator[, u64])` | Zero, or a machine word |
-| `clone()` | `() BigUint` | Independent copy |
-| `is_zero()`, `bit_length()`, `limb_count()`, `limb(i)`, `low_u64()` | | Inspection; `limb(i)` is 0 beyond the top |
-| `to_u64()` | `() Option<u64>` | The value if it fits in 64 bits |
-| `set_u64(v)`, `assign(other)`, `clear()` | | Replace the value |
-| `compare(other)`, `compare_u64(v)`, `equals(other)` | `(const ref BigUint) i64`, `(u64) i64`, `(const ref BigUint) bool` | Ordering (-1/0/1) |
-| `add(other)`, `add_small(v)` | `(const ref BigUint) void`, `(u64) void` | In-place addition |
-| `sub(other)` | `(const ref BigUint) ArithmeticResult<void>` | In-place subtraction; returns `Overflow` if the result would be negative |
-| `mul(other)`, `mul_small(v)`, `mul_pow10(n)` | `(const ref BigUint) void`, `(u64) void`, `(i64) void` | In-place multiplication |
-| `shl(bits)`, `shr(bits)` | `(i64) void` | In-place shifts |
-| `divmod_small(d)` | `(u32) ArithmeticResult<u32>` | Divide in place, returning the remainder or `DivisionByZero` for a zero divisor |
-| `append_decimal(out)` | `(ref String) void` | Append the decimal digits |
-| `set_decimal(text)` | `(const ref String) bool` | Parse decimal digits; `false` (value left at zero) if malformed |
+| Method                                                              | Signature                                                          | Description                                                                     |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| `BigUint(alloc)` / `BigUint(alloc, v)`                              | `(const ref HeapAllocator[, u64])`                                 | Zero, or a machine word                                                         |
+| `clone()`                                                           | `() BigUint`                                                       | Independent copy                                                                |
+| `is_zero()`, `bit_length()`, `limb_count()`, `limb(i)`, `low_u64()` |                                                                    | Inspection; `limb(i)` is 0 beyond the top                                       |
+| `to_u64()`                                                          | `() Option<u64>`                                                   | The value if it fits in 64 bits                                                 |
+| `set_u64(v)`, `assign(other)`, `clear()`                            |                                                                    | Replace the value                                                               |
+| `compare(other)`, `compare_u64(v)`, `equals(other)`                 | `(const ref BigUint) i64`, `(u64) i64`, `(const ref BigUint) bool` | Ordering (-1/0/1)                                                               |
+| `add(other)`, `add_small(v)`                                        | `(const ref BigUint) void`, `(u64) void`                           | In-place addition                                                               |
+| `sub(other)`                                                        | `(const ref BigUint) ArithmeticResult<void>`                       | In-place subtraction; returns `Overflow` if the result would be negative        |
+| `mul(other)`, `mul_small(v)`, `mul_pow10(n)`                        | `(const ref BigUint) void`, `(u64) void`, `(i64) void`             | In-place multiplication                                                         |
+| `shl(bits)`, `shr(bits)`                                            | `(i64) void`                                                       | In-place shifts                                                                 |
+| `divmod_small(d)`                                                   | `(u32) ArithmeticResult<u32>`                                      | Divide in place, returning the remainder or `DivisionByZero` for a zero divisor |
+| `append_decimal(out)`                                               | `(ref String) AllocationResult<void>`                                                | Append the decimal digits                                                       |
+| `set_decimal(text)`                                                 | `(const ref String) AllocationResult<bool>`                                          | Parse decimal digits; `false` (value left at zero) if malformed                 |
 
 ## Numeric conversion
 
@@ -1595,18 +1610,18 @@ function narrow(value: i64) ConversionResult<u8> {
 }
 
 /** Prints the converted number or the error message. */
-function show_conversion(value: i64) void {
+function show_conversion(value: i64) AllocationResult<void> {
   match narrow(value) {
     ConversionResult.Ok(number) => println(number),
-    ConversionResult.Error(error) => println(error.message())
+    ConversionResult.Error(error) => println(try error.message())
   };
+  return AllocationResult.Ok;
 }
 ```
 
 Inside a function returning a compatible result enum, use `try safe_convert<T>(x)`
 to extract the number and propagate conversion failures. For example, converting
 `255.0` to `u8` succeeds; `256.0`, negative integers, and NaN return `Error`.
-
 
 Checked: integer values outside `T`'s range (including a sign change that flips
 the value), floats that are NaN or outside `T`'s range, and an `f64` that
@@ -1672,19 +1687,18 @@ using std.json;
 using std.io;
 
 /** Parses and builds JSON while propagating concrete JSON errors. */
-function json_example() JsonResult<void> {
-  var alloc = make_heap_allocator();
-  var doc = try parse_json(alloc, "{\"name\": \"sun\", \"tags\": [1, 2.5]}");
+function json_example() Result<void> {
+  var doc = try parse_json(global_allocator, "{\"name\": \"sun\", \"tags\": [1, 2.5]}");
   var tags = try doc.get("tags");
   var second: f64 = try (try tags.at(1)).as_f64();
 
-  var obj = create_json_object(alloc);
-  try obj.set(String(alloc, "ok"), Json(true));
-  try obj.set(String(alloc, "tags"), create_json_array(alloc));
+  var obj = try create_json_object(global_allocator);
+  try obj.set(try String(global_allocator, "ok"), Json(true));
+  try obj.set(try String(global_allocator, "tags"), try create_json_array(global_allocator));
   try (try obj.get("tags")).push(Json(42));
-  println(obj.to_string(alloc));            // {"ok":true,"tags":[42]}
-  println(obj.to_pretty_string(alloc, 2));
-  return JsonResult.Ok;
+  println(try obj.to_string(global_allocator));            // {"ok":true,"tags":[42]}
+  println(try obj.to_pretty_string(global_allocator, 2));
+  return Result.Ok;
 }
 ```
 
@@ -1709,31 +1723,31 @@ store a copy instead. `create_json_string(alloc, ref s)` does that for a `String
 using std.json;
 
 // cfg.model is still needed later, so the document gets a copy
-try req.set(String(alloc, "model"), create_json_string(alloc, cfg.model));
+try req.set(try String(alloc, "model"), try create_json_string(alloc, cfg.model));
 // Equivalent to an explicit clone:
-try req.set(String(alloc, "model"), Json(cfg.model.clone(alloc)));
+try req.set(try String(alloc, "model"), Json(try cfg.model.clone(alloc)));
 // Moves cfg.model into the document; using it again is a compile error
-try req.set(String(alloc, "model"), Json(cfg.model));
+try req.set(try String(alloc, "model"), Json(cfg.model));
 ```
 
-| Function / Method | Signature | Description |
-|--------|-----------|-------------|
-| `parse_json(alloc, text)` | `(ref HeapAllocator, ref String) JsonResult<Json>` | Parse a complete document (also accepts a `static_ptr<u8>` literal). Rejects trailing text, leading zeros, control characters in strings, and nesting deeper than 256 |
-| `Json()`, `Json(b)`, `Json(n)`, `Json(x)`, `Json(s)` | `()`, `(bool)`, `(i64)`, `(f64)`, `(String)` | Build a scalar node (`Json(s)` moves the `String` into the node; see above) |
-| `create_json_array(alloc)` / `create_json_object(alloc)` | `(ref HeapAllocator) Json` | Empty array / object |
-| `create_json_string(alloc, text)` | `(ref HeapAllocator, static_ptr<u8>) Json`, `(ref HeapAllocator, ref String) Json` | String node from a literal, or a copy of a borrowed `String` (the caller keeps its own) |
-| `is_null()`, `is_bool()`, `is_int()`, `is_float()`, `is_number()`, `is_string()`, `is_array()`, `is_object()` | `() bool` | Kind checks |
-| `as_bool()`, `as_i64()`, `as_f64()` | `() JsonResult<T>` | Scalar readers; `as_i64` accepts an integral `Float`, `as_f64` accepts an `Int` |
-| `as_string()` | `() JsonResult<ref String>` | Borrow the string |
-| `len()` | `() i64` | Array items or object members (0 for scalars) |
-| `at(i)` | `(i64) JsonResult<ref Json>` | Array item |
-| `get(key)` | `(static_ptr<u8>) JsonResult<ref Json>`, `(ref String) JsonResult<ref Json>` | Object member value |
-| `has(key)` | `(static_ptr<u8>) bool` | Whether an object has the key |
-| `key_at(i)` / `value_at(i)` | `(i64) JsonResult<ref String>` / `(i64) JsonResult<ref Json>` | Object members by position, in insertion order |
-| `push(item)` | `(Json) JsonResult<void>` | Append to an array |
-| `set(key, value)` | `(String, Json) JsonResult<void>` | Set an object member (replaces an existing key's value in place, otherwise appends) |
-| `write(out)` / `write_pretty(out, indent)` | `(ref String) void` / `(ref String, i64) void` | Append JSON text to a `String` |
-| `to_string(alloc)` / `to_pretty_string(alloc, indent)` | `(ref HeapAllocator) String` / `(ref HeapAllocator, i64) String` | JSON text as a new `String` |
+| Function / Method                                                                                             | Signature                                                                          | Description                                                                                                                                                           |
+| ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `parse_json(alloc, text)`                                                                                     | `(const ref HeapAllocator, ref String) Result<Json>`                                 | Parse a complete document (also accepts a `static_ptr<u8>` literal). Rejects trailing text, leading zeros, control characters in strings, and nesting deeper than 256 |
+| `Json()`, `Json(b)`, `Json(n)`, `Json(x)`, `Json(s)`                                                          | `()`, `(bool)`, `(i64)`, `(f64)`, `(String)`                                       | Build a scalar node (`Json(s)` moves the `String` into the node; see above)                                                                                           |
+| `create_json_array(alloc)` / `create_json_object(alloc)`                                                      | `(const ref HeapAllocator) AllocationResult<Json>`                                                         | Empty array / object                                                                                                                                                  |
+| `create_json_string(alloc, text)`                                                                             | `(const ref HeapAllocator, static_ptr<u8>) AllocationResult<Json>`, `(const ref HeapAllocator, ref String) AllocationResult<Json>` | String node from a literal, or a copy of a borrowed `String` (the caller keeps its own)                                                                               |
+| `is_null()`, `is_bool()`, `is_int()`, `is_float()`, `is_number()`, `is_string()`, `is_array()`, `is_object()` | `() bool`                                                                          | Kind checks                                                                                                                                                           |
+| `as_bool()`, `as_i64()`, `as_f64()`                                                                           | `() JsonResult<T>`                                                                 | Scalar readers; `as_i64` accepts an integral `Float`, `as_f64` accepts an `Int`                                                                                       |
+| `as_string()`                                                                                                 | `() JsonResult<ref String>`                                                        | Borrow the string                                                                                                                                                     |
+| `len()`                                                                                                       | `() i64`                                                                           | Array items or object members (0 for scalars)                                                                                                                         |
+| `at(i)`                                                                                                       | `(i64) JsonResult<ref Json>`                                                       | Array item                                                                                                                                                            |
+| `get(key)`                                                                                                    | `(static_ptr<u8>) JsonResult<ref Json>`, `(ref String) JsonResult<ref Json>`       | Object member value                                                                                                                                                   |
+| `has(key)`                                                                                                    | `(static_ptr<u8>) bool`                                                            | Whether an object has the key                                                                                                                                         |
+| `key_at(i)` / `value_at(i)`                                                                                   | `(i64) JsonResult<ref String>` / `(i64) JsonResult<ref Json>`                      | Object members by position, in insertion order                                                                                                                        |
+| `push(item)`                                                                                                  | `(Json) Result<void>`                                                          | Append to an array                                                                                                                                                    |
+| `set(key, value)`                                                                                             | `(String, Json) Result<void>`                                                  | Set an object member (replaces an existing key's value in place, otherwise appends)                                                                                   |
+| `write(out)` / `write_pretty(out, indent)`                                                                    | `(ref String) AllocationResult<void>` / `(ref String, i64) AllocationResult<void>`                                     | Append JSON text to a `String`                                                                                                                                        |
+| `to_string(alloc)` / `to_pretty_string(alloc, indent)`                                                        | `(const ref HeapAllocator) AllocationResult<String>` / `(const ref HeapAllocator, i64) AllocationResult<String>`                   | JSON text as a new `String`                                                                                                                                           |
 
 Fallible JSON operations return `JsonResult<T>`. Its `Error` variant owns a
 `JsonError` (code 60) on a kind mismatch or missing key; parse
@@ -1746,12 +1760,12 @@ non-finite floats become `null`.
 The assertions and runner support behind `test_function` — see
 [Testing](/testing) for the full feature. What user code calls directly:
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `assert(cond)` / `assert(cond, msg)` | `(bool[, static_ptr<u8>]) std.test.AssertionResult<void>` | Return `Error(AssertionError)` when false |
-| `assert_eq(expected, actual)` | overloaded per primitive, plus `(const ref String, const ref String)` | Return an assertion error when the values differ, showing both |
-| `assert_ne(a, b)` | overloaded per primitive | Return an assertion error when the values are equal |
-| `fail(msg)` | `(static_ptr<u8>) std.test.AssertionResult<void>` | Fail unconditionally |
+| Function                             | Signature                                                             | Description                                                    |
+| ------------------------------------ | --------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `assert(cond)` / `assert(cond, msg)` | `(bool[, static_ptr<u8>]) std.test.AssertionResult<void>`             | Return `Error(AssertionError)` when false                      |
+| `assert_eq(expected, actual)`        | overloaded per primitive, plus `(const ref String, const ref String)` | Return an assertion error when the values differ, showing both |
+| `assert_ne(a, b)`                    | overloaded per primitive                                              | Return an assertion error when the values are equal            |
+| `fail(msg)`                          | `(static_ptr<u8>) std.test.AssertionResult<void>`                     | Fail unconditionally                                           |
 
 `AssertionError` (code 10) implements `IError`. The remaining items —
 `TestResult`, `run_one`, `report`, `finish`, `wants_sequential` — exist for
@@ -1760,24 +1774,24 @@ to `<input>_debug/test_runner.sun` if you want to see how they fit together.
 
 ## Error Types
 
-All error types implement `IError` with `code() i32` and `message() String`
-methods. `message()` returns an owned clone of the description, so the text
+All error types implement `IError` with `code() i32` and `message() AllocationResult<String>`
+methods. `message()` returns a result containing an owned clone of the description, so the text
 stays usable for as long as the caller keeps it, independent of the error
 object itself.
 
-| Error Type | Code | Description |
-|------------|------|-------------|
-| `Error` | custom | Generic error with custom code and message |
-| `EmptyError` | 1 | Operations on empty containers |
-| `NotFoundError` | 2 | Failed lookups |
-| `IndexOutOfBoundsError` | 3 | Invalid array/vector indices |
-| `DivisionByZeroError` | 4 | Division by zero |
-| `OverflowError` | 5 | Numeric overflow |
-| `InvalidArgumentError` | 6 | Invalid function arguments |
-| `IOError` | 7 | I/O operations |
-| `AllocationError` | 8 | Memory allocation failures |
-| `ConversionError` | 9 | A value does not fit the type `safe_convert` targets |
-| `JsonError` | 60 | JSON parse errors (with `offset()`) and kind mismatches |
+| Error Type              | Code   | Description                                             |
+| ----------------------- | ------ | ------------------------------------------------------- |
+| `Error`                 | custom | Generic error with custom code and message              |
+| `EmptyError`            | 1      | Operations on empty containers                          |
+| `NotFoundError`         | 2      | Failed lookups                                          |
+| `IndexOutOfBoundsError` | 3      | Invalid array/vector indices                            |
+| `DivisionByZeroError`   | 4      | Division by zero                                        |
+| `OverflowError`         | 5      | Numeric overflow                                        |
+| `InvalidArgumentError`  | 6      | Invalid function arguments                              |
+| `IOError`               | 7      | I/O operations                                          |
+| `AllocationError`       | 8      | Memory allocation failures                              |
+| `ConversionError`       | 9      | A value does not fit the type `safe_convert` targets    |
+| `JsonError`             | 60     | JSON parse errors (with `offset()`) and kind mismatches |
 
 ```sun
 /** Returns the first value or an owned empty-container error. */
@@ -1798,14 +1812,14 @@ using std.io;
 
 /** Creates an owned error message from a runtime path. */
 function failure(path: const ref String) SystemResult<void> {
-    return SystemResult.Error(Error(errno(), path));
+    return SystemResult.Error(try Error(errno(), path));
 }
 
 // At the caller:
 match failure(path) {
     SystemResult.Ok => {},
     (e: const ref IError) => {
-        var msg: String = e.message();
+        var msg: String = try e.message();
         eprintln(msg);
     }
 };
@@ -1815,15 +1829,15 @@ match failure(path) {
 
 Overloaded `print` (no newline) and `println` (with newline) from `print.sun`. Both accept any of the following argument types:
 
-| Overload | Description |
-|----------|-------------|
-| `i32`, `i64`, `u32`, `u64` | Print integer value |
-| `f64` | Print f64 |
-| `char` | Print a character as UTF-8 |
-| `bool` | Print `true` or `false` |
-| `static_ptr<u8>` | Print string literal |
-| `const ref String` | Print a borrowed `String` |
-| *(no argument, `println` only)* | Print a bare newline |
+| Overload                        | Description                |
+| ------------------------------- | -------------------------- |
+| `i32`, `i64`, `u32`, `u64`      | Print integer value        |
+| `f64`                           | Print f64                  |
+| `char`                          | Print a character as UTF-8 |
+| `bool`                          | Print `true` or `false`    |
+| `static_ptr<u8>`                | Print string literal       |
+| `const ref String`              | Print a borrowed `String`  |
+| _(no argument, `println` only)_ | Print a bare newline       |
 
 Interpolated strings can be passed directly:
 
@@ -1865,9 +1879,7 @@ XML processor or a complete implementation of every XML encoding requirement.
 ```sun
 using std.xml;
 using std.io;
-
-var alloc = make_heap_allocator();
-var document = try parse_xml(alloc, "<p>Hello <b>Sun</b>!</p>");
+var document = try parse_xml(global_allocator, "<p>Hello <b>Sun</b>!</p>");
 var bold = try (try document.root().child(1)).element();
 println(bold.name().local());
 ```
@@ -1902,22 +1914,22 @@ no preference. Use empty URI and prefix strings for an unqualified name.
 expanded identity. Constructors store components, while `validate()` and the
 operations consuming names check their validity.
 
-| API | Behavior |
-| --- | --- |
-| `document.root()` | Borrow the editable root element |
-| `document.replace_root(root)` | Validate and move in a root, returning the old owned root |
-| `element.name()` / `set_name(name)` | Borrow or replace the expanded element name |
-| `element.attribute(name)` | Return `Option<const ref String>`; absent differs from empty |
-| `element.set_attribute(name, value)` | Insert or replace by expanded name, retaining insertion order |
-| `element.remove_attribute(name)` | Return the removed owned value, or `None` |
-| `element.attribute_count()` / `attribute_name(index)` | Enumerate attribute names, then look up their values |
-| `element.namespace_count()` / `namespace_at(index)` | Inspect declarations present on the parsed element |
-| `element.child_count()` / `child(index)` | Enumerate all ordered nodes, including whitespace |
-| `element.find_child(name)` | Borrow the first direct element matching an expanded name |
-| `element.append(node)` / `insert(index, node)` | Move in a validated child; insertion also accepts the end position |
-| `element.replace(index, node)` / `remove(index)` | Return the replaced or detached owned node |
-| `node.element()` / `text()` | Borrow the requested content or return a kind error |
-| `node.set_text(text)` | Replace decoded text after validation |
+| API                                                   | Behavior                                                           |
+| ----------------------------------------------------- | ------------------------------------------------------------------ |
+| `document.root()`                                     | Borrow the editable root element                                   |
+| `document.replace_root(root)`                         | Validate and move in a root, returning the old owned root          |
+| `element.name()` / `set_name(name)`                   | Borrow or replace the expanded element name                        |
+| `element.attribute(name)`                             | Return `Option<const ref String>`; absent differs from empty       |
+| `element.set_attribute(name, value)`                  | Insert or replace by expanded name, retaining insertion order      |
+| `element.remove_attribute(name)`                      | Return the removed owned value, or `None`                          |
+| `element.attribute_count()` / `attribute_name(index)` | Enumerate attribute names, then look up their values               |
+| `element.namespace_count()` / `namespace_at(index)`   | Inspect declarations present on the parsed element                 |
+| `element.child_count()` / `child(index)`              | Enumerate all ordered nodes, including whitespace                  |
+| `element.find_child(name)`                            | Borrow the first direct element matching an expanded name          |
+| `element.append(node)` / `insert(index, node)`        | Move in a validated child; insertion also accepts the end position |
+| `element.replace(index, node)` / `remove(index)`      | Return the replaced or detached owned node                         |
+| `node.element()` / `text()`                           | Borrow the requested content or return a kind error                |
+| `node.set_text(text)`                                 | Replace decoded text after validation                              |
 
 Build nodes using `XmlNode(XmlNodeValue.Element(element))`, `Text(text)`,
 `Comment(text)`, or `Instruction(XmlInstruction(target, data))`. Comments and
@@ -1934,7 +1946,7 @@ The maximum element depth is 256, including edits through borrowed descendants.
 ### Writing
 
 ```sun
-var output = String(alloc, "");
+var output = try String(alloc, "");
 try document.write(alloc, output);
 ```
 
@@ -1942,16 +1954,16 @@ try document.write(alloc, output);
 document. Alternatively, `XmlWriter(alloc, output)` borrows a `String` for direct
 construction. Its operations return `XmlResult<void>`:
 
-| Operation | Contract |
-| --- | --- |
-| `declaration()` | Optional; must precede all other output |
-| `start_element(name)` | Open an element by expanded name |
-| `attribute(name, value)` | Add a unique attribute before content or another element |
-| `text(value)` | Escape decoded text; only whitespace is allowed outside the root |
-| `comment(value)` | Write validated comment content |
-| `instruction(target, data)` | Write a validated processing instruction |
-| `end_element()` | Close the innermost element |
-| `finish()` | Require exactly one root and no unclosed elements; stop further writes |
+| Operation                   | Contract                                                               |
+| --------------------------- | ---------------------------------------------------------------------- |
+| `declaration()`             | Optional; must precede all other output                                |
+| `start_element(name)`       | Open an element by expanded name                                       |
+| `attribute(name, value)`    | Add a unique attribute before content or another element               |
+| `text(value)`               | Escape decoded text; only whitespace is allowed outside the root       |
+| `comment(value)`            | Write validated comment content                                        |
+| `instruction(target, data)` | Write a validated processing instruction                               |
+| `end_element()`             | Close the innermost element                                            |
+| `finish()`                  | Require exactly one root and no unclosed elements; stop further writes |
 
 The writer escapes text and attributes and preserves referenced carriage returns
 and attribute tabs/newlines. Start tags are buffered until content or closure.

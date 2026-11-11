@@ -9,9 +9,8 @@
 //   using std;
 //   using std.linalg;
 //   
-//   var allocator = make_heap_allocator();
 //   var shape: array<i64, 2> = [10, 10];
-//   var m = Matrix<f32>(allocator, shape);  // 10x10 matrix
+//   var m = try Matrix<f32>(global_allocator, shape);  // 10x10 matrix
 //   m.set([0, 0], 1.0);
 //   var val = m.get([0, 0]);
 //   
@@ -52,19 +51,25 @@ public module std.linalg {
      * Constructor: allocates memory for matrix of given shape
      * shape is an array of dimension sizes: [rows, cols, ...], copied in
      */
-    init(alloc: const ref HeapAllocator, shape: const ref array<i64>) {
+    init(alloc: const ref HeapAllocator, shape: const ref array<i64>) AllocationResult<void> {
       this.alloc = alloc.copy();
       this.ndims_ = shape.dim(0);
-      this.dims = Vec<i64>(alloc, this.ndims_);
+      this.dims = try Vec<i64>(alloc, this.ndims_);
 
       // Copy the shape and compute total size (product of all dimensions)
       for (var i: i64 = 0; i < this.ndims_; i = i + 1) {
-        this.dims.push(shape[i]);
+        try this.dims.push(shape[i]);
+        if (shape[i] < 0) {
+          return AllocationResult.InvalidArgument(InvalidArgumentError("negative size"));
+        }
+        if (shape[i] != 0 and this.total_size > std.I64_MAX / shape[i]) {
+          return AllocationResult.Overflow(OverflowError());
+        }
         this.total_size = this.total_size * shape[i];
       }
 
       // Allocate memory for elements via ContiguousBuffer
-      this.data = ContiguousBuffer<T>(alloc, this.total_size);
+      this.data = try ContiguousBuffer<T>(alloc, this.total_size);
     }
 
     /**
@@ -72,15 +77,15 @@ public module std.linalg {
      * row-major order. The array is borrowed only during construction.
      * Values come before the allocator to distinguish them from a shape.
      */
-    init(values: const ref array<T>, alloc: const ref HeapAllocator) {
+    init(values: const ref array<T>, alloc: const ref HeapAllocator) AllocationResult<void> {
       this.alloc = alloc.copy();
       this.ndims_ = values.ndims();
-      this.dims = Vec<i64>(alloc, this.ndims_);
+      this.dims = try Vec<i64>(alloc, this.ndims_);
       for (var i: i64 = 0; i < this.ndims_; i = i + 1) {
-        this.dims.push(values.dim(i));
+        try this.dims.push(values.dim(i));
         this.total_size = this.total_size * values.dim(i);
       }
-      this.data = ContiguousBuffer<T>(alloc, this.total_size);
+      this.data = try ContiguousBuffer<T>(alloc, this.total_size);
       // A single index into an unsized array addresses its flat storage.
       for (var i: i64 = 0; i < this.total_size; i = i + 1) {
         ignore_error(this.data.set(i, values[i]));
@@ -202,7 +207,9 @@ public module std.linalg {
      * Returns a non-owning view into the matrix data
      * NOTE: Currently only supports 1D slicing (single range)
      */
-    public const method __slice__(ranges: const ref array<SliceRange>) MatrixView<T> {
+    public const method __slice__(
+      ranges: const ref array<SliceRange>
+    ) AllocationResult<MatrixView<T>> {
       // For 1D matrices, slicing is straightforward
       const ref range = ranges[0];
       var start: i64 = range.get_start();
@@ -247,17 +254,23 @@ public module std.linalg {
       offset: i64,
       shape: const ref array<i64>,
       strides_arr: const ref array<i64>
-    ) {
+    ) AllocationResult<void> {
       this.data = data_ptr;
       this.base_offset = offset;
       this.ndims_ = shape.dim(0);
-      this.dims = Vec<i64>(alloc, this.ndims_);
-      this.strides = Vec<i64>(alloc, this.ndims_);
+      this.dims = try Vec<i64>(alloc, this.ndims_);
+      this.strides = try Vec<i64>(alloc, this.ndims_);
 
       // Copy the shape and strides and compute total size
       for (var i: i64 = 0; i < this.ndims_; i = i + 1) {
-        this.dims.push(shape[i]);
-        this.strides.push(strides_arr[i]);
+        try this.dims.push(shape[i]);
+        try this.strides.push(strides_arr[i]);
+        if (shape[i] < 0) {
+          return AllocationResult.InvalidArgument(InvalidArgumentError("negative size"));
+        }
+        if (shape[i] != 0 and this.total_size > std.I64_MAX / shape[i]) {
+          return AllocationResult.Overflow(OverflowError());
+        }
         this.total_size = this.total_size * shape[i];
       }
     }

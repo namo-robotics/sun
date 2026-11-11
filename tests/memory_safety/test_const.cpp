@@ -67,20 +67,22 @@ TEST(MemorySafety_Const, global_const_is_readable) {
 
 TEST(MemorySafety_Const, for_in_const_binding_reads_elements) {
   auto value = executeStringWithStdlib(R"(
-      using std;
-      function main() i32 {
-          var allocator = make_heap_allocator();
-          var v = Vec<i32>(allocator, 4);
-          v.push(1);
-          v.push(2);
-          v.push(3);
-          var sum: i32 = 0;
-          for (const x: i32 in v) {
-              sum = sum + x;
-          }
-          return sum;
-      }
-    )");
+using std;
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var v = try Vec<i32>(allocator, 4);
+  try v.push(1);
+  try v.push(2);
+  try v.push(3);
+  var sum: i32 = 0;
+  for (const x: i32 in v) {
+    sum = sum + x;
+  }
+  return Result.Ok(sum);
+}
+)");
   EXPECT_EQ(value, 6);
 }
 
@@ -162,17 +164,19 @@ TEST(MemorySafety_Const, global_assignment_is_rejected) {
 
 TEST(MemorySafety_Const, for_in_const_binding_is_not_assignable) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-      using std;
-      function main() i32 {
-          var allocator = make_heap_allocator();
-          var v = Vec<i32>(allocator, 4);
-          v.push(1);
-          for (const x: i32 in v) {
-              x = 2;
-          }
-          return 0;
-      }
-    )"),
+using std;
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var v = try Vec<i32>(allocator, 4);
+  try v.push(1);
+  for (const x: i32 in v) {
+    x = 2;
+  }
+  return Result.Ok(0);
+}
+)"),
                                 "Cannot assign to constant 'x'");
 }
 
@@ -377,30 +381,36 @@ TEST(MemorySafety_Const, mutable_ref_while_const_ref_is_rejected) {
 
 TEST(MemorySafety_Const, const_string_reads_and_prints) {
   auto value = executeStringWithStdlib(R"(
-      using std;
-      using std.io;
-      function main() i32 {
-          var allocator = make_heap_allocator();
-          const s = String(allocator, "hello");
-          println(s);
-          const t = s.clone(allocator);
-          if (not s.equals(t)) { return -1; }
-          return _convert<i32>(s.length()) + _convert<i32>(unsafe { s.unsafe_at(0); });
-      }
-    )");
+using std;
+using std.io;
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var allocator = make_heap_allocator();
+  const s = try String(allocator, "hello");
+  println(s);
+  const t = try s.clone(allocator);
+  if (not s.equals(t)) {
+    return Result.Ok(-1);
+  }
+  return Result.Ok(_convert<i32>(s.length()) + _convert<i32>(unsafe { s.unsafe_at(0); }));
+}
+)");
   EXPECT_EQ(value, 5 + 'h');
 }
 
 TEST(MemorySafety_Const, const_string_cannot_be_appended) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       executeStringWithStdlib(R"(
-      using std;
-      function main() i32 {
-          var allocator = make_heap_allocator();
-          const s = String(allocator, "hello");
-          s.append("!");
-          return 0;
-      }
-    )"),
+using std;
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var allocator = make_heap_allocator();
+  const s = try String(allocator, "hello");
+  try s.append("!");
+  return Result.Ok(0);
+}
+)"),
       "Cannot call non-const method 'append' on constant 's'");
 }

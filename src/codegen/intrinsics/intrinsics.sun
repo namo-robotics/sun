@@ -72,7 +72,8 @@ declare function _convert<T, V: _Numeric>(value: V) T;
 declare function _bitcast<T, V>(value: V) T;
 
 /** Start an OS thread and allocate its context. Move arguments into the thread.
- * The context must be joined exactly once; prefer std.thread.spawn. */
+ * Returns null on storage or thread creation failure, dropping moved arguments.
+ * A successful context must be joined exactly once; prefer std.thread.spawn. */
 declare function _spawn<F>(fn: F, args...: _params_of<F>) raw_ptr<std.thread.ThreadContext>;
 
 /** Wait for a thread, take its result, and release its context. Consume a

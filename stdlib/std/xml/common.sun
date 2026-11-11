@@ -51,7 +51,7 @@ public module std.xml {
     }
 
     /** Returns an owned description, as required by IError. */
-    public const method message() String {
+    public const method message() AllocationResult<String> {
       return String(this.explanation);
     }
 
@@ -189,16 +189,16 @@ public module std.xml {
 
   /** Copies a byte range using the caller's allocator. */
   function xml_slice(
-    alloc: ref HeapAllocator,
+    alloc: const ref HeapAllocator,
     text: const ref String,
     start: i64,
     end: i64
-  ) String {
-    var result = String(alloc, "");
+  ) AllocationResult<String> {
+    var result = try String(alloc, "");
     for (var i = start; i < end; i += 1) {
-      result.append_char(_convert<u8>(xml_byte(text, i)));
+      try result.append_char(_convert<u8>(xml_byte(text, i)));
     }
-    return result;
+    return AllocationResult.Ok(result);
   }
 
   /** Stores expanded name identity independently of the preferred prefix. */
@@ -230,8 +230,14 @@ public module std.xml {
     }
 
     /** Explicitly copies this name. */
-    public const method clone(alloc: ref HeapAllocator) XmlName {
-      return XmlName(this.uri_.clone(alloc), this.local_.clone(alloc), this.prefix_.clone(alloc));
+    public const method clone(alloc: const ref HeapAllocator) AllocationResult<XmlName> {
+      return AllocationResult.Ok(
+        XmlName(
+          try this.uri_.clone(alloc),
+          try this.local_.clone(alloc),
+          try this.prefix_.clone(alloc)
+        )
+      );
     }
 
     /** Compares expanded names without considering prefixes. */
@@ -283,8 +289,10 @@ public module std.xml {
     }
 
     /** Explicitly copies a declaration. */
-    public const method clone(alloc: ref HeapAllocator) XmlNamespace {
-      return XmlNamespace(this.prefix.clone(alloc), this.uri.clone(alloc));
+    public const method clone(alloc: const ref HeapAllocator) AllocationResult<XmlNamespace> {
+      return AllocationResult.Ok(
+        XmlNamespace(try this.prefix.clone(alloc), try this.uri.clone(alloc))
+      );
     }
   }
 

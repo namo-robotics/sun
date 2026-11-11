@@ -56,13 +56,14 @@ TEST(Operators_ClassArithmetic, generics_and_temporaries) {
 /** Checks explicit result propagation from an arithmetic hook. */
 TEST(Operators_ClassArithmetic, fallible_operator) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
+
     using std;
     /** Supplies the error protocol for a fallible result. */
     class Failure implements IError {
       /** Returns an error code. */
       public const method code() i32 { return 1; }
       /** Returns an error message. */
-      public const method message() String { return String("failed"); }
+      public const method message() AllocationResult<String> { return String("failed"); }
     }
     /** Wraps an integer result. */
     enum Outcome<T> { Ok(T), Error(Failure) }

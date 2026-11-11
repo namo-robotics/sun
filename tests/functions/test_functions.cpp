@@ -526,6 +526,7 @@ TEST(Functions, overloaded_function_value_without_context_is_ambiguous) {
 TEST(Functions, nonthrowing_pointer_widens_to_throwing_pointer) {
   auto value = executeString(R"(
 
+
 /** Represents a fixture failure without a standard-library dependency. */
 class Error {
   /** Creates the fixture failure. */
@@ -707,6 +708,7 @@ TEST(Functions, callable_variable_shadows_direct_function_target) {
 /** Constructor arguments accept widening from a stored infallible pointer. */
 TEST(Functions, nonthrowing_pointer_widens_in_constructor) {
   EXPECT_EQ(executeString(R"(
+
 
 /** Represents a fixture failure without a standard-library dependency. */
 class Error {

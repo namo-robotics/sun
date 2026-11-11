@@ -463,42 +463,44 @@ TEST(MemorySafety_Drops_Enums, taken_and_discarded_enum_results_drop_once) {
 
 TEST(MemorySafety_Drops_Enums, option_of_string_via_stdlib) {
   auto value = sun::driver::executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var maybe = Option.Some(String(alloc, "hello"));
-      var len: i64 = match maybe {
-        Option.Some(s) => s.length(),
-        Option.None => -1
-      };
-      var maybe2 = maybe;
-      var none: Option<String> = Option.None;
-      return len;
-    }
-  )");
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var maybe = Option.Some(try String(alloc, "hello"));
+  var len: i64 = match maybe {
+    Option.Some(s) => s.length(),
+    Option.None => -1
+  };
+  var maybe2 = maybe;
+  var none: Option<String> = Option.None;
+  return Result.Ok(_convert<i32>(len));
+}
+)");
   // Option<String> compiles, matches, moves, and drops without crashing
   EXPECT_EQ(value, 5);
 }
 
 TEST(MemorySafety_Drops_Enums, vec_of_option_of_owner_drops_elements) {
   auto value = sun::driver::executeStringWithStdlib(withPreamble(R"(
-    using std;
+using std;
 
-    function helper() i32 {
-      var alloc = make_heap_allocator();
-      var v = Vec<Holder>(alloc, 4);
-      v.push(Holder.Hold(Owner(1)));
-      v.push(Holder.Nothing);
-      v.push(Holder.Hold(Owner(2)));
-      return 0;
-    }
+function helper() Result<i32> {
+  var alloc = make_heap_allocator();
+  var v = try Vec<Holder>(alloc, 4);
+  try v.push(Holder.Hold(Owner(1)));
+  try v.push(Holder.Nothing);
+  try v.push(Holder.Hold(Owner(2)));
+  return Result.Ok(0);
+}
 
-    function main() i32 {
-      helper();
-      return counter;
-    }
-  )"));
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  try helper();
+  return Result.Ok(counter);
+}
+)"));
   EXPECT_EQ(value, 2);
 }
 

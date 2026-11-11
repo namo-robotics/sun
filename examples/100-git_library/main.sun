@@ -12,9 +12,8 @@ using sun_serve;
 
 /** Checks polling results and HTTP helpers from the imported library. */
 function check_library() ServerResult<i32> {
-  var alloc = make_heap_allocator();
-  var layout = try probe_epoll_layout(alloc);
-  var poller = try Epoll(alloc, layout, 1);
+  var layout = try probe_epoll_layout(global_allocator);
+  var poller = try Epoll(global_allocator, layout, 1);
   if (try poller.wait(0)) != 0 {
     return ServerResult.Ok(3);
   }
@@ -29,7 +28,10 @@ function check_library() ServerResult<i32> {
       }
     },
     (error: const ref IError) => {
-      eprintln(error.message());
+      match error.message() {
+        AllocationResult.Ok(message) => eprintln(message),
+        _ => eprintln("unable to allocate error message")
+      };
       return ServerResult.Ok(6);
     }
   };
@@ -49,7 +51,10 @@ function main() i32 {
   return match check_library() {
     ServerResult.Ok(status) => status,
     (error: const ref IError) => {
-      eprintln(error.message());
+      match error.message() {
+        AllocationResult.Ok(message) => eprintln(message),
+        _ => eprintln("unable to allocate error message")
+      };
       return 7;
     }
   };

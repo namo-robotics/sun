@@ -29,23 +29,27 @@ TEST(Lambdas_CaptureDiscovery, scalar_used_inside_unsafe_block) {
 
 TEST(Lambdas_CaptureDiscovery, raw_pointer_used_inside_unsafe_block) {
   auto value = executeStringWithStdlib(R"(
-      using std;
+using std;
 
-      class Holder {
-          public var counter: i64;
-          init() { this.counter = 41; }
-      }
+class Holder {
+  public var counter: i64;
 
-      function main() i32 {
-          var alloc = make_heap_allocator();
-          var sp: raw_ptr<Holder> = alloc.create<Holder>();
-          unsafe { sp.counter = 42; };
-          var f = () => i64 { unsafe { return sp.counter; }; };
-          var result = f();
-          unsafe { _free(sp); };
-          return _convert<i32>(result);
-      }
-    )");
+  init() {
+    this.counter = 41;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var sp: raw_ptr<Holder> = try alloc.create<Holder>();
+  unsafe { sp.counter = 42; };
+  var f = () => i64 { unsafe { return sp.counter; }; };
+  var result = f();
+  unsafe { _free(sp); };
+  return Result.Ok(_convert<i32>(result));
+}
+)");
   EXPECT_EQ(value, 42);
 }
 
@@ -122,17 +126,18 @@ function main() i32 {
 
 TEST(Lambdas_CaptureDiscovery, scalar_used_in_a_string_interpolation) {
   auto value = executeStringWithStdlib(R"(
-      using std;
+using std;
 
-      function main() i32 {
-          var n: i32 = 3;
-          var f = () => i32 {
-              var s = `n is ${n}`;
-              return _convert<i32>(s.length());
-          };
-          return f();
-      }
-    )");
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var n: i32 = 3;
+  var f = () => AllocationResult<i32> {
+    var s = try `n is ${n}`;
+    return AllocationResult.Ok(_convert<i32>(s.length()));
+  };
+  return Result.Ok(try f());
+}
+)");
   EXPECT_EQ(value, 6);
 }
 

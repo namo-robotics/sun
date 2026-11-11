@@ -40,10 +40,9 @@ class ScratchBuffer {
   public var data: Vec<i64>;
 
   /** Initializes the fixture fields used by this example or regression test. */
-  init() {
-    var alloc = make_heap_allocator();
-    this.data = Vec<i64>(alloc, 4);
-    this.data.push(1);
+  init() AllocationResult<void> {
+    this.data = try Vec<i64>(global_allocator, 4);
+    try this.data.push(1);
   }
 
   /** Records fixture teardown so the test can check cleanup behavior. */
@@ -55,16 +54,16 @@ class ScratchBuffer {
 
 /** Checks starts with one entry. */
 test_function startsWithOneEntry() {
-  var fx = ScratchBuffer();
+  var fx = try ScratchBuffer();
   try std.test.assert_eq(fx.data.size(), 1);
 }
 
 /** Runs the example that uses functions exercised by the example tests. */
-function main() i32 {
+function main() AllocationResult<i32> {
   // The production binary never contains the tests above.
   var m = distance.midpoint(2, 10);
-  println(`midpoint(2, 10) = ${m}`);
-  return 0;
+  println(try `midpoint(2, 10) = ${m}`);
+  return AllocationResult.Ok(0);
 }
 
 manifest {

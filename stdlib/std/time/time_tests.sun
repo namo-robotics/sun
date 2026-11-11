@@ -64,9 +64,9 @@ public module std.time {
   test_function unix_time_agrees_with_the_host_clock() {
     var alloc = make_heap_allocator();
     var before = std.time.read_unix_time();
-    var cmd = std.process.Command(alloc, "/bin/sh");
-    cmd.add_arg("-c");
-    cmd.add_arg("date +%s");
+    var cmd = try std.process.Command(alloc, "/bin/sh");
+    try cmd.add_arg("-c");
+    try cmd.add_arg("date +%s");
     var out = try std.test.expect_system(cmd.output());
     try std.test.assert_eq(out.status(), 0);
     out.stdout().trim();
@@ -123,9 +123,9 @@ public module std.time {
   test_function format_renders_a_fixed_timestamp() {
     var alloc = make_heap_allocator();
     var d = std.time.convert_to_utc(1700000000);
-    var text = std.time.format(alloc, d, "%Y-%m-%d %H:%M:%S");
+    var text = try std.time.format(alloc, d, "%Y-%m-%d %H:%M:%S");
     try std.test.assert(text.equals_literal("2023-11-14 22:13:20"), "full timestamp renders");
-    var day = std.time.format(alloc, d, "%Y-%m-%d");
+    var day = try std.time.format(alloc, d, "%Y-%m-%d");
     try std.test.assert(day.equals_literal("2023-11-14"), "date-only format renders");
   }
 

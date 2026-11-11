@@ -33,7 +33,7 @@ public module std.linalg {
     }
 
     /** Allocates a description of the rejected operation. */
-    public const method message() std.String {
+    public const method message() std.AllocationResult<std.String> {
       if (this.reason_ == LinalgErrorReason.InvalidDimensions) {
         return std.String("GEMM requires valid two-dimensional matrices");
       }
@@ -45,7 +45,7 @@ public module std.linalg {
   }
 
   /** Returns an operation result or an allocation-free validation error. */
-  public enum LinalgResult<T> { Ok(T), Error(LinalgError) }
+  public enum LinalgResult<T> { Ok(T), Error(LinalgError), Allocation(AllocationError), InvalidArgument(InvalidArgumentError), Overflow(OverflowError) }
 
   /** Checks shape and byte counts before any offset arithmetic is performed. */
   function valid_dimensions<T: _Float>(rows: i64, cols: i64, size: i64) bool {
@@ -783,7 +783,7 @@ public module std.linalg {
         return LinalgResult.Error(LinalgError(LinalgErrorReason.InvalidDimensions));
       }
     }
-    var output = std.linalg.Matrix<T>(alloc, [rows, cols]);
+    var output = try std.linalg.Matrix<T>(alloc, [rows, cols]);
     try gemm<T>(_convert<T>(1), a, Transpose.None, b, Transpose.None, _convert<T>(0), output);
     return LinalgResult.Ok(output);
   }

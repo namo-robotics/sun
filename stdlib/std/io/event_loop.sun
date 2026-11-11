@@ -79,12 +79,12 @@ public module std.io {
     var ready: Vec<ReadyEvent>;
 
     /** Reserve wait buffers; open rejects nonpositive capacities. */
-    init(alloc: ref HeapAllocator, capacity: i32) {
+    init(alloc: const ref HeapAllocator, capacity: i32) AllocationResult<void> {
       this.capacity = capacity;
-      this.registrations = Map<i64, EventRegistration>(alloc, 16);
+      this.registrations = try Map<i64, EventRegistration>(alloc, 16);
       var slots: i64 = capacity > 0 ? _convert<i64>(capacity) : 1;
-      this.native_events = ContiguousBuffer<u32>(alloc, slots * 8);
-      this.ready = Vec<ReadyEvent>(alloc, slots);
+      this.native_events = try ContiguousBuffer<u32>(alloc, slots * 8);
+      this.ready = try Vec<ReadyEvent>(alloc, slots);
     }
 
     /** Open the native queue once. Failure leaves this object unopened. */
@@ -134,7 +134,7 @@ public module std.io {
       try this.change(fd, 0, events, 1);
       var entry = EventRegistration(events, token);
       entry.generation = generation;
-      this.registrations.insert(fd, entry);
+      try this.registrations.insert(fd, entry);
       return SystemResult.Ok;
     }
 
@@ -154,7 +154,7 @@ public module std.io {
       try this.change(fd, old, events, 3);
       var entry = EventRegistration(events, token);
       entry.generation = generation;
-      this.registrations.insert(fd, entry);
+      try this.registrations.insert(fd, entry);
       return SystemResult.Ok;
     }
 
@@ -243,7 +243,7 @@ public module std.io {
           LookupResult.Ok(entry) => {
             var ready = ReadyEvent(event, entry.token);
             ready.generation = entry.generation;
-            this.ready.push(ready);
+            try this.ready.push(ready);
           },
           LookupResult.NotFound(e) => {}
         };

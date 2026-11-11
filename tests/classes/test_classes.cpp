@@ -50,97 +50,104 @@ TEST(Classes, class_with_method) {
 
 TEST(Classes, new_class_instance) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    
-    class Point {
-      var x: i32;
-      var y: i32;
-      init() {
-          this.x = 0;
-          this.y = 0;
-      }
-    }
+using std;
 
-    function main() i32 {
-        var allocator = make_heap_allocator();
-        var p = allocator.create<Point>();
-        return 0;
-    }
-  )");
+class Point {
+  var x: i32;
+  var y: i32;
+
+  init() {
+    this.x = 0;
+    this.y = 0;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var p = try allocator.create<Point>();
+  return Result.Ok(0);
+}
+)");
   EXPECT_EQ(value, 0);
 }
 
 TEST(Classes, class_that_allocates) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    
-    class B {
-      var c: i32;
-      init() {
-        this.c = 42;
-      }
-    }
+using std;
 
-    class A {
-      var b: raw_ptr<B>;
-      init(alloc: ref HeapAllocator) {
-        this.b = alloc.create<B>();
-      }
-    }
+class B {
+  var c: i32;
 
-    function main() i32 {
-        var allocator = make_heap_allocator();
-        var a: raw_ptr<A> = allocator.create<A>(allocator);
-        var b: raw_ptr<B> = unsafe { a.b; };
-        return unsafe { b.c; };
-    }
-  )");
+  init() {
+    this.c = 42;
+  }
+}
+
+class A {
+  var b: raw_ptr<B>;
+
+  init(alloc: ref HeapAllocator) Result<void> {
+    this.b = try alloc.create<B>();
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var a: raw_ptr<A> = try allocator.create<A>(allocator);
+  var b: raw_ptr<B> = unsafe { a.b; };
+  return Result.Ok(unsafe { b.c; });
+}
+)");
   EXPECT_EQ(value, 42);
 }
 
 TEST(Classes, object_field_access) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    
-    class Point {
-      var x: i32;
-      var y: i32;
-      
-      init(px: i32, py: i32) {
-        this.x = px;
-        this.y = py;
-      }
-    }
+using std;
 
-    function main() i32 {
-        var allocator = make_heap_allocator();
-        var p = allocator.create<Point>(10, 20);
-        return unsafe { p.x; };
-    }
-  )");
+class Point {
+  var x: i32;
+  var y: i32;
+
+  init(px: i32, py: i32) {
+    this.x = px;
+    this.y = py;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var p = try allocator.create<Point>(10, 20);
+  return Result.Ok(unsafe { p.x; });
+}
+)");
   EXPECT_EQ(value, 10);
 }
 
 TEST(Classes, object_field_read_y) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    
-    class Point {
-      var x: i32;
-      var y: i32;
-      
-      init(px: i32, py: i32) {
-        this.x = px;
-        this.y = py;
-      }
-    }
+using std;
 
-    function main() i32 {
-        var allocator = make_heap_allocator();
-        var p = allocator.create<Point>(10, 20);
-        return unsafe { p.y; };
-    }
-  )");
+class Point {
+  var x: i32;
+  var y: i32;
+
+  init(px: i32, py: i32) {
+    this.x = px;
+    this.y = py;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var p = try allocator.create<Point>(10, 20);
+  return Result.Ok(unsafe { p.y; });
+}
+)");
   EXPECT_EQ(value, 20);
 }
 
@@ -150,76 +157,79 @@ TEST(Classes, object_field_read_y) {
 
 TEST(Classes, method_call_no_args) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    
-    class Counter {
-      var value: i32;
-      
-      init(v: i32) {
-        this.value = v;
-      }
-      
-      method get() i32 {
-        return this.value;
-      }
-    }
+using std;
 
-    function main() i32 {
-        var allocator = make_heap_allocator();
-        var c = allocator.create<Counter>(42);
-        return unsafe { c.get(); };
-    }
-  )");
+class Counter {
+  var value: i32;
+
+  init(v: i32) {
+    this.value = v;
+  }
+
+  method get() i32 {
+    return this.value;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var c = try allocator.create<Counter>(42);
+  return Result.Ok(unsafe { c.get(); });
+}
+)");
   EXPECT_EQ(value, 42);
 }
 
 TEST(Classes, method_call_with_args) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    
-    class Calculator {
-      var base: i32;
-      
-      init(b: i32) {
-        this.base = b;
-      }
-      
-      method add(x: i32) i32 {
-        return this.base + x;
-      }
-    }
+using std;
 
-    function main() i32 {
-        var allocator = make_heap_allocator();
-        var calc = allocator.create<Calculator>(10);
-        return unsafe { calc.add(5); };
-    }
-  )");
+class Calculator {
+  var base: i32;
+
+  init(b: i32) {
+    this.base = b;
+  }
+
+  method add(x: i32) i32 {
+    return this.base + x;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var calc = try allocator.create<Calculator>(10);
+  return Result.Ok(unsafe { calc.add(5); });
+}
+)");
   EXPECT_EQ(value, 15);
 }
 
 TEST(Classes, chained_method_calls) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    
-    class Value {
-      var n: i32;
-      
-      init(x: i32) {
-        this.n = x;
-      }
-      
-      method double() i32 {
-        return this.n * 2;
-      }
-    }
+using std;
 
-    function main() i32 {
-        var allocator = make_heap_allocator();
-        var v1 = allocator.create<Value>(5);
-        return unsafe { v1.double(); };
-    }
-  )");
+class Value {
+  var n: i32;
+
+  init(x: i32) {
+    this.n = x;
+  }
+
+  method double() i32 {
+    return this.n * 2;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var v1 = try allocator.create<Value>(5);
+  return Result.Ok(unsafe { v1.double(); });
+}
+)");
   EXPECT_EQ(value, 10);
 }
 
@@ -229,51 +239,53 @@ TEST(Classes, chained_method_calls) {
 
 TEST(Classes, constructor_with_no_args) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    
-    class Counter {
-      var value: i32;
-      
-      init() {
-        this.value = 100;
-      }
-      
-      method get() i32 {
-        return this.value;
-      }
-    }
+using std;
 
-    function main() i32 {
-        var allocator = make_heap_allocator();
-        var c = allocator.create<Counter>();
-        return unsafe { c.get(); };
-    }
-  )");
+class Counter {
+  var value: i32;
+
+  init() {
+    this.value = 100;
+  }
+
+  method get() i32 {
+    return this.value;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var c = try allocator.create<Counter>();
+  return Result.Ok(unsafe { c.get(); });
+}
+)");
   EXPECT_EQ(value, 100);
 }
 
 TEST(Classes, constructor_initializes_fields) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    
-    class Point3D {
-      var x: i32;
-      var y: i32;
-      var z: i32;
-      
-      init(px: i32, py: i32, pz: i32) {
-        this.x = px;
-        this.y = py;
-        this.z = pz;
-      }
-    }
+using std;
 
-    function main() i32 {
-        var allocator = make_heap_allocator();
-        var p = allocator.create<Point3D>(1, 2, 3);
-        return unsafe { p.x; } + unsafe { p.y; } + unsafe { p.z; };
-    }
-  )");
+class Point3D {
+  var x: i32;
+  var y: i32;
+  var z: i32;
+
+  init(px: i32, py: i32, pz: i32) {
+    this.x = px;
+    this.y = py;
+    this.z = pz;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var p = try allocator.create<Point3D>(1, 2, 3);
+  return Result.Ok(unsafe { p.x; } + unsafe { p.y; } + unsafe { p.z; });
+}
+)");
   EXPECT_EQ(value, 6);
 }
 
@@ -283,58 +295,60 @@ TEST(Classes, constructor_initializes_fields) {
 
 TEST(Classes, multiple_methods) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    
-    class Box {
-      var width: i32;
-      var height: i32;
-      
-      init(w: i32, h: i32) {
-        this.width = w;
-        this.height = h;
-      }
-      
-      method area() i32 {
-        return this.width * this.height;
-      }
-      
-      method perimeter() i32 {
-        return 2 * this.width + 2 * this.height;
-      }
-    }
+using std;
 
-    function main() i32 {
-        var allocator = make_heap_allocator();
-        var box = allocator.create<Box>(3, 4);
-        return unsafe { box.area(); };
-    }
-  )");
+class Box {
+  var width: i32;
+  var height: i32;
+
+  init(w: i32, h: i32) {
+    this.width = w;
+    this.height = h;
+  }
+
+  method area() i32 {
+    return this.width * this.height;
+  }
+
+  method perimeter() i32 {
+    return 2 * this.width + 2 * this.height;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var box = try allocator.create<Box>(3, 4);
+  return Result.Ok(unsafe { box.area(); });
+}
+)");
   EXPECT_EQ(value, 12);
 }
 
 TEST(Classes, multiple_objects_same_class) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    
-    class Number {
-      var value: i32;
-      
-      init(v: i32) {
-        this.value = v;
-      }
-      
-      method get() i32 {
-        return this.value;
-      }
-    }
+using std;
 
-    function main() i32 {
-        var allocator = make_heap_allocator();
-        var n1 = allocator.create<Number>(10);
-        var n2 = allocator.create<Number>(20);
-        return unsafe { n1.get(); } + unsafe { n2.get(); };
-    }
-  )");
+class Number {
+  var value: i32;
+
+  init(v: i32) {
+    this.value = v;
+  }
+
+  method get() i32 {
+    return this.value;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var n1 = try allocator.create<Number>(10);
+  var n2 = try allocator.create<Number>(20);
+  return Result.Ok(unsafe { n1.get(); } + unsafe { n2.get(); });
+}
+)");
   EXPECT_EQ(value, 30);
 }
 
@@ -344,25 +358,32 @@ TEST(Classes, multiple_objects_same_class) {
 
 TEST(Classes, multiple_classes) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    
-    class First {
-      var a: i32;
-      init(v: i32) { this.a = v; }
-    }
-    
-    class Second {
-      var b: i32;
-      init(v: i32) { this.b = v; }
-    }
+using std;
 
-    function main() i32 {
-        var allocator = make_heap_allocator();
-        var f = allocator.create<First>(5);
-        var s = allocator.create<Second>(7);
-        return unsafe { f.a; } + unsafe { s.b; };
-    }
-  )");
+class First {
+  var a: i32;
+
+  init(v: i32) {
+    this.a = v;
+  }
+}
+
+class Second {
+  var b: i32;
+
+  init(v: i32) {
+    this.b = v;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var allocator = make_heap_allocator();
+  var f = try allocator.create<First>(5);
+  var s = try allocator.create<Second>(7);
+  return Result.Ok(unsafe { f.a; } + unsafe { s.b; });
+}
+)");
   EXPECT_EQ(value, 12);
 }
 
@@ -372,24 +393,25 @@ TEST(Classes, multiple_classes) {
 
 TEST(Classes, float_fields) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    
-    class PointF {
-      var x: f64;
-      var y: f64;
-      
-      init(px: f64, py: f64) {
-        this.x = px;
-        this.y = py;
-      }
-    }
+using std;
 
-    function main() f64 {
-        var allocator = make_heap_allocator();
-        var p = allocator.create<PointF>(1.5, 2.5);
-        return unsafe { p.x; } + unsafe { p.y; };
-    }
-  )");
+class PointF {
+  var x: f64;
+  var y: f64;
+
+  init(px: f64, py: f64) {
+    this.x = px;
+    this.y = py;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<f64> {
+  var allocator = make_heap_allocator();
+  var p = try allocator.create<PointF>(1.5, 2.5);
+  return Result.Ok(unsafe { p.x; } + unsafe { p.y; });
+}
+)");
   EXPECT_TRUE(std::holds_alternative<double>(value));
   EXPECT_NEAR(std::get<double>(value), 4.0, 0.001);
 }
@@ -1242,62 +1264,72 @@ TEST(Classes, explicit_deinit_no_double_call) {
 
 TEST(Classes, deinit_called_for_unique_ptr_at_scope_exit) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    var counter: i32 = 0;
+using std;
+var counter: i32 = 0;
 
-    class Widget {
-      var id: i32;
-      init(id: i32) { this.id = id; }
-      deinit() {
-        counter = counter + 1;
-      }
-    }
+class Widget {
+  var id: i32;
 
-    function helper() i32 {
-      var alloc = make_heap_allocator();
-      var w = Unique<Widget>(alloc.create<Widget>(1));
-      return w.get().id;
-    }
+  init(id: i32) {
+    this.id = id;
+  }
 
-    function main() i32 {
-      var result = helper();
-      // Unique<Widget>.deinit() should have been called, which frees the allocation.
-      // Widget.deinit() is called on the *Unique* wrapper (stack class), not directly on Widget.
-      // counter tracks Widget.deinit calls.
-      // The Unique wrapper's deinit frees the raw_ptr, but doesn't call Widget.deinit.
-      // So counter stays 0, but we verify Unique's scope cleanup works (no crash/leak).
-      return result;
-    }
-  )");
+  deinit() {
+    counter = counter + 1;
+  }
+}
+
+function helper() Result<i32> {
+  var alloc = make_heap_allocator();
+  var w = Unique<Widget>(try alloc.create<Widget>(1));
+  return Result.Ok(w.get().id);
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var result = try helper();
+  // Unique<Widget>.deinit() should have been called, which frees the allocation.
+  // Widget.deinit() is called on the *Unique* wrapper (stack class), not directly on Widget.
+  // counter tracks Widget.deinit calls.
+  // The Unique wrapper's deinit frees the raw_ptr, but doesn't call Widget.deinit.
+  // So counter stays 0, but we verify Unique's scope cleanup works (no crash/leak).
+  return Result.Ok(result);
+}
+)");
   EXPECT_EQ(value, 1);
 }
 
 TEST(Classes, deinit_called_for_class_created_with_allocator) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    var counter: i32 = 0;
+using std;
+var counter: i32 = 0;
 
-    class Resource {
-      var value: i32;
-      init(v: i32) { this.value = v; }
-      deinit() {
-        counter = counter + 1;
-      }
-    }
+class Resource {
+  var value: i32;
 
-    function helper() i32 {
-      var alloc = make_heap_allocator();
-      var r1 = Unique<Resource>(alloc.create<Resource>(10));
-      var r2 = Unique<Resource>(alloc.create<Resource>(20));
-      return r1.get().value + r2.get().value;
-    }
+  init(v: i32) {
+    this.value = v;
+  }
 
-    function main() i32 {
-      var result = helper();
-      // counter should be 2: both Resources had deinit called before free
-      return counter + result;
-    }
-  )");
+  deinit() {
+    counter = counter + 1;
+  }
+}
+
+function helper() Result<i32> {
+  var alloc = make_heap_allocator();
+  var r1 = Unique<Resource>(try alloc.create<Resource>(10));
+  var r2 = Unique<Resource>(try alloc.create<Resource>(20));
+  return Result.Ok(r1.get().value + r2.get().value);
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var result = try helper();
+  // counter should be 2: both Resources had deinit called before free
+  return Result.Ok(counter + result);
+}
+)");
   // 2 (deinit calls) + 30 (values) = 32
   EXPECT_EQ(value, 32);
 }
@@ -1306,75 +1338,91 @@ TEST(Classes, deinit_called_for_class_created_with_allocator) {
 // exactly like by-value arguments to any other call.
 TEST(Classes, ctor_by_value_class_arg_moves_temporary_and_named) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    class Holder {
-      var s: String;
-      init(s: String) { this.s = s; }
-      method len() i64 { return this.s.length(); }
-    }
+class Holder {
+  var s: String;
 
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var h = Holder(String(alloc, "abc"));
-      var t = String(alloc, "hello");
-      var h2 = Holder(t);
-      return _convert<i32>(h.len() + h2.len());
-    }
-  )");
+  init(s: String) {
+    this.s = s;
+  }
+
+  method len() i64 {
+    return this.s.length();
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var h = Holder(try String(alloc, "abc"));
+  var t = try String(alloc, "hello");
+  var h2 = Holder(t);
+  return Result.Ok(_convert<i32>(h.len() + h2.len()));
+}
+)");
   EXPECT_EQ(value, 8);
 }
 
 TEST(Classes, ctor_by_value_class_arg_is_use_after_move) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    class Holder {
-      var s: String;
-      init(s: String) { this.s = s; }
-    }
+class Holder {
+  var s: String;
 
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var t = String(alloc, "hello");
-      var h = Holder(t);
-      return _convert<i32>(t.length());
-    }
-  )"),
+  init(s: String) {
+    this.s = s;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var t = try String(alloc, "hello");
+  var h = Holder(t);
+  return Result.Ok(_convert<i32>(t.length()));
+}
+)"),
                SunError);
 }
 
 TEST(Classes, ctor_by_value_enum_arg_moves_payload) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    enum Value {
-      Empty,
-      Text(String),
-      Num(i64)
-    }
+enum Value {
+  Empty,
+  Text(String),
+  Num(i64)
+}
 
-    class Box {
-      var v: Value;
-      init(v: Value) { this.v = v; }
-      method size() i64 {
-        return match this.v {
-          Value.Text(s) => s.length(),
-          Value.Num(n) => n,
-          Value.Empty => 0
-        };
-      }
-    }
+class Box {
+  var v: Value;
 
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var a = Box(Value.Text(String(alloc, "four")));
-      var n = Value.Num(10);
-      var b = Box(n);
-      var c = Box(Value.Empty);
-      return _convert<i32>(a.size() + b.size() + c.size());
-    }
-  )");
+  init(v: Value) {
+    this.v = v;
+  }
+
+  method size() i64 {
+    return match this.v {
+      Value.Text(s) => s.length(),
+      Value.Num(n) => n,
+      Value.Empty => 0
+    };
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var a = Box(Value.Text(try String(alloc, "four")));
+  var n = Value.Num(10);
+  var b = Box(n);
+  var c = Box(Value.Empty);
+  return Result.Ok(_convert<i32>(a.size() + b.size() + c.size()));
+}
+)");
   EXPECT_EQ(value, 14);
 }
 
@@ -1382,25 +1430,29 @@ TEST(Classes, ctor_by_value_enum_arg_moves_payload) {
 // itself, not a copy: reads see it and mutations through it stick.
 TEST(Classes, ref_return_of_compound_from_free_function_is_not_a_copy) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
 
-    class Holder {
-      var items: Vec<i64>;
-      init(items: Vec<i64>) { this.items = items; }
-    }
+class Holder {
+  var items: Vec<i64>;
 
-    function items_of(h: ref Holder) ref Vec<i64> {
-      return h.items;
-    }
+  init(items: Vec<i64>) {
+    this.items = items;
+  }
+}
 
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var h = Holder(Vec<i64>(alloc, 2));
-      items_of(h).push(5);
-      items_of(h).push(6);
-      return _convert<i32>(items_of(h).size() + h.items.size());
-    }
-  )");
+function items_of(h: ref Holder) ref Vec<i64> {
+  return h.items;
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var h = Holder(try Vec<i64>(alloc, 2));
+  try items_of(h).push(5);
+  try items_of(h).push(6);
+  return Result.Ok(_convert<i32>(items_of(h).size() + h.items.size()));
+}
+)");
   EXPECT_EQ(value, 4);
 }
 
@@ -1839,21 +1891,33 @@ TEST(Classes_FieldInitializers,
 
 TEST(Classes, borrowed_primitive_constructor_and_method_arguments) {
   EXPECT_EQ(executeStringWithStdlib(R"(
-    using std;
-    class E {
-      var a: i64;
-      init(a: i64) { this.a = a; }
-      method add(a: i64) i64 { return this.a + a; }
-      method add(a: bool) i64 { return 100; }
-    }
-    function main() i32 {
-      var alloc = make_heap_allocator();
-      var v = Vec<i64>(alloc, 4);
-      v.push(7);
-      var e = E(unsafe { v.get_unchecked(0); });
-      return _convert<i32>(e.add(unsafe { v.get_unchecked(0); }));
-    }
-  )"),
+using std;
+
+class E {
+  var a: i64;
+
+  init(a: i64) {
+    this.a = a;
+  }
+
+  method add(a: i64) i64 {
+    return this.a + a;
+  }
+
+  method add(a: bool) i64 {
+    return 100;
+  }
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  var alloc = make_heap_allocator();
+  var v = try Vec<i64>(alloc, 4);
+  try v.push(7);
+  var e = E(unsafe { v.get_unchecked(0); });
+  return Result.Ok(_convert<i32>(e.add(unsafe { v.get_unchecked(0); })));
+}
+)"),
             14);
 }
 

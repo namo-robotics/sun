@@ -19,10 +19,10 @@
 //       var <field>: <SunType>; ...
 //       var unknown_fields: Vec<u8>;               // preserved unknown fields
 //       var alloc_: HeapAllocator;
-//       init(alloc: ref HeapAllocator) { ...zero values... }
-//       method encode(buf: ref Vec<u8>) void { ... }
+//       init(alloc: const ref HeapAllocator) AllocationResult<void> { ...zero values... }
+//       method encode(buf: ref Vec<u8>) AllocationResult<void> { ... }
 //     }
-//     function <Msg>_decode(alloc: ref HeapAllocator, buf: ref Vec<u8>) <Msg>,
+//     function <Msg>_decode(alloc: const ref HeapAllocator, buf: ref Vec<u8>) <Msg>,
 //     IError
 //   }
 //
@@ -496,13 +496,13 @@ class TypeMapper {
       case FD::TYPE_BOOL:
         return "false";
       case FD::TYPE_STRING:
-        return "String(alloc, \"\")";
+        return "try String(alloc, \"\")";
       case FD::TYPE_BYTES:
-        return "Vec<u8>(alloc, 4)";
+        return "try Vec<u8>(alloc, 4)";
       case FD::TYPE_ENUM:
         return enumName(f->enum_type()) + "." + zeroVariant(f->enum_type());
       case FD::TYPE_MESSAGE:
-        return messageName(f->message_type()) + "(alloc)";
+        return "try " + messageName(f->message_type()) + "(alloc)";
       default:
         return "0";
     }
@@ -535,16 +535,16 @@ class TypeMapper {
                                const std::string& dst = "buf") {
     switch (f->type()) {
       case FD::TYPE_STRING:
-        return "proto_write_string(" + dst + ", " + v + ");";
+        return "try proto_write_string(" + dst + ", " + v + ");";
       case FD::TYPE_BYTES:
-        return "proto_write_bytes(" + dst + ", " + v + ");";
+        return "try proto_write_bytes(" + dst + ", " + v + ");";
       case FD::TYPE_MESSAGE:
-        return v + ".encode_nested(" + dst + ");";
+        return "try " + v + ".encode_nested(" + dst + ");";
       case FD::TYPE_ENUM:
-        return "proto_write_int32(" + dst + ", proto_enum_to_i32_" +
+        return "try proto_write_int32(" + dst + ", proto_enum_to_i32_" +
                enumName(f->enum_type()) + "(" + v + "));";
       default:
-        return "proto_write_" + wireSuffix(f) + "(" + dst + ", " + v + ");";
+        return "try proto_write_" + wireSuffix(f) + "(" + dst + ", " + v + ");";
     }
   }
 
@@ -722,7 +722,7 @@ class MessageGenerator {
 
   /** Writes code that emits a protobuf field tag. */
   static std::string tagLine(const std::string& dst, int number, int wire) {
-    return "proto_write_tag(" + dst + ", " + std::to_string(number) + ", " +
+    return "try proto_write_tag(" + dst + ", " + std::to_string(number) + ", " +
            std::to_string(wire) + ");";
   }
 
@@ -762,14 +762,14 @@ class MessageGenerator {
    * Zero values (proto3 defaults); containers and sub-messages start empty
    */
   void emitInit() {
-    w_.open("init(alloc: ref HeapAllocator) {");
+    w_.open("init(alloc: const ref HeapAllocator) AllocationResult<void> {");
     w_.line("this.alloc_ = alloc.copy();");
     forEachPlainField([&](const FD* f) {
       std::string init;
       if (f->is_map()) {
-        init = T::fieldType(f) + "(alloc, 8)";
+        init = "try " + T::fieldType(f) + "(alloc, 8)";
       } else if (f->is_repeated()) {
-        init = T::fieldType(f) + "(alloc, 4)";
+        init = "try " + T::fieldType(f) + "(alloc, 4)";
       } else if (isProto3Optional(f)) {
         init = "Option.None";
       } else {
@@ -781,17 +781,19 @@ class MessageGenerator {
       w_.line("this." + asString(o->name()) + " = " + T::oneofEnumName(o) +
               ".NotSet;");
     });
-    w_.line("this.unknown_fields = Vec<u8>(alloc, 4);");
+    w_.line("this.unknown_fields = try Vec<u8>(alloc, 4);");
+    w_.line("return AllocationResult.Ok;");
     w_.close();
     w_.line();
   }
 
   /** Writes the method that encodes this message in protobuf wire format. */
   void emitEncode() {
-    w_.open("public method encode(buf: ref Vec<u8>) void {");
+    w_.open("public method encode(buf: ref Vec<u8>) AllocationResult<void> {");
     forEachPlainField([&](const FD* f) { emitEncodeField(f); });
     forEachOneof([&](const pb::OneofDescriptor* o) { emitEncodeOneof(o); });
-    w_.line("proto_append_raw(buf, this.unknown_fields);");
+    w_.line("try proto_append_raw(buf, this.unknown_fields);");
+    w_.line("return AllocationResult.Ok;");
     w_.close();
     w_.line();
   }
@@ -807,13 +809,13 @@ class MessageGenerator {
       const FD* v = entry->map_value();
       w_.open("for (var i: i64 = 0; i < " + fld + ".capacity(); i = i + 1) {");
       w_.open("if (" + fld + ".is_bucket_occupied(i)) {");
-      w_.line("var body = Vec<u8>(this.alloc_, 16);");
+      w_.line("var body = try Vec<u8>(this.alloc_, 16);");
       w_.line(tagLine("body", 1, T::wireType(k)));
       w_.line(T::writeStmt(k, fld + ".get_bucket_key(i)", "body"));
       w_.line(tagLine("body", 2, T::wireType(v)));
       w_.line(T::writeStmt(v, fld + ".get_bucket_value(i)", "body"));
       w_.line(tagLine("buf", number, 2));
-      w_.line("proto_write_bytes(buf, body);");
+      w_.line("try proto_write_bytes(buf, body);");
       w_.close();
       w_.close();
     } else if (isProto3Optional(f)) {
@@ -828,13 +830,13 @@ class MessageGenerator {
     } else if (f->is_repeated() && T::isPackable(f)) {
       // Packed: one length-delimited record holding all elements
       w_.open("if (" + fld + ".size() > 0) {");
-      w_.line("var body = Vec<u8>(this.alloc_, 16);");
+      w_.line("var body = try Vec<u8>(this.alloc_, 16);");
       w_.open("for (var i: i64 = 0; i < " + fld + ".size(); i = i + 1) {");
       w_.line(
           T::writeStmt(f, "unsafe { " + fld + ".get_unchecked(i); }", "body"));
       w_.close();
       w_.line(tagLine("buf", number, 2));
-      w_.line("proto_write_bytes(buf, body);");
+      w_.line("try proto_write_bytes(buf, body);");
       w_.close();
     } else if (f->is_repeated()) {
       w_.open("for (var i: i64 = 0; i < " + fld + ".size(); i = i + 1) {");
@@ -870,14 +872,16 @@ class MessageGenerator {
    * Length-prefixed forms: embedded sub-message and stream framing
    */
   void emitEncodeNested() {
-    w_.open("public method encode_nested(buf: ref Vec<u8>) void {");
-    w_.line("var body = Vec<u8>(this.alloc_, 16);");
-    w_.line("this.encode(body);");
-    w_.line("proto_write_bytes(buf, body);");
+    w_.open("public method encode_nested(buf: ref Vec<u8>) AllocationResult<void> {");
+    w_.line("var body = try Vec<u8>(this.alloc_, 16);");
+    w_.line("try this.encode(body);");
+    w_.line("try proto_write_bytes(buf, body);");
+    w_.line("return AllocationResult.Ok;");
     w_.close();
     w_.line();
-    w_.open("public method encode_delimited(buf: ref Vec<u8>) void {");
-    w_.line("this.encode_nested(buf);");
+    w_.open("public method encode_delimited(buf: ref Vec<u8>) AllocationResult<void> {");
+    w_.line("try this.encode_nested(buf);");
+    w_.line("return AllocationResult.Ok;");
     w_.close();
   }
 
@@ -886,10 +890,10 @@ class MessageGenerator {
    */
   void emitDecodeFrom() {
     w_.open("public function " + name_ +
-            "_decode_from(alloc: ref HeapAllocator, r: ref ProtoReader) "
-            "ProtoResult<" +
+            "_decode_from(alloc: const ref HeapAllocator, r: ref ProtoReader) "
+            "Result<" +
             name_ + "> {");
-    w_.line("var msg = " + name_ + "(alloc);");
+    w_.line("var msg = try " + name_ + "(alloc);");
     w_.open("while (r.at_end() == false) {");
     w_.line("var tag: u64 = try r.read_tag();");
     w_.line("var field: i64 = proto_read_tag_field(tag);");
@@ -907,7 +911,7 @@ class MessageGenerator {
     w_.line("try r.skip_field(wire, tag, msg.unknown_fields);");
     w_.close();
     w_.close();  // while
-    w_.line("return ProtoResult.Ok(msg);");
+    w_.line("return Result.Ok(msg);");
     w_.close();
     w_.line();
   }
@@ -928,15 +932,15 @@ class MessageGenerator {
       w_.line("var end: i64 = try r.read_length();");
       w_.line("var old: i64 = r.push_limit(end);");
       w_.open("while (r.at_end() == false) {");
-      w_.line(fld + ".push(" + T::readExpr(f) + ");");
+      w_.line("try " + fld + ".push(" + T::readExpr(f) + ");");
       w_.close();
       w_.line("r.pop_limit(old);");
       w_.close("} else {");
       w_.open("");
-      w_.line(fld + ".push(" + T::readExpr(f) + ");");
+      w_.line("try " + fld + ".push(" + T::readExpr(f) + ");");
       w_.close();
     } else if (f->is_repeated()) {
-      w_.line(fld + ".push(" + T::readExpr(f) + ");");
+      w_.line("try " + fld + ".push(" + T::readExpr(f) + ");");
     } else {
       w_.line(fld + " = " + T::readExpr(f) + ";");
     }
@@ -969,26 +973,26 @@ class MessageGenerator {
     w_.close();
     w_.close();
     w_.line("r.pop_limit(old);");
-    w_.line(fld + ".insert(key, val);");
+    w_.line("try " + fld + ".insert(key, val);");
   }
 
   /**
    * Nested (length-prefixed), whole-buffer, and delimited entry points
    */
   void emitDecodeHelpers() {
-    const std::string sig = "(alloc: ref HeapAllocator, r: ref ProtoReader) ";
+    const std::string sig = "(alloc: const ref HeapAllocator, r: ref ProtoReader) ";
     w_.open("public function " + name_ + "_decode_nested" + sig +
-            "ProtoResult<" + name_ + "> {");
+            "Result<" + name_ + "> {");
     w_.line("var end: i64 = try r.read_length();");
     w_.line("var old: i64 = r.push_limit(end);");
     w_.line("var msg = try " + name_ + "_decode_from(alloc, r);");
     w_.line("r.pop_limit(old);");
-    w_.line("return ProtoResult.Ok(msg);");
+    w_.line("return Result.Ok(msg);");
     w_.close();
     w_.line();
 
     w_.open("public function " + name_ +
-            "_decode(alloc: ref HeapAllocator, buf: ref Vec<u8>) ProtoResult<" +
+            "_decode(alloc: const ref HeapAllocator, buf: ref Vec<u8>) Result<" +
             name_ + "> {");
     w_.line("var r = ProtoReader(buf);");
     w_.line("return " + name_ + "_decode_from(alloc, r);");
@@ -996,7 +1000,7 @@ class MessageGenerator {
     w_.line();
 
     w_.open("public function " + name_ + "_decode_delimited" + sig +
-            "ProtoResult<" + name_ + "> {");
+            "Result<" + name_ + "> {");
     w_.line("return " + name_ + "_decode_nested(alloc, r);");
     w_.close();
     w_.line();

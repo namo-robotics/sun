@@ -98,23 +98,38 @@ TEST(MemorySafety_GlobalAssignment, use_after_move_into_global_rejected) {
 TEST(MemorySafety_GlobalAssignment,
      string_global_assignment_transfers_ownership) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    var g: String = String(make_heap_allocator(), "");
+using std;
 
-    function replace() void {
-      var a = make_heap_allocator();
-      var rebuilt = String(a, "new contents");
-      g = rebuilt;
+/** Handles this global initializer’s failure at the startup boundary. */
+function initialize_g() String {
+  return match String(make_heap_allocator(), "") {
+    AllocationResult.Ok(value) => value,
+    _ => {
+      std.panic("unexpected global initialization failure");
+      initialize_g();
     }
+  };
+}
+var g: String = initialize_g();
 
-    function main() i64 {
-      replace();
-      if (unsafe { g.unsafe_at(0); } != 110) {  // 'n'
-        return -1;
-      }
-      return g.length();
-    }
-  )");
+function replace() Result<void> {
+  var a = make_heap_allocator();
+  var rebuilt = try String(a, "new contents");
+  g = rebuilt;
+
+  return Result.Ok;
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i64> {
+  try replace();
+  if (unsafe { g.unsafe_at(0); } != 110) {
+    // 'n'
+    return Result.Ok(-1);
+  }
+  return Result.Ok(g.length());
+}
+)");
   EXPECT_EQ(value, 12);
 }
 
@@ -124,53 +139,83 @@ TEST(MemorySafety_GlobalAssignment,
 TEST(MemorySafety_GlobalAssignment,
      string_global_queue_pop_keeps_buffers_distinct) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    var g_queue: String = String(make_heap_allocator(), "");
+using std;
 
-    function append(q: ref String, s: ref String) void {
-      q.append(s);
+/** Handles this global initializer’s failure at the startup boundary. */
+function initialize_g_queue() String {
+  return match String(make_heap_allocator(), "") {
+    AllocationResult.Ok(value) => value,
+    _ => {
+      std.panic("unexpected global initialization failure");
+      initialize_g_queue();
+    }
+  };
+}
+var g_queue: String = initialize_g_queue();
+
+function append(q: ref String, s: ref String) Result<void> {
+  try q.append(s);
+
+  return Result.Ok;
+}
+
+function queue_pop(alloc: ref HeapAllocator) Result<String> {
+  var out = try String(alloc, "");
+  if (g_queue.length() > 0) {
+    var nl: i64 = 0;
+    while (nl < g_queue.length() and unsafe { g_queue.unsafe_at(nl); } != 10) {
+      nl = nl + 1;
+    }
+    for (var i: i64 = 0; i < nl; i = i + 1) {
+      try out.append_char(unsafe { g_queue.unsafe_at(i); });
     }
 
-    function queue_pop(alloc: ref HeapAllocator) String {
-      var out = String(alloc, "");
-      if (g_queue.length() > 0) {
-        var nl: i64 = 0;
-        while (nl < g_queue.length() and unsafe { g_queue.unsafe_at(nl); } != 10) { nl = nl + 1; }
-        for (var i: i64 = 0; i < nl; i = i + 1) { out.append_char(unsafe { g_queue.unsafe_at(i); }); }
-
-        var rest = String(alloc, "");
-        for (var i: i64 = nl + 1; i < g_queue.length(); i = i + 1) {
-          rest.append_char(unsafe { g_queue.unsafe_at(i); });
-        }
-        g_queue.clear();
-        append(g_queue, rest);
-      }
-      return out;
+    var rest = try String(alloc, "");
+    for (var i: i64 = nl + 1; i < g_queue.length(); i = i + 1) {
+      try rest.append_char(unsafe { g_queue.unsafe_at(i); });
     }
+    g_queue.clear();
+    try append(g_queue, rest);
+  }
+  return Result.Ok(out);
+}
 
-    function fill(alloc: ref HeapAllocator) void {
-      var q = String(alloc, "");
-      g_queue = q;
-      var a = String(alloc, "alpha\n");
-      append(g_queue, a);
-      var b = String(alloc, "beta\n");
-      append(g_queue, b);
-    }
+function fill(alloc: ref HeapAllocator) Result<void> {
+  var q = try String(alloc, "");
+  g_queue = q;
+  var a = try String(alloc, "alpha\n");
+  try append(g_queue, a);
+  var b = try String(alloc, "beta\n");
+  try append(g_queue, b);
 
-    function main() i64 {
-      var alloc = make_heap_allocator();
-      fill(alloc);
-      var p1 = queue_pop(alloc);
-      if (p1.length() != 5 or unsafe { p1.unsafe_at(0); } != 97) { return 1; }   // "alpha"
-      if (g_queue.length() != 5 or unsafe { g_queue.unsafe_at(0); } != 98) { return 2; }  // "beta\n"
-      var p2 = queue_pop(alloc);
-      if (p2.length() != 4 or unsafe { p2.unsafe_at(0); } != 98) { return 3; }   // "beta"
-      if (g_queue.length() != 0) { return 4; }
-      var p3 = queue_pop(alloc);
-      if (p3.length() != 0) { return 5; }
-      return 0;
-    }
-  )");
+  return Result.Ok;
+}
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i64> {
+  var alloc = make_heap_allocator();
+  try fill(alloc);
+  var p1 = try queue_pop(alloc);
+  if (p1.length() != 5 or unsafe { p1.unsafe_at(0); } != 97) {
+    return Result.Ok(1);  // "alpha"
+  }
+  if (g_queue.length() != 5 or unsafe { g_queue.unsafe_at(0); } != 98) {
+    return Result.Ok(2);  // "beta\n"
+  }
+  var p2 = try queue_pop(alloc);
+  if (p2.length() != 4 or unsafe { p2.unsafe_at(0); } != 98) {
+    return Result.Ok(3);  // "beta"
+  }
+  if (g_queue.length() != 0) {
+    return Result.Ok(4);
+  }
+  var p3 = try queue_pop(alloc);
+  if (p3.length() != 0) {
+    return Result.Ok(5);
+  }
+  return Result.Ok(0);
+}
+)");
   EXPECT_EQ(value, 0);
 }
 
@@ -204,17 +249,30 @@ TEST(MemorySafety_GlobalAssignment, generic_class_global_runs_constructor) {
 
 TEST(MemorySafety_GlobalAssignment, vec_global_is_constructed) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    var alloc: HeapAllocator = HeapAllocator();
-    var v: Vec<i64> = Vec<i64>(alloc, 8);
-
-    function main() i64 {
-      if (v.capacity() != 8) { return -1; }
-      v.push(10);
-      v.push(20);
-      return v.size();
+using std;
+var alloc: HeapAllocator = HeapAllocator();
+/** Handles this global initializer’s failure at the startup boundary. */
+function initialize_v() Vec<i64> {
+  return match Vec<i64>(alloc, 8) {
+    AllocationResult.Ok(value) => value,
+    _ => {
+      std.panic("unexpected global initialization failure");
+      initialize_v();
     }
-  )");
+  };
+}
+var v: Vec<i64> = initialize_v();
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i64> {
+  if (v.capacity() != 8) {
+    return Result.Ok(-1);
+  }
+  try v.push(10);
+  try v.push(20);
+  return Result.Ok(v.size());
+}
+)");
   EXPECT_EQ(value, 2);
 }
 
@@ -222,23 +280,43 @@ TEST(MemorySafety_GlobalAssignment, vec_global_is_constructed) {
 // crashed with a divide-by-zero on the first insert.
 TEST(MemorySafety_GlobalAssignment, map_global_is_constructed) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    var alloc: HeapAllocator = HeapAllocator();
-    var m: Map<String, i32> = Map<String, i32>(alloc, 64);
-
-    function main() i32 {
-      if (m.capacity() != 64) { return -1; }
-      var k = String(alloc, "key");
-      m.insert(k, 3);
-      if (m.size() != 1) { return -2; }
-      var found = 0;
-      if (true) {
-        var k2 = String(alloc, "key");
-        found = (match m.get(k2) { std.LookupResult.Ok(value) => value, std.LookupResult.NotFound(_) => { return -100; } });
-      }
-      return found;
+using std;
+var alloc: HeapAllocator = HeapAllocator();
+/** Handles this global initializer’s failure at the startup boundary. */
+function initialize_m() Map<String, i32> {
+  return match Map<String, i32>(alloc, 64) {
+    AllocationResult.Ok(value) => value,
+    _ => {
+      std.panic("unexpected global initialization failure");
+      initialize_m();
     }
-  )");
+  };
+}
+var m: Map<String, i32> = initialize_m();
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i32> {
+  if (m.capacity() != 64) {
+    return Result.Ok(-1);
+  }
+  var k = try String(alloc, "key");
+  try m.insert(k, 3);
+  if (m.size() != 1) {
+    return Result.Ok(-2);
+  }
+  var found = 0;
+  if (true) {
+    var k2 = try String(alloc, "key");
+    found = (match m.get(k2) {
+      std.LookupResult.Ok(value) => value,
+      std.LookupResult.NotFound(_) => {
+        return Result.Ok(-100);
+      }
+    });
+  }
+  return Result.Ok(found);
+}
+)");
   EXPECT_EQ(value, 3);
 }
 
@@ -246,16 +324,24 @@ TEST(MemorySafety_GlobalAssignment, map_global_is_constructed) {
 // returned value by move rather than staying zeroed.
 TEST(MemorySafety_GlobalAssignment, global_initialized_from_factory_call) {
   auto value = executeStringWithStdlib(R"(
+
     using std;
     var alloc: HeapAllocator = HeapAllocator();
 
-    function make() Vec<i64> {
-      var v = Vec<i64>(alloc, 4);
-      v.push(7);
-      return v;
+    function make() Result<Vec<i64>> {
+      var v = try Vec<i64>(alloc, 4);
+      try v.push(7);
+      return Result.Ok( v);
     }
 
-    var g: Vec<i64> = make();
+    /** Handles this global initializer’s failure at the startup boundary. */
+function initialize_g() Vec<i64> {
+ return match make() {
+ Result.Ok(value) => value,
+ _ => { std.panic("unexpected global initialization failure"); initialize_g(); }
+ };
+}
+var g: Vec<i64> = initialize_g();
 
     function main() i64 {
       if (g.capacity() != 4) { return -1; }
@@ -269,13 +355,14 @@ TEST(MemorySafety_GlobalAssignment, global_initialized_from_factory_call) {
 // in module storage, not in a function's scope.
 TEST(MemorySafety_GlobalAssignment, constructor_takes_global_by_ref) {
   auto value = executeStringWithStdlib(R"(
-    using std;
-    var alloc: HeapAllocator = HeapAllocator();
+using std;
+var alloc: HeapAllocator = HeapAllocator();
 
-    function main() i64 {
-      var s = String(alloc, "hello");
-      return s.length();
-    }
-  )");
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i64> {
+  var s = try String(alloc, "hello");
+  return Result.Ok(s.length());
+}
+)");
   EXPECT_EQ(value, 5);
 }

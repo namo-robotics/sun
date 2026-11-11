@@ -7,7 +7,7 @@ public module std.io {
     expected: static_ptr<u8>,
     incomplete: bool
   ) std.test.AssertionResult<void> {
-    match reader.next() {
+    match try reader.next() {
       std.io.LineReadResult.Complete => {
         try std.test.assert(not incomplete, "complete line");
       },
@@ -25,7 +25,7 @@ public module std.io {
   /** Verifies stable EOF and an empty exposed line. */
   function expect_eof(reader: ref std.io.LineReader) std.test.AssertionResult<void> {
     for (var i: i64 = 0; i < 2; i = i + 1) {
-      match reader.next() {
+      match try reader.next() {
         std.io.LineReadResult.Eof => {},
         _ => {
           try std.test.fail("expected EOF");
@@ -40,8 +40,8 @@ public module std.io {
   test_function line_reader_boundaries() {
     var alloc = make_heap_allocator();
     var td = try std.test.expect_system(std.tests.TempDir(alloc, "line_boundaries"));
-    var path = td.file("lines");
-    var empty = String("");
+    var path = try td.file("lines");
+    var empty = try String("");
     try std.test.expect_system_success(std.io.write_string(path, empty));
     if (true) {
       var file = std.io.File();
@@ -49,7 +49,7 @@ public module std.io {
       var reader = try std.test.expect_system(std.io.LineReader(alloc, file, 8, 3));
       try expect_eof(reader);
     }
-    var body = String("\nabc\ndefg\nh\r\nlast");
+    var body = try String("\nabc\ndefg\nh\r\nlast");
     try std.test.expect_system_success(std.io.write_string(path, body));
     for (var size: i64 = 1; size < 10; size = size + 1) {
       var file = std.io.File();
@@ -68,14 +68,14 @@ public module std.io {
   test_function line_reader_limits() {
     var alloc = make_heap_allocator();
     var td = try std.test.expect_system(std.tests.TempDir(alloc, "line_limits"));
-    var path = td.file("lines");
-    var body = String("abcd\nabcdefghij\nok\nabcde");
+    var path = try td.file("lines");
+    var body = try String("abcd\nabcdefghij\nok\nabcde");
     try std.test.expect_system_success(std.io.write_string(path, body));
     var file = std.io.File();
     try std.test.expect_system_success(file.open(path, std.io.FileMode.Read));
     var reader = try std.test.expect_system(std.io.LineReader(alloc, file, 4, 3));
     try expect_line(reader, "abcd", false);
-    match reader.next() {
+    match try reader.next() {
       std.io.LineReadResult.TooLong => {},
       _ => {
         try std.test.fail("expected overlong line");
@@ -83,7 +83,7 @@ public module std.io {
     };
     try std.test.assert(reader.line().equals_literal("abcd"), "bounded prefix");
     try expect_line(reader, "ok", false);
-    match reader.next() {
+    match try reader.next() {
       std.io.LineReadResult.TooLong => {},
       _ => {
         try std.test.fail("expected overlong final line");
@@ -97,7 +97,7 @@ public module std.io {
   test_function line_reader_large_file() {
     var alloc = make_heap_allocator();
     var td = try std.test.expect_system(std.tests.TempDir(alloc, "line_large"));
-    var path = td.file("lines");
+    var path = try td.file("lines");
     if (true) {
       var file = std.io.File();
       try std.test.expect_system_success(file.open(path, std.io.FileMode.Write));
@@ -131,13 +131,13 @@ public module std.io {
       }
     };
     var td = try std.test.expect_system(std.tests.TempDir(alloc, "line_zero"));
-    var path = td.file("lines");
-    var body = String("\nx\n");
+    var path = try td.file("lines");
+    var body = try String("\nx\n");
     try std.test.expect_system_success(std.io.write_string(path, body));
     try std.test.expect_system_success(file.open(path, std.io.FileMode.Read));
     var reader = try std.test.expect_system(std.io.LineReader(alloc, file, 0, 2));
     try expect_line(reader, "", false);
-    match reader.next() {
+    match try reader.next() {
       std.io.LineReadResult.TooLong => {},
       _ => {
         try std.test.fail("zero limit accepts only empty lines");
@@ -183,21 +183,21 @@ public module std.io {
     var file = std.io.File();
     var reader = try std.test.expect_system(std.io.LineReader(alloc, file, 4, 8));
     var operation = FragmentedReader();
-    match std.io.next_line_using(reader, operation) {
+    match try std.io.next_line_using(reader, operation) {
       std.io.LineReadResult.WouldBlock => {},
       _ => {
         try std.test.fail("expected would-block");
       }
     };
     try std.test.assert(reader.line().equals_literal("a"), "partial data retained");
-    match std.io.next_line_using(reader, operation) {
+    match try std.io.next_line_using(reader, operation) {
       std.io.LineReadResult.Complete => {},
       _ => {
         try std.test.fail("expected complete short line");
       }
     };
     try std.test.assert(reader.line().equals_literal("a"), "interruption loses no bytes");
-    match std.io.next_line_using(reader, operation) {
+    match try std.io.next_line_using(reader, operation) {
       std.io.LineReadResult.Error(e) => {
         try std.test.assert_eq(e.code(), 5);
       },
@@ -206,7 +206,7 @@ public module std.io {
       }
     };
     try std.test.assert(reader.line().equals_literal("a"), "I/O error retains partial data");
-    match std.io.next_line_using(reader, operation) {
+    match try std.io.next_line_using(reader, operation) {
       std.io.LineReadResult.Incomplete => {},
       _ => {
         try std.test.fail("expected interrupted final record");
@@ -222,25 +222,25 @@ public module std.io {
     var file = std.io.File();
     var reader = try std.test.expect_system(std.io.LineReader(alloc, file, 0, 8));
     var operation = FragmentedReader();
-    match std.io.next_line_using(reader, operation) {
+    match try std.io.next_line_using(reader, operation) {
       std.io.LineReadResult.WouldBlock => {},
       _ => {
         try std.test.fail("expected would-block during drain");
       }
     };
-    match std.io.next_line_using(reader, operation) {
+    match try std.io.next_line_using(reader, operation) {
       std.io.LineReadResult.TooLong => {},
       _ => {
         try std.test.fail("overlong state survives would-block");
       }
     };
-    match std.io.next_line_using(reader, operation) {
+    match try std.io.next_line_using(reader, operation) {
       std.io.LineReadResult.Error(_) => {},
       _ => {
         try std.test.fail("expected error during drain");
       }
     };
-    match std.io.next_line_using(reader, operation) {
+    match try std.io.next_line_using(reader, operation) {
       std.io.LineReadResult.TooLong => {},
       _ => {
         try std.test.fail("overlong state survives error until EOF");

@@ -219,10 +219,13 @@ class LibprotobufSchema {
 inline std::string dumpBufferProgramTail(const fs::path& outFile) {
   return "  var fd: i32 = unsafe { __file_open(\"" + outFile.string() +
          "\", 1); };\n"
-         "  if (fd < 0) { return 1; }\n"
+         "  if (fd < 0) { return Result.Ok(1); }\n"
          "  unsafe { __write(fd, buf.raw_data(), buf.size()); };\n"
          "  unsafe { __file_close(fd); };\n"
-         "  return 0;\n}\n";
+         "  return Result.Ok(0);\n}\n"
+         "/** Report an unexpected encoding or allocation failure once. */\n"
+         "function main() i32 { return match test_main() { "
+         "Result.Ok(value) => value, _ => { std.panic(\"unexpected test error\"); 1; } }; }\n";
 }
 
 }  // namespace proto_test

@@ -9,28 +9,28 @@ public module std {
   /** Checks basic allocation and size. */
   test_function basic_allocation_and_size() {
     var alloc = make_heap_allocator();
-    var buf = ContiguousBuffer<i32>(alloc, 10);
+    var buf = try ContiguousBuffer<i32>(alloc, 10);
     try std.test.assert_eq(buf.size(), 10);
   }
 
   /** Checks empty buffer. */
   test_function empty_buffer() {
     var alloc = make_heap_allocator();
-    var buf = ContiguousBuffer<i32>(alloc, 0);
+    var buf = try ContiguousBuffer<i32>(alloc, 0);
     try std.test.assert(buf.is_empty());
   }
 
   /** Checks non empty buffer. */
   test_function non_empty_buffer() {
     var alloc = make_heap_allocator();
-    var buf = ContiguousBuffer<i32>(alloc, 5);
+    var buf = try ContiguousBuffer<i32>(alloc, 5);
     try std.test.assert(buf.is_empty() == false);
   }
 
   /** Checks get set valid index. */
   test_function get_set_valid_index() {
     var alloc = make_heap_allocator();
-    var buf = ContiguousBuffer<i32>(alloc, 5);
+    var buf = try ContiguousBuffer<i32>(alloc, 5);
     try std.test.expect_access_success(buf.set(0, 42));
     try std.test.expect_access_success(buf.set(2, 100));
     try std.test.expect_access_success(buf.set(4, 77));
@@ -45,7 +45,7 @@ public module std {
   /** Checks get out of bounds throws. */
   test_function get_out_of_bounds_throws() {
     var alloc = make_heap_allocator();
-    var buf = ContiguousBuffer<i32>(alloc, 5);
+    var buf = try ContiguousBuffer<i32>(alloc, 5);
     match buf.get(10) {
       AccessResult.Ok(matched_value) => {
         var x: i32 = matched_value;
@@ -58,7 +58,7 @@ public module std {
   /** Checks get negative index throws. */
   test_function get_negative_index_throws() {
     var alloc = make_heap_allocator();
-    var buf = ContiguousBuffer<i32>(alloc, 5);
+    var buf = try ContiguousBuffer<i32>(alloc, 5);
     match buf.get(-1) {
       AccessResult.Ok(matched_value) => {
         var x: i32 = matched_value;
@@ -71,7 +71,7 @@ public module std {
   /** Checks set out of bounds throws. */
   test_function set_out_of_bounds_throws() {
     var alloc = make_heap_allocator();
-    var buf = ContiguousBuffer<i32>(alloc, 5);
+    var buf = try ContiguousBuffer<i32>(alloc, 5);
     match buf.set(10, 42) {
       AccessResult.Ok => {
         try std.test.fail("expected error");
@@ -83,7 +83,7 @@ public module std {
   /** Checks get set unchecked. */
   test_function get_set_unchecked() {
     var alloc = make_heap_allocator();
-    var buf = ContiguousBuffer<i32>(alloc, 3);
+    var buf = try ContiguousBuffer<i32>(alloc, 3);
     unsafe { buf.set_unchecked(0, 10); };
     unsafe { buf.set_unchecked(1, 20); };
     unsafe { buf.set_unchecked(2, 30); };
@@ -97,7 +97,7 @@ public module std {
   /** Checks fill buffer. */
   test_function fill_buffer() {
     var alloc = make_heap_allocator();
-    var buf = ContiguousBuffer<i32>(alloc, 5);
+    var buf = try ContiguousBuffer<i32>(alloc, 5);
     buf.fill(7);
     var sum: i32 = 0;
     for (var i: i64 = 0; i < buf.size(); i = i + 1) {
@@ -109,8 +109,8 @@ public module std {
   /** Checks copy from valid. */
   test_function copy_from_valid() {
     var alloc = make_heap_allocator();
-    var src = ContiguousBuffer<i32>(alloc, 5);
-    var dst = ContiguousBuffer<i32>(alloc, 5);
+    var src = try ContiguousBuffer<i32>(alloc, 5);
+    var dst = try ContiguousBuffer<i32>(alloc, 5);
     unsafe { src.set_unchecked(0, 10); };
     unsafe { src.set_unchecked(1, 20); };
     unsafe { src.set_unchecked(2, 30); };
@@ -130,8 +130,8 @@ public module std {
   /** Checks copy from out of bounds src. */
   test_function copy_from_out_of_bounds_src() {
     var alloc = make_heap_allocator();
-    var src = ContiguousBuffer<i32>(alloc, 3);
-    var dst = ContiguousBuffer<i32>(alloc, 5);
+    var src = try ContiguousBuffer<i32>(alloc, 3);
+    var dst = try ContiguousBuffer<i32>(alloc, 5);
     src.fill(1);
     dst.fill(0);
     match dst.write_from(src, 1, 0, 3) {
@@ -145,8 +145,8 @@ public module std {
   /** Checks copy from out of bounds dst. */
   test_function copy_from_out_of_bounds_dst() {
     var alloc = make_heap_allocator();
-    var src = ContiguousBuffer<i32>(alloc, 5);
-    var dst = ContiguousBuffer<i32>(alloc, 3);
+    var src = try ContiguousBuffer<i32>(alloc, 5);
+    var dst = try ContiguousBuffer<i32>(alloc, 3);
     src.fill(7);
     dst.fill(0);
     match dst.write_from(src, 0, 1, 3) {
@@ -160,7 +160,7 @@ public module std {
   /** Checks first and lsyntax tree. */
   test_function buffer_first_and_last() {
     var alloc = make_heap_allocator();
-    var buf = ContiguousBuffer<i32>(alloc, 4);
+    var buf = try ContiguousBuffer<i32>(alloc, 4);
     unsafe { buf.set_unchecked(0, 10); };
     unsafe { buf.set_unchecked(1, 20); };
     unsafe { buf.set_unchecked(2, 30); };
@@ -173,7 +173,7 @@ public module std {
   /** Checks first on empty throws. */
   test_function first_on_empty_throws() {
     var alloc = make_heap_allocator();
-    var buf = ContiguousBuffer<i32>(alloc, 0);
+    var buf = try ContiguousBuffer<i32>(alloc, 0);
     match buf.first() {
       AccessResult.Ok(matched_value) => {
         var x: i32 = matched_value;
@@ -186,7 +186,7 @@ public module std {
   /** Checks lsyntax tree on empty throws. */
   test_function last_on_empty_throws() {
     var alloc = make_heap_allocator();
-    var buf = ContiguousBuffer<i32>(alloc, 0);
+    var buf = try ContiguousBuffer<i32>(alloc, 0);
     match buf.last() {
       AccessResult.Ok(matched_value) => {
         var x: i32 = matched_value;
@@ -199,7 +199,7 @@ public module std {
   /** Checks index operator. */
   test_function buffer_index_operator() {
     var alloc = make_heap_allocator();
-    var buf = ContiguousBuffer<i32>(alloc, 3);
+    var buf = try ContiguousBuffer<i32>(alloc, 3);
     buf[0] = 100;
     buf[1] = 200;
     buf[2] = 300;
@@ -209,7 +209,7 @@ public module std {
   /** Checks iterator sum. */
   test_function iterator_sum() {
     var alloc = make_heap_allocator();
-    var buf = ContiguousBuffer<i32>(alloc, 4);
+    var buf = try ContiguousBuffer<i32>(alloc, 4);
     buf[0] = 1;
     buf[1] = 2;
     buf[2] = 3;
@@ -224,7 +224,7 @@ public module std {
   /** Checks f64 buffer. */
   test_function f64_buffer() {
     var alloc = make_heap_allocator();
-    var buf = ContiguousBuffer<f64>(alloc, 3);
+    var buf = try ContiguousBuffer<f64>(alloc, 3);
     buf[0] = 1.5;
     buf[1] = 2.5;
     buf[2] = 3.0;
@@ -234,7 +234,7 @@ public module std {
   /** Checks i64 buffer. */
   test_function i64_buffer() {
     var alloc = make_heap_allocator();
-    var buf = ContiguousBuffer<i64>(alloc, 3);
+    var buf = try ContiguousBuffer<i64>(alloc, 3);
     try std.test.expect_access_success(buf.set(0, 1000000000));
     try std.test.expect_access_success(buf.set(1, 2000000000));
     try std.test.expect_access_success(buf.set(2, 3000000000));
@@ -249,11 +249,11 @@ public module std {
   /** Checks resize preserves elements. */
   test_function resize_preserves_elements() {
     var alloc = make_heap_allocator();
-    var buf = ContiguousBuffer<i64>(alloc, 3);
+    var buf = try ContiguousBuffer<i64>(alloc, 3);
     try std.test.expect_access_success(buf.set(0, 1000000000));
     try std.test.expect_access_success(buf.set(1, 2000000000));
     try std.test.expect_access_success(buf.set(2, 3000000000));
-    buf.resize_to(5);
+    try buf.resize_to(5);
     try std.test.assert_eq(buf.size(), 5);
     try std.test.assert_eq(
       (try std.test.expect_access_value(buf.get(0))) +
@@ -263,18 +263,18 @@ public module std {
     );
     try std.test.expect_access_success(buf.set(3, 4000000000));
     try std.test.expect_access_success(buf.set(4, 5000000000));
-    buf.resize_to(2);
+    try buf.resize_to(2);
     try std.test.assert_eq(buf.size(), 2);
     try std.test.assert_eq(
       (try std.test.expect_access_value(buf.get(0))) +
         (try std.test.expect_access_value(buf.get(1))),
       3000000000
     );
-    buf.resize_to(2);
+    try buf.resize_to(2);
     try std.test.assert_eq(try std.test.expect_access_value(buf.get(1)), 2000000000);
-    buf.resize_to(0);
+    try buf.resize_to(0);
     try std.test.assert(buf.is_empty());
-    buf.resize_to(1);
+    try buf.resize_to(1);
     try std.test.expect_access_success(buf.set(0, 42));
     try std.test.assert_eq(try std.test.expect_access_value(buf.get(0)), 42);
   }
@@ -282,7 +282,7 @@ public module std {
   /** Checks raw data not null. */
   test_function raw_data_not_null() {
     var alloc = make_heap_allocator();
-    var buf = ContiguousBuffer<i32>(alloc, 5);
+    var buf = try ContiguousBuffer<i32>(alloc, 5);
     try std.test.assert(buf.raw_data() != null, "raw data pointer is null");
   }
 }

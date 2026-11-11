@@ -10,8 +10,7 @@ using std.net;
 //   using std.http;
 //
 //   function main() i32 {
-//       var alloc = make_heap_allocator();
-//       var server = HttpServer(alloc);
+//       var server = HttpServer(global_allocator);
 //       server.bind(8080);
 //       server.serve((req: ref HttpRequest, resp: ref HttpResponse) => void {
 //           if (req.path.equals_literal("/")) {
@@ -43,10 +42,10 @@ public module std.http {
     /**
      * Build an empty request. The parser fills in the fields.
      */
-    init(alloc: ref HeapAllocator) {
-      this.method = String(alloc, "");
-      this.path = String(alloc, "");
-      this.headers = String(alloc, "");
+    init(alloc: const ref HeapAllocator) AllocationResult<void> {
+      this.method = try String(alloc, "");
+      this.path = try String(alloc, "");
+      this.headers = try String(alloc, "");
     }
   }
 
@@ -63,9 +62,9 @@ public module std.http {
     /**
      * Build a 200 response with an empty HTML body.
      */
-    init(alloc: ref HeapAllocator) {
-      this.content_type = String(alloc, "text/html");
-      this.body = String(alloc, "");
+    init(alloc: const ref HeapAllocator) AllocationResult<void> {
+      this.content_type = try String(alloc, "text/html");
+      this.body = try String(alloc, "");
     }
 
     /**
@@ -78,25 +77,31 @@ public module std.http {
     /**
      * Replace the Content-Type header value.
      */
-    public method set_content_type(ct: static_ptr<u8>) void {
+    public method set_content_type(ct: static_ptr<u8>) AllocationResult<void> {
       this.content_type.clear();
-      this.content_type.append(ct);
+      try this.content_type.append(ct);
+
+      return AllocationResult.Ok;
     }
 
     /**
      * Replace the body with a literal.
      */
-    public method set_body(content: static_ptr<u8>) void {
+    public method set_body(content: static_ptr<u8>) AllocationResult<void> {
       this.body.clear();
-      this.body.append(content);
+      try this.body.append(content);
+
+      return AllocationResult.Ok;
     }
 
     /**
      * Replace the body with text built at runtime. The String is copied in.
      */
-    public method set_body_string(content: const ref String) void {
+    public method set_body_string(content: const ref String) AllocationResult<void> {
       this.body.clear();
-      this.body.append(content);
+      try this.body.append(content);
+
+      return AllocationResult.Ok;
     }
   }
 
@@ -105,8 +110,10 @@ public module std.http {
   // -------------------------------------------------------------------
 
   /** Appends the line ending used by HTTP headers to a string. */
-  public function append_crlf(out: ref String) void {
-    out.append("\r\n");
+  public function append_crlf(out: ref String) AllocationResult<void> {
+    try out.append("\r\n");
+
+    return AllocationResult.Ok;
   }
 
   /**
@@ -122,7 +129,10 @@ public module std.http {
   /**
    * Parse "METHOD path HTTP/1.1" request line and raw header block
    */
-  public function parse_http_request(raw: const ref String, req: ref HttpRequest) void {
+  public function parse_http_request(
+    raw: const ref String,
+    req: ref HttpRequest
+  ) AllocationResult<void> {
     var n: i64 = raw.length();
     var i: i64 = 0;
 
@@ -131,7 +141,7 @@ public module std.http {
       if (c == b' ' or c == b'\r') {
         break;
       }
-      req.method.append_char(c);
+      try req.method.append_char(c);
       i = i + 1;
     }
     if (i < n and unsafe { raw.unsafe_at(i); } == b' ') {
@@ -142,7 +152,7 @@ public module std.http {
       if (c == b' ' or c == b'\r') {
         break;
       }
-      req.path.append_char(c);
+      try req.path.append_char(c);
       i = i + 1;
     }
     while (i < n) {
@@ -158,17 +168,19 @@ public module std.http {
       end = n;
     }
     while (i < end) {
-      req.headers.append_char(unsafe { raw.unsafe_at(i); });
+      try req.headers.append_char(unsafe { raw.unsafe_at(i); });
       i = i + 1;
     }
+
+    return AllocationResult.Ok;
   }
 
   /**
    * Append the standard reason phrase for a status code, e.g. "OK" for 200.
    * Unknown codes get a generic phrase for their class.
    */
-  public function append_reason_phrase(out: ref String, code: i32) void {
-    out.append(
+  public function append_reason_phrase(out: ref String, code: i32) AllocationResult<void> {
+    try out.append(
       match code {
         200 => "OK",
         201 => "Created",
@@ -183,6 +195,8 @@ public module std.http {
         _ => "Status"
       }
     );
+
+    return AllocationResult.Ok;
   }
 
   // -------------------------------------------------------------------
@@ -198,7 +212,7 @@ public module std.http {
     /**
      * Build a server with no socket bound yet.
      */
-    init(allocator: ref HeapAllocator) {
+    init(allocator: const ref HeapAllocator) {
       this.alloc = allocator.copy();
     }
 
@@ -236,24 +250,15 @@ public module std.http {
       this.listener.close();
     }
 
-    /**
-     * Accept and handle connections one at a time until stop() is called
-     * or the listener fails. A failed connection is dropped; the server
-     * keeps running.
-     */
-    public method serve(handler: (ref HttpRequest, ref HttpResponse) => void) void {
+    /** Accept and handle connections until stop() is called. Propagate failures
+       to the caller and release the current connection before returning. */
+    public method serve(handler: (ref HttpRequest, ref HttpResponse) => Result<void>) Result<void> {
       this.running = true;
       while (this.running) {
-        match this.listener.accept() {
-          SystemResult.Ok(client) => {
-            ignore_error(this.handle_connection(client, handler));
-            client.close();
-          },
-          SystemResult.Error(_) => {
-            this.running = false;
-          }
-        };
+        var client = try this.listener.accept();
+        try this.handle_connection(client, handler);
       }
+      return Result.Ok;
     }
 
     /**
@@ -261,24 +266,24 @@ public module std.http {
      */
     method handle_connection(
       client: ref TcpStream,
-      handler: (ref HttpRequest, ref HttpResponse) => void
-    ) SystemResult<void> {
-      var req = HttpRequest(this.alloc);
+      handler: (ref HttpRequest, ref HttpResponse) => Result<void>
+    ) Result<void> {
+      var req = try HttpRequest(this.alloc);
       try this.read_request(client, req);
 
-      var resp = HttpResponse(this.alloc);
-      handler(req, resp);
+      var resp = try HttpResponse(this.alloc);
+      try handler(req, resp);
 
       try this.send_response(client, resp);
-      return SystemResult.Ok;
+      return Result.Ok;
     }
 
     /**
      * Read from the socket until the header terminator (or size cap)
      */
     method read_request(client: ref TcpStream, req: ref HttpRequest) SystemResult<void> {
-      var chunk = ContiguousBuffer<u8>(this.alloc, 2048);
-      var raw = String(this.alloc, "");
+      var chunk = try ContiguousBuffer<u8>(this.alloc, 2048);
+      var raw = try String(this.alloc, "");
       var done: bool = false;
       while (done == false) {
         var n: i64 = try client.recv(chunk);
@@ -286,7 +291,7 @@ public module std.http {
           done = true;
         } else {
           for (var i: i64 = 0; i < n; i = i + 1) {
-            raw.append_char(unsafe { chunk.get_unchecked(i); });
+            try raw.append_char(unsafe { chunk.get_unchecked(i); });
           }
           if (find_header_end(raw) >= 0) {
             done = true;
@@ -296,7 +301,7 @@ public module std.http {
           }
         }
       }
-      parse_http_request(raw, req);
+      try parse_http_request(raw, req);
       return SystemResult.Ok;
     }
 
@@ -304,21 +309,21 @@ public module std.http {
      * Serialize status line, headers, and body
      */
     public method send_response(client: ref TcpStream, resp: ref HttpResponse) SystemResult<void> {
-      var out = String(this.alloc, "HTTP/1.1 ");
-      out.append(resp.status);
-      out.append_char(b' ');
-      append_reason_phrase(out, resp.status);
-      append_crlf(out);
-      out.append("Content-Type: ");
-      out.append(resp.content_type);
-      append_crlf(out);
-      out.append("Content-Length: ");
-      out.append(resp.body.length());
-      append_crlf(out);
-      out.append("Connection: close");
-      append_crlf(out);
-      append_crlf(out);
-      out.append(resp.body);
+      var out = try String(this.alloc, "HTTP/1.1 ");
+      try out.append(resp.status);
+      try out.append_char(b' ');
+      try append_reason_phrase(out, resp.status);
+      try append_crlf(out);
+      try out.append("Content-Type: ");
+      try out.append(resp.content_type);
+      try append_crlf(out);
+      try out.append("Content-Length: ");
+      try out.append(resp.body.length());
+      try append_crlf(out);
+      try out.append("Connection: close");
+      try append_crlf(out);
+      try append_crlf(out);
+      try out.append(resp.body);
       try client.send_string(out);
       return SystemResult.Ok;
     }

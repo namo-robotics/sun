@@ -542,8 +542,8 @@ TEST(Ffi_Abi_CrossTargetDarwin, stdlib_program_compiles_to_a_macho_object) {
 
     function main() i32 {
         var alloc = make_heap_allocator();
-        var v: Vec<i64> = Vec<i64>(alloc, 4);
-        v.push(read_unix_time());
+        var v = match Vec<i64>(alloc, 4) { AllocationResult.Ok(value) => value, _ => { return -1; } };
+        match v.push(read_unix_time()) { AllocationResult.Ok => {}, _ => { return -1; } };
         var t = now();
         if (exists("nowhere.txt")) {
             return 1;

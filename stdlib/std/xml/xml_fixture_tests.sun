@@ -27,20 +27,20 @@ using std;
 public module std.xml {
 
   /** Combines assertion and XML failures without terminating the process. */
-  enum XmlFixtureChecks { Ok, Assertion(std.test.AssertionError), Xml(XmlError), Bounds(IndexOutOfBoundsError) }
+  enum XmlFixtureChecks { Ok, Assertion(std.test.AssertionError), Xml(XmlError), Bounds(IndexOutOfBoundsError), Allocation(AllocationError), InvalidArgument(InvalidArgumentError), Overflow(OverflowError), System(Error), NotFound(NotFoundError), Empty(EmptyError), Io(IOError), Conversion(ConversionError), DivisionByZero(DivisionByZeroError), Arithmetic(ArithmeticError), Json(std.json.JsonError), Decode(ProtoDecodeError) }
 
   /** Parses and round-trips xml-valid.xml (upstream blob bc997e6d6ef5a3d5860acb40bc01a63f3ab4400f). */
   test_function valid_xml() XmlFixtureChecks {
     var alloc = make_heap_allocator();
-    var input = String(
+    var input = try String(
       alloc,
       "<?xml version=\"1.0\"?>\n<root xmlns:c=\"urn:test\" a=\"&lt;&amp;&quot;&apos;&gt;\" c:unicode=\"&#x1f600;\">\n  <!-- comment --> <child>héllo &#65;<![CDATA[<raw>]]></child>\n</root>\n"
     );
-    var document = try parse_xml(alloc, input, String(alloc, "xml-valid.xml"));
+    var document = try parse_xml(alloc, input, try String(alloc, "xml-valid.xml"));
     var attribute = XmlName(
-      String(alloc, "urn:test"),
-      String(alloc, "unicode"),
-      String(alloc, "different")
+      try String(alloc, "urn:test"),
+      try String(alloc, "unicode"),
+      try String(alloc, "different")
     );
     try std.test.assert(
       match document.root().attribute(attribute) {
@@ -49,7 +49,7 @@ public module std.xml {
       },
       "numeric entity and namespace URI are preserved"
     );
-    var plain = XmlName(String(alloc, ""), String(alloc, "a"), String(alloc, ""));
+    var plain = XmlName(try String(alloc, ""), try String(alloc, "a"), try String(alloc, ""));
     try std.test.assert(
       match document.root().attribute(plain) {
         Option.Some(value) => value.equals_literal("<&\"'>"),
@@ -69,7 +69,7 @@ public module std.xml {
       ),
       "CDATA is decoded"
     );
-    var output = String(alloc, "");
+    var output = try String(alloc, "");
     try document.write(alloc, output);
     var again = try parse_xml(alloc, output);
     try std.test.assert(
@@ -84,13 +84,13 @@ public module std.xml {
   /** Parses and round-trips Tiny-1.0.gir (upstream blob d8c358f7bd4af9a7ddb5635d1e0206f73317a41e). */
   test_function gir_class_and_function() XmlFixtureChecks {
     var alloc = make_heap_allocator();
-    var input = String(
+    var input = try String(
       alloc,
       "<repository xmlns=\"http://www.gtk.org/introspection/core/1.0\" xmlns:c=\"http://www.gtk.org/introspection/c/1.0\" version=\"1.2\">\n  <namespace name=\"Tiny\" version=\"1.0\">\n    <class name=\"Object\" c:type=\"TinyObject\" parent=\"GObject.Object\">\n      <property name=\"enabled\" writable=\"1\" transfer-ownership=\"none\"><type name=\"gboolean\" c:type=\"gboolean\"/></property>\n    </class>\n    <function name=\"increment\" c:identifier=\"tiny_increment\">\n      <return-value transfer-ownership=\"none\"><type name=\"gint\" c:type=\"gint\"/></return-value>\n      <parameters><parameter name=\"value\" transfer-ownership=\"none\"><type name=\"gint\" c:type=\"gint\"/></parameter></parameters>\n    </function>\n    <function name=\"unsupported\" c:identifier=\"tiny_unsupported\">\n      <return-value><type name=\"Mystery\" c:type=\"Mystery\"/></return-value>\n    </function>\n  </namespace>\n</repository>\n"
     );
-    var document = try parse_xml(alloc, input, String(alloc, "Tiny-1.0.gir"));
-    input.replace("xmlns:c=", "xmlns:native=");
-    input.replace("c:", "native:");
+    var document = try parse_xml(alloc, input, try String(alloc, "Tiny-1.0.gir"));
+    try input.replace("xmlns:c=", "xmlns:native=");
+    try input.replace("c:", "native:");
     var renamed = try parse_xml(alloc, input);
     var ns = try (try renamed.root().child(1)).element();
     var cls = try (try ns.child(1)).element();
@@ -99,9 +99,9 @@ public module std.xml {
       "GIR element namespace survives prefix changes"
     );
     var key = XmlName(
-      String(alloc, "http://www.gtk.org/introspection/c/1.0"),
-      String(alloc, "type"),
-      String(alloc, "c")
+      try String(alloc, "http://www.gtk.org/introspection/c/1.0"),
+      try String(alloc, "type"),
+      try String(alloc, "c")
     );
     try std.test.assert(
       match cls.attribute(key) {
@@ -110,7 +110,7 @@ public module std.xml {
       },
       "GIR C type lookup uses URI identity"
     );
-    var output = String(alloc, "");
+    var output = try String(alloc, "");
     try document.write(alloc, output);
     var again = try parse_xml(alloc, output);
     try std.test.assert(
@@ -125,12 +125,12 @@ public module std.xml {
   /** Parses and round-trips TinyDep-1.0.gir (upstream blob 767363e29e330a9b89c0412939a19ba15e4b9dfb). */
   test_function gir_dependency() XmlFixtureChecks {
     var alloc = make_heap_allocator();
-    var input = String(
+    var input = try String(
       alloc,
       "<repository xmlns=\"http://www.gtk.org/introspection/core/1.0\" xmlns:c=\"http://www.gtk.org/introspection/c/1.0\">\n  <namespace name=\"TinyDep\" version=\"1.0\">\n    <bitfield name=\"Flags\" c:type=\"TinyFlags\"><member name=\"one\" value=\"1\" c:identifier=\"TINY_ONE\"/></bitfield>\n  </namespace>\n</repository>\n"
     );
-    var document = try parse_xml(alloc, input, String(alloc, "TinyDep-1.0.gir"));
-    var output = String(alloc, "");
+    var document = try parse_xml(alloc, input, try String(alloc, "TinyDep-1.0.gir"));
+    var output = try String(alloc, "");
     try document.write(alloc, output);
     var again = try parse_xml(alloc, output);
     try std.test.assert(
@@ -145,12 +145,12 @@ public module std.xml {
   /** Parses and round-trips selection.xml (upstream blob a2fa979486dcb7f017cd784475240d5346675aff). */
   test_function generator_selection() XmlFixtureChecks {
     var alloc = make_heap_allocator();
-    var input = String(
+    var input = try String(
       alloc,
       "<selection><namespace name=\"Tiny\" version=\"1.0\" module=\"tiny\"><function symbol=\"tiny_increment\"/></namespace></selection>\n"
     );
-    var document = try parse_xml(alloc, input, String(alloc, "selection.xml"));
-    var output = String(alloc, "");
+    var document = try parse_xml(alloc, input, try String(alloc, "selection.xml"));
+    var output = try String(alloc, "");
     try document.write(alloc, output);
     var again = try parse_xml(alloc, output);
     try std.test.assert(
@@ -165,40 +165,40 @@ public module std.xml {
   /** Rejects the generator's malformed XML fixtures with recoverable source diagnostics. */
   test_function malformed_fixtures() XmlFixtureChecks {
     var a = make_heap_allocator();
-    var cases = Vec<String>(a, 16);
-    cases.push(String("<r>"));
-    cases.push(String("<r></wrong>"));
-    cases.push(String("<r/><s/>"));
-    cases.push(String("<r a=\"1\"a=\"2\"/>"));
-    cases.push(String("<r a=\"1\" a=\"2\"/>"));
-    cases.push(String("<r>&unknown;</r>"));
-    cases.push(String("<r>&#0;</r>"));
-    cases.push(String("<r>&#xD800;</r>"));
-    cases.push(String("<r>&#99999999;</r>"));
-    cases.push(String("<!DOCTYPE r SYSTEM \"file:///etc/passwd\"><r/>"));
-    cases.push(String("<r><!-- bad -- comment --></r>"));
-    cases.push(String("<r>]]></r>"));
-    cases.push(String("<r a=\"<\"/>"));
-    var overlong = String("<r>");
-    overlong.append_char(192);
-    overlong.append_char(128);
-    overlong.append("</r>");
-    cases.push(overlong);
-    var truncated = String("<r>");
-    truncated.append_char(240);
-    truncated.append_char(144);
-    truncated.append("</r>");
-    cases.push(truncated);
-    var nul = String("<r>");
-    nul.append_char(0);
-    nul.append("</r>");
-    cases.push(nul);
+    var cases = try Vec<String>(a, 16);
+    try cases.push(try String("<r>"));
+    try cases.push(try String("<r></wrong>"));
+    try cases.push(try String("<r/><s/>"));
+    try cases.push(try String("<r a=\"1\"a=\"2\"/>"));
+    try cases.push(try String("<r a=\"1\" a=\"2\"/>"));
+    try cases.push(try String("<r>&unknown;</r>"));
+    try cases.push(try String("<r>&#0;</r>"));
+    try cases.push(try String("<r>&#xD800;</r>"));
+    try cases.push(try String("<r>&#99999999;</r>"));
+    try cases.push(try String("<!DOCTYPE r SYSTEM \"file:///etc/passwd\"><r/>"));
+    try cases.push(try String("<r><!-- bad -- comment --></r>"));
+    try cases.push(try String("<r>]]></r>"));
+    try cases.push(try String("<r a=\"<\"/>"));
+    var overlong = try String("<r>");
+    try overlong.append_char(192);
+    try overlong.append_char(128);
+    try overlong.append("</r>");
+    try cases.push(overlong);
+    var truncated = try String("<r>");
+    try truncated.append_char(240);
+    try truncated.append_char(144);
+    try truncated.append("</r>");
+    try cases.push(truncated);
+    var nul = try String("<r>");
+    try nul.append_char(0);
+    try nul.append("</r>");
+    try cases.push(nul);
 
-    cases.push(String("<r><missing:child/></r>"));
-    cases.push(String("<r xmlns:a=\"urn:x\" xmlns:b=\"urn:x\" a:x=\"1\" b:x=\"2\"/>"));
+    try cases.push(try String("<r><missing:child/></r>"));
+    try cases.push(try String("<r xmlns:a=\"urn:x\" xmlns:b=\"urn:x\" a:x=\"1\" b:x=\"2\"/>"));
     for (var content: ref String in cases) {
-      match parse_xml(a, content, String(a, "input.xml")) {
-        XmlResult.Error(error) => {
+      match parse_xml(a, content, try String(a, "input.xml")) {
+        Result.Xml(error) => {
           try std.test.assert(
             error.line() > 0 and error.column() > 0,
             "source coordinates are present"
@@ -211,9 +211,10 @@ public module std.xml {
             "source filename is present"
           );
         },
-        XmlResult.Ok(_) => {
+        Result.Ok(_) => {
           try std.test.assert(false, "malformed fixture accepted");
-        }
+        },
+        _ => false
       };
     }
     return XmlFixtureChecks.Ok;

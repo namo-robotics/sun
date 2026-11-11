@@ -137,6 +137,20 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
                                             std::move(analyzer)));
 }
 
+void Driver::defineJITSymbol(const std::string& name, void* address) {
+  if (!ctx->jit) {
+    sun::support::logAndThrowError("Native JIT symbols require a JIT driver");
+  }
+  llvm::orc::SymbolMap symbols;
+  symbols[ctx->jit->mangle(name)] = ExecutorSymbolDef(
+      ExecutorAddr::fromPtr(address), JITSymbolFlags::Exported);
+  if (auto error = ctx->jit->getMainJITDylib().define(
+          llvm::orc::absoluteSymbols(symbols))) {
+    sun::support::logAndThrowError("Cannot bind native JIT symbol '" + name +
+                                   "': " + llvm::toString(std::move(error)));
+  }
+}
+
 // Factory method for AOT compilation
 std::unique_ptr<Driver> Driver::createForAOT(const std::string& moduleName,
                                              const std::string& targetTriple,

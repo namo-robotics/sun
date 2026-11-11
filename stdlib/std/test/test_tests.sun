@@ -22,7 +22,10 @@ public module std.test {
       std.test.AssertionResult.Error(e) => {
         caught_equal = true;
         try std.test.assert(e.code() == 10);
-        try std.test.assert(e.message().equals_literal(equal_message));
+        try std.test.assert((try e.message()).equals_literal(equal_message));
+      },
+      _ => {
+        return std.test.fail("unexpected assertion error category");
       }
     };
     try std.test.assert(caught_equal);
@@ -32,7 +35,10 @@ public module std.test {
       std.test.AssertionResult.Error(e) => {
         caught_unequal = true;
         try std.test.assert(e.code() == 10);
-        try std.test.assert(e.message().equals_literal(unequal_message));
+        try std.test.assert((try e.message()).equals_literal(unequal_message));
+      },
+      _ => {
+        return std.test.fail("unexpected assertion error category");
       }
     };
     try std.test.assert(caught_unequal);
@@ -126,10 +132,10 @@ public module std.test {
 
   /** Checks string equality still compares contents. */
   test_function string_equality_still_compares_contents() {
-    var a = String("same");
-    var b = String("same");
+    var a = try String("same");
+    var b = try String("same");
     try std.test.assert_eq(a, b);
-    var other = String("other");
+    var other = try String("other");
     var caught = false;
     match std.test.assert_eq(a, other) {
       std.test.AssertionResult.Ok => {},
@@ -137,8 +143,11 @@ public module std.test {
         caught = true;
         try std.test.assert(e.code() == 10);
         try std.test.assert(
-          e.message().equals_literal("assertion failed: expected same, got other")
+          (try e.message()).equals_literal("assertion failed: expected same, got other")
         );
+      },
+      _ => {
+        return std.test.fail("unexpected assertion error category");
       }
     };
     try std.test.assert(caught);

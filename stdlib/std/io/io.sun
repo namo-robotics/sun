@@ -230,7 +230,7 @@ public module std.io {
      * buffer sizes. The byte limit excludes LF; zero permits only empty lines.
      */
     init(
-      alloc: ref HeapAllocator,
+      alloc: const ref HeapAllocator,
       file: ref File,
       max_line_length: i64,
       buffer_size: i64
@@ -239,8 +239,8 @@ public module std.io {
         return SystemResult.Error(Error(22, "invalid line reader bounds"));
       }
       this.file = file;
-      this.buffer = ContiguousBuffer<u8>(alloc, buffer_size);
-      this.text = String(alloc, "");
+      this.buffer = try ContiguousBuffer<u8>(alloc, buffer_size);
+      this.text = try String(alloc, "");
       this.maximum = max_line_length;
     }
 
@@ -259,9 +259,9 @@ public module std.io {
      * the next call to read the following line. WouldBlock and Error retain
      * progress. Repeated calls after EOF return Eof with an empty line.
      */
-    public method next() LineReadResult {
+    public method next() AllocationResult<LineReadResult> {
       var operation = NativeByteIo();
-      return next_line_using(this, operation);
+      return AllocationResult.Ok(try next_line_using(this, operation));
     }
   }
 
@@ -269,7 +269,7 @@ public module std.io {
   function next_line_using<Operation: ByteReader>(
     reader: ref LineReader,
     operation: ref Operation
-  ) LineReadResult {
+  ) AllocationResult<LineReadResult> {
     if (reader.delivered) {
       reader.text.clear();
       reader.overlong = false;
@@ -278,7 +278,7 @@ public module std.io {
     while (true) {
       if (reader.position == reader.available) {
         if (reader.finished) {
-          return LineReadResult.Eof;
+          return AllocationResult.Ok(LineReadResult.Eof);
         }
         var bytes = MutableByteSlice(reader.buffer);
         match read_slice_using(reader.file.get_fd(), bytes, operation) {
@@ -290,18 +290,20 @@ public module std.io {
             reader.finished = true;
             reader.delivered = true;
             if (reader.overlong) {
-              return LineReadResult.TooLong;
+              return AllocationResult.Ok(LineReadResult.TooLong);
             }
             if (reader.text.length() > 0) {
-              return LineReadResult.Incomplete;
+              return AllocationResult.Ok(LineReadResult.Incomplete);
             }
-            return LineReadResult.Eof;
+            return AllocationResult.Ok(LineReadResult.Eof);
           },
           ReadResult.WouldBlock => {
-            return LineReadResult.WouldBlock;
+            return AllocationResult.Ok(LineReadResult.WouldBlock);
           },
           ReadResult.Error(e) => {
-            return LineReadResult.Error(Error(e.code(), "failed to read line"));
+            return AllocationResult.Ok(
+              LineReadResult.Error(Error(e.code(), "failed to read line"))
+            );
           }
         };
       }
@@ -311,17 +313,17 @@ public module std.io {
       if (ch == b'\n') {
         reader.delivered = true;
         if (reader.overlong) {
-          return LineReadResult.TooLong;
+          return AllocationResult.Ok(LineReadResult.TooLong);
         }
-        return LineReadResult.Complete;
+        return AllocationResult.Ok(LineReadResult.Complete);
       }
       if (reader.text.length() < reader.maximum) {
-        reader.text.append_char(ch);
+        try reader.text.append_char(ch);
       } else {
         reader.overlong = true;
       }
     }
-    return LineReadResult.Eof;
+    return AllocationResult.Ok(LineReadResult.Eof);
   }
 
   /** Reports write completion or progress before blocking or failure; resume after that prefix. */
@@ -491,7 +493,7 @@ public module std.io {
      * Open a file named at runtime. Throws if the system refuses.
      */
     public method open(path: ref String, mode: FileMode) SystemResult<void> {
-      try this.open_cstr(path.c_str(), mode);
+      try this.open_cstr(try path.c_str(), mode);
       return SystemResult.Ok;
     }
 
@@ -530,20 +532,20 @@ public module std.io {
      * Write a String's bytes. Returns how many bytes went out, or a negative
      * value on failure.
      */
-    public method write(data: ref String) i64 {
-      return unsafe { c_write(this.fd, data.c_str(), data.length()); };
+    public method write(data: const ref String) i64 {
+      return unsafe { c_write(this.fd, data.bytes(), data.length()); };
     }
 
     /**
      * Read the rest of the file into a String
      */
-    public method read_all(alloc: ref HeapAllocator) SystemResult<String> {
-      var out: String = String(alloc, "");
-      var chunk: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 4096);
+    public method read_all(alloc: const ref HeapAllocator) SystemResult<String> {
+      var out: String = try String(alloc, "");
+      var chunk: ContiguousBuffer<u8> = try ContiguousBuffer<u8>(alloc, 4096);
       var n: i64 = unsafe { c_read(this.fd, chunk.raw_data(), 4096); };
       while (n > 0) {
         for (var i: i64 = 0; i < n; i = i + 1) {
-          out.append_char(unsafe { chunk.get_unchecked(i); });
+          try out.append_char(unsafe { chunk.get_unchecked(i); });
         }
         n = unsafe { c_read(this.fd, chunk.raw_data(), 4096); };
       }
@@ -663,7 +665,7 @@ public module std.io {
 
   /** Reads an entire file into an owned string and returns Error on an I/O failure. */
   public function read_to_string(
-    alloc: ref HeapAllocator,
+    alloc: const ref HeapAllocator,
     path: static_ptr<u8>
   ) SystemResult<String> {
     var f: File = File();
@@ -676,7 +678,10 @@ public module std.io {
   /**
    * Read a whole file named at runtime into a new String.
    */
-  public function read_to_string(alloc: ref HeapAllocator, path: ref String) SystemResult<String> {
+  public function read_to_string(
+    alloc: const ref HeapAllocator,
+    path: ref String
+  ) SystemResult<String> {
     var f: File = File();
     try f.open(path, FileMode.Read);
     var text: String = try f.read_all(alloc);
@@ -735,7 +740,7 @@ public module std.io {
    * Delete a file named at runtime. Throws if it cannot be removed.
    */
   public function remove_file(path: ref String) SystemResult<void> {
-    try remove_file_cstr(path.c_str());
+    try remove_file_cstr(try path.c_str());
     return SystemResult.Ok;
   }
 
@@ -766,7 +771,7 @@ public module std.io {
    * Rename a file from a literal path to one built at runtime.
    */
   public function rename_file(old_path: static_ptr<u8>, new_path: ref String) SystemResult<void> {
-    try rename_file_cstr(old_path.raw(), new_path.c_str());
+    try rename_file_cstr(old_path.raw(), try new_path.c_str());
     return SystemResult.Ok;
   }
 
@@ -774,7 +779,7 @@ public module std.io {
    * Rename a file from a path built at runtime to a literal one.
    */
   public function rename_file(old_path: ref String, new_path: static_ptr<u8>) SystemResult<void> {
-    try rename_file_cstr(old_path.c_str(), new_path.raw());
+    try rename_file_cstr(try old_path.c_str(), new_path.raw());
     return SystemResult.Ok;
   }
 
@@ -782,7 +787,7 @@ public module std.io {
    * Rename a file, both paths built at runtime.
    */
   public function rename_file(old_path: ref String, new_path: ref String) SystemResult<void> {
-    try rename_file_cstr(old_path.c_str(), new_path.c_str());
+    try rename_file_cstr(try old_path.c_str(), try new_path.c_str());
     return SystemResult.Ok;
   }
 
@@ -810,7 +815,7 @@ public module std.io {
    * Create a directory named at runtime, with the given permission bits.
    */
   public function make_dir(path: ref String, mode: i32) SystemResult<void> {
-    try make_dir_cstr(path.c_str(), mode);
+    try make_dir_cstr(try path.c_str(), mode);
     return SystemResult.Ok;
   }
 
@@ -838,7 +843,7 @@ public module std.io {
    * Remove a directory named at runtime. It must already be empty.
    */
   public function remove_dir(path: ref String) SystemResult<void> {
-    try remove_dir_cstr(path.c_str());
+    try remove_dir_cstr(try path.c_str());
     return SystemResult.Ok;
   }
 
@@ -863,8 +868,8 @@ public module std.io {
   /**
    * Report whether anything exists at a path built at runtime.
    */
-  public function exists(path: ref String) bool {
-    return exists_cstr(path.c_str());
+  public function exists(path: ref String) AllocationResult<bool> {
+    return AllocationResult.Ok(exists_cstr(try path.c_str()));
   }
 
   /**
@@ -889,8 +894,8 @@ public module std.io {
   /**
    * Report whether a path built at runtime is a directory.
    */
-  public function is_dir(path: ref String) bool {
-    return is_dir_cstr(path.c_str());
+  public function is_dir(path: ref String) AllocationResult<bool> {
+    return AllocationResult.Ok(is_dir_cstr(try path.c_str()));
   }
 
   /**
@@ -903,8 +908,8 @@ public module std.io {
   /**
    * Report whether a path built at runtime is an ordinary file.
    */
-  public function is_file(path: ref String) bool {
-    return exists(path) and not is_dir(path);
+  public function is_file(path: ref String) AllocationResult<bool> {
+    return AllocationResult.Ok(try exists(path) and not try is_dir(path));
   }
 
   /**
@@ -1016,17 +1021,36 @@ public module std.io {
     return unsafe { _load<u8>(name, 2); } == 0;
   }
 
+  /** Owns a native directory stream until enumeration finishes or fails. */
+  class DirectoryStream {
+    var handle: raw_ptr<u8>;
+
+    /** Adopt a successfully opened directory stream. */
+    init(handle: raw_ptr<u8>) {
+      this.handle = handle;
+    }
+
+    /** Close the directory on every exit from enumeration. */
+    deinit() {
+      unsafe { c_closedir(this.handle); };
+    }
+  }
+
   /**
    * List a directory. "." and ".." are left out; the order is whatever the
    * filesystem gives, not sorted.
    */
-  function read_dir_cstr(alloc: ref HeapAllocator, path: raw_ptr<u8>) SystemResult<Vec<DirEntry>> {
+  function read_dir_cstr(
+    alloc: const ref HeapAllocator,
+    path: raw_ptr<u8>
+  ) SystemResult<Vec<DirEntry>> {
     var dir: raw_ptr<u8> = unsafe { c_opendir(path); };
     if (dir == null) {
       return SystemResult.Error(Error(errno(), "failed to open directory"));
     }
 
-    var entries: Vec<DirEntry> = Vec<DirEntry>(alloc, 8);
+    var stream = DirectoryStream(dir);
+    var entries: Vec<DirEntry> = try Vec<DirEntry>(alloc, 8);
     var rec: raw_ptr<u8> = unsafe { c_readdir(dir); };
     while (rec != null) {
       // struct dirent's head differs per OS; the two byte offsets that
@@ -1035,12 +1059,11 @@ public module std.io {
       var name: raw_ptr<u8> = unsafe { _ptr_offset(rec, DIRENT_NAME_OFFSET); };
       if (not is_dot_entry(name)) {
         var d_type: u8 = unsafe { _load<u8>(rec, DIRENT_TYPE_OFFSET); };
-        entries.push(DirEntry(from_c_str(alloc, name), kind_of(d_type)));
+        try entries.push(DirEntry(try from_c_str(alloc, name), kind_of(d_type)));
       }
       rec = unsafe { c_readdir(dir); };
     }
 
-    unsafe { c_closedir(dir); };
     return SystemResult.Ok(entries);
   }
 
@@ -1049,7 +1072,7 @@ public module std.io {
    * out.
    */
   public function read_dir(
-    alloc: ref HeapAllocator,
+    alloc: const ref HeapAllocator,
     path: static_ptr<u8>
   ) SystemResult<Vec<DirEntry>> {
     return SystemResult.Ok((try read_dir_cstr(alloc, path.raw())));
@@ -1058,8 +1081,11 @@ public module std.io {
   /**
    * List the entries of a directory at a path built at runtime.
    */
-  public function read_dir(alloc: ref HeapAllocator, path: ref String) SystemResult<Vec<DirEntry>> {
-    return SystemResult.Ok((try read_dir_cstr(alloc, path.c_str())));
+  public function read_dir(
+    alloc: const ref HeapAllocator,
+    path: ref String
+  ) SystemResult<Vec<DirEntry>> {
+    return SystemResult.Ok((try read_dir_cstr(alloc, try path.c_str())));
   }
 
   // -------------------------------------------------------------------
@@ -1071,9 +1097,9 @@ public module std.io {
    * input with nothing read. Unbuffered on purpose: a buffered reader would
    * swallow bytes a later child process expects to find on the descriptor.
    */
-  public function read_line(alloc: ref HeapAllocator) Option<String> {
-    var line: String = String(alloc, "");
-    var byte: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 1);
+  public function read_line(alloc: const ref HeapAllocator) AllocationResult<Option<String>> {
+    var line: String = try String(alloc, "");
+    var byte: ContiguousBuffer<u8> = try ContiguousBuffer<u8>(alloc, 1);
     var got_any: bool = false;
 
     var n: i64 = unsafe { c_read(STDIN_FD, byte.raw_data(), 1); };
@@ -1081,16 +1107,16 @@ public module std.io {
       got_any = true;
       var ch: u8 = unsafe { byte.get_unchecked(0); };
       if (ch == 10) {
-        return Option.Some(line);
+        return AllocationResult.Ok(Option.Some(line));
       }
-      line.append_char(ch);
+      try line.append_char(ch);
       n = unsafe { c_read(STDIN_FD, byte.raw_data(), 1); };
     }
 
     if (not got_any) {
-      return Option.None;
+      return AllocationResult.Ok(Option.None);
     }
-    return Option.Some(line);
+    return AllocationResult.Ok(Option.Some(line));
   }
 
   // -------------------------------------------------------------------
@@ -1108,37 +1134,45 @@ public module std.io {
     /**
      * Build an empty poller. Add descriptors before waiting.
      */
-    init(alloc: ref HeapAllocator) {
+    init(alloc: const ref HeapAllocator) AllocationResult<void> {
       this.alloc = alloc.copy();
-      this.fds = Vec<PollFd>(alloc, 4);
+      this.fds = try Vec<PollFd>(alloc, 4);
     }
 
     /**
      * Watch for an arbitrary combination of the POLL* bits.
      */
-    public method add(fd: i32, events: i16) void {
-      this.fds.push(PollFd(fd, events));
+    public method add(fd: i32, events: i16) AllocationResult<void> {
+      try this.fds.push(PollFd(fd, events));
+
+      return AllocationResult.Ok;
     }
 
     /**
      * Watch for readable data (or the peer hanging up).
      */
-    public method add_read(fd: i32) void {
-      this.fds.push(PollFd(fd, POLLIN));
+    public method add_read(fd: i32) AllocationResult<void> {
+      try this.fds.push(PollFd(fd, POLLIN));
+
+      return AllocationResult.Ok;
     }
 
     /**
      * Watch for room to write.
      */
-    public method add_write(fd: i32) void {
-      this.fds.push(PollFd(fd, POLLOUT));
+    public method add_write(fd: i32) AllocationResult<void> {
+      try this.fds.push(PollFd(fd, POLLOUT));
+
+      return AllocationResult.Ok;
     }
 
     /**
      * Watch a descriptor for both readable data and room to write.
      */
-    public method add_read_write(fd: i32) void {
-      this.fds.push(PollFd(fd, POLLIN | POLLOUT));
+    public method add_read_write(fd: i32) AllocationResult<void> {
+      try this.fds.push(PollFd(fd, POLLIN | POLLOUT));
+
+      return AllocationResult.Ok;
     }
 
     /**
@@ -1219,11 +1253,11 @@ public module std.io {
       if (capacity < 1) {
         capacity = 1;
       }
-      var ready: Vec<Event> = Vec<Event>(this.alloc, capacity);
+      var ready: Vec<Event> = try Vec<Event>(this.alloc, capacity);
       for (var i: i64 = 0; i < this.fds.size(); i = i + 1) {
         var entry: ref PollFd = unsafe { this.fds.get_unchecked(i); };
         if (entry.revents != 0) {
-          ready.push(Event(entry.fd, entry.revents));
+          try ready.push(Event(entry.fd, entry.revents));
         }
       }
       return SystemResult.Ok(ready);

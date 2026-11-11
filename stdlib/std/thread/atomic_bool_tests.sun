@@ -18,7 +18,7 @@ public module std.thread {
     try std.test.assert(flag.compare_exchange(true, false));
     try std.test.assert(not flag.load());
     published.store(false);
-    var worker = std.thread.spawn(publish);
+    var worker = try std.thread.spawn(publish);
     while (not published.load()) {}
     try std.test.assert_eq(payload, 42);
     worker.join();

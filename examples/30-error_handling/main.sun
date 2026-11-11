@@ -17,7 +17,10 @@ function divide(a: i32, b: i32) ArithmeticResult<i32> {
 function show(a: i32, b: i32) void {
   match divide(a, b) {
     ArithmeticResult.Ok(value) => println(value),
-    (error: const ref IError) => println(error.message())
+    (error: const ref IError) => match error.message() {
+      AllocationResult.Ok(message) => println(message),
+      _ => println("unable to allocate error message")
+    }
   };
 }
 

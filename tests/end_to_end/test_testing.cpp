@@ -293,7 +293,7 @@ TEST(EndToEnd_Testing, returned_errors_fail_tests) {
       /** Identifies the failure. */
       public const method code() i32 { return 42; }
       /** Returns an owned diagnostic message. */
-      public const method message() String { return String("returned failure"); }
+      public const method message() AllocationResult<String> { return String("returned failure"); }
     }
     /** Collects the errors this test can return. */
     enum TestError { Assertion(std.test.AssertionError), Other(Failure) }
@@ -315,7 +315,7 @@ TEST(EndToEnd_Testing, custom_result_tests) {
   const std::string program = R"(
     using std;
     /** Combines assertions with failures from system calls. */
-    enum Outcome { Passed, Assertion(std.test.AssertionError), System(Error) }
+    enum Outcome { Passed, Assertion(std.test.AssertionError), System(Error), Failure0(AllocationError), Failure1(InvalidArgumentError), Failure2(OverflowError), Failure3(IndexOutOfBoundsError), Failure4(NotFoundError), Failure5(EmptyError), Failure6(IOError), Failure7(ConversionError), Failure8(DivisionByZeroError), Failure9(ArithmeticError), Failure10(std.json.JsonError), Failure11(std.xml.XmlError), Failure12(ProtoDecodeError) }
     /** Returns success implicitly. */
     test_function implicit_success() Outcome {
       try std.test.assert_eq(2 + 2, 4);
@@ -337,7 +337,7 @@ TEST(EndToEnd_Testing, custom_result_failure_exits_one) {
   const std::string program = R"(
     using std;
     /** Reports assertion failures directly in a test-owned enum. */
-    enum Outcome { Passed, Assertion(std.test.AssertionError) }
+    enum Outcome { Passed, Assertion(std.test.AssertionError), Failure0(AllocationError), Failure1(InvalidArgumentError), Failure2(OverflowError), Failure3(IndexOutOfBoundsError), Failure4(NotFoundError), Failure5(EmptyError), Failure6(IOError), Failure7(ConversionError), Failure8(DivisionByZeroError), Failure9(ArithmeticError), Failure10(std.json.JsonError), Failure11(std.xml.XmlError), Failure12(ProtoDecodeError), Failure13(Error) }
     /** Propagates an assertion failure through a custom result. */
     test_function fails() Outcome { try std.test.assert(false, "custom failure"); }
   )";
@@ -351,7 +351,7 @@ TEST(EndToEnd_Testing, custom_result_arithmetic_failure_exits_one) {
   const std::string program = R"(
     using std;
     /** Combines ordinary assertions with checked arithmetic failures. */
-    enum Outcome { Passed, Assertion(std.test.AssertionError), Arithmetic(ArithmeticError) }
+    enum Outcome { Passed, Assertion(std.test.AssertionError), Arithmetic(ArithmeticError), Failure0(AllocationError), Failure1(InvalidArgumentError), Failure2(OverflowError), Failure3(IndexOutOfBoundsError), Failure4(NotFoundError), Failure5(EmptyError), Failure6(IOError), Failure7(ConversionError), Failure8(DivisionByZeroError), Failure10(std.json.JsonError), Failure11(std.xml.XmlError), Failure12(ProtoDecodeError), Failure13(Error) }
     /** Accepts the standard result's arithmetic variant on a successful test. */
     test_function succeeds() Result<void> { return; }
     /** Reports checked division failure through a custom result. */
@@ -424,6 +424,12 @@ TEST(EndToEnd_Testing, public_errno_and_nonblocking_helpers) {
             match std.net.set_fd_nonblocking(-1, true) {
                 SystemResult.Ok => {},
                 SystemResult.Error(e) => { reported = e.code(); }
+            ,
+SystemResult.Allocation(e) => { reported = e.code(); }
+            ,
+SystemResult.InvalidArgument(e) => { reported = e.code(); }
+            ,
+SystemResult.Overflow(e) => { reported = e.code(); }
             };
             try std.test.assert_eq(reported, code);
         }

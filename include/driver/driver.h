@@ -163,6 +163,11 @@ class Driver {
    */
   void analyzeProgram(BlockExprAST& blockAst, Parser& parser);
 
+  /** Validate main and append an analyzed adapter for a result-enum return.
+   * Returns the adapter, or nullptr when no adaptation is needed.
+   */
+  sun::ast::FunctionAST* prepareMainEntry(BlockExprAST& blockAst, bool execute);
+
   /**
    * Register a source string for error reporting and create its parser
    */
@@ -392,6 +397,9 @@ class Driver {
    * export symbols.
    */
   void setExecutable(bool executable) { executable_ = executable; }
+
+  /** Bind a native symbol for this JIT instance before executing source. */
+  void defineJITSymbol(const std::string& name, void* address);
 
   /**
    * Access the underlying module (for emitting object code after compilation)

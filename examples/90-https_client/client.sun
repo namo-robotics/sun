@@ -9,13 +9,12 @@ using std;
 using tls;
 
 /** Carries request, system, or response access failures. */
-enum RequestResult { Ok, Tls(tls.TlsError), System(Error), Bounds(IndexOutOfBoundsError) }
+enum RequestResult { Ok, Allocation(AllocationError), InvalidArgument(InvalidArgumentError), Overflow(OverflowError), Tls(tls.TlsError), System(Error), Bounds(IndexOutOfBoundsError), NotFound(NotFoundError), Empty(EmptyError), Io(IOError), Conversion(ConversionError), DivisionByZero(DivisionByZeroError), Arithmetic(ArithmeticError), Json(std.json.JsonError), Xml(std.xml.XmlError), Decode(ProtoDecodeError) }
 
 /** Performs the operation and propagates returned failures. */
 function run() RequestResult {
-  var alloc = make_heap_allocator();
-  var client = HttpsClient(alloc);
-  var host = String(alloc, "example.com");
+  var client = HttpsClient(global_allocator);
+  var host = try String(global_allocator, "example.com");
 
   var response = try client.get(host, "/");
 
@@ -29,7 +28,7 @@ function run() RequestResult {
   while (end < response.body.length() and (try response.body.at(end)) != b'\n') {
     end = end + 1;
   }
-  var first_line = try response.body.substr(alloc, 0, end);
+  var first_line = try response.body.substr(global_allocator, 0, end);
   println(first_line);
 
   return RequestResult.Ok;
@@ -39,7 +38,10 @@ function run() RequestResult {
 function main() i32 {
   return match run() {
     (e: const ref IError) => {
-      println(e.message());
+      match e.message() {
+        AllocationResult.Ok(message) => println(message),
+        _ => println("unable to allocate error message")
+      };
       1;
     },
     _ => 0

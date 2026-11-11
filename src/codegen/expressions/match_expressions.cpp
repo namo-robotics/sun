@@ -17,6 +17,9 @@ Value* CodegenVisitor::codegen(const sun::ast::MatchExprAST& expr) {
   // discriminants (ints, floats, strings).
   sun::types::TypePtr discType =
       sun::types::unwrapRef(expr.getDiscriminant()->getResolvedType());
+  if (expr.isPropagation() && discType->isVoid()) {
+    return codegen(*expr.getDiscriminant());
+  }
   if (auto* enumType =
           sun::codegen::support::tryGetType<sun::types::EnumType>(discType)) {
     return enums.codegenMatch(expr, *enumType);

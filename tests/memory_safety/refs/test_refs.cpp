@@ -395,13 +395,15 @@ TEST(MemorySafety_Refs, string_assigned_through_ref_replaces_and_frees_once) {
   // Regression: storing through a ref String used to write the source's
   // address over the String's bytes, printing garbage and double-freeing
   auto value = sun::driver::executeStringWithStdlib(R"(
-    using std;
-    function main() i64 {
-        var b: String = `..`;
-        var c: ref String = b;
-        c = `test!`;
-        return b.length();
-    }
-  )");
+using std;
+
+/** Runs the fixture with explicit error propagation. */
+function main() Result<i64> {
+  var b: String = try `..`;
+  var c: ref String = b;
+  c = try `test!`;
+  return Result.Ok(b.length());
+}
+)");
   EXPECT_EQ(value, 5);
 }

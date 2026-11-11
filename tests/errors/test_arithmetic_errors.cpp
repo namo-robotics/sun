@@ -124,6 +124,7 @@ TEST(Errors_Arithmetic, ordinary_operations_need_no_error_contract) {
  */
 TEST(Errors_Arithmetic, propagation_drops_live_values) {
   EXPECT_EQ(executeString(R"(
+
     var drops = 0;
     /** Records resource cleanup. */
     class Owner {
@@ -159,7 +160,7 @@ TEST(Errors_Arithmetic, messages_with_stdlib) {
       return match std.checked_div(1, 0) {
         _Result.Ok(value) => -1,
         _Result.Err(error) => {
-          var message = error.message();
+          var message = match error.message() { std.AllocationResult.Ok(text) => text, _ => { return -1; } };
           if (message.equals_literal("integer division by zero")) { return 0; }
           return 1;
         }
@@ -223,7 +224,7 @@ TEST(Errors_Arithmetic, library_result_without_stdlib_handled_with_stdlib) {
       return match arithmetic_fixture.divide(1, 0) {
         _Result.Ok(value) => value,
         _Result.Err(error) => {
-          var message = std.ArithmeticError(error).message();
+          var message = match std.ArithmeticError(error).message() { std.AllocationResult.Ok(text) => text, _ => { return 2; } };
           if (message.equals_literal("integer division by zero")) { return 0; }
           return 1;
         }
@@ -252,7 +253,7 @@ TEST(Errors_Arithmetic, stdlib_checked_promotion_and_interface) {
       return match std.checked_div(small, 0) {
         _Result.Ok(v) => -1,
         (error: const ref IError) => {
-          var message = error.message();
+          var message = match error.message() { std.AllocationResult.Ok(text) => text, _ => { return -1; } };
           if (not message.equals_literal("integer division by zero")) { return -2; }
           return total + error.code();
         }
@@ -326,7 +327,7 @@ TEST(Errors_Arithmetic, library_stdlib_error_implements_interface) {
       return match arithmetic_fixture.divide(1, 0) {
         _Result.Ok(value) => -1,
         (error: const ref std.IError) => {
-          var message = error.message();
+          var message = match error.message() { std.AllocationResult.Ok(text) => text, _ => { return -1; } };
           if (not message.equals_literal("integer division by zero")) { return -2; }
           return error.code();
         }

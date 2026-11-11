@@ -12,6 +12,15 @@ public module std.linalg {
       },
       LinalgResult.Error(error) => {
         return std.test.fail("unexpected GEMM error");
+      },
+      LinalgResult.Allocation(error) => {
+        return std.test.fail("unexpected GEMM error");
+      },
+      LinalgResult.InvalidArgument(error) => {
+        return std.test.fail("unexpected GEMM error");
+      },
+      LinalgResult.Overflow(error) => {
+        return std.test.fail("unexpected GEMM error");
       }
     };
   }
@@ -19,8 +28,8 @@ public module std.linalg {
   /** Checks Matrix wrappers, result ownership, and operand preservation in both precisions. */
   function check_matrix_methods<T: _Float>() std.test.AssertionResult<void> {
     var alloc = make_heap_allocator();
-    var a = Matrix<T>(alloc, [2, 3]);
-    var b = Matrix<T>(alloc, [3, 2]);
+    var a = try Matrix<T>(alloc, [2, 3]);
+    var b = try Matrix<T>(alloc, [3, 2]);
     for (var i: i64 = 0; i < 2; i = i + 1) {
       for (var j: i64 = 0; j < 3; j = j + 1) {
         a[i, j] = _convert<T>(i * 3 + j + 1);
@@ -31,7 +40,7 @@ public module std.linalg {
         b[i, j] = _convert<T>(i * 2 + j + 1);
       }
     }
-    var c = Matrix<T>(alloc, [2, 2]);
+    var c = try Matrix<T>(alloc, [2, 2]);
     try expect_ok(a.matmul_into(b, c));
     try std.test.assert_eq(c[0, 0], _convert<T>(22));
     try std.test.assert_eq(c[1, 1], _convert<T>(64));
@@ -51,9 +60,18 @@ public module std.linalg {
       },
       LinalgResult.Error(error) => {
         return std.test.fail("matrix operator failed");
+      },
+      LinalgResult.Allocation(error) => {
+        return std.test.fail("matrix operator failed");
+      },
+      LinalgResult.InvalidArgument(error) => {
+        return std.test.fail("matrix operator failed");
+      },
+      LinalgResult.Overflow(error) => {
+        return std.test.fail("matrix operator failed");
       }
     };
-    var transposed = Matrix<T>(alloc, [3, 3]);
+    var transposed = try Matrix<T>(alloc, [3, 3]);
     try expect_ok(
       transposed.gemm(_convert<T>(1), a, Transpose.Transpose, a, Transpose.None, _convert<T>(0))
     );
@@ -71,23 +89,41 @@ public module std.linalg {
   /** Checks allocating multiplication errors and allocation-free alias validation. */
   test_function matrix_method_errors() {
     var alloc = make_heap_allocator();
-    var a = Matrix<f64>([[2.0]], alloc);
-    var b = Matrix<f64>(alloc, [2, 1]);
+    var a = try Matrix<f64>([[2.0]], alloc);
+    var b = try Matrix<f64>(alloc, [2, 1]);
     match a * b {
       LinalgResult.Ok(product) => {
         try std.test.fail("expected shape error");
       },
       LinalgResult.Error(error) => {
         try std.test.assert(error.reason() == LinalgErrorReason.IncompatibleShapes);
+      },
+      LinalgResult.Allocation(error) => {
+        try std.test.fail("unexpected allocation failure");
+      },
+      LinalgResult.InvalidArgument(error) => {
+        try std.test.fail("unexpected allocation failure");
+      },
+      LinalgResult.Overflow(error) => {
+        try std.test.fail("unexpected allocation failure");
       }
     };
-    var vector = Matrix<f64>([1.0], alloc);
+    var vector = try Matrix<f64>([1.0], alloc);
     match vector * a {
       LinalgResult.Ok(product) => {
         try std.test.fail("expected rank error");
       },
       LinalgResult.Error(error) => {
         try std.test.assert(error.reason() == LinalgErrorReason.InvalidDimensions);
+      },
+      LinalgResult.Allocation(error) => {
+        try std.test.fail("unexpected allocation failure");
+      },
+      LinalgResult.InvalidArgument(error) => {
+        try std.test.fail("unexpected allocation failure");
+      },
+      LinalgResult.Overflow(error) => {
+        try std.test.fail("unexpected allocation failure");
       }
     };
     try expect_error(a.matmul_into(a, a), LinalgErrorReason.OverlappingOutput);
@@ -96,8 +132,8 @@ public module std.linalg {
       LinalgErrorReason.OverlappingOutput
     );
     try std.test.assert_eq(a[0, 0], 2.0);
-    var left = Matrix<f64>(alloc, [2, 0]);
-    var right = Matrix<f64>(alloc, [0, 3]);
+    var left = try Matrix<f64>(alloc, [2, 0]);
+    var right = try Matrix<f64>(alloc, [0, 3]);
     match left * right {
       LinalgResult.Ok(product) => {
         try std.test.assert_eq(product.dim(0), 2);
@@ -106,16 +142,34 @@ public module std.linalg {
       },
       LinalgResult.Error(error) => {
         try std.test.fail("empty product failed");
+      },
+      LinalgResult.Allocation(error) => {
+        try std.test.fail("empty product failed");
+      },
+      LinalgResult.InvalidArgument(error) => {
+        try std.test.fail("empty product failed");
+      },
+      LinalgResult.Overflow(error) => {
+        try std.test.fail("empty product failed");
       }
     };
-    var huge_left = Matrix<f64>(alloc, [std.I64_MAX, 0]);
-    var huge_right = Matrix<f64>(alloc, [0, 2]);
+    var huge_left = try Matrix<f64>(alloc, [std.I64_MAX, 0]);
+    var huge_right = try Matrix<f64>(alloc, [0, 2]);
     match huge_left * huge_right {
       LinalgResult.Ok(product) => {
         try std.test.fail("expected output size overflow");
       },
       LinalgResult.Error(error) => {
         try std.test.assert(error.reason() == LinalgErrorReason.InvalidDimensions);
+      },
+      LinalgResult.Allocation(error) => {
+        try std.test.fail("unexpected allocation failure");
+      },
+      LinalgResult.InvalidArgument(error) => {
+        try std.test.fail("unexpected allocation failure");
+      },
+      LinalgResult.Overflow(error) => {
+        try std.test.fail("unexpected allocation failure");
       }
     };
   }
@@ -123,10 +177,10 @@ public module std.linalg {
   /** Compares vector groups and every tail length with scalar dot products. */
   test_function simd_widths_and_tails() {
     var alloc = make_heap_allocator();
-    var a = Matrix<f32>([[1.0f32, 2.0f32, -3.0f32], [4.0f32, -5.0f32, 6.0f32]], alloc);
+    var a = try Matrix<f32>([[1.0f32, 2.0f32, -3.0f32], [4.0f32, -5.0f32, 6.0f32]], alloc);
     for (var width: i64 = 1; width <= 10; width = width + 1) {
-      var b = Matrix<f32>(alloc, [3, width]);
-      var c = Matrix<f32>(alloc, [2, width]);
+      var b = try Matrix<f32>(alloc, [3, width]);
+      var c = try Matrix<f32>(alloc, [2, width]);
       for (var k: i64 = 0; k < 3; k = k + 1) {
         for (var j: i64 = 0; j < width; j = j + 1) {
           b[k, j] = _convert<f32>(k + j);
@@ -149,9 +203,9 @@ public module std.linalg {
   test_function remainder_accumulation_order() {
     var alloc = make_heap_allocator();
     for (var width: i64 = 5; width <= 7; width = width + 1) {
-      var a = Matrix<f32>(alloc, [5, 3]);
-      var b = Matrix<f32>(alloc, [3, width]);
-      var c = Matrix<f32>(alloc, [5, width]);
+      var a = try Matrix<f32>(alloc, [5, 3]);
+      var b = try Matrix<f32>(alloc, [3, width]);
+      var c = try Matrix<f32>(alloc, [5, width]);
       for (var i: i64 = 0; i < 5; i = i + 1) {
         for (var p: i64 = 0; p < 3; p = p + 1) {
           a[i, p] = 1.0f32;
@@ -187,9 +241,9 @@ public module std.linalg {
               cols = m;
               opa = Transpose.Transpose;
             }
-            var a = Matrix<f32>(alloc, [rows, cols]);
-            var b = Matrix<f32>(alloc, [k, n]);
-            var c = Matrix<f32>(alloc, [m, n]);
+            var a = try Matrix<f32>(alloc, [rows, cols]);
+            var b = try Matrix<f32>(alloc, [k, n]);
+            var c = try Matrix<f32>(alloc, [m, n]);
             for (var i: i64 = 0; i < rows; i = i + 1) {
               for (var j: i64 = 0; j < cols; j = j + 1) {
                 a[i, j] = _convert<f32>(i - j + 1) / 4.0f32;
@@ -244,9 +298,9 @@ public module std.linalg {
     var alloc = make_heap_allocator();
     var x = _bitcast<f32>(1065353217u32);
     var y = _bitcast<f32>(1065353214u32);
-    var a = Matrix<f32>(alloc, [4, 3]);
-    var b = Matrix<f32>(alloc, [3, 4]);
-    var c = Matrix<f32>(alloc, [4, 4]);
+    var a = try Matrix<f32>(alloc, [4, 3]);
+    var b = try Matrix<f32>(alloc, [3, 4]);
+    var c = try Matrix<f32>(alloc, [4, 4]);
     for (var i: i64 = 0; i < 4; i = i + 1) {
       for (var p: i64 = 0; p < 3; p = p + 1) {
         a[i, p] = x;
@@ -312,9 +366,9 @@ public module std.linalg {
           cols = m;
           opa = Transpose.Transpose;
         }
-        var a = Matrix<f32>(alloc, [rows, cols]);
-        var b = Matrix<f32>(alloc, [k, n]);
-        var c = Matrix<f32>(alloc, [m, n]);
+        var a = try Matrix<f32>(alloc, [rows, cols]);
+        var b = try Matrix<f32>(alloc, [k, n]);
+        var c = try Matrix<f32>(alloc, [m, n]);
         for (var i: i64 = 0; i < rows; i = i + 1) {
           for (var j: i64 = 0; j < cols; j = j + 1) {
             a[i, j] = _convert<f32>((i + j) % 7 - 3) / 4.0f32;
@@ -380,9 +434,9 @@ public module std.linalg {
           cols = m;
           opa = Transpose.Transpose;
         }
-        var a = Matrix<f32>(alloc, [rows, cols]);
-        var b = Matrix<f32>(alloc, [k, n]);
-        var c = Matrix<f32>(alloc, [m, n]);
+        var a = try Matrix<f32>(alloc, [rows, cols]);
+        var b = try Matrix<f32>(alloc, [k, n]);
+        var c = try Matrix<f32>(alloc, [m, n]);
         for (var i: i64 = 0; i < rows; i = i + 1) {
           for (var j: i64 = 0; j < cols; j = j + 1) {
             a[i, j] = _convert<f32>((i + j) % 7 - 3) / 4.0f32;
@@ -431,9 +485,9 @@ public module std.linalg {
   /** Zero alpha and empty inner dimensions still scale all output, without reading inputs. */
   test_function packed_shape_scaling_only() {
     var alloc = make_heap_allocator();
-    var a = Matrix<f32>(alloc, [19, 65]);
-    var b = Matrix<f32>(alloc, [65, 23]);
-    var c = Matrix<f32>(alloc, [19, 23]);
+    var a = try Matrix<f32>(alloc, [19, 65]);
+    var b = try Matrix<f32>(alloc, [65, 23]);
+    var c = try Matrix<f32>(alloc, [19, 23]);
     for (var i: i64 = 0; i < 19; i = i + 1) {
       for (var j: i64 = 0; j < 23; j = j + 1) {
         c[i, j] = 1.25f32;
@@ -454,8 +508,8 @@ public module std.linalg {
       }
     }
     try expect_ok(c.gemm(0.0f32, a, Transpose.None, b, Transpose.None, -0.0f32));
-    var empty_a = Matrix<f32>(alloc, [19, 0]);
-    var empty_b = Matrix<f32>(alloc, [0, 23]);
+    var empty_a = try Matrix<f32>(alloc, [19, 0]);
+    var empty_b = try Matrix<f32>(alloc, [0, 23]);
     try expect_ok(
       c.gemm(1.0f32, empty_a, Transpose.None, empty_b, Transpose.None, 1.0f32)
     );
@@ -470,9 +524,9 @@ public module std.linalg {
   test_function packed_multiply_add_rounding() {
     var alloc = make_heap_allocator();
     var native_fma = _cpu_avx2_fma();
-    var a = Matrix<f32>(alloc, [19, 129]);
-    var b = Matrix<f32>(alloc, [129, 128]);
-    var c = Matrix<f32>(alloc, [19, 128]);
+    var a = try Matrix<f32>(alloc, [19, 129]);
+    var b = try Matrix<f32>(alloc, [129, 128]);
+    var c = try Matrix<f32>(alloc, [19, 128]);
     var x = _bitcast<f32>(1065353217u32);
     var y = _bitcast<f32>(1065353214u32);
     for (var p: i64 = 0; p < 129; p = p + 1) {
@@ -505,9 +559,9 @@ public module std.linalg {
   /** Preserves increasing-k rounding across packed panel boundaries. */
   test_function packed_accumulation_order() {
     var alloc = make_heap_allocator();
-    var a = Matrix<f32>(alloc, [16, 65]);
-    var b = Matrix<f32>(alloc, [65, 16]);
-    var c = Matrix<f32>(alloc, [16, 16]);
+    var a = try Matrix<f32>(alloc, [16, 65]);
+    var b = try Matrix<f32>(alloc, [65, 16]);
+    var c = try Matrix<f32>(alloc, [16, 16]);
     for (var i: i64 = 0; i < 16; i = i + 1) {
       for (var p: i64 = 0; p < 65; p = p + 1) {
         a[i, p] = 1.0f32;
@@ -529,9 +583,9 @@ public module std.linalg {
   test_function dispatched_accumulation_order() {
     var alloc = make_heap_allocator();
     for (var k: i64 = 127; k <= 129; k = k + 1) {
-      var a = Matrix<f32>(alloc, [64, k]);
-      var b = Matrix<f32>(alloc, [k, 64]);
-      var c = Matrix<f32>(alloc, [64, 64]);
+      var a = try Matrix<f32>(alloc, [64, k]);
+      var b = try Matrix<f32>(alloc, [k, 64]);
+      var c = try Matrix<f32>(alloc, [64, 64]);
       for (var i: i64 = 0; i < 64; i = i + 1) {
         for (var p: i64 = 0; p < k; p = p + 1) {
           a[i, p] = 1.0f32;
@@ -555,9 +609,9 @@ public module std.linalg {
     var alloc = make_heap_allocator();
     var x = _bitcast<f32>(1065353217u32);
     var y = _bitcast<f32>(1065353214u32);
-    var a = Matrix<f32>([[x]], alloc);
-    var b = Matrix<f32>([[y, y, y, y]], alloc);
-    var c = Matrix<f32>([[-1.0f32, -1.0f32, -1.0f32, -1.0f32]], alloc);
+    var a = try Matrix<f32>([[x]], alloc);
+    var b = try Matrix<f32>([[y, y, y, y]], alloc);
+    var c = try Matrix<f32>([[-1.0f32, -1.0f32, -1.0f32, -1.0f32]], alloc);
     try expect_ok(c.gemm(1.0f32, a, Transpose.None, b, Transpose.None, 1.0f32));
     try std.test.assert_eq(c[0, 0] == 0.0f32 or c[0, 0] == -1.4210854715202004e-14f32, true);
     try std.test.assert_eq(c[0, 3] == 0.0f32 or c[0, 3] == -1.4210854715202004e-14f32, true);
@@ -584,9 +638,9 @@ public module std.linalg {
           bc = 3;
           opb = Transpose.Transpose;
         }
-        var a = Matrix<T>(alloc, [ar, ac]);
-        var b = Matrix<T>(alloc, [br, bc]);
-        var c = Matrix<T>(alloc, [2, 5]);
+        var a = try Matrix<T>(alloc, [ar, ac]);
+        var b = try Matrix<T>(alloc, [br, bc]);
+        var c = try Matrix<T>(alloc, [2, 5]);
         for (var i: i64 = 0; i < ar; i = i + 1) {
           for (var j: i64 = 0; j < ac; j = j + 1) {
             a[i, j] = _convert<T>(i * ac + j - 2) / _convert<T>(3);
@@ -653,8 +707,8 @@ public module std.linalg {
   /** Checks exact square results, shared inputs, and output accumulation. */
   test_function square_and_shared_inputs() {
     var alloc = make_heap_allocator();
-    var a = Matrix<f64>([[1.0, 2.0], [3.0, 4.0]], alloc);
-    var c = Matrix<f64>(alloc, [2, 2]);
+    var a = try Matrix<f64>([[1.0, 2.0], [3.0, 4.0]], alloc);
+    var c = try Matrix<f64>(alloc, [2, 2]);
     try expect_ok(gemm<f64>(1.0, a, Transpose.None, a, Transpose.None, 0.0, c));
     try std.test.assert_eq(c[0, 0], 7.0);
     try std.test.assert_eq(c[0, 1], 10.0);
@@ -669,9 +723,9 @@ public module std.linalg {
   /** Checks zero factors, uninitialized inputs, and overwriting NaN output. */
   test_function zero_factors_and_single_element() {
     var alloc = make_heap_allocator();
-    var a = Matrix<f32>(alloc, [1, 1]);
-    var b = Matrix<f32>(alloc, [1, 1]);
-    var c = Matrix<f32>([[3.0f32]], alloc);
+    var a = try Matrix<f32>(alloc, [1, 1]);
+    var b = try Matrix<f32>(alloc, [1, 1]);
+    var c = try Matrix<f32>([[3.0f32]], alloc);
     try expect_ok(gemm<f32>(0.0f32, a, Transpose.None, b, Transpose.None, -2.0f32, c));
     try std.test.assert_eq(c[0, 0], -6.0f32);
     a[0, 0] = 2.0f32;
@@ -687,23 +741,23 @@ public module std.linalg {
   /** Checks empty output and empty dot products without reading inputs. */
   test_function empty_dimensions() {
     var alloc = make_heap_allocator();
-    var a = Matrix<f64>(alloc, [2, 0]);
-    var b = Matrix<f64>(alloc, [0, 3]);
-    var c = Matrix<f64>(alloc, [2, 3]);
+    var a = try Matrix<f64>(alloc, [2, 0]);
+    var b = try Matrix<f64>(alloc, [0, 3]);
+    var c = try Matrix<f64>(alloc, [2, 3]);
     try expect_ok(gemm<f64>(1.0, a, Transpose.None, b, Transpose.None, 0.0, c));
     try std.test.assert_eq(c[1, 2], 0.0);
     c[1, 2] = 4.0;
     try expect_ok(gemm<f64>(1.0, a, Transpose.None, b, Transpose.None, 2.0, c));
     try std.test.assert_eq(c[1, 2], 8.0);
-    var empty_rows = Matrix<f64>(alloc, [0, 2]);
-    var right = Matrix<f64>(alloc, [2, 3]);
-    var out_rows = Matrix<f64>(alloc, [0, 3]);
+    var empty_rows = try Matrix<f64>(alloc, [0, 2]);
+    var right = try Matrix<f64>(alloc, [2, 3]);
+    var out_rows = try Matrix<f64>(alloc, [0, 3]);
     try expect_ok(
       gemm<f64>(1.0, empty_rows, Transpose.None, right, Transpose.None, 0.0, out_rows)
     );
-    var left = Matrix<f64>(alloc, [3, 2]);
-    var empty_cols = Matrix<f64>(alloc, [2, 0]);
-    var out_cols = Matrix<f64>(alloc, [3, 0]);
+    var left = try Matrix<f64>(alloc, [3, 2]);
+    var empty_cols = try Matrix<f64>(alloc, [2, 0]);
+    var out_cols = try Matrix<f64>(alloc, [3, 0]);
     try expect_ok(
       gemm<f64>(1.0, left, Transpose.None, empty_cols, Transpose.None, 0.0, out_cols)
     );
@@ -720,6 +774,15 @@ public module std.linalg {
       },
       LinalgResult.Error(error) => {
         return std.test.assert(error.reason() == reason);
+      },
+      LinalgResult.Allocation(error) => {
+        return std.test.fail("unexpected allocation failure");
+      },
+      LinalgResult.InvalidArgument(error) => {
+        return std.test.fail("unexpected allocation failure");
+      },
+      LinalgResult.Overflow(error) => {
+        return std.test.fail("unexpected allocation failure");
       }
     };
   }
@@ -727,15 +790,15 @@ public module std.linalg {
   /** Checks ranks, shapes, and output aliasing before any output is modified. */
   test_function validation_preserves_output() {
     var alloc = make_heap_allocator();
-    var a = Matrix<f32>([[2.0f32]], alloc);
-    var b = Matrix<f32>([[3.0f32]], alloc);
-    var c = Matrix<f32>([[9.0f32]], alloc);
-    var vector = Matrix<f32>([1.0f32], alloc);
+    var a = try Matrix<f32>([[2.0f32]], alloc);
+    var b = try Matrix<f32>([[3.0f32]], alloc);
+    var c = try Matrix<f32>([[9.0f32]], alloc);
+    var vector = try Matrix<f32>([1.0f32], alloc);
     try expect_error(
       gemm<f32>(1.0f32, vector, Transpose.None, b, Transpose.None, 0.0f32, c),
       LinalgErrorReason.InvalidDimensions
     );
-    var wrong = Matrix<f32>(alloc, [2, 1]);
+    var wrong = try Matrix<f32>(alloc, [2, 1]);
     try expect_error(
       gemm<f32>(1.0f32, a, Transpose.None, wrong, Transpose.None, 0.0f32, c),
       LinalgErrorReason.IncompatibleShapes

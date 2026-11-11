@@ -14,46 +14,70 @@ using std.io;
 using std.test;
 using std.thread;
 
-/** Runs the generated test cases and returns their combined exit status. */
-function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
-    var alloc = make_heap_allocator();
-    var env = std.env.Env(alloc);
-    var args = env.args(argc, argv);
+/** Invokes the adapter for one generated test without capturing a stack frame. */
+function execute_test(index: i64) TestResult {
+    return match index {
+        {% for test in tests %}
+        {{ loop.index }}i64 => {{ test.runner }}("{{ test.name }}", {{ test.name }}),
+        {% endfor %}
+        _ => {
+            var error: AllocationResult<String> = AllocationResult.InvalidArgument(InvalidArgumentError("invalid test index"));
+            TestResult("", false, error);
+        }
+    };
+}
+
+/** Runs selected tests in declaration order and propagates setup failures. */
+function run_tests(argc: i32, argv: raw_ptr<raw_ptr<i8>>) AllocationResult<i32> {
+    var env = try std.env.Env(global_allocator);
+    var args = try env.args(argc, argv);
     for (var i: i64 = 0; i < args.size(); i = i + 1) {
         if (unsafe { args.get_unchecked(i); }.equals_literal("--list-tests")) {
             println({{ listing_literal }});
-            return 0;
+            return AllocationResult.Ok(0);
         }
     }
+    var names: array<static_ptr<u8>, {{ length(tests) + 1 }}> = [
+        {% for test in tests %}
+        "{{ test.name }}",
+        {% endfor %}
+        ""
+    ];
     var total: i64 = 0;
     var failed: i64 = 0;
-    if (wants_sequential(argc, argv)) {
-        {% for test in tests %}
-        if (is_selected("{{ test.name }}", argc, argv)) {
-            total = total + 1;
-            var r{{ loop.index }} = {{ test.runner }}("{{ test.name }}", {{ test.name }});
-            if (report(r{{ loop.index }}) == false) { failed = failed + 1; }
+    if (try wants_sequential(argc, argv)) {
+        for (var i: i64 = 0; i < {{ length(tests) }}; i += 1) {
+            if (try is_selected(names[i], argc, argv)) {
+                total += 1;
+                var result = execute_test(i);
+                if (not report(result)) { failed += 1; }
+            }
         }
-        {% endfor %}
     } else {
-        var threads = Vec<Thread<TestResult>>(alloc, {{ length(tests) }});
-        {% for test in tests %}
-        if (is_selected("{{ test.name }}", argc, argv)) {
-            threads.push(std.thread.spawn(() => TestResult { return {{ test.runner }}("{{ test.name }}", {{ test.name }}); }));
+        var threads = try Vec<Thread<TestResult>>(global_allocator, {{ length(tests) }});
+        for (var i: i64 = 0; i < {{ length(tests) }}; i += 1) {
+            if (try is_selected(names[i], argc, argv)) {
+                try threads.push(try std.thread.spawn(execute_test, i));
+            }
         }
-        {% endfor %}
         total = threads.size();
-        var i: i64 = 0;
-        while (i < threads.size()) {
+        for (var i: i64 = 0; i < threads.size(); i += 1) {
             match threads.get(i) {
                 AccessResult.Ok(thread) => {
                     var result = thread.join();
-                    if (report(result) == false) { failed = failed + 1; }
+                    if (not report(result)) { failed += 1; }
                 },
-                AccessResult.OutOfBounds(_) => { failed = failed + 1; }
+                AccessResult.OutOfBounds(_) => { failed += 1; }
             };
-            i = i + 1;
         }
     }
-    return finish(total, failed);
+    return AllocationResult.Ok(finish(total, failed));
+}
+
+/** Report runner setup failures without allocating another diagnostic. */
+function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
+    return match run_tests(argc, argv) {
+        AllocationResult.Ok(status) => status,
+        _ => { println("test runner allocation failed"); 1; }
+    };
 }

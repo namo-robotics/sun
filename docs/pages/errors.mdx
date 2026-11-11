@@ -149,7 +149,7 @@ new stdlib declaration.
 ```sun
 interface IError {
     const method code() i32;
-    const method message() String;
+    const method message() AllocationResult<String>;
 }
 ```
 
@@ -160,8 +160,8 @@ class, it can carry whatever fields and extra methods you need:
 class ParseError implements IError {
     var line_: i32;
     init(line: i32) { this.line_ = line; }
-    const method code() i32 { return 1; }
-    const method message() String { return String("bad input"); }
+    public const method code() i32 { return 1; }
+    public const method message() AllocationResult<String> { return String(global_allocator, "bad input"); }
     method line() i32 { return this.line_; }
 }
 ```
@@ -203,7 +203,7 @@ using std.io;
 
 match operation() {
     _Result.Ok(value) => use(value),
-    (error: const ref IError) => println(error.message())
+    (error: const ref IError) => println(try error.message())
 };
 ```
 
@@ -273,3 +273,32 @@ error variant, and use `try expression` for propagation or `match` for handling.
 Builtin `_Result<T, E>` remains available. Prefer library-defined result enums
 with concrete owned errors; borrowed interface payloads are supported when
 their referents outlive the result.
+
+## Allocation failures
+
+Allocating APIs return results instead of exposing a null pointer as successful
+storage. `AllocationResult<T>` distinguishes allocation failure, negative sizes,
+and size overflow. `Result<T>` also accepts those errors when an operation can
+fail for other reasons. The fixed `std.global_allocator` is passed explicitly:
+
+```sun
+function example() Result<void> {
+    var text = try String(global_allocator, "hello");
+    try text.append(" world");
+    var label = try `message: ${text}`;
+    std.io.println(label);
+    return Result.Ok;
+}
+```
+
+Interpolation returns `AllocationResult<String>`. Error-message copies are also
+fallible: `IError.message()` returns `AllocationResult<String>`. Constructing an
+`AllocationError` or an error from a static message does not allocate. When printing
+an error, handle message-allocation failure with fixed text:
+
+```sun
+match try error.message() {
+    AllocationResult.Ok(text) => { std.io.eprintln(text); },
+    _ => { std.io.eprintln("unable to allocate error message"); }
+};
+```

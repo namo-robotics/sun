@@ -511,7 +511,7 @@ function main() i32 {
   ASSERT_TRUE(annotation);
   EXPECT_EQ(annotation->code,
             "public class HeapAllocator implements IAllocator");
-  EXPECT_NE(annotation->documentation.find("default system allocator"),
+  EXPECT_NE(annotation->documentation.find("system heap"),
             std::string::npos)
       << annotation->documentation;
   auto call = hover("make_heap_allocator()");
@@ -616,15 +616,15 @@ TEST(Tooling_Lsp_Hover, StdlibVecAndLoopVariable) {
   }
   std::string source = R"(
 using std;
-function main() i64 {
+function main() AllocationResult<i64> {
     var allocator = make_heap_allocator();
-    var v = Vec<i64>(allocator, 8);
-    v.push(1);
+    var v = try Vec<i64>(allocator, 8);
+    try v.push(1);
     var sum: i64 = 0;
     for (var item: i64 in v) {
         sum = sum + item;
     }
-    return sum;
+    return AllocationResult.Ok(sum);
 }
 )";
   // Reuse the analyzed document for every hover location.
