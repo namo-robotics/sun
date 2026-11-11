@@ -927,6 +927,7 @@ jobs:
           # Test with stdlib import (stdlib.moon installed to /usr/lib/sun/)
           cat > test.sun << 'EOF'
           using std;
+          using std.io;
           function main() i32 {
               println("Hello from Sun!");
               return 0;
@@ -945,6 +946,7 @@ jobs:
           # libssl installed and no linker flags.
           cat > tls_test.sun << 'EOF'
           using std;
+          using std.io;
           using tls;
           /** Verify HTTPS transport and certificate trust regardless of HTTP status. */
           function main() i32 {
@@ -1078,6 +1080,7 @@ jobs:
           # JIT with the stdlib import, and no SUN_PATH.
           cat > test.sun << 'PROGRAM'
           using std;
+          using std.io;
           function main() i32 {
               println("Hello from Sun!");
               return 0;
@@ -1097,6 +1100,7 @@ jobs:
           test -s "$SSL_CERT_FILE"
           cat > tls_test.sun << 'PROGRAM'
           using std;
+          using std.io;
           using tls;
           /** Verify HTTPS transport and certificate trust regardless of HTTP status. */
           function main() i32 {
