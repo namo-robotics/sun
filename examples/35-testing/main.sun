@@ -54,7 +54,7 @@ class ScratchBuffer {
 
 /** Checks starts with one entry. */
 test_function startsWithOneEntry() {
-  var fx = ScratchBuffer();
+  var fx = try ScratchBuffer();
   try std.test.assert_eq(fx.data.size(), 1);
 }
 
