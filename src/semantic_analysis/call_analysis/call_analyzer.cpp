@@ -570,7 +570,18 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveNamedCallee(
       argTypesStr += argTypes[i] ? argTypes[i]->toDisplayString() : "unknown";
     }
     std::string overloadsStr;
+    std::string transferHint;
     for (const auto& overload : allOverloads) {
+      if (overload.paramTypes.size() == argTypes.size() &&
+          transferHint.empty()) {
+        for (size_t i = 0; i < argTypes.size(); ++i) {
+          transferHint = sun::types::ownedTransferHint(argTypes[i],
+                                                       overload.paramTypes[i]);
+          if (!transferHint.empty()) {
+            break;
+          }
+        }
+      }
       overloadsStr += "\n  - " + resolved.baseName + "(";
       for (size_t i = 0; i < overload.paramTypes.size(); ++i) {
         if (i > 0) {
@@ -587,7 +598,8 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveNamedCallee(
     }
     logAndThrowError("No matching overload of '" + resolved.baseName +
                          "' for argument types (" + argTypesStr +
-                         "). Available overloads:" + overloadsStr,
+                         "). Available overloads:" + overloadsStr +
+                         transferHint,
                      callExpr.getLocation());
   }
 
@@ -922,7 +934,7 @@ void CallAnalyzer::checkArgumentTypes(CallExprAST& callExpr,
 
     // The common way to land here now: handing a borrowed element to a
     // by-value parameter. Say what to do about it.
-    std::string hint;
+    std::string hint = sun::types::ownedTransferHint(argType, paramType);
     if (argType->isReference() && !paramType->isReference() &&
         !sun::types::typeCopiesByRead(paramType)) {
       hint = ". It is borrowed, and a '" + paramType->toDisplayString() +

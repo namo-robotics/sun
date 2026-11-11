@@ -26,6 +26,8 @@ inline pbc::Visibility toProto(sun::semantic_analysis::Visibility v) {
  */
 struct SerializerConfig {
   const sun::semantic_analysis::DeclarationTable* declarations = nullptr;
+  /** Retains resolved dependencies exclusively for correspondence proofs. */
+  bool include_proof_bindings = false;
   bool include_location = true;  // Include source locations
 };
 

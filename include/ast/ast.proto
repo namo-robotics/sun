@@ -35,6 +35,10 @@ message DeclarationIdentity {
 
 /** Wraps a syntax node with its source position and declaration identity for serialization. */
 message ASTNode {
+  // Proof-only resolved references; never reinterpreted as importable source.
+  optional string resolved_declaration_key = 103;
+  optional TypeAnnotation proof_resolved_type = 104;
+  repeated TypeAnnotation proof_type_arguments = 105;
   DeclarationIdentity declaration_identity = 102;
   // Canonical module identity for expressions and retained using targets.
   optional string module_declaration_key = 101;

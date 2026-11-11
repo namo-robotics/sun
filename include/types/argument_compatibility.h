@@ -14,6 +14,16 @@
 /** Type definitions shared by analysis and code generation. */
 namespace sun::types {
 
+/** Accepts exact types or corresponding library aggregates whose recursive
+ * storage and cleanup contracts permit a move. Unproved cleanup or pointer
+ * ownership requires an explicit conversion. This does
+ * not authorize copying a value or reading an owner out of a borrow. */
+bool ownedTransferAccepts(const TypePtr& source, const TypePtr& target);
+
+/** Explains an unproved nominal move or borrow, or returns an empty hint for
+ * other type mismatches. */
+std::string ownedTransferHint(const TypePtr& source, const TypePtr& target);
+
 /**
  * True when a value of type `from` may be used where `to` is expected.
  * Covers exact equality, integer widening, f32/f64 conversion, static_ptr to

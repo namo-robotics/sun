@@ -32,6 +32,7 @@ bool isReference(const google::protobuf::FieldDescriptor& field) {
   const auto& owner = field.containing_type()->full_name();
   return owner == "sun.proto.ast.DeclarationIdentity" ||
          field.name() == "declaration_key" ||
+         field.name() == "resolved_declaration_key" ||
          field.name() == "module_declaration_key" ||
          (owner == "sun.moon.ModuleMetadata" &&
           field.name() == "module_declarations") ||
@@ -194,6 +195,7 @@ proto::LibraryAbiSnapshot describeLibraryAbiSnapshot(
     auto normalized = *module;
     // Implementation-local declarations have no place in the exported ABI.
     normalized.clear_declarations();
+    normalized.clear_correspondence_proof();
     for (auto& cls : *normalized.mutable_classes()) {
       cls.clear_compiled_specializations();
     }

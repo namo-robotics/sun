@@ -267,6 +267,7 @@ void validateReferences(
       } else if (field->cpp_type() ==
                      google::protobuf::FieldDescriptor::CPPTYPE_STRING &&
                  (identity || field->name() == "declaration_key" ||
+                  field->name() == "resolved_declaration_key" ||
                   field->name() == "module_declaration_key")) {
         const auto key = repeated
                              ? reflection->GetRepeatedString(message, field, i)
@@ -325,6 +326,10 @@ void validateReferences(
   }
 }
 }  // namespace
+
+std::string describeCorrespondenceInputs(const google::protobuf::Message& message) {
+  return encode(message, 0);
+}
 
 std::string describeSemantics(const moon::ModuleMetadata& metadata) {
   return field(0, "sun.abi.metadata.v1") + encode(metadata, 0);

@@ -44,14 +44,69 @@ app calls shapes_user.read(point_from_v1_1)
 ```
 
 The call works when both shapes revisions declare the same `library_id` and
-have compatible ABI contracts. The reader borrows the v1.1 point; its own code
-and declarations still come from v1.
+have compatible ABI contracts and the compiler can prove that their point
+operations preserve the same storage invariants. The reader borrows the v1.1
+point; its own code and declarations still come from v1.
 
 If v2 changes `Point`'s layout, passing a v2 point to that reader fails. The app
 can still use v2 independently alongside the reader's embedded v1.
 
-This currently supports class and enum borrows. A `const ref` cannot become a
-mutable `ref`, and different generic arguments remain distinct.
+Borrowing preserves constness: `const ref Point` cannot become `ref Point`.
+Both forms need proof: a const method can still interpret fields incorrectly.
+For example, changing what a stored pointer points to can invalidate a reader
+without changing the pointer's size.
+
+New bundles retain implementation evidence separately from importable method
+bodies. Missing evidence requires rebuilding the producing bundle; matching
+layouts or hashes alone do not authorize a cross-revision transfer.
+
+For an owned transfer, suppose `old` and `current` are import aliases for two
+revisions of `example/shapes`. Both export this class:
+
+```sun
+/** Stores one coordinate. */
+public class Point {
+  public var x: i32;
+  /** Initializes the coordinate. */
+  init() { this.x = 1; }
+}
+```
+
+The current revision changes only `this.x = 1` to `this.x = 2`:
+
+```sun
+var p: current.Point = old.Point(); // Accepted: p.x is 1, not 2.
+```
+
+The assignment moves the old value. It does not call the current constructor.
+If the current revision instead changes `x` to `i64`, this same assignment is
+rejected. Matching names alone are insufficient.
+
+`try` uses the same rule. Suppose both revisions export
+`Failure { code: i32 }` and `Result<T> { Ok(T), Error(Failure) }`.
+A producer built against the old revision returns `Error` with `code = 7`:
+
+```sun
+/** Propagates the producer's error into the current result type. */
+function run() current.Result<bool> {
+  var value = try producer.fail(); // Returns current.Result.Error with code 7.
+  return current.Result.Ok(value == 0);
+}
+```
+
+Destructors need a stronger guarantee. For two independent stdlib revisions:
+
+```sun
+var text: current.String = old.String("hello"); // Rejected.
+```
+
+Even with identical fields, the current destructor might free the old buffer
+incorrectly. An explicit conversion is required. A wrapper can still move
+between revisions if its `String` field refers to the **same stdlib artifact**
+in both: the string keeps its original destructor and allocator.
+
+These checks also apply to owned arguments, returns, and enum payloads.
+Borrowing a value successfully does not establish that moving it is safe.
 
 See the runnable [identity example](/abi/examples).
 
