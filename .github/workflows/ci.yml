@@ -973,18 +973,19 @@ jobs:
           using std.io;
           using tls;
           /** Verify HTTPS transport and certificate trust regardless of HTTP status. */
-          function main() i32 {
+          function main() AllocationResult<i32> {
               var alloc = make_heap_allocator();
               var client = HttpsClient(alloc);
-              var host = String(alloc, "example.com");
+              var host = try String(alloc, "example.com");
               match client.get(host, "/") {
                   ClientResult.Ok(resp) => {
                       println(resp.status);
-                      return 0;
+                      return AllocationResult.Ok(0);
                   },
                   (e: const ref IError) => {
-                      println(e.message());
-                      return 2;
+                      var message = try e.message();
+                      println(message);
+                      return AllocationResult.Ok(2);
                   }
               };
           }
@@ -1127,18 +1128,19 @@ jobs:
           using std.io;
           using tls;
           /** Verify HTTPS transport and certificate trust regardless of HTTP status. */
-          function main() i32 {
+          function main() AllocationResult<i32> {
               var alloc = make_heap_allocator();
               var client = HttpsClient(alloc);
-              var host = String(alloc, "example.com");
+              var host = try String(alloc, "example.com");
               match client.get(host, "/") {
                   ClientResult.Ok(resp) => {
                       println(resp.status);
-                      return 0;
+                      return AllocationResult.Ok(0);
                   },
                   (e: const ref IError) => {
-                      println(e.message());
-                      return 2;
+                      var message = try e.message();
+                      println(message);
+                      return AllocationResult.Ok(2);
                   }
               };
           }
