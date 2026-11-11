@@ -211,7 +211,9 @@ Value* CodegenVisitor::codegen(const sun::ast::MatchExprAST& expr) {
   }
 
   if (resultStorage) {
-    scopes.trackClassAllocation(resultStorage, "match.result", matchType);
+    if (!expr.isMoved()) {
+      scopes.trackClassAllocation(resultStorage, "match.result", matchType);
+    }
     return resultStorage;
   }
 

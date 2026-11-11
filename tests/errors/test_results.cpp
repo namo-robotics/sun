@@ -1927,3 +1927,95 @@ TEST(Errors_Results, try_rejects_ordinary_void_calls) {
     }
   )"), "'try' requires its operand to be a nonempty enum");
 }
+
+/** Consumed call and match results must not accumulate cleanup at later tries. */
+TEST(Errors_Results, consumed_temporaries_have_linear_cleanup_ir) {
+  /** Counts unoptimized instructions while increasing independent propagations. */
+  const auto instructionCount = [](int repetitions) {
+    std::string source = R"(
+      /** Gives failure paths an owning payload. */
+      class Failure {
+        /** Creates the failure. */
+        init() {}
+        /** Exercises generated cleanup even without an external resource. */
+        deinit() {}
+      }
+      /** Gives a successful result an owning payload. */
+      class Owner {
+        /** Creates the owner. */
+        init() {}
+        /** Exercises transfer into a consuming function. */
+        deinit() {}
+      }
+      /** Carries a successful value or an owned error. */
+      enum Outcome<T> { Ok(T), Failed(Failure) }
+      /** Returns a result from an ordinary function. */
+      function source() Outcome<void> { return Outcome.Ok; }
+      /** Returns a result from a generic function. */
+      function generic_source<T>() Outcome<void> { return Outcome.Ok; }
+      /** Supplies a method returning an owned result. */
+      class Factory {
+        /** Creates the factory. */
+        init() {}
+        /** Returns a successful result. */
+        method source() Outcome<void> { return Outcome.Ok; }
+      }
+      /** Returns an owner to move through a try expression. */
+      function make() Outcome<Owner> { return Outcome.Ok(Owner()); }
+      /** Takes responsibility for the successful payload. */
+      function consume(owner: Owner) void {}
+      /** Repeats transfers without retaining an owner between statements. */
+      function run() Outcome<void> {
+        var factory = Factory();
+    )";
+    for (int i = 0; i < repetitions; ++i) {
+      source += "try source(); try generic_source<i32>(); "
+                "try factory.source(); consume(try make());\n";
+    }
+    source += "return Outcome.Ok; }";
+    auto driver = sun::driver::Driver::createForAOT(
+        "cleanup_growth", "", false, false);
+    driver->compileString(source);
+    size_t count = 0;
+    for (const auto& function : driver->getModule()) {
+      for (const auto& block : function) {
+        count += block.size();
+      }
+    }
+    return count;
+  };
+  const auto small = instructionCount(8);
+  const auto large = instructionCount(16);
+  EXPECT_LT(large * 2, small * 5)
+      << "Doubling independent tries should not produce quadratic cleanup: "
+      << small << " -> " << large;
+}
+
+/** An earlier call result remains owned until a later argument succeeds. */
+TEST(Errors_Results, moved_call_result_survives_pending_argument_failure) {
+  EXPECT_EQ(executeString(R"(
+    var drops = 0;
+    /** Counts releases of an owning function result. */
+    class Owner {
+      /** Creates the resource. */
+      init() {}
+      /** Records exactly one release. */
+      deinit() { drops += 1; }
+    }
+    /** Produces the first argument as a function result. */
+    function make() Owner { return Owner(); }
+    /** Fails while evaluating the later argument. */
+    function fail() _Result<i32, bool> { return _Result.Err(true); }
+    /** Would own the earlier result if argument evaluation completed. */
+    function consume(owner: Owner, value: i32) i32 { return value; }
+    /** Transfers the earlier temporary before encountering propagation. */
+    function run() _Result<i32, bool> {
+      return _Result.Ok(consume(make(), try fail()));
+    }
+    /** Checks that the pending owner is dropped exactly once. */
+    function main() i32 {
+      match run() { _Result.Ok(_) => {}, _Result.Err(_) => {} };
+      return drops;
+    }
+  )"), 1);
+}
