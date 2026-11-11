@@ -1201,8 +1201,10 @@ Value* ClassGenerator::codegen(const sun::ast::GenericCallAST& expr) {
     Value* result = gen_.errorGenerator().emitPossiblyThrowingCall(
         specializedFunc->getFunctionType(), specializedFunc, argValues,
         canThrow, "generic.call");
-    return scopes().trackCallTemporary(gen_.materializeStructReturn(result),
-                                       expr.getResolvedType());
+    result = gen_.materializeStructReturn(result);
+    return expr.isMoved()
+               ? result
+               : scopes().trackCallTemporary(result, expr.getResolvedType());
   }
 
   // Check for generic class constructor: Box<i32>(42)

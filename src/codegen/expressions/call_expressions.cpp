@@ -770,8 +770,10 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
             ? ownerClass->getField(memberAccess->getTargetDeclarationId())
             : nullptr;
     if (!field || !field->type || !field->type->isCallable()) {
-      return scopes.trackCallTemporary(codegenMethodCall(expr, *memberAccess),
-                                       expr.getResolvedType());
+      auto* result = codegenMethodCall(expr, *memberAccess);
+      return expr.isMoved()
+                 ? result
+                 : scopes.trackCallTemporary(result, expr.getResolvedType());
     }
     calleeName = memberAccess->getMemberName();
   }
@@ -890,7 +892,11 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
     calleeReturnType = funcType.getReturnType();
   }
 
-  return scopes.trackCallTemporary(result, expr.getResolvedType());
+  // A moved result belongs to its consumer. Tracking it here would leave a
+  // released temporary in every later error path's cleanup list.
+  return expr.isMoved()
+             ? result
+             : scopes.trackCallTemporary(result, expr.getResolvedType());
 }
 
 // -------------------------------------------------------------------

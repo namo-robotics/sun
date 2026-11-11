@@ -242,6 +242,17 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
           }
         }
       }
+      // Resolved value conversions transfer fresh results to the callee;
+      // they do not need an additional temporary owner in the caller.
+      const auto& conversions = gcall.getArgConversions();
+      for (size_t i = 0; i < gcall.getArgs().size() && i < conversions.size();
+           ++i) {
+        const auto& arg = gcall.getArgs()[i];
+        if (arg && arg->isTemporary() &&
+            conversions[i] == sun::semantic_analysis::ArgConversion::Move) {
+          arg->setMoved(true);
+        }
+      }
       // Same conservatism for a frame-sourced lambda: with parameter kinds
       // unknown, every compound argument is a place the callee could keep
       // it, so each must die with this frame
@@ -1040,6 +1051,9 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
       if (!sun::types::typeMovesOnRead(argType)) {
         continue;
       }
+      if (arg->isTemporary()) {
+        arg->setMoved(true);
+      }
       if (arg->getType() != ASTNodeType::VARIABLE_REFERENCE) {
         noteFieldMove(*arg);
         continue;
@@ -1141,6 +1155,10 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
     // A field handed to a by-value parameter moves out of its object
     if (paramType && !paramType->isReference()) {
       noteFieldMove(*arg);
+      if (arg->isTemporary() &&
+          sun::types::typeMovesOnRead(arg->getResolvedType())) {
+        arg->setMoved(true);
+      }
     }
 
     // Only check variable references (not complex expressions)
