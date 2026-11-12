@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SUN_AST_MANIFEST_AST_H
+#define SUN_AST_MANIFEST_AST_H
 
 #include <memory>
 #include <string>
@@ -124,3 +125,5 @@ class ManifestAST : public ExprAST {
 };
 
 }  // namespace sun::ast
+
+#endif  // SUN_AST_MANIFEST_AST_H
