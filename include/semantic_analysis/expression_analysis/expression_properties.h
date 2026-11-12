@@ -50,6 +50,9 @@ const ExprAST* findThisUse(const ExprAST& expr);
  */
 sun::types::TypePtr requireResolvedType(const ExprAST& expr);
 
+/** Rejects analyzed conditions that cannot be converted to a boolean. */
+void checkConditionType(const ExprAST& expr);
+
 /**
  * The value type of an analyzed block: the type of its first `return`, else
  * of its last statement when the block produces a value, else void.

@@ -20,6 +20,20 @@ using sun::types::unwrapRef;
 
 using sun::ast::ASTNodeType;
 
+void checkConditionType(const ExprAST& expr) {
+  const auto type = unwrapRef(requireResolvedType(expr));
+  if (type->isBool() || type->isNumeric() || type->isChar()) {
+    return;
+  }
+  std::string message =
+      "Condition requires a boolean, numeric, or character value, got '" +
+      type->toDisplayString() + "'";
+  if (type->isEnum()) {
+    message += "; match the enum or propagate a result with try";
+  }
+  logAndThrowError(message, expr.getLocation());
+}
+
 /** Reports whether an expression denotes storage that can be borrowed. */
 bool isBorrowableLvalue(const ExprAST& target) {
   ASTNodeType kind = target.getType();

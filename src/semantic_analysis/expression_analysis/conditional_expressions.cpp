@@ -1,5 +1,6 @@
 /** Checks conditional value expressions and their result types. */
 #include "ast/control_flow.h"
+#include "semantic_analysis/expression_analysis/expression_properties.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/type_analysis/type_rules.h"
 #include "support/error.h"
@@ -19,10 +20,9 @@ using sun::semantic_analysis::type_analysis::unifyTernaryTypes;
 using sun::types::unwrapRef;
 
 void ExpressionAnalyzer::analyzeTernaryExpr(sun::ast::TernaryExprAST& ternary,
-                                            TypePtr expectedType) {
-  // Condition is not required to be bool (matches if/while laxness);
-  // codegen coerces numeric conditions to i1.
+                                          TypePtr expectedType) {
   sema_.analyzeExpr(*ternary.getCond());
+  checkConditionType(*ternary.getCond());
   sema_.analyzeExpr(*ternary.getThen(), expectedType);
   sema_.analyzeExpr(*ternary.getElse(), expectedType);
 

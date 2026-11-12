@@ -3,6 +3,7 @@
 
 #include <sstream>
 
+#include "parsing/lowering_pass.h"
 #include "parsing/parser.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "support/error.h"
@@ -30,6 +31,7 @@ class TypeAnalysis_SpecializationBodies : public ::testing::Test {
       earlierTrees.push_back(std::move(tree));
     }
     tree = parser.parseString(source);
+    sun::parsing::LoweringPass().run(*tree);
     passes::FieldInitializerPreparationPass().run(*tree);
     passes::DeclarationIdentityPass(results->declarations).run(*tree);
     passes::DeclarationNamingPass().run(*tree);

@@ -4,6 +4,7 @@
 #include <sstream>
 #include <string>
 
+#include "parsing/lowering_pass.h"
 #include "parsing/parser.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "support/error.h"
@@ -15,6 +16,7 @@ void analyzeReturns(const std::string& source) {
   std::istringstream input;
   sun::parsing::Parser parser(input);
   auto tree = parser.parseString(source);
+  sun::parsing::LoweringPass().run(*tree);
   auto results = std::make_shared<sun::semantic_analysis::AnalysisResults>();
   sun::semantic_analysis::SemanticAnalyzer analyzer(results);
   analyzer.pipeline().run(*tree);
