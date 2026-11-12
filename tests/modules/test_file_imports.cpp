@@ -378,14 +378,16 @@ class MoonExactTypes : public ::testing::Test {
   std::filesystem::path dir;
   std::string b1, b2, a;
 
-  /** Build a bundle from source and explicit dependencies. */
+  /** Builds a bundle with explicit dependencies and an optional artifact ID. */
   std::string bundle(const std::string& name, const std::string& source,
-                     std::vector<MoonImport> imports = {}) {
+                     std::vector<MoonImport> imports = {},
+                     std::string artifactId = {}) {
     auto path = dir / (name + ".sun");
     std::ofstream(path) << source;
     auto output = dir / (name + ".moon");
     sun::moon_bundling::MoonBuildOptions options;
     options.extraMoons = std::move(imports);
+    options.artifactId = std::move(artifactId);
     MoonBuilder::build(path.string(), output, options);
     return output.string();
   }
@@ -1169,9 +1171,11 @@ TEST_F(MoonExactTypes,
     }
   )";
   auto first =
-      bundle("consumer_first", source, {MoonImport(b1), MoonImport(c)});
+      bundle("consumer_first", source, {MoonImport(b1), MoonImport(c)},
+             "consumer");
   auto second =
-      bundle("consumer_second", source, {MoonImport(c), MoonImport(b1)});
+      bundle("consumer_second", source, {MoonImport(c), MoonImport(b1)},
+             "consumer");
   auto digest = [](const std::string& path) {
     auto reader = MoonReader::open(path);
     return reader->getMetadata(reader->listModules()[0])->content_hash();

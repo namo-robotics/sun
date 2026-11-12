@@ -8,6 +8,7 @@
 #include <string>
 
 #include "driver/build_graph.h"
+#include "moon_bundling/moon.h"
 
 /** Keeps test fixtures and helpers local to this source file. */
 namespace {
@@ -163,6 +164,61 @@ function main() i32 { if library.answer() == 43 { return 0; } return 1; }
       << readFile(dir / "log");
   EXPECT_EQ(run(quote(configuredOutput() / "main")), 0)
       << readFile(dir / "log");
+}
+
+/** Direct builds derive identity from the source, independently of output
+ * paths. */
+TEST_P(MoonSearchPath, direct_identity_defaults_and_override) {
+  std::ofstream(dir / "project/sun-config.json")
+      << R"({"root":true,"package_id":"example/package"})";
+  const auto output = dir / "renamed-output.moon";
+  const auto command = quote(dir / "bin/sun") + " --emit-moon -o " +
+                       quote(output) + " " + quote(dir / "project/lib.sun");
+  ASSERT_EQ(run(command), 0) << readFile(dir / "log");
+  auto reader = sun::moon_bundling::MoonReader::open(output);
+  ASSERT_NE(reader, nullptr);
+  EXPECT_EQ(reader->getLibrary().bundle_contract().library_id(),
+            "example/package/lib");
+  ASSERT_EQ(run(command + " --id public_api"), 0) << readFile(dir / "log");
+  reader = sun::moon_bundling::MoonReader::open(output);
+  ASSERT_NE(reader, nullptr);
+  EXPECT_EQ(reader->getLibrary().bundle_contract().library_id(),
+            "example/package/public_api");
+  EXPECT_NE(run(command + " --id ''"), 0);
+}
+
+/** Ordinary and custom configured builds preserve the declared entrypoint name.
+ */
+TEST_P(MoonSearchPath, configured_identity_uses_entrypoint_name) {
+  const auto configFile = dir / "project/sun-config.json";
+  std::ofstream(dir / "project/build.sh")
+      << "#!/bin/sh\n# Compile using the configured artifact identity.\n"
+         "exec \"$SUN_EXECUTABLE\" build-compile\n";
+  fs::permissions(dir / "project/build.sh", fs::perms::owner_exec,
+                  fs::perm_options::add);
+  for (const bool custom : {false, true}) {
+    SCOPED_TRACE(custom ? "custom" : "ordinary");
+    std::ofstream(configFile)
+        << R"({"root":true,"package_id":"example/package","entrypoints":[{
+          "path":"lib.sun","type":"library","name":"public_api","export":true)"
+        << (custom ? R"(,"build":["build.sh"])" : "") << "}]}";
+    const auto command = quote(dir / "bin/sun") +
+                         " build --no-test --force-rebuild --config " +
+                         quote(configFile);
+    ASSERT_EQ(run(command), 0) << readFile(dir / "log");
+    auto reader = sun::moon_bundling::MoonReader::open(configuredOutput() /
+                                                       "public_api.moon");
+    ASSERT_NE(reader, nullptr);
+    EXPECT_EQ(reader->getLibrary().bundle_contract().library_id(),
+              "example/package/public_api");
+    EXPECT_NE(run(command + " --id overridden"), 0);
+  }
+  std::ofstream(dir / "project/build.sh")
+      << "#!/bin/sh\n# Attempt a forbidden configured identity override.\n"
+         "exec \"$SUN_EXECUTABLE\" build-compile --id overridden\n";
+  EXPECT_NE(run(quote(dir / "bin/sun") + " build --no-test --config " +
+                quote(configFile)),
+            0);
 }
 
 TEST_P(MoonSearchPath, emit_moon_finds_installed_dependency) {

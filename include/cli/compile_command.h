@@ -45,6 +45,8 @@ struct CompileJob {
   bool requireProductionArtifact = false;
   // Build every artifact even when the one on disk is up to date
   bool forceRebuild = false;
+  // Local artifact name; empty uses the source filename stem.
+  std::string artifactId;
   std::string versionName;  // Optional human-readable bundle name.
 };
 

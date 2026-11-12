@@ -642,7 +642,7 @@ TEST_F(GitSourceTest, RunsCustomScriptAndStagesResources) {
   write(dir / "sun-config.json", readConfigFixture("consumer.json"));
   write(dir / "repos/custom.git/sun-config.json",
         readConfigFixture("custom.json"));
-  write(dir / "repos/custom.git/tool.sun", "manifest { id: \"example/tool\" }");
+  write(dir / "repos/custom.git/tool.sun", "manifest {}");
   write(dir / "repos/custom.git/data/value.txt", "resource");
   write(dir / "repos/custom.git/build.py", R"PY(#!/usr/bin/python3
 """Validate custom context and emit a host generator."""
@@ -675,7 +675,7 @@ TEST_F(GitSourceTest, UsesHostGitGeneratorForForeignTarget) {
         "/** Generated consumer. */ public module consumer {}");
   write(dir / "repos/tools.git/sun-config.json",
         readConfigFixture("tools.json"));
-  write(dir / "repos/tools.git/tool.sun", "manifest { id: \"example/tool\" }");
+  write(dir / "repos/tools.git/tool.sun", "manifest {}");
   write(dir / "repos/tools.git/build.py", R"PY(#!/usr/bin/python3
 """Emit a generator only when built for the requested host."""
 import os, pathlib
@@ -695,9 +695,8 @@ TEST_F(GitSourceTest, CombinesSelectionsFromOneRepository) {
   write(dir / "sun-config.json", readConfigFixture("consumer.json"));
   write(dir / "repos/pair.git/sun-config.json", readConfigFixture("pair.json"));
   write(dir / "repos/pair.git/NOTICE", "shared notice");
-  write(dir / "repos/pair.git/first.sun", "manifest { id: \"example/first\" }");
-  write(dir / "repos/pair.git/second.sun",
-        "manifest { id: \"example/second\" }");
+  write(dir / "repos/pair.git/first.sun", "manifest {}");
+  write(dir / "repos/pair.git/second.sun", "manifest {}");
   auto graph = sun::driver::loadConfigGraph(dir / "sun-config.json");
   sun::driver::ConfigGraphScope scope(graph);
   auto config = sun::driver::SunConfig::loadFile(dir / "sun-config.json");
@@ -715,13 +714,11 @@ TEST_F(GitSourceTest, SharesGeneratedPrerequisitesAcrossSelections) {
         "/** Generated declarations. */ public module generated {}");
   write(repository / "core.sun", R"sun(
     manifest {
-      id: "example/core"
       source_files: ["${SUN_BUILD}/generated.sun"]
     }
   )sun");
   write(repository / "ui.sun", R"sun(
     manifest {
-      id: "example/ui"
       libraries: ["core.moon"]
     }
   )sun");
@@ -749,12 +746,11 @@ TEST_F(GitSourceTest, SelectsPackagesFromRepositoryDictionary) {
   write(repository / "sun-config.json", readConfigFixture("workspace.json"));
   write(repository / "core/sun-config.json", readConfigFixture("core.json"));
   write(repository / "core/core.sun", R"sun(
-    manifest { id: "example/core" }
+    manifest {}
   )sun");
   write(repository / "ui/sun-config.json", readConfigFixture("ui.json"));
   write(repository / "ui/ui.sun", R"sun(
     manifest {
-      id: "example/ui"
       libraries: ["${example/core}/lib/core.moon"]
     }
   )sun");
@@ -783,7 +779,7 @@ TEST_F(GitSourceTest, SelectsLibraryAndBinaryFromOnePackage) {
   writeRepositoryDependency(readConfigFixture("consumer.json"));
   write(repository / "sun-config.json", readConfigFixture("workspace.json"));
   write(repository / "core.sun", R"sun(
-    manifest { id: "example/core" }
+    manifest {}
   )sun");
   write(repository / "tool.sun", R"sun(
     /** Runs the fixture tool. */

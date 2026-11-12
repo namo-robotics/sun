@@ -67,7 +67,7 @@ class CustomBuild : public testing::Test {
     write("lib/sun-config.json",
           R"({"package_id":"example/helper","entrypoints":[
       {"name":"helper","path":"helper.sun","type":"library","export":true}]})");
-    write("lib/helper.sun", R"(manifest { id: "example/helper" }
+    write("lib/helper.sun", R"(manifest {}
       /** Provides a fixture value. */ public module helper {
         /** Returns the expected value. */ public function answer() i32 { return 42; }
       })");

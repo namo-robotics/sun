@@ -74,7 +74,7 @@ struct LoadedNativeArchive {
  */
 struct MoonBuilder::LoadedInputs {
   MoonBuildReport report;
-  std::optional<std::string> libraryId;
+  std::string libraryId;
   std::vector<SynthesizedProtoModule> protoModules;
   std::vector<LoadedNativeArchive> loadedArchives;
   std::string archiveSetHash;
@@ -117,6 +117,8 @@ MoonBuilder::LoadedInputs MoonBuilder::loadInputs(
   fs::path entrypointPath = fs::absolute(entrypoint);
   std::string baseDir = entrypointPath.parent_path().string();
 
+  result.libraryId = sun::driver::ManifestProcessor::artifactIdentity(
+      entrypoint, options.artifactId, options.targetTriple);
   report.moonImports = options.extraMoons;
   // Resolve command-line imports before hashing the bundles they name.
   for (auto& moon : report.moonImports) {
@@ -125,7 +127,6 @@ MoonBuilder::LoadedInputs MoonBuilder::loadInputs(
   }
   if (auto manifest = sun::driver::ManifestProcessor::fromEntrypointFile(
           entrypoint, options.targetTriple)) {
-    result.libraryId = manifest->libraryId;
     result.hasTestFiles = !manifest->testSunFiles.empty();
     report.sunFiles = std::move(manifest->sunFiles);
     report.moonImports.insert(report.moonImports.end(),
@@ -140,6 +141,7 @@ MoonBuilder::LoadedInputs MoonBuilder::loadInputs(
   // is compiled (see input_hash.h)
   sun::driver::BuildInputs inputs;
   inputs.artifactKind = "bundle";
+  inputs.settings.emplace_back("artifact_id", result.libraryId);
   if (!options.versionName.empty()) {
     inputs.settings.emplace_back("version_name", options.versionName);
   }
@@ -437,9 +439,7 @@ std::vector<std::string> MoonBuilder::writeBundle(
       }
     }
   }
-  if (inputs.libraryId) {
-    writer.setLibraryId(*inputs.libraryId);
-  }
+  writer.setLibraryId(inputs.libraryId);
   for (const auto& archive : inputs.report.nativeArchives) {
     writer.declareNativeRequirements(archive.cpuFeatures,
                                      archive.runtimeServices);

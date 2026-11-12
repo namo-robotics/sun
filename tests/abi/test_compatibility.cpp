@@ -1192,34 +1192,36 @@ TEST(ABI_Compatibility, LibraryIdentitySurvivesBundleRoundTrip) {
 }
 
 /** Packaging uses the entrypoint ID and rebuilds when that identity changes. */
-TEST(ABI_Compatibility, PackagingPreservesEntrypointLibraryIdentity) {
+TEST(ABI_Compatibility, PackagingPreservesExplicitBuildIdentity) {
   const auto directory = std::filesystem::path("tmp") /
                          ("abi_library_identity_" + std::to_string(getpid()));
   std::filesystem::create_directories(directory);
+  std::ofstream(directory / "sun-config.json") << R"({"root":true})";
   const auto source = directory / "library.sun";
   const auto output = directory / "library.moon";
-  /** Writes an explicit identity with otherwise identical library code. */
-  const auto writeSource = [&](const std::string& identity) {
+  {
     std::ofstream file(source);
-    file << "manifest { id: \"" << identity << "\" }\n"
-         << "/** Exports a value for identity packaging tests. */\n"
+    file << "/** Exports a value for identity packaging tests. */\n"
          << "public module identity_fixture {\n"
          << "/** Returns a constant. */\n"
          << "public function value() i32 { return 42; } }\n";
-  };
-  writeSource("org.example/shapes");
+  }
+  sun::moon_bundling::MoonBuildOptions options;
+  options.artifactId = "org.example/shapes";
   ASSERT_NO_THROW(
-      sun::moon_bundling::MoonBuilder::build(source.string(), output));
+      sun::moon_bundling::MoonBuilder::build(source.string(), output, options));
   auto reader = sun::moon_bundling::MoonReader::open(output);
   ASSERT_NE(reader, nullptr);
   EXPECT_EQ(reader->getLibrary().bundle_contract().library_id(),
             "org.example/shapes");
   const auto firstHash = reader->getLibrary().content_hash();
   EXPECT_TRUE(
-      sun::moon_bundling::MoonBuilder::build(source.string(), output).upToDate);
-  writeSource("org.example/other");
+      sun::moon_bundling::MoonBuilder::build(source.string(), output, options)
+          .upToDate);
+  options.artifactId = "org.example/other";
   EXPECT_FALSE(
-      sun::moon_bundling::MoonBuilder::build(source.string(), output).upToDate);
+      sun::moon_bundling::MoonBuilder::build(source.string(), output, options)
+          .upToDate);
   reader = sun::moon_bundling::MoonReader::open(output);
   ASSERT_NE(reader, nullptr);
   EXPECT_EQ(reader->getLibrary().bundle_contract().library_id(),

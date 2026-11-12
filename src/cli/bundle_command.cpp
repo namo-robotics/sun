@@ -63,6 +63,7 @@ int runBundleCommand(const BuildRunOptions& options) {
   buildOptions.extraMoons = options.shared.moonImports;
   buildOptions.forceRebuild = options.forceRebuild;
   buildOptions.versionName = options.versionName;
+  buildOptions.artifactId = options.artifactId;
 
   return buildMoonBundle(entrypoint, outputPath, buildOptions);
 }

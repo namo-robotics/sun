@@ -52,7 +52,13 @@
       "path": "tls/tls.sun",
       "type": "library",
       "name": "tls",
-      "export": true
+      "export": true,
+      "requires": [
+        "stdlib"
+      ],
+      "build": [
+        "scripts/build-configured-tls.sh"
+      ]
     },
     {
       "path": "cuda/cuda.sun",

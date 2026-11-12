@@ -164,11 +164,11 @@ TEST_F(BuildGraph, ArtifactNamesUseSelectedBuildRoot) {
           .string());
 }
 
-/** Entrypoint names determine artifact filenames independently of manifest IDs.
+/** Entrypoint names determine artifact filenames independently of source names.
  */
 TEST_F(BuildGraph, ManifestIdentityDoesNotNameArtifacts) {
   put("sun-config.json", readConfigFixture("workspace.json"));
-  put("api.sun", "manifest { id: \"example/public-api\" }\n");
+  put("api.sun", "manifest {}\n");
   auto graph = sun::driver::loadConfigGraph(dir / "sun-config.json");
   sun::driver::ConfigGraphScope scope(graph);
   sun::driver::setProductCompiler(
@@ -179,14 +179,13 @@ TEST_F(BuildGraph, ManifestIdentityDoesNotNameArtifacts) {
   const auto installed = sun::driver::buildConfigProducts(
       graph, SunConfig::loadFile(dir / "sun-config.json"), {"local-name"});
   EXPECT_TRUE(fs::is_regular_file(installed / "lib/local-name.moon"));
-  EXPECT_FALSE(fs::exists(installed / "lib/public-api.moon"));
+  EXPECT_FALSE(fs::exists(installed / "lib/api.moon"));
 }
 
-/** Entrypoint names distinguish products even when source and manifest ID
- * match. */
+/** One source can produce distinct artifacts named by configured entries. */
 TEST_F(BuildGraph, SharedIdentityBuildsDistinctEntrypoints) {
   put("sun-config.json", readConfigFixture("workspace.json"));
-  put("api.sun", "manifest { id: \"example/api\" }\n");
+  put("api.sun", "manifest {}\n");
   auto graph = sun::driver::loadConfigGraph(dir / "sun-config.json");
   sun::driver::ConfigGraphScope scope(graph);
   std::vector<std::string> built;
@@ -236,7 +235,7 @@ TEST_F(BuildGraph, LocalProductWinsAndMissingSelectionsDoNotFallBack) {
       readConfigFixture("../shared/producer-consumer-workspace.json"));
   put("producer/sun-config.json", readConfigFixture("producer.json"));
   put("producer/tool.sun",
-      "manifest { id: \"example/generator\" }\nfunction main() i32 { return 0; "
+      "manifest {}\nfunction main() i32 { return 0; "
       "}\n");
   put("consumer/sun-config.json", readConfigFixture("consumer.json"));
   auto graph = sun::driver::loadConfigGraph(dir / "sun-config.json");
@@ -274,7 +273,7 @@ TEST_F(BuildGraph, ValidatesDependencyArray) {
  * installs on failure. */
 TEST_F(BuildGraph, TracksPreparationAndPreservesPublishedProducts) {
   put("sun-config.json", readConfigFixture("workspace.json"));
-  put("main.sun", "manifest { id: \"example/generated\" }\n");
+  put("main.sun", "manifest {}\n");
   put("input.txt", "first");
   auto graph = sun::driver::loadConfigGraph(dir / "sun-config.json");
   sun::driver::ConfigGraphScope scope(graph);
@@ -345,9 +344,9 @@ TEST_F(BuildGraph, CopiesRuntimeResourcesToBuildAndInstall) {
 TEST_F(BuildGraph, SelectsHostGeneratorFromUsage) {
   put("sun-config.json", readConfigFixture("workspace.json"));
   put("tool/sun-config.json", readConfigFixture("tool.json"));
-  put("tool/main.sun", "manifest { id: \"example/tool\" }\n");
+  put("tool/main.sun", "manifest {}\n");
   put("app/sun-config.json", readConfigFixture("app.json"));
-  put("app/main.sun", "manifest { id: \"example/app\" }\n");
+  put("app/main.sun", "manifest {}\n");
   put("app/input.txt", "generated");
   const auto target =
       sun::driver::configTargetKey(llvm::sys::getDefaultTargetTriple()) ==
@@ -388,7 +387,6 @@ TEST_F(BuildGraph, SkipsLocalDependencyTestsOnlyDuringResolution) {
   // The missing test source makes it observable whether tests are processed.
   put("producer/api.sun", R"(
     manifest {
-      id: "example/api",
       test_files: ["missing_test.sun"]
     }
 
@@ -428,7 +426,6 @@ TEST_F(BuildGraph, SkipsTestsInLocalDependencyCustomBuilds) {
 
   put("producer/tool.sun", R"(
     manifest {
-      id: "example/tool"
     }
   )");
 
@@ -462,3 +459,15 @@ output_path.write_text("#!/bin/sh\nexit 0\n")
 }
 
 }  // namespace
+
+/** Unnamed projects cannot introduce ambiguous canonical artifact identities.
+ */
+TEST_F(BuildGraph, RejectsDuplicateArtifactIdentities) {
+  put("sun-config.json",
+      R"({"projects":["a/sun-config.json","b/sun-config.json"]})");
+  const auto product =
+      R"({"entrypoints":[{"path":"main.sun","name":"tool","type":"binary"}]})";
+  put("a/sun-config.json", product);
+  put("b/sun-config.json", product);
+  EXPECT_THROW(sun::driver::loadConfigGraph(dir / "sun-config.json"), SunError);
+}

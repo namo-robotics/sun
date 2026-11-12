@@ -237,12 +237,25 @@ std::optional<SunConfig> ManifestProcessor::configFor(
   return SunConfig::findFrom(baseDir, targetTriple);
 }
 
+std::string ManifestProcessor::artifactIdentity(
+    const std::string& entrypoint, const std::string& localId,
+    const std::string& targetTriple) {
+  const auto path = std::filesystem::absolute(entrypoint);
+  const auto config = configFor(path.parent_path().string(), targetTriple);
+  const auto name = localId.empty() ? path.stem().string() : localId;
+  sun::abi::validateLibraryId(name);
+  const auto identity = config && !config->packageId.empty()
+                            ? config->packageId + "/" + name
+                            : name;
+  sun::abi::validateLibraryId(identity);
+  return identity;
+}
+
 ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
                                             const std::string& baseDir,
                                             const std::string& targetTriple) {
   generateCBindings(baseDir, targetTriple);
   ResolvedManifest out;
-  out.libraryId = manifest.getId();
   out.baseDir = baseDir;
 
   // Explicit path variables win, followed by consuming-project overrides

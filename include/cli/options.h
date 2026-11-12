@@ -67,6 +67,8 @@ struct BuildRunOptions {
   bool noTest = false;                   // --no-test
   bool refreshSources = false;           // --refresh-sources
   bool forceRebuild = false;             // --force-rebuild
+  // Local artifact name; empty uses the source filename stem.
+  std::string artifactId;
   std::string versionName;               // Optional human-readable bundle name.
   std::string githubToken;               // --gh-token <tok>
   std::vector<std::string> programArgs;  // everything after --

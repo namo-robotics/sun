@@ -11,7 +11,3 @@ public module shapes {
     }
   }
 }
-
-manifest {
-  id: "sun.examples/shapes"
-}

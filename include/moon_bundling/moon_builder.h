@@ -44,6 +44,8 @@ struct MoonBuildOptions {
   // Rebuild even when the bundle on disk was made from the same inputs
   // (--force-rebuild)
   bool forceRebuild = false;
+  // Local artifact name; empty uses the source filename stem.
+  std::string artifactId;
   std::string versionName;  // Optional human-readable bundle name.
   // Called once the build is known to go ahead, before anything is compiled,
   // so a caller can announce it. Not called for a skipped build.

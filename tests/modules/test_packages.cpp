@@ -105,12 +105,14 @@ TEST_F(Packages, TargetValidation) {
 
 /** Direct Moon inputs use target-separated directories and stable filenames. */
 TEST_F(Packages, MoonCacheAndCollision) {
+  put(dir / "sun-config.json", R"({"root":true})");
   put(dir / "image.sun",
-      "manifest { id: \"image_core\" }\n"
+      "manifest {}\n"
       "/** Fixture library. */ public module image_core { /** Returns a value. "
       "*/ public function value() i32 { return 1; } }\n");
   sun::moon_bundling::MoonBuildOptions options;
   options.targetTriple = "x86_64-linux-gnu";
+  options.artifactId = "image_core";
   sun::moon_bundling::MoonBuilder::build((dir / "image.sun").string(),
                                          dir / "x64.moon", options);
   options.targetTriple = "aarch64-linux-gnu";

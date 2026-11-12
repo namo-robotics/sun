@@ -220,7 +220,16 @@ supported yet.
 ## Building the bundle
 
 `tls.moon` embeds `libssl.a` and `libcrypto.a`, which the repository does not
-carry. `build.sh` prepares them automatically for the host platform, reusing
+carry. `sun build` prepares missing archives automatically for the selected target
+before compiling TLS, reusing existing archives without a download. Linux builds
+use `scripts/fetch-openssl.sh`; Apple Silicon macOS builds use
+`scripts/build-openssl-macos.sh`. The first build needs network access:
+
+```bash
+sun build --entrypoint tls
+```
+
+`build.sh` also prepares them automatically for the host platform, reusing
 existing archives on Linux:
 
 ```bash

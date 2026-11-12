@@ -50,6 +50,7 @@ sun::moon_bundling::MoonBuildOptions makeMoonBuildOptions(
   buildOptions.extraMoons = job.moonImports;
   buildOptions.forceRebuild = job.forceRebuild;
   buildOptions.versionName = job.versionName;
+  buildOptions.artifactId = job.artifactId;
   return buildOptions;
 }
 
@@ -199,6 +200,7 @@ void runCustomBuild(const BuildRunOptions& options,
       {"display_root", sun::support::displayPathBase().string()},
       {"target", config.targetTriple},
       {"source", source},
+      {"artifact_id", entry.name},
       {"output", output.string()},
       {"tests", entry.testBinaryName},
       {"library", entry.type == sun::driver::ConfigEntrypoint::Type::Library},
@@ -269,6 +271,11 @@ int runConfigBuildCommand(const BuildRunOptions& options) {
       options.shared.debugInfo, options.shared.optimize, options.forceRebuild,
       options.refreshSources);
   try {
+    if (!options.artifactId.empty()) {
+      sun::support::logAndThrowError(
+          "--id is only supported for direct compilation; configured builds "
+          "use entrypoint names");
+    }
     auto graph = sun::driver::loadConfigGraph(options.inputFiles.at(0),
                                               options.targetTriple);
     sun::driver::ConfigGraphScope graphScope(graph);
@@ -320,7 +327,10 @@ void configureProductCompiler(const BuildRunOptions& options) {
       std::string(options.shared.debugInfo ? "debug" : "release") +
           (options.shared.optimize ? "" : "-unoptimized"),
       options.forceRebuild);
-  sun::driver::setProductCompiler([options](
+  // Keep a direct build's ID override out of its configured dependencies.
+  auto configuredOptions = options;
+  configuredOptions.artifactId.clear();
+  sun::driver::setProductCompiler([options = std::move(configuredOptions)](
                                       const sun::driver::SunConfig& config,
                                       const sun::driver::ConfigEntrypoint&
                                           entry,
@@ -400,6 +410,10 @@ void configureProductCompiler(const BuildRunOptions& options) {
       }
       selectedOptions.forceRebuild = forceRebuild;
     }
+    if (!selectedOptions.artifactId.empty()) {
+      sun::support::logAndThrowError(
+          "--id cannot override a configured entrypoint name");
+    }
     auto job = makeCompileJob(selectedOptions);
     job.inputFiles = {
         entry.git.empty()
@@ -407,6 +421,7 @@ void configureProductCompiler(const BuildRunOptions& options) {
                                                                   &config)
             : sun::driver::resolveGitEntrypoint(entry, options.refreshSources)};
     job.outputFile = output.string();
+    job.artifactId = entry.name;
     job.targetTriple = config.targetTriple;
     if (sun::driver::configTargetKey(options.targetTriple) !=
         sun::driver::configTargetKey(config.targetTriple)) {
@@ -688,8 +703,17 @@ int runBuildCompileCommand(const std::vector<std::string>& args) {
       sun::support::logAndThrowError(
           "build-compile must produce the configured artifact");
     }
+    if (!options.artifactId.empty()) {
+      sun::support::logAndThrowError(
+          "--id cannot override a configured entrypoint name");
+    }
+    const auto id = context.getString("artifact_id");
+    if (!id || id->empty()) {
+      sun::support::logAndThrowError("missing configured artifact identity");
+    }
     applyBuildRunSettings(options);
     auto job = makeCompileJob(options);
+    job.artifactId = id->str();
     job.testBinaryName = tests->str();
     job.requireProductionArtifact =
         context.getBoolean("export").value_or(false);

@@ -14,6 +14,7 @@
 #include <set>
 #include <thread>
 
+#include "abi/nominal_identity.h"
 #include "driver/manifest_processor.h"
 #include "driver/package.h"
 #include "driver/system_dependencies.h"
@@ -260,8 +261,17 @@ void visitConfig(const fs::path& input, const std::string& target,
     return;
   }
   if (!config.packageId.empty() &&
-      !ids.emplace(config.packageId, file).second) {
+      !ids.emplace("package:" + config.packageId, file).second) {
     fail("duplicate package_id: " + config.packageId);
+  }
+  for (const auto& entry : config.entrypoints) {
+    const auto identity = config.packageId.empty()
+                              ? entry.name
+                              : config.packageId + "/" + entry.name;
+    sun::abi::validateLibraryId(identity);
+    if (!ids.emplace("artifact:" + identity, file).second) {
+      fail("duplicate artifact id: " + identity);
+    }
   }
   graph.projects.push_back(file);
   for (const auto& patternString : config.projects) {
