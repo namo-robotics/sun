@@ -165,6 +165,11 @@ std::optional<EarlyExit> parseBuildRunArguments(
       options.noTest = true;
     } else if (arg == "--refresh-sources") {
       options.refreshSources = true;
+    } else if (arg == "--id") {
+      if (!cursor.takeValueOf("--id", value) || value.empty()) {
+        return makeFailure("Error: --id requires a nonempty value\n");
+      }
+      options.artifactId = value;
     } else if (arg == "--version-name") {
       if (!cursor.takeValueOf("--version-name", value)) {
         return makeFailure("Error: --version-name requires a value\n");
@@ -216,6 +221,13 @@ std::optional<EarlyExit> parseBuildRunArguments(
 /** Checks for incompatible or incomplete build and execution options. */
 std::optional<EarlyExit> validateBuildRunOptions(
     const BuildRunOptions& options, const std::string& programName) {
+  if (!options.artifactId.empty() &&
+      (options.configInput || options.inputFiles.size() != 1 ||
+       (!options.compileMode && !options.emitMoon))) {
+    return makeFailure(
+        "Error: --id requires direct compilation of one entrypoint; configured "
+        "builds use entrypoint names\n");
+  }
   if (options.emitLLVMOnly && options.emitMoon) {
     return makeFailure(
         "Error: --emit-moon and --emit-llvm are mutually exclusive\n");

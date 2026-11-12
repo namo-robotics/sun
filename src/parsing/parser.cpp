@@ -3067,11 +3067,7 @@ std::unique_ptr<ExprAST> Parser::parseExtern() {
   return nullptr;
 }
 
-// Parse manifest block:
-// manifest {
-//   source_files = [ "file.sun", { path = "other.sun", hash = "abc" } ]
-//   libraries = ( "lib.moon", { path = "x.moon", hash = "def", rename = "y" } )
-// }
+/** Parses source dependencies and target-specific manifest settings. */
 unique_ptr<sun::ast::ManifestAST> Parser::parseManifest() {
   Position start = captureStart();
   getNextToken();  // eat 'manifest'
@@ -3086,7 +3082,6 @@ unique_ptr<sun::ast::ManifestAST> Parser::parseManifest() {
   std::vector<ManifestArchiveDependency> archives;
   std::vector<ManifestTargetBlock> targets;
   std::vector<ManifestSunDependency> testSuns;
-  std::optional<std::string> id;
 
   while (curTok.kind == TokenKind::IDENTIFIER) {
     auto ident = curTok.getIdentifier().value();
@@ -3097,13 +3092,9 @@ unique_ptr<sun::ast::ManifestAST> Parser::parseManifest() {
     getNextToken();  // eat ':'
 
     if (ident == "id") {
-      if (id) {
-        parsingError("duplicate id in manifest");
-      }
-      expectCurrentTokenKind(TokenKind::STRING, "expected string after id");
-      id = curTok.getString().value();
-      sun::abi::validateLibraryId(*id);
-      getNextToken();
+      parsingError(
+          "manifest id is no longer supported; use the configured "
+          "entrypoint name or --id for direct compilation");
     } else if (ident == "source_files") {
       suns = parseManifestSuns();
     } else if (ident == "libraries") {
@@ -3119,7 +3110,7 @@ unique_ptr<sun::ast::ManifestAST> Parser::parseManifest() {
     } else {
       parsingError("unexpected identifier '" + ident +
                    "' in manifest; expected 'source_files', 'test_files', "
-                   "'libraries', 'protos', 'archives', 'id' or 'target'");
+                   "'libraries', 'protos', 'archives' or 'target'");
     }
 
     // Sections are newline-separated; a trailing ',' or ';' is tolerated
@@ -3133,11 +3124,11 @@ unique_ptr<sun::ast::ManifestAST> Parser::parseManifest() {
                          "expected '}' at end of manifest block");
   getNextToken();  // eat '}'
 
-  return finishNode(std::make_unique<sun::ast::ManifestAST>(
-                        std::move(suns), std::move(moons), std::move(protos),
-                        std::move(archives), std::move(targets),
-                        std::move(testSuns), std::move(id)),
-                    start);
+  return finishNode(
+      std::make_unique<sun::ast::ManifestAST>(
+          std::move(suns), std::move(moons), std::move(protos),
+          std::move(archives), std::move(targets), std::move(testSuns)),
+      start);
 }
 
 // Parse the target-conditional block:

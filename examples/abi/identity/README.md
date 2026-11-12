@@ -6,10 +6,10 @@ docs-config: true
 
 `shapes_user.moon` embeds the `Point` type and implementation from `shapes_v1.sun`.
 An application can list another shapes revision without replacing that embedded
-copy. All revisions use `id: "sun.examples/shapes"`; this identifies the
-library but does not make their types interchangeable.
-The config distinguishes these revisions by entrypoint name. Its `requires`
-lists build the imported revision before `shapes_user` and the consumer.
+copy. The build script compiles each revision directly with
+`--id sun.examples/shapes`, using distinct output paths. This identifies the
+library but does not make its revisions interchangeable. The script then builds
+the configured bridge and consumer, whose IDs come from their entrypoint names.
 
 `main_v1.1.sun` constructs a v1.1 point containing `43` and passes it to
 `shapes_user.read`, compiled against v1. Their recorded ABI contracts match, so

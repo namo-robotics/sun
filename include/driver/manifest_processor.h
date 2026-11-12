@@ -28,7 +28,6 @@ namespace sun::driver {
 
 /** Dependencies and settings after manifest paths and targets are resolved. */
 struct ResolvedManifest {
-  std::optional<std::string> libraryId;
   std::vector<std::string> sunFiles;  // resolved .sun paths (manifest order)
   std::vector<sun::moon_bundling::MoonImport>
       moonImports;                      // resolved .moon imports
@@ -43,6 +42,11 @@ struct ResolvedManifest {
 /** Resolves manifest dependencies and prepares their compiler inputs. */
 class ManifestProcessor {
  public:
+  /** Qualifies an explicit local name or source filename stem with package_id.
+   */
+  static std::string artifactIdentity(const std::string& entrypoint,
+                                      const std::string& localId = "",
+                                      const std::string& targetTriple = "");
   /** Returns the active dependency configuration or the entrypoint's config. */
   static std::optional<SunConfig> configFor(const std::string& baseDir,
                                             const std::string& targetTriple);

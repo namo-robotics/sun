@@ -100,6 +100,9 @@ std::string computeJobInputHash(const CompileJob& job, bool forTests) {
   std::vector<std::string> protoFiles;
   std::vector<sun::moon_bundling::NativeArchive> nativeArchives;
   const std::string& entrypoint = job.inputFiles[0];
+  inputs.settings.emplace_back(
+      "artifact_id", sun::driver::ManifestProcessor::artifactIdentity(
+                         entrypoint, job.artifactId, job.targetTriple));
   // Several input files are compiled as given; one is an entrypoint whose
   // manifest names the rest.
   if (job.inputFiles.size() == 1) {
@@ -191,6 +194,7 @@ CompileJob makeCompileJob(const BuildRunOptions& options) {
   job.noTest = options.noTest;
   job.forceRebuild = options.forceRebuild;
   job.versionName = options.versionName;
+  job.artifactId = options.artifactId;
   return job;
 }
 

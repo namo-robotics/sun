@@ -98,7 +98,7 @@ class ManifestAST : public ExprAST {
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override { return "manifest"; }
 
-  /** Returns the product identity shared by library and executable entrypoints.
+  /** Returns a legacy serialized identity; current source manifests have none.
    */
   const std::optional<std::string>& getId() const { return id; }
   /** Returns the source dependencies. */

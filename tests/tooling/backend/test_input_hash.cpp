@@ -407,11 +407,10 @@ TEST(Tooling_Backend_InputHash, bundle_version_names_are_only_artifact_inputs) {
   Scratch scratch("version_names");
   writeFile(scratch.path("lib.sun"),
             "public module version_names { public function answer() i32 { "
-            "return 42; } }"
-            " manifest { id: \"test/version-names\" }");
+            "return 42; } }");
   const auto output = scratch.path("lib.moon");
-  const auto command =
-      "--emit-moon -o " + output + " " + scratch.path("lib.sun");
+  const auto command = "--emit-moon --id test/version-names -o " + output +
+                       " " + scratch.path("lib.sun");
   scratch.runSun(command);
   auto unnamed = sun::moon_bundling::MoonReader::open(output);
   ASSERT_TRUE(unnamed);

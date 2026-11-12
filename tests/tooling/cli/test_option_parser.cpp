@@ -507,3 +507,25 @@ TEST(VersionNameOptions, RejectsMissingName) {
   ASSERT_TRUE(parsed.early);
   EXPECT_NE(parsed.early->text.find("requires a value"), std::string::npos);
 }
+
+/** A local identity override belongs to one directly compiled artifact. */
+TEST(ArtifactIdOptions, AcceptsSingleDirectCompilation) {
+  for (const auto& mode : {"-c", "--emit-moon", "--emit-obj"}) {
+    auto parsed = parseBuildRun({mode, "source.sun", "--id", "public_api"});
+    ASSERT_FALSE(parsed.early);
+    EXPECT_EQ(parsed.options.artifactId, "public_api");
+  }
+}
+
+/** Overrides cannot rename configured products or ambiguous multi-file jobs. */
+TEST(ArtifactIdOptions, RejectsInvalidOverrideContexts) {
+  for (const auto& args :
+       {Args{"-c", "sun-config.json", "--id", "other"},
+        Args{"-c", "a.sun", "b.sun", "--id", "other"},
+        Args{"a.sun", "--id", "other"}, Args{"-c", "a.sun", "--id", ""},
+        Args{"-c", "a.sun", "--id"}}) {
+    auto parsed = parseBuildRun(args);
+    ASSERT_TRUE(parsed.early);
+    EXPECT_NE(parsed.early->text.find("--id"), std::string::npos);
+  }
+}

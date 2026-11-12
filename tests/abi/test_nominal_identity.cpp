@@ -4,7 +4,6 @@
 
 #include "abi/nominal_identity.h"
 #include "driver/manifest_processor.h"
-#include "parsing/formatter.h"
 #include "parsing/parser.h"
 #include "semantic_analysis/portable_declaration_key.h"
 #include "serialization/ast_deserializer.h"
@@ -117,54 +116,56 @@ TEST(ABI_NominalIdentity, LibraryIdsPreserveTextAndLimitBytes) {
             NominalIdentity("e\xcc\x81", NominalKind::Class, {"Point"}));
 }
 
-/** Manifest processing and serialization retain the producer's exact ID. */
-TEST(ABI_NominalIdentity, ManifestIdentityRoundTrips) {
-  auto parser = sun::parsing::Parser::createStringParser(
-      "manifest { id: \" org.example/名前 \\n\" }");
-  auto program = parser.parseProgram();
-  const auto formatted =
-      sun::parsing::formatSource("manifest { id: \" org.example/名前 \\n\" }");
-  auto formattedParser = sun::parsing::Parser::createStringParser(formatted);
-  auto formattedProgram = formattedParser.parseProgram();
-  const auto* manifest = sun::driver::ManifestProcessor::findManifest(*program);
-  ASSERT_NE(manifest, nullptr);
-  ASSERT_TRUE(manifest->getId());
-  EXPECT_EQ(*manifest->getId(), " org.example/名前 \n");
-  const auto* formattedManifest =
-      sun::driver::ManifestProcessor::findManifest(*formattedProgram);
-  ASSERT_NE(formattedManifest, nullptr);
-  EXPECT_EQ(formattedManifest->getId(), manifest->getId());
-  auto resolved = sun::driver::ManifestProcessor::process(*manifest, ".");
-  EXPECT_EQ(resolved.libraryId, manifest->getId());
-  sun::serialization::ASTSerializer serializer;
-  sun::serialization::ASTDeserializer deserializer;
-  auto restored = deserializer.deserialize(serializer.serialize(*manifest));
-  EXPECT_EQ(static_cast<const sun::ast::ManifestAST&>(*restored).getId(),
-            manifest->getId());
-  auto absentParser = sun::parsing::Parser::createStringParser("manifest {}");
-  auto absent = absentParser.parseProgram();
-  const auto* absentManifest =
-      sun::driver::ManifestProcessor::findManifest(*absent);
-  ASSERT_NE(absentManifest, nullptr);
-  auto absentRestored =
-      deserializer.deserialize(serializer.serialize(*absentManifest));
-  EXPECT_FALSE(
-      static_cast<const sun::ast::ManifestAST&>(*absentRestored).getId());
-}
-
-/** Malformed or target-specific identity declarations fail before packaging. */
-TEST(ABI_NominalIdentity, RejectsInvalidManifestIdentities) {
+/** Source manifests declare dependencies rather than artifact identities. */
+TEST(ABI_NominalIdentity, ManifestIdentityIsRejected) {
   for (const auto& source :
-       {std::string("manifest { id: \"\" }"),
-        std::string("manifest { id: 12 }"),
-        std::string("manifest { id: \"a\" id: \"b\" }"),
-        std::string("manifest { target: { linux: { id: \"a\" } } }"),
-        std::string("manifest { id: \"") + std::string(513, 'x') + "\" }"}) {
+       {"manifest { id: \"library\" }", "manifest { id: \"\" }"}) {
     auto parser = sun::parsing::Parser::createStringParser(source);
     EXPECT_THROW(parser.parseProgram(), sun::support::SunError);
   }
-  sun::proto::ast::ASTNode node;
-  node.mutable_manifest()->set_id("");
-  EXPECT_THROW(sun::serialization::ASTDeserializer().deserialize(node),
+  auto parser = sun::parsing::Parser::createStringParser("manifest {}");
+  EXPECT_NO_THROW(parser.parseProgram());
+}
+
+/** Default and explicit local build names use the same package qualification.
+ */
+TEST(ABI_NominalIdentity, PackagePrefixesBuildIdentity) {
+  sun::driver::SunConfig config;
+  /** Restores the source configuration even if identity validation throws. */
+  struct ConfigScope {
+    const sun::driver::SunConfig* previous;
+    /** Installs the fixture's project configuration. */
+    explicit ConfigScope(const sun::driver::SunConfig& value)
+        : previous(
+              sun::driver::ManifestProcessor::exchangeSourceConfig(&value)) {}
+    /** Restores the previous project configuration. */
+    ~ConfigScope() {
+      sun::driver::ManifestProcessor::exchangeSourceConfig(previous);
+    }
+  } scope(config);
+  EXPECT_EQ(sun::driver::ManifestProcessor::artifactIdentity("source.sun"),
+            "source");
+  config.packageId = "namo-robotics/sun";
+  EXPECT_EQ(sun::driver::ManifestProcessor::artifactIdentity("source.sun"),
+            "namo-robotics/sun/source");
+  EXPECT_EQ(
+      sun::driver::ManifestProcessor::artifactIdentity("source.sun", "stdlib"),
+      "namo-robotics/sun/stdlib");
+  config.packageId = std::string(512, 'p');
+  EXPECT_THROW(sun::driver::ManifestProcessor::artifactIdentity("source.sun"),
                sun::support::SunError);
+}
+
+/** Existing bundles may still contain serialized manifest identity metadata. */
+TEST(ABI_NominalIdentity, LegacyManifestIdentityStillDeserializes) {
+  sun::proto::ast::ASTNode node;
+  node.mutable_manifest()->set_id("legacy/library");
+  sun::serialization::ASTDeserializer deserializer;
+  auto restored = deserializer.deserialize(node);
+  const auto& manifest = static_cast<const sun::ast::ManifestAST&>(*restored);
+  EXPECT_EQ(manifest.getId(), "legacy/library");
+  sun::serialization::ASTSerializer serializer;
+  EXPECT_EQ(serializer.serialize(manifest).manifest().id(), "legacy/library");
+  node.mutable_manifest()->set_id("");
+  EXPECT_THROW(deserializer.deserialize(node), sun::support::SunError);
 }

@@ -4,7 +4,6 @@
 // All stdlib modules are listed here.
 
 manifest {
-  id: "sun/stdlib"
   source_files: [
     "std/allocator.sun",
     "std/unique.sun",

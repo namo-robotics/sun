@@ -117,8 +117,25 @@ manifest {
 Run it with `sun main.sun`. Sun compiles `helpers.sun` with `main.sun` and loads
 `stdlib.moon`. Paths start at the directory containing `main.sun`.
 
-Every manifest field is optional. A program with no dependencies can omit the
-manifest.
+All manifest fields are optional. A manifest declares dependencies, not the
+artifact's identity. Source-level `id` fields are rejected.
+
+Configured builds use the entrypoint's `name` as its local ID. When the project
+has `"package_id": "namo-robotics/sun"`, an entrypoint named `stdlib` has the
+canonical identity `namo-robotics/sun/stdlib`. Without a package ID, the name is
+used unchanged. Library and executable entrypoints follow the same rule.
+
+Direct compilation defaults to the source filename without `.sun`. Use `--id`
+to override that local name for one direct compilation:
+
+```sh
+sun --emit-moon --id geometry -o output.moon shapes.sun
+```
+
+The source project's `package_id`, when present, still prefixes the override.
+The output path never changes identity. Configured builds reject `--id`, including
+inside custom build scripts; change the entrypoint name in the config instead.
+Renaming a published entrypoint changes its identity and can break consumers.
 
 ### Test files and other inputs
 
@@ -199,7 +216,6 @@ public module shapes {
 }
 
 manifest {
-    id: "example/shapes"
 }
 ```
 
@@ -233,7 +249,6 @@ Private library helpers remain hidden from callers.
 
 ```sun
 manifest {
-    id: "example/shapes"
 }
 ```
 
