@@ -54,6 +54,7 @@ bool BodyAnalyzer::tryAnalyzeStatement(ExprAST& expr, TypePtr expectedType) {
     case ASTNodeType::WHILE_LOOP: {
       auto& whileExpr = static_cast<sun::ast::WhileExprAST&>(expr);
       sema_.analyzeExpr(const_cast<ExprAST&>(*whileExpr.getCondition()));
+      checkConditionType(*whileExpr.getCondition());
       sema_.analyzeExpr(const_cast<ExprAST&>(*whileExpr.getBody()));
       expr.setResolvedType(Types::Float64());  // while loops return 0.0
       break;

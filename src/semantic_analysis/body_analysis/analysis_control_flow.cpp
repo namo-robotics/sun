@@ -20,6 +20,7 @@ using sun::types::unwrapRef;
 
 void BodyAnalyzer::analyzeIfExpr(sun::ast::IfExprAST& ifExpr) {
   sema_.analyzeExpr(*ifExpr.getCond());
+  checkConditionType(*ifExpr.getCond());
 
   // Check for type guard pattern: _is<T>(var)
   auto typeGuard = extractTypeGuard(*ifExpr.getCond());
@@ -296,6 +297,7 @@ void BodyAnalyzer::analyzeForLoop(sun::ast::ForExprAST& forExpr) {
   }
   if (forExpr.getCondition()) {
     sema_.analyzeExpr(const_cast<ExprAST&>(*forExpr.getCondition()));
+    checkConditionType(*forExpr.getCondition());
   }
   if (forExpr.getIncrement()) {
     sema_.analyzeExpr(const_cast<ExprAST&>(*forExpr.getIncrement()));

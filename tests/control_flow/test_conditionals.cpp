@@ -6,9 +6,47 @@
 
 #include <gtest/gtest.h>
 
+#include <string>
+
 #include "driver/execution_utils.h"
+#include "support/error.h"
 
 using sun::driver::executeString;
+
+/** Exercises each branching construct with an unhandled result condition. */
+class ResultConditionDiagnostics : public testing::TestWithParam<const char*> {};
+
+/** Reports the condition's type and source location before generating LLVM. */
+TEST_P(ResultConditionDiagnostics, rejects_result_with_source_diagnostic) {
+  const std::string source = R"(
+    enum Decision<T> { Ok(T), Error(i32) }
+    function ready() Decision<bool> {
+      return Decision.Ok(true);
+    }
+    function main() i32 {
+  )" + std::string(GetParam()) + R"(
+      return 0;
+    }
+  )";
+  try {
+    sun::driver::analyzeString(source);
+    FAIL() << "Expected a source-level condition error";
+  } catch (const sun::support::SunError& error) {
+    EXPECT_EQ(error.getMessage(),
+              "Condition requires a boolean, numeric, or character value, got "
+              "'Decision<bool>'; match the enum or propagate a result with try");
+    ASSERT_TRUE(error.getLocation().has_value());
+    EXPECT_EQ(error.getLocation()->line, 7);
+    EXPECT_NE(error.getSourceLine().find("ready()"), std::string::npos);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ControlFlow, ResultConditionDiagnostics,
+    testing::Values("if (ready()) { return 1; }",
+                    "while (ready()) { return 1; }",
+                    "for (; ready(); ) { return 1; }",
+                    "return ready() ? 1 : 0;"));
 
 TEST(ControlFlow_Conditionals, true_branch_taken) {
   auto value = executeString(R"(
