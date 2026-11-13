@@ -32,6 +32,8 @@ void BodyAnalyzer::analyzeVariableAssignment(
   VariableInfo* varInfo =
       ctx_.currentScope().lookupVariable(varAssign.getName());
   if (varInfo) {
+    if (varInfo->isCatchBinding)
+      logAndThrowError("A catch binding cannot be replaced; assign individual payload fields", varAssign.getLocation());
     varAssign.setTargetDeclarationId(varInfo->declarationId);
   }
   // A module-level global is emitted using its declaration ID; record it so

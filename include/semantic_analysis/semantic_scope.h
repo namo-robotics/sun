@@ -48,6 +48,7 @@ struct VariableInfo {
       sun::semantic_analysis::Visibility::Private;  // globals only
   bool isCExtern = false;  // Native code owns this global's storage
   sun::semantic_analysis::DeclarationId declarationId;
+  bool isCatchBinding = false;
 };
 
 /**
@@ -409,7 +410,7 @@ struct SpecializedFunctionInfo {
   sun::semantic_analysis::QualifiedName qualifiedName;
 
   /**
-   * Whether the specialization's signature carries 'throws IError'
+   * Whether the specialization's signature carries 'throws'
    */
   bool canThrow() const {
     return specializedAST && specializedAST->getProto().canThrow();
@@ -618,6 +619,18 @@ struct SemanticScopeBase
       }
     }
     return true;
+  }
+
+  bool catchesExceptions = false;
+  bool activeExceptionHandler = false;
+
+  /** Reports whether an enclosing try can intercept a throw in this function. */
+  bool hasExceptionHandler(bool activeCatch = false) const {
+    for (auto* scope = this; scope; scope = scope->parent) {
+      if (scope->getType() == ScopeType::Function) break;
+      if (activeCatch ? scope->activeExceptionHandler : scope->catchesExceptions) return true;
+    }
+    return false;
   }
 
   // ===== Transient state (all scopes) =====

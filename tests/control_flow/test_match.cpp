@@ -427,14 +427,14 @@ TEST(ControlFlow_Match, method_ending_in_fully_terminating_match) {
   auto value = sun::driver::executeStringWithStdlib(R"(
 using std;
 /** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), NotANumber(NotANumber) }
 
-class NotANumber {
+
+exception NotANumber {
   init() {}
   const method code() i32 {
     return 7;
   }
-  const method message() AllocationResult<String> {
+  const method message() String throws {
     return String("not a number");
   }
 }
@@ -450,16 +450,16 @@ class Holder {
   init(v: Value) {
     this.v = v;
   }
-  method as_f64() Outcome<f64> {
+  method as_f64() f64 throws {
     match this.v {
       Value.Int(x) => {
-        return Outcome.Ok(_convert<f64>(x));
+        return _convert<f64>(x);
       },
       Value.Float(x) => {
-        return Outcome.Ok(x);
+        return x;
       },
       _ => {
-        return Outcome.NotANumber(NotANumber());
+        throw NotANumber();
       }
     };
   }
@@ -470,18 +470,16 @@ function main() i32 {
   var b = Holder(Value.Empty);
   var total: f64 = 0.0;
   /** Executes a fallible operation. */
-  var attempt_0 = [ref a, ref b, ref total]() => Outcome<void> {
-    total = try a.as_f64();
-    total = total + try b.as_f64();
+  var attempt_0 = [ref a, ref b, ref total]() => void throws {
+    total =  a.as_f64();
+    total = total +  b.as_f64();
 
-    return Outcome.Ok;
+    return;
   };
-  match attempt_0() {
-    Outcome.Ok => {},
-    (e: ref NotANumber) => {
+  try { attempt_0();
+ } catch (e: NotANumber) {
       return _convert<i32>(total) + e.code();
-    }
-  };
+     }
   return 0;
 }
 )");
@@ -505,15 +503,15 @@ class Holder {
     this.v = v;
   }
 
-  method push(x: i64) Result<void> {
+  method push(x: i64) void throws {
     match this.v {
       Value.Items(items) => {
-        try items.push(x);
+         items.push(x);
       },
       Value.Empty => {}
     };
 
-    return Result.Ok;
+    return;
   }
 
   method count() i64 {
@@ -525,15 +523,15 @@ class Holder {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var h = Holder(Value.Items(try Vec<i64>(alloc, 2)));
-  try h.push(1);
-  try h.push(2);
-  try h.push(3);
+  var h = Holder(Value.Items( Vec<i64>(alloc, 2)));
+   h.push(1);
+   h.push(2);
+   h.push(3);
   var e = Holder(Value.Empty);
-  try e.push(9);
-  return Result.Ok(_convert<i32>(h.count() + e.count()));
+   e.push(9);
+  return _convert<i32>(h.count() + e.count());
 }
 )");
   EXPECT_EQ(value, 3);

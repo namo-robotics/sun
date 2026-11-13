@@ -106,6 +106,7 @@ void TypeRegistrationPass::run(BlockExprAST& block) {
               SemanticContext::ClassDefinition{&classDef, ctx_.scope()});
           auto classType = ctx_.types()->getClass(classDef.getDeclarationId(),
                                                   qualifiedClass);
+          classType->setException(classDef.isException());
           classType->setPacked(classDef.isPacked());
           classType->setAlignment(classDef.getAlignment());
           classType->visibility = classDef.getVisibility();

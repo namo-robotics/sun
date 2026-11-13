@@ -32,6 +32,11 @@ class BodyAnalyzer {
       const std::vector<std::string> &typeParams,
       const std::vector<sun::types::TypePtr> &typeArgs);
 
+  /** Checks bounded exception transfer and its declared propagation boundary. */
+  void analyzeThrow(sun::ast::ThrowAST& statement);
+  /** Resolves handler types and checks each handler in a separate local scope. */
+  void analyzeTryCatch(sun::ast::TryCatchAST& statement);
+
   /**
    * Control flow (analysis_control_flow.cpp)
    */

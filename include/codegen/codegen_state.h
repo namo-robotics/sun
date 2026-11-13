@@ -48,16 +48,13 @@ struct FunctionFrame {
   // Class owning the method being compiled, for method name resolution
   std::shared_ptr<sun::types::ClassType> currentClass = nullptr;
 
-  // True when the function is declared to return errors, so division and
-  // modulo take the checked path and calls may unwind
+  // True when the function declares throws and may propagate exceptions.
   bool canError = false;
 
   // True while emitting a function declared to return `ref T`; reference
   // returns must hand back the referent's address
   bool returnsRef = false;
 
-  // The T in an error union { i1, T }
-  llvm::Type* valueType = nullptr;
 };
 
 /**
@@ -159,21 +156,18 @@ class CodegenState {
     CodegenState& state;
     bool savedCanError;
     bool savedReturnsRef;
-    llvm::Type* savedValueType;
 
     /** Saves the active function return state for restoration when the guard
      * leaves scope. */
     explicit ReturnGuard(CodegenState& s)
         : state(s),
           savedCanError(s.frame.canError),
-          savedReturnsRef(s.frame.returnsRef),
-          savedValueType(s.frame.valueType) {}
+          savedReturnsRef(s.frame.returnsRef) {}
     /** Restores the previous function return state when the guard leaves scope.
      */
     ~ReturnGuard() {
       state.frame.canError = savedCanError;
       state.frame.returnsRef = savedReturnsRef;
-      state.frame.valueType = savedValueType;
     }
     /** Saves the active function return state for restoration when the guard
      * leaves scope. */

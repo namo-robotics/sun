@@ -11,51 +11,34 @@ using std;
 using sun_serve;
 
 /** Checks polling results and HTTP helpers from the imported library. */
-function check_library() ServerResult<i32> {
-  var layout = try probe_epoll_layout(global_allocator);
-  var poller = try Epoll(global_allocator, layout, 1);
-  if (try poller.wait(0)) != 0 {
-    return ServerResult.Ok(3);
+function check_library() i32 throws {
+  var layout = probe_epoll_layout(global_allocator);
+  var poller = Epoll(global_allocator, layout, 1);
+  if (poller.wait(0)) != 0 {
+    return 3;
   }
-  // An invalid descriptor must produce an owned error across the Moon boundary.
-  match poller.add(-1, 0, 0) {
-    ServerResult.Ok => {
-      return ServerResult.Ok(4);
-    },
-    ServerResult.Error(error) => {
-      if error.message().length() == 0 {
-        return ServerResult.Ok(5);
-      }
-    },
-    (error: const ref IError) => {
-      match error.message() {
-        AllocationResult.Ok(message) => eprintln(message),
-        _ => eprintln("unable to allocate error message")
-      };
-      return ServerResult.Ok(6);
-    }
-  };
+  // An invalid descriptor must propagate an exception across the Moon boundary.
+  var rejected = false;
+  try {
+    poller.add(-1, 0, 0);
+  } catch {
+    rejected = true;
+  }
+  if not rejected {
+    return 4;
+  }
   if status_has_no_body(200) {
-    return ServerResult.Ok(1);
+    return 1;
   }
   if status_has_no_body(204) {
     println(version());
     println(reason_phrase(200));
-    return ServerResult.Ok(0);
+    return 0;
   }
-  return ServerResult.Ok(2);
+  return 2;
 }
 
 /** Reports unexpected library failures and returns the integration status. */
-function main() i32 {
-  return match check_library() {
-    ServerResult.Ok(status) => status,
-    (error: const ref IError) => {
-      match error.message() {
-        AllocationResult.Ok(message) => eprintln(message),
-        _ => eprintln("unable to allocate error message")
-      };
-      return 7;
-    }
-  };
+function main() i32 throws {
+  return check_library();
 }

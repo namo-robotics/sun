@@ -1431,13 +1431,13 @@ TEST(Builtins_SpawnIntrinsic, rejects_a_throwing_function) {
     }
 
     /** Runs the fixture with explicit error propagation. */
-    function main() Result<i32> {
-        var t = try spawn(explode);
-        return Result.Ok( 0);
+    function main() i32 throws {
+        var t =  spawn(explode);
+        return  0;
     }
 
 )"),
-                                "'throws' is no longer supported");
+                                "'throws' does not take an error type");
 }
 
 TEST(Builtins_Memory, memmove_handles_overlap_and_empty_ranges) {

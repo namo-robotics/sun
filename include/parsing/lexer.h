@@ -33,6 +33,7 @@ enum class TokenKind {
   MANIFEST,      // manifest keyword for module metadata
   MODULE,        // module keyword (preferred over namespace)
   USING,         // using keyword for namespace imports
+  EXCEPTION,     // bounded exception declaration
   CLASS,         // class keyword
   PARTIAL,       // partial keyword for class extensions
   PUBLIC,        // public keyword: visibility modifier (private is the default)
@@ -57,9 +58,9 @@ enum class TokenKind {
   TEST_FUNCTION,  // test_function keyword: a function compiled only into the
                   // test binary
   TRY,            // try keyword for error handling
-  CATCH,          // reserved for the removed catch-syntax diagnostic
-  THROW,          // reserved for the removed throw-syntax diagnostic
-  THROWS,         // reserved for the removed throws-syntax diagnostic
+  CATCH,          // exception handler
+  THROW,          // exception transfer
+  THROWS,         // function may propagate an exception
   UNSAFE,         // unsafe keyword for unsafe blocks
   // Type keywords (must come before IDENTIFIER for priority)
   STATIC_PTR,       // static_ptr (pointer to immortal static data)
@@ -159,6 +160,7 @@ inline const std::map<TokenKind, std::string> tokenRegexes = {
     {TokenKind::MANIFEST, "manifest"},
     {TokenKind::MODULE, "module"},
     {TokenKind::USING, "using"},
+    {TokenKind::EXCEPTION, "exception"},
     {TokenKind::CLASS, "class"},
     {TokenKind::PARTIAL, "partial"},
     {TokenKind::PUBLIC, "public"},
@@ -368,6 +370,7 @@ inline const std::map<TokenKind, TokenInfo>& getTokenInfo() {
       {TokenKind::MANIFEST, {"manifest"}},
       {TokenKind::MODULE, {"module"}},
       {TokenKind::USING, {"using"}},
+      {TokenKind::EXCEPTION, {"exception"}},
       {TokenKind::CLASS, {"class"}},
       {TokenKind::PARTIAL, {"partial"}},
       {TokenKind::PUBLIC, {"public"}},

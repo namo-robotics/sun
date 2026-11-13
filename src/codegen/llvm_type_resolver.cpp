@@ -205,12 +205,6 @@ llvm::Type* LLVMTypeResolver::resolve(const sun::types::Type& type) {
       break;
     }
 
-    case sun::types::Type::Kind::ErrorUnion: {
-      // Error union uses its built-in toLLVMType (creates struct type)
-      result = type.toLLVMType(ctx);
-      break;
-    }
-
     case sun::types::Type::Kind::Array: {
       // Fixed-size array uses its built-in toLLVMType
       result = type.toLLVMType(ctx);

@@ -359,7 +359,6 @@ std::pair<Function*, llvm::StructType*> FunctionGenerator::codegen(
       // Type matches — reuse the forward declaration (preserves call uses)
     } else if (func->use_empty()) {
       // Type mismatch but no uses — safe to erase and recreate
-      // (e.g., error union functions where pre-pass type differs from actual)
       func->eraseFromParent();
       func = Function::Create(funcType, Function::ExternalLinkage, funcName,
                               module);
@@ -594,11 +593,6 @@ FuncDeclResult FunctionGenerator::declareFuncSignature(PrototypeAST& proto) {
                      "Ensure semantic analysis ran before codegen.");
   }
 
-  // With native LLVM exceptions, a throwing function ('T throws IError')
-  // returns a plain T — the 'throws IError' marker only means the function may
-  // unwind. We no longer wrap the return type in an error-union struct.
-  llvm::Type* valueType = returnType;
-
   // Generate the function with the correct return type
   auto [func, fatType] =
       codegen(proto, nullptr, /*isLambda=*/false, returnType);
@@ -612,7 +606,7 @@ FuncDeclResult FunctionGenerator::declareFuncSignature(PrototypeAST& proto) {
     func->addFnAttr("sun.canthrow");
   }
 
-  return {func, fatType, nullptr, returnType, valueType, canError};
+  return {func, fatType, nullptr, returnType, canError};
 }
 
 // -------------------------------------------------------------------
@@ -655,7 +649,6 @@ Value* FunctionGenerator::codegenFunc(FunctionAST& funcAst) {
   }
 
   auto* func = decl.func;
-  auto* valueType = decl.valueType;
   bool canError = decl.canError;
 
   Value* resultPtr = func;
@@ -692,7 +685,6 @@ Value* FunctionGenerator::codegenFunc(FunctionAST& funcAst) {
   {
     sun::codegen::CodegenState::ReturnGuard returns(state_);
     currentFunctionCanError = canError;
-    currentFunctionValueType = canError ? valueType : nullptr;
     currentFunctionReturnsRef =
         proto.hasReturnType() && proto.getReturnType()->isReference();
 
@@ -714,12 +706,6 @@ Value* FunctionGenerator::codegenFunc(FunctionAST& funcAst) {
     if (retType->isVoidTy()) {
       // Void functions get an implicit return
       ctx.builder->CreateRetVoid();
-    } else if (canError && !valueType) {
-      // void-throws-IError function: return { i1 = false } to indicate success
-      Value* successStruct = UndefValue::get(retType);
-      successStruct = ctx.builder->CreateInsertValue(
-          successStruct, ConstantInt::getFalse(ctx.getContext()), 0);
-      ctx.builder->CreateRet(successStruct);
     } else {
       // Sun has no implicit returns and sema proved every path of a
       // value-returning body exits, so a fall-through tail is unreachable
@@ -778,10 +764,6 @@ llvm::Value* FunctionGenerator::codegenLambda(sun::ast::LambdaAST& lambdaAst) {
     logAndThrowError("Lambda has no return type.");
     return nullptr;
   }
-
-  // With native LLVM exceptions, a throwing lambda ('T throws IError') returns
-  // a plain T — the 'throws IError' marker only means the lambda may unwind.
-  llvm::Type* valueType = returnType;
 
   // Create closure env struct type
   auto envType = createEnvTypeForFunc(proto);
@@ -858,7 +840,6 @@ llvm::Value* FunctionGenerator::codegenLambda(sun::ast::LambdaAST& lambdaAst) {
   {
     sun::codegen::CodegenState::ReturnGuard returns(state_);
     currentFunctionCanError = canError;
-    currentFunctionValueType = canError ? valueType : nullptr;
     currentFunctionReturnsRef =
         proto.hasReturnType() && proto.getReturnType()->isReference();
 
@@ -883,12 +864,6 @@ llvm::Value* FunctionGenerator::codegenLambda(sun::ast::LambdaAST& lambdaAst) {
     llvm::Type* funcRetType = func->getReturnType();
     if (funcRetType->isVoidTy()) {
       ctx.builder->CreateRetVoid();
-    } else if (canError && !valueType) {
-      // void-throws-IError lambda: return { i1 = false } to indicate success
-      Value* successStruct = llvm::UndefValue::get(funcRetType);
-      successStruct = ctx.builder->CreateInsertValue(
-          successStruct, ConstantInt::getFalse(ctx.getContext()), 0);
-      ctx.builder->CreateRet(successStruct);
     } else {
       // As for named functions: no implicit returns, so a fall-through tail
       // of a value-returning lambda is unreachable

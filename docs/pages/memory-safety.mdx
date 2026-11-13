@@ -77,7 +77,7 @@ Classes are **value types** that use **move semantics**. When you assign a class
 class Point {
     var x: i32;
     var y: i32;
-    
+
     init(px: i32, py: i32) {
         this.x = px;
         this.y = py;
@@ -87,7 +87,7 @@ class Point {
 function main() i32 {
     var p1 = Point(3, 4);  // p1 owns the Point
     var p2 = p1;           // Ownership moves to p2
-    
+
     // p1.x;               // ❌ ERROR: use of moved value 'p1'
     return p2.x;           // ✓ OK: p2 now owns the Point
 }
@@ -151,7 +151,7 @@ init(flag: bool) {
 }
 ```
 
-`try expression` exits a fallible constructor on error and drops only the fields
+An exception exits a fallible constructor and drops only the fields
 initialized so far. A `match` that handles the error locally must leave fields
 initialized on every path that continues.
 
@@ -418,7 +418,7 @@ flowchart LR
     G -->|Yes| H[Report Errors]
     G -->|No| I[Code Generator]
     I --> J[LLVM IR]
-    
+
     style F fill:#f9f,stroke:#333,stroke-width:2px
 ```
 
@@ -439,7 +439,7 @@ classDiagram
         -enterScope()
         -exitScope()
     }
-    
+
     class BorrowState {
         -loans: map~string, vector~Loan~~
         -refToTarget: map~string, string~
@@ -448,7 +448,7 @@ classDiagram
         +canMutateThroughRef(refName) BorrowCheckResult
         +exitScope(scopeDepth)
     }
-    
+
     class Loan {
         +borrowedVar: string
         +refName: string
@@ -457,13 +457,13 @@ classDiagram
         +location: SourceLoc
         +isActive: bool
     }
-    
+
     class BorrowKind {
         <<enumeration>>
         Shared
         Mutable
     }
-    
+
     BorrowChecker --> BorrowState
     BorrowState --> Loan
     Loan --> BorrowKind
@@ -483,38 +483,38 @@ The borrow checker performs a single pass over the AST:
 flowchart TD
     A[Start: check program] --> B[For each statement]
     B --> C{Statement Type?}
-    
+
     C -->|ref r = x| D[checkReferenceCreation]
     D --> D1[Resolve target variable]
     D1 --> D2[Check existing borrows]
     D2 --> D3{Allowed?}
     D3 -->|Yes| D4[Record loan in BorrowState]
     D3 -->|No| D5[Report conflict error]
-    
+
     C -->|var x = y| E[checkVariableCreation]
     E --> E1{Is y a class?}
     E1 -->|Yes| E2[Mark y as moved]
     E1 -->|No| E3[No tracking needed]
-    
+
     C -->|x = value| F[checkVariableAssignment]
     F --> F1{Is x a ref?}
     F1 -->|Yes| F2[canMutateThroughRef]
     F1 -->|No| F3[canMutateDirectly]
-    
+
     C -->|use x| G[checkVariableReference]
     G --> G1{Is x moved?}
     G1 -->|Yes| G2[Report use-after-move]
     G1 -->|No| G3[OK]
-    
+
     C -->|Block/If/While| H[Enter scope, check body, exit scope]
     H --> H1[exitScope invalidates deeper loans]
-    
+
     C -->|Function def| I[Check no ref return type]
     I --> I1[Check body in function scope]
-    
+
     C -->|Class def| J[Check no ref fields]
     J --> J1[Check methods]
-    
+
     B --> K[Next statement]
     K --> B
 ```
@@ -528,24 +528,24 @@ sequenceDiagram
     participant Code
     participant BC as BorrowChecker
     participant BS as BorrowState
-    
+
     Code->>BC: Enter if-block (scope 2)
     BC->>BC: currentScope = 2
-    
+
     Code->>BC: ref r = x
     BC->>BS: addBorrow("x", "r", Mutable, scope=2)
     BS->>BS: loans["x"].push(Loan{scope=2})
     BS-->>BC: OK
-    
+
     Code->>BC: ref r2 = x
     BC->>BS: addBorrow("x", "r2", Mutable, scope=2)
     BS->>BS: Check: x has active loan at scope 2
     BS-->>BC: Error: already borrowed
-    
+
     Code->>BC: Exit if-block
     BC->>BS: exitScope(2)
     BS->>BS: Invalidate all loans where scope >= 2
-    
+
     Code->>BC: ref r3 = x
     BC->>BS: addBorrow("x", "r3", Mutable, scope=1)
     BS->>BS: No active loans on x
@@ -585,12 +585,12 @@ When a reference goes out of scope, the borrow ends. You can then create a new r
 ```sun
 function main() i32 {
     var x: i32 = 10;
-    
+
     if (true) {
         ref r1 = x;
         r1 = 20;
     }  // r1 goes out of scope, borrow ends
-    
+
     ref r2 = x;  // ✓ OK: x is no longer borrowed
     r2 = 30;
     return x;    // Returns 30
@@ -652,7 +652,7 @@ its body could replace the backing allocation. For example, inside a function
 with `using std;` and a heap allocator named `alloc`:
 
 ```sun
-var buffer = try ContiguousBuffer<u8>(alloc, 4);
+var buffer =  ContiguousBuffer<u8>(alloc, 4);
 var bytes = ByteSlice(buffer);
 buffer.resize_to(1);
 return _convert<i32>(bytes.size());
@@ -890,7 +890,7 @@ When a class-typed variable is assigned to another variable, the original is mar
 function main() i32 {
     var p1 = Point(1, 2);
     var p2 = p1;          // p1 is moved
-    
+
     return p1.x;          // ❌ ERROR: use of moved variable
 }
 ```
@@ -930,13 +930,13 @@ borrows. Each loop iteration therefore creates a fresh borrow:
 function main() i32 {
     var sum: i32 = 0;
     var i: i32 = 0;
-    
+
     while (i < 5) {
         ref r = sum;  // New borrow each iteration
         r = r + i;
         i = i + 1;
     }                 // Borrow ends each iteration
-    
+
     return sum;       // Returns 10 (0+1+2+3+4)
 }
 ```
@@ -1064,8 +1064,8 @@ type is rejected. A generic callback does not remove the requirement. An unsafe
 callback must be wrapped in a lambda that upholds its contract before it can be
 passed to `spawn`.
 
-`String.at()` and `String.set_at()` check the index against `length()` and return
-`AccessResult.OutOfBounds(IndexOutOfBoundsError)` on failure. Their unchecked counterparts are
+`String.at()` and `String.set_at()` check the index against `length()` and throw
+`IndexOutOfBoundsError` on failure. Their unchecked counterparts are
 `unsafe_at()` and `unsafe_set_at()`, both requiring explicit `unsafe`. The
 `get_unchecked()` and `set_unchecked()` methods on `Vec` and `ContiguousBuffer`
 also require explicit `unsafe`.
@@ -1119,11 +1119,11 @@ BorrowCheckResult BorrowState::addBorrow(const std::string& borrowedVar,
                                          size_t scopeDepth,
                                          const SourceLoc& loc) {
   auto& varLoans = loans_[borrowedVar];
-  
+
   // Check existing borrows
   for (const auto& loan : varLoans) {
     if (!loan.isActive) continue;
-    
+
     if (kind == BorrowKind::Mutable) {
       // Mutable borrow requires no existing borrows
       return BorrowCheckResult::error(
@@ -1131,7 +1131,7 @@ BorrowCheckResult BorrowState::addBorrow(const std::string& borrowedVar,
           loan);
     }
   }
-  
+
   // Create the loan
   varLoans.push_back(Loan(borrowedVar, refName, kind, scopeDepth, loc));
   return BorrowCheckResult::ok();
@@ -1160,11 +1160,11 @@ When assigning a class-typed variable:
 
 ```cpp
 void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
-  if (var.get_value() && 
+  if (var.get_value() &&
       var.get_value()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
     const auto& srcRef = static_cast<const VariableReferenceAST&>(*var.get_value());
     auto srcType = var.get_value()->getResolvedType();
-    
+
     if (srcType && srcType->isClass()) {
       movedVariables_.insert(srcRef.getName());  // Mark as moved
     }
@@ -1208,13 +1208,13 @@ flowchart LR
         R3[Variance]
         R4[HRTBs]
     end
-    
+
     subgraph "Sun Simplicity"
         S1[Scoped refs only]
         S2[Returned refs borrow all inputs]
         S3[Ref-storing values stay in their scope]
     end
-    
+
     R1 -.->|eliminated by| S1
     R2 -.->|unnecessary| S2
     R3 -.->|unnecessary| S3
@@ -1252,13 +1252,13 @@ function process(data: ref i32) void {
 ```sun
 function main() i32 {
     var x: i32 = 0;
-    
+
     // Scope limits the borrow
     if (true) {
         ref r = x;
         r = 42;
     }
-    
+
     // x is free to use again
     return x;
 }

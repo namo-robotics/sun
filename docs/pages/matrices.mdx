@@ -23,17 +23,17 @@ using std.linalg;
 
 using std;
 
-function main() i32 {
-    
+function main() i32 throws {
+
     // 1D array (vector) of 10 elements
-    var v = try Matrix<i32>(global_allocator, [10]);
-    
+    var v =  Matrix<i32>(global_allocator, [10]);
+
     // 2D matrix (3x4)
-    var m = try Matrix<i32>(global_allocator, [3, 4]);
-    
+    var m =  Matrix<i32>(global_allocator, [3, 4]);
+
     // 3D tensor (2x3x4)
-    var t = try Matrix<f64>(global_allocator, [2, 3, 4]);
-    
+    var t =  Matrix<f64>(global_allocator, [2, 3, 4]);
+
     return 0;
 }
 
@@ -48,7 +48,7 @@ second. The matrix infers all dimensions and owns independent storage:
 ```sun
 using std.linalg;
 
-var m = try Matrix<f32>([[1.0f32, 2.0f32], [3.0f32, 4.0f32]], allocator);
+var m =  Matrix<f32>([[1.0f32, 2.0f32], [3.0f32, 4.0f32]], allocator);
 var value = m[1, 0];  // 3.0f32
 ```
 
@@ -66,17 +66,17 @@ using std.linalg;
 
 using std;
 
-function main() i32 {
-    var m = try Matrix<i32>(global_allocator, [3, 3]);
-    
+function main() i32 throws {
+    var m =  Matrix<i32>(global_allocator, [3, 3]);
+
     // Assignment
     m[0, 0] = 1;
     m[1, 1] = 5;
     m[2, 2] = 9;
-    
+
     // Reading
     var diag = m[0, 0] + m[1, 1] + m[2, 2];  // 15
-    
+
     return diag;
 }
 
@@ -92,13 +92,13 @@ using std.linalg;
 
 using std;
 
-function main() i32 {
-    var arr = try Matrix<i32>(global_allocator, [5]);
-    
+function main() i32 throws {
+    var arr =  Matrix<i32>(global_allocator, [5]);
+
     arr[0] = 10;
     arr[1] = 20;
     arr[2] = 30;
-    
+
     return arr[0] + arr[1] + arr[2];  // 60
 }
 ```
@@ -123,8 +123,8 @@ are. The matrix owns a copy of the shape it was built from.
 using std.linalg;
 using std.io;
 
-function main() void {
-    var m = try Matrix<i32>(global_allocator, [3, 4]);
+function main() void throws {
+    var m =  Matrix<i32>(global_allocator, [3, 4]);
 
     println(m.dim(0));  // 3
     println(m.dim(1));  // 4
@@ -140,9 +140,9 @@ Returns the total number of elements:
 ```sun
 using std.linalg;
 
-function main() void {
-    var m = try Matrix<i32>(global_allocator, [3, 4]);
-    
+function main() void throws {
+    var m =  Matrix<i32>(global_allocator, [3, 4]);
+
     std.io.println(m.size());  // 12
 }
 ```
@@ -154,9 +154,9 @@ Returns the number of dimensions:
 ```sun
 using std.linalg;
 
-function main() void {
-    var t = try Matrix<f32>(global_allocator, [2, 3, 4]);
-    
+function main() void throws {
+    var t =  Matrix<f32>(global_allocator, [2, 3, 4]);
+
     std.io.println(t.ndims());  // 3
 }
 ```
@@ -173,8 +173,8 @@ and points at the matrix's elements:
 ```sun
 using std.linalg;
 
-function main() i32 {
-    var m = try Matrix<i32>(global_allocator, [9]);
+function main() i32 throws {
+    var m =  Matrix<i32>(global_allocator, [9]);
     for (var i: i64 = 0; i < 9; i = i + 1) { m[i] = i; }
 
     // Elements 2, 3, 4 of m (shares memory with m)
@@ -206,7 +206,7 @@ class MyArray {
 
     /** Allocates storage that is freed when the array goes out of scope. */
     init(global_allocator: ref HeapAllocator, size: i64) {
-        this.data = try ContiguousBuffer<i32>(global_allocator, size);
+        this.data =  ContiguousBuffer<i32>(global_allocator, size);
     }
 
     /** Reads an element with bounds checking. */
@@ -220,9 +220,9 @@ class MyArray {
     }
 }
 
-function main() i32 {
+function main() i32 throws {
     var arr = MyArray(global_allocator, 10);
-    
+
     arr[0] = 42;      // Calls __setindex__
     return arr[0];    // Calls __index__, returns 42
 }
@@ -235,26 +235,26 @@ using std.linalg;
 
 using std;
 
-function main() i32 {
-    
+function main() i32 throws {
+
     // Create a 3x3 identity matrix
-    var identity = try Matrix<i32>(global_allocator, [3, 3]);
-    
+    var identity =  Matrix<i32>(global_allocator, [3, 3]);
+
     // Initialize to zero
     for (var i: i64 = 0; i < 3; i = i + 1) {
         for (var j: i64 = 0; j < 3; j = j + 1) {
             identity[i, j] = 0;
         }
     }
-    
+
     // Set diagonal to 1
     identity[0, 0] = 1;
     identity[1, 1] = 1;
     identity[2, 2] = 1;
-    
+
     // Sum the diagonal
     var trace = identity[0, 0] + identity[1, 1] + identity[2, 2];
-    
+
     return trace;  // 3
 }
 
@@ -273,11 +273,11 @@ using std.linalg;
 using std;
 
 function createMatrix() i32 {
-    var m = try Matrix<i32>(global_allocator, [100, 100]);
-    
+    var m =  Matrix<i32>(global_allocator, [100, 100]);
+
     m[50, 50] = 42;
     return m[50, 50];
-    
+
     // m is automatically freed here
 }
 
@@ -295,8 +295,8 @@ existing storage and indexing behavior.
 ## Matrix multiplication methods and operator
 
 For `Matrix<f32>` and `Matrix<f64>`, `a * b` performs matrix multiplication
-and returns `std.linalg.LinalgResult<Matrix<T>>`. Handle the result explicitly,
-for example with `try (a * b)`. Both operands are borrowed and must have the
+and returns `Matrix<T>`, throwing `LinalgError` on validation failure. Call it
+inside a `try` block or a function declared `throws`. Both operands are borrowed and must have the
 same element type. The result owns independent storage allocated through the
 left operand's allocator. This operator allocates intentionally; use the
 methods below when reusing output storage.
@@ -306,24 +306,22 @@ using std;
 using std.linalg;
 
 /** Demonstrates allocating multiplication and reusable output storage. */
-function multiply() LinalgResult<void> {
-    var a = try Matrix<f64>([[1.0, 2.0], [3.0, 4.0]], global_allocator);
-    var b = try Matrix<f64>([[5.0, 6.0], [7.0, 8.0]], global_allocator);
-    var product = try (a * b);
+function multiply() void throws {
+    var a =  Matrix<f64>([[1.0, 2.0], [3.0, 4.0]], global_allocator);
+    var b =  Matrix<f64>([[5.0, 6.0], [7.0, 8.0]], global_allocator);
+    var product =  (a * b);
 
-    var output = try Matrix<f64>(global_allocator, [2, 2]);
-    try a.matmul_into(b, output);  // output = a * b, without allocation
-    try output.gemm(1.0, a, Transpose.None, b, Transpose.None, 1.0);
+    var output =  Matrix<f64>(global_allocator, [2, 2]);
+     a.matmul_into(b, output);  // output = a * b, without allocation
+     output.gemm(1.0, a, Transpose.None, b, Transpose.None, 1.0);
     // output now contains twice a * b; product and both inputs are unchanged.
-    return LinalgResult.Ok;
+    return;
 }
 
 /** Converts a failed matrix operation into a nonzero exit status. */
-function main() i32 {
-    return match multiply() {
-        LinalgResult.Ok => 0,
-        LinalgResult.Error(error) => 1
-    };
+function main() i32 throws {
+    try { multiply();
+return 0; } catch (error: LinalgError) { return 1; }
 }
 
 manifest {
@@ -355,21 +353,19 @@ using std;
 using std.linalg;
 
 /** Multiplies two matrices into caller-owned output storage. */
-function multiply() LinalgResult<void> {
-    var a = try Matrix<f64>([[1.0, 2.0], [3.0, 4.0]], global_allocator);
-    var b = try Matrix<f64>([[5.0, 6.0], [7.0, 8.0]], global_allocator);
-    var c = try Matrix<f64>(global_allocator, [2, 2]);
-    try gemm<f64>(1.0, a, Transpose.None, b, Transpose.None, 0.0, c);
+function multiply() void throws {
+    var a =  Matrix<f64>([[1.0, 2.0], [3.0, 4.0]], global_allocator);
+    var b =  Matrix<f64>([[5.0, 6.0], [7.0, 8.0]], global_allocator);
+    var c =  Matrix<f64>(global_allocator, [2, 2]);
+     gemm<f64>(1.0, a, Transpose.None, b, Transpose.None, 0.0, c);
     // c now contains [[19, 22], [43, 50]].
-    return LinalgResult.Ok;
+    return;
 }
 
 /** Converts a failed matrix operation into a nonzero exit status. */
-function main() i32 {
-    return match multiply() {
-        LinalgResult.Ok => 0,
-        LinalgResult.Error(error) => 1
-    };
+function main() i32 throws {
+    try { multiply();
+return 0; } catch (error: LinalgError) { return 1; }
 }
 
 manifest {
@@ -387,8 +383,7 @@ valid. Otherwise initialize `C` before the call. Initialize input elements when
 they will be read; `alpha == 0` or an empty inner dimension skips input reads
 and only scales the output. Empty output dimensions are accepted.
 
-All validation precedes output writes. `LinalgResult.Error` carries a
-`LinalgError` whose `reason()` identifies invalid dimensions, incompatible
+All validation precedes output writes. Failures throw `LinalgError`, whose `reason()` identifies invalid dimensions, incompatible
 shapes, or output storage shared with an input. Inputs may share storage with
 each other, but the destination must be separate even when `alpha` is zero.
 Constructing an error does not allocate; requesting its `message()` creates a

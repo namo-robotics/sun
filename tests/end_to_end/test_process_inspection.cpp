@@ -47,52 +47,17 @@ void expectProcessError(int syscallNumber, int error) {
         using std;
         using std.process;
         /** Return the exact native error from opening an identity-bound handle. */
-        function main() i32 {
+        function main() i32 throws {
           var alloc = make_heap_allocator();
-          var identity = match process_identity(alloc, pid()) {
-            SystemResult.Ok(value) => value,
-            SystemResult.Error(error) => { return 120; }
-          ,
-SystemResult.Allocation(error) => { return 120; }
-          ,
-SystemResult.InvalidArgument(error) => { return 120; }
-          ,
-SystemResult.Overflow(error) => { return 120; }
-          };
-          var before = match std.io.read_dir(alloc, "/proc/self/fd") {
-            SystemResult.Ok(value) => value,
-            SystemResult.Error(error) => { return 123; }
-          ,
-SystemResult.Allocation(error) => { return 123; }
-          ,
-SystemResult.InvalidArgument(error) => { return 123; }
-          ,
-SystemResult.Overflow(error) => { return 123; }
-          };
+          var identity = process_identity(alloc, pid());
+          var before = std.io.read_dir(alloc, "/proc/self/fd");
           var code: i32 = 0;
           for (var i: i32 = 0; i < 20; i = i + 1) {
             var handle = ProcessHandle(alloc);
-            code = match handle.open(identity) {
-              SystemResult.Ok => { return 121; },
-              SystemResult.Error(error) => error.code()
-            ,
-SystemResult.Allocation(error) => error.code()
-            ,
-SystemResult.InvalidArgument(error) => error.code()
-            ,
-SystemResult.Overflow(error) => error.code()
-            };
+            try { handle.open(identity);
+return 121; } catch (error: Error) { code = error.code(); } catch (error: AllocationError) { code = error.code(); } catch (error: InvalidArgumentError) { code = error.code(); } catch (error: OverflowError) { code = error.code(); }
           }
-          var after = match std.io.read_dir(alloc, "/proc/self/fd") {
-            SystemResult.Ok(value) => value,
-            SystemResult.Error(error) => { return 124; }
-          ,
-SystemResult.Allocation(error) => { return 124; }
-          ,
-SystemResult.InvalidArgument(error) => { return 124; }
-          ,
-SystemResult.Overflow(error) => { return 124; }
-          };
+          var after = std.io.read_dir(alloc, "/proc/self/fd");
           return before.size() == after.size() ? code : 125;
         }
       )";
@@ -144,31 +109,15 @@ TEST(EndToEnd_ProcessInspection, OwnsDescriptorZero) {
     /** Query whether descriptor zero has been released. */
     extern "C" function process_test_fcntl(fd: i32, cmd: i32, ...) i32 as "fcntl";
     /** Verify that the handle treats fd zero as an owned descriptor. */
-    function main() i32 {
+    function main() i32 throws {
       var alloc = make_heap_allocator();
-      var identity = match process_identity(alloc, pid()) {
-        SystemResult.Ok(value) => value,
-        SystemResult.Error(error) => { return 1; }
-      ,
-SystemResult.Allocation(error) => { return 1; }
-      ,
-SystemResult.InvalidArgument(error) => { return 1; }
-      ,
-SystemResult.Overflow(error) => { return 1; }
-      };
+      var identity = process_identity(alloc, pid());
       var saved = unsafe { process_test_dup(0); };
       var handle = ProcessHandle(alloc);
       unsafe { process_test_close(0); };
-      var code = match handle.open(identity) {
-        SystemResult.Ok => 0,
-        SystemResult.Error(error) => error.code()
-      ,
-SystemResult.Allocation(error) => error.code()
-      ,
-SystemResult.InvalidArgument(error) => error.code()
-      ,
-SystemResult.Overflow(error) => error.code()
-      };
+      var code: i32 = 0;
+      try { handle.open(identity); } catch (error: Error) { code = error.code(); }
+
       var opened = unsafe { process_test_fcntl(0, 1); } >= 0;
       handle.close();
       var closed = unsafe { process_test_fcntl(0, 1); } < 0;

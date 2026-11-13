@@ -1,4 +1,4 @@
-/** Checks ownership and lifetime boundaries of returned error values. */
+/** Checks ownership and lifetime boundaries of ordinary enum payloads. */
 #include <gtest/gtest.h>
 
 #include <string>
@@ -28,7 +28,7 @@ class Payload {
     order = order * 10 + 2;
   }
 }
-/** Owns a payload while the exception runtime owns this error. */
+/** Owns a payload while its enclosing enum owns this value. */
 class Tracked implements ErrorView {
   var payload: Payload;
   var id: i32;
@@ -56,7 +56,7 @@ class Other implements ErrorView {
     return 99;
   }
 }
-/** Moves an error into runtime ownership. */
+/** Moves a value into an ordinary enum. */
 enum Outcome<T> { Ok(T), Error(Tracked), Other(Other) }
 /** Returns an owned tracked failure. */
 function fail() Outcome<void> {
@@ -82,7 +82,7 @@ sun::driver::SunValue runHandler(const std::string& body) {
 }  // namespace
 
 /** Every ordinary catch exit drops the original error and its field once. */
-TEST(Errors_Ownership, handler_exit_paths_drop_payload) {
+TEST(Enums_OwnershipMatch, handler_exit_paths_drop_payload) {
   for (const auto* body : {
            "match fail() { (e: ref Tracked) => { e.id = 8; }, _ => {} };",
            "match fail() { (e: const ref Tracked) => { if (e.code() != 7) { "
@@ -102,7 +102,7 @@ TEST(Errors_Ownership, handler_exit_paths_drop_payload) {
 }
 
 /** Continuing a loop ends each catch before entering the next iteration. */
-TEST(Errors_Ownership, continue_drops_each_exception) {
+TEST(Enums_OwnershipMatch, continue_drops_each_exception) {
   EXPECT_EQ(runHandler(R"(
     var i = 0;
     while (i < 2) {
@@ -114,7 +114,7 @@ TEST(Errors_Ownership, continue_drops_each_exception) {
 }
 
 /** Rethrows retain the concrete tag and mutated payload without copying. */
-TEST(Errors_Ownership, rethrow_preserves_type_and_single_owner) {
+TEST(Enums_OwnershipMatch, rethrow_preserves_type_and_single_owner) {
   for (int mode : {0, 1, 2, 3}) {
     SCOPED_TRACE(mode);
     EXPECT_EQ(runHandler(R"(
@@ -122,7 +122,7 @@ TEST(Errors_Ownership, rethrow_preserves_type_and_single_owner) {
       var forward = () => Outcome<void> {
         var mode = )" + std::to_string(mode) +
                          R"(;
-        if (mode == 3) { try fail(); return Outcome.Ok; }
+        if (mode == 3) { return fail(); }
         return match fail() {
           Outcome.Error(e) => {
             if (mode == 0) { e.id = 42; }
@@ -147,7 +147,7 @@ TEST(Errors_Ownership, rethrow_preserves_type_and_single_owner) {
 
 /** Throwing a different error or calling a throwing function releases the old
  * error. */
-TEST(Errors_Ownership, errors_leaving_handlers_drop_both_payloads) {
+TEST(Enums_OwnershipMatch, errors_leaving_handlers_drop_both_payloads) {
   for (const auto* body : {
            "var replace = () => Outcome<void> { match fail() { (e: ref "
            "Tracked) => { return Outcome.Error(Tracked(8)); }, _ => {} }; "
@@ -155,7 +155,7 @@ TEST(Errors_Ownership, errors_leaving_handlers_drop_both_payloads) {
            "(dropped != 1 or e.id != 8) { return Outcome.Other(Other()); } }, "
            "_ => {} };",
            "var replace = () => Outcome<void> { match fail() { (e: ref "
-           "Tracked) => { try fail(); }, _ => {} }; return Outcome.Ok; }; "
+           "Tracked) => { return fail(); }, _ => {} }; return Outcome.Ok; }; "
            "match replace() { (e: ref Tracked) => { if (dropped != 1) { return "
            "Outcome.Other(Other()); } }, _ => {} };",
            "match fail() { (outer: ref Tracked) => { if (true) { match fail() "
@@ -168,7 +168,7 @@ TEST(Errors_Ownership, errors_leaving_handlers_drop_both_payloads) {
 }
 
 /** Handler locals are destroyed before the exception they may borrow. */
-TEST(Errors_Ownership, handler_locals_drop_before_exception) {
+TEST(Enums_OwnershipMatch, handler_locals_drop_before_exception) {
   EXPECT_EQ(runHandler("match fail() { (e: ref Tracked) => { var local = "
                        "Payload(); return Outcome.Ok; }, _ => {} };"),
             332);
@@ -176,7 +176,7 @@ TEST(Errors_Ownership, handler_locals_drop_before_exception) {
 
 /** Catch bindings cannot copy, escape, or impersonate a different active
  * exception. */
-TEST(Errors_Ownership, invalid_catch_ownership_is_rejected) {
+TEST(Enums_OwnershipMatch, invalid_catch_ownership_is_rejected) {
   for (const auto* statement : {
            "var copy: Tracked = e;",
            "var copy: ErrorView = e;",

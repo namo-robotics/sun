@@ -2,30 +2,41 @@ using std.io;
 
 using std;
 
-/** Returns either a quotient or a concrete arithmetic failure. */
-function divide(a: i32, b: i32) ArithmeticResult<i32> {
-  if (b == 0) {
-    return ArithmeticResult.DivisionByZero(DivisionByZeroError());
-  }
-  if (a == -2147483648 and b == -1) {
-    return ArithmeticResult.Overflow(OverflowError());
-  }
-  return ArithmeticResult.Ok(a / b);
+/** Groups recoverable failures from arithmetic operations. */
+exception ArithmeticFailure {
 }
 
-/** Handles an arithmetic result without requiring one arm per error. */
-function show(a: i32, b: i32) void {
-  match divide(a, b) {
-    ArithmeticResult.Ok(value) => println(value),
-    (error: const ref IError) => match error.message() {
-      AllocationResult.Ok(message) => println(message),
-      _ => println("unable to allocate error message")
-    }
-  };
+/** Reports a zero divisor. */
+exception ZeroDivisor extends ArithmeticFailure {
+}
+
+/** Reports a quotient outside the integer range. */
+exception QuotientOverflow extends ArithmeticFailure {
+}
+
+/** Returns the quotient or throws a concrete arithmetic exception. */
+function divide(a: i32, b: i32) i32 throws {
+  if (b == 0) {
+    throw ZeroDivisor();
+  }
+  if (a == -2147483648 and b == -1) {
+    throw QuotientOverflow();
+  }
+  return a / b;
+}
+
+/** Handles all members of the arithmetic family with one catch. */
+function show(a: i32, b: i32) void throws {
+  try {
+    var value = divide(a, b);
+    println(value);
+  } catch (error: ArithmeticFailure) {
+    println("division failed");
+  }
 }
 
 /** Exercises successful division and a recoverable zero divisor. */
-function main() i32 {
+function main() i32 throws {
   show(10, 2);
   show(10, 0);
   return 0;

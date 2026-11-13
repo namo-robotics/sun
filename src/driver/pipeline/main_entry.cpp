@@ -49,40 +49,19 @@ sun::ast::FunctionAST* Driver::prepareMainEntry(sun::ast::BlockExprAST& block,
     return nullptr;
   }
   const auto& proto = main->getProto();
-  const auto resultType = proto.getResolvedReturnType();
-  auto result = std::dynamic_pointer_cast<sun::types::EnumType>(resultType);
-  // Plain enums retain their integer return representation.
-  if (result && !result->hasPayload()) {
+  const auto valueType = proto.getResolvedReturnType();
+  if (auto enumeration = std::dynamic_pointer_cast<sun::types::EnumType>(valueType);
+      enumeration && !enumeration->hasPayload() && !proto.canThrow()) {
     return nullptr;
-  }
-  auto valueType = resultType;
-  if (result) {
-    const auto& variants = result->getVariants();
-    if (variants.empty() || variants.front().payloadTypes.size() > 1) {
-      logAndThrowError("'main' requires an enum with zero or one success payload",
-                      main->getLocation());
-    }
-    valueType = variants.front().payloadTypes.empty()
-                    ? sun::types::Types::Void()
-                    : variants.front().payloadTypes.front();
-    for (size_t i = 1; i < variants.size(); ++i) {
-      if (variants[i].payloadTypes.size() != 1) {
-        logAndThrowError("'main' requires each failure variant to have one payload",
-                        main->getLocation());
-      }
-    }
   }
   if (!valueType || (execute ? !supportsJITReturn(valueType)
                             : !(valueType->isVoid() || valueType->isInt32()))) {
-    logAndThrowError(
-        std::string("Unsupported ") + (result ? "success payload" : "return type") +
-            " for 'main': '" + (valueType ? valueType->toString() : "unknown") +
-            "'" + (execute ? "" : "; compiled programs require i32 or void"),
-        main->getLocation());
+    logAndThrowError("Unsupported return type for 'main': '" +
+                        (valueType ? valueType->toString() : "unknown") + "'" +
+                        (execute ? "" : "; compiled programs require i32 or void"),
+                    main->getLocation());
   }
-  if (!result) {
-    return nullptr;
-  }
+  if (!proto.canThrow()) return nullptr;
   const auto& args = proto.getResolvedParamTypes();
   auto argv = args.size() == 2
                   ? std::dynamic_pointer_cast<sun::types::RawPointerType>(args[1])
@@ -99,13 +78,11 @@ sun::ast::FunctionAST* Driver::prepareMainEntry(sun::ast::BlockExprAST& block,
   }
 
   auto& scope = analyzer->context().currentScope();
-  std::string prefix = "sun_main_result";
+  std::string prefix = "sun_main_exception";
   while (scope.hasSymbol(prefix + "_entry") ||
-         scope.hasSymbol(prefix + "_type") ||
          scope.hasSymbol(prefix + "_exit")) {
     prefix += "_";
   }
-  scope.declareEnum(prefix + "_type", result);
   const bool unit = valueType->isVoid();
   auto returnName = unit ? (execute ? "void" : "i32") : valueType->toString();
   std::string fallback = "0";
@@ -123,47 +100,22 @@ sun::ast::FunctionAST* Driver::prepareMainEntry(sun::ast::BlockExprAST& block,
     returnName = "raw_ptr<" + pointer->getPointeeType()->toString() + ">";
     fallback = "null";
   }
-  const auto successValue = unit ? (execute ? "" : "0") : "value";
-  const auto& variants = result->getVariants();
   std::ostringstream source;
-  source << "/** Terminates after the entrypoint's result has been dropped. */\n"
+  source << "/** Exits after the entrypoint has unwound its owned resources. */\n"
          << "extern \"C\" function " << prefix << "_exit(code: i32) void as \"exit\";\n"
-         << "/** Unwraps success or reports failure and exits unsuccessfully. */\n"
+         << "/** Reports an uncaught entrypoint exception without allocating. */\n"
          << "function " << prefix << "_entry(";
-  if (!args.empty()) {
-    source << "argc: i32, argv: raw_ptr<raw_ptr<i8>>";
-  }
-  // Sun has no standalone block statement. A constant branch scopes the
-  // owned result so its cleanup runs before the native exit call.
-  source << ") " << returnName << " {\n"
-         << "if (true) {\nvar result = main("
-         << (args.empty() ? "" : "argc, argv") << ");\nmatch result {\n"
-         << prefix << "_type." << variants.front().name
-         << (unit ? "" : "(value)") << " => { return " << successValue
-         << "; },\n";
-  auto reportable = analyzer->context().lookupInterface("std.IError");
-  for (size_t i = 1; i < variants.size(); ++i) {
-    const auto& variant = variants[i];
-    source << prefix << "_type." << variant.name << "(error) => {\n";
-    auto error = std::dynamic_pointer_cast<sun::types::ClassType>(
-        variant.payloadTypes.front());
-    if (error && reportable && error->implementsInterface(*reportable)) {
-      source << "match error.message() {\n"
-             << "std.AllocationResult.Ok(message) => std.io.eprintln(message),\n"
-             << "_ => std.io.eprintln(\"unable to allocate error message\")\n};\n";
-    } else {
-      source << "unsafe { __file_write(2, \"Unhandled main error: "
-             << variant.name << "\\n\"); };\n";
-    }
-    source << "},\n";
-  }
-  // The external exit declaration returns void, so analysis still requires a
-  // return statement even though the process cannot reach it.
-  source << "};\n}\nunsafe { " << prefix << "_exit(1); };\n"
+  if (!args.empty()) source << "argc: i32, argv: raw_ptr<raw_ptr<i8>>";
+  source << ") " << returnName << " {\ntry {\n"
+         << (unit ? "" : "return ") << "main("
+         << (args.empty() ? "" : "argc, argv") << ");\n";
+  if (unit) source << (execute ? "return;\n" : "return 0;\n");
+  source << "} catch {\nunsafe { __file_write(2, \"Unhandled main exception\\n\"); "
+         << prefix << "_exit(1); };\n"
          << (unit && execute ? "return;\n" : "return " + fallback + ";\n")
-         << "}\n";
+         << "}\n}\n";
   auto parser = sun::parsing::Parser::createStringParser(source.str());
-  parser.setFilePath("<main-result-adapter>");
+  parser.setFilePath("<main-exception-adapter>");
   auto generated = parser.parseProgram();
   sun::parsing::LoweringPass().run(*generated);
   auto& pipeline = analyzer->pipeline();

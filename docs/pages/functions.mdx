@@ -79,18 +79,14 @@ function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
 `raw_ptr<raw_ptr<i8>>` is C's `char**`. The compiler dispatches on the number
 of parameters, so those are the only two shapes it accepts.
 
-An AOT-compiled `main` returns `i32` or `void`, either directly or through a
-result enum such as `Result<i32>` or `Result<void>`. Under the JIT, supported
-values also include other integer types, booleans, characters, floating-point
-values and strings — useful for scripts and tests. Unsupported return values
-are compilation errors.
+An AOT-compiled `main` returns `i32` or `void`. Under the JIT, supported
+return values also include other integer types, booleans, characters,
+floating-point values, and strings. Unsupported return types are compilation
+errors. A void entrypoint produces exit status zero in a compiled program.
 
-For result enums, the first variant is success, with zero or one payload;
-each remaining variant carries one error, following the same convention as
-`try`. Empty success returns zero from an executable and `void` under the JIT.
-On failure, the program reports `IError.message()` to stderr (or fixed fallback
-text if allocation fails, or the variant name if the error does not implement
-`IError`), drops the error, and exits with status 1.
+`main` may declare `throws`. An uncaught exception unwinds local resources,
+then the process boundary prints a fixed diagnostic and exits with status 1.
+This boundary does not allocate a diagnostic or call `IError.message()`.
 
 Arguments after the script file, or after `--`, are passed through:
 
@@ -114,8 +110,8 @@ using std.io;
 using std;
 using std.env;
 
-function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
-    var environment = try Env(global_allocator);
+function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 throws {
+    var environment =  Env(global_allocator);
     var cli = environment.args(argc, argv);
     for (var arg: ref String in cli) { println(arg); }
     return 0;
@@ -152,17 +148,16 @@ and can be passed and returned. They occupy one word and copy like a primitive
 value. A pointer has no environment: lambdas and bound methods remain distinct
 lambda values and do not convert to function pointers.
 
-Parameter names are not allowed inside a function-pointer type. A fallible
-pointer returns a result enum like any other function:
+Parameter names are not allowed inside a function-pointer type. A throwing
+pointer declares its exception effect after the ordinary return type:
 
 ```sun
-var risky: function (i32) SystemResult<i32> = may_fail;
+var risky: function (i32) i32 throws = may_fail;
 ```
 
-The result is part of the ordinary return type. A function returning `i32` does
-not implicitly convert to one returning `SystemResult<i32>`; an adapter must
-explicitly return `SystemResult.Ok(value)`. Match the result to handle failures,
-or use `try risky(value)` inside a function with a compatible result type.
+A nonthrowing function can be used where a throwing function is expected.
+The reverse conversion is rejected. Calling a throwing pointer requires a
+`try` block or an enclosing `throws` declaration.
 
 An overloaded function name needs an expected pointer type so the compiler can
 select one signature:
@@ -270,7 +265,7 @@ import { Callout } from 'nextra/components'
 ## Lambda Types
 
 A lambda type annotation uses the fat arrow: `(i32) => i32`. A fallible lambda
-returns an enum, for example `(i32) => SystemResult<i32>`. It is distinct from the environment-free
+declares its effect, for example `(i32) => i32 throws`. It is distinct from the environment-free
 `function (i32) i32` pointer type.
 
 The plain form accepts only **environment-free** lambdas: values with no capture
@@ -416,4 +411,4 @@ Rules and caveats:
 - **Overloaded methods** need type context to disambiguate: a type annotation (`var f: <'_>(i32) => i32 = c.add;`) or a lambda-typed parameter of the called function. Without context, referencing an overloaded method is an error.
 - **Generic methods** cannot be referenced as values.
 - **Interface-typed receivers** are not supported: only concrete class methods can be bound.
-- A bound method keeps its declared return type. A fallible method can be bound to `<'_>(i32) => SystemResult<i32>` when its signature matches; callers handle or propagate the returned enum.
+- A bound method keeps its return type and exception effect. A throwing method can be bound to `<'_>(i32) => i32 throws`; callers handle or propagate exceptions.

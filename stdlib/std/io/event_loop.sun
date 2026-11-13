@@ -79,25 +79,25 @@ public module std.io {
     var ready: Vec<ReadyEvent>;
 
     /** Reserve wait buffers; open rejects nonpositive capacities. */
-    init(alloc: const ref HeapAllocator, capacity: i32) AllocationResult<void> {
+    init(alloc: const ref HeapAllocator, capacity: i32) throws {
       this.capacity = capacity;
-      this.registrations = try Map<i64, EventRegistration>(alloc, 16);
+      this.registrations = Map<i64, EventRegistration>(alloc, 16);
       var slots: i64 = capacity > 0 ? _convert<i64>(capacity) : 1;
-      this.native_events = try ContiguousBuffer<u32>(alloc, slots * 8);
-      this.ready = try Vec<ReadyEvent>(alloc, slots);
+      this.native_events = ContiguousBuffer<u32>(alloc, slots * 8);
+      this.ready = Vec<ReadyEvent>(alloc, slots);
     }
 
     /** Open the native queue once. Failure leaves this object unopened. */
-    public method open() SystemResult<void> {
+    public method open() void throws {
       if (this.handle != 0 or this.capacity <= 0) {
-        return SystemResult.Error(Error(22, "invalid event loop state or capacity"));
+        throw Error(22, "invalid event loop state or capacity");
       }
       var fd: i32 = native_loop_open();
       if (fd < 0) {
-        return SystemResult.Error(Error(errno(), "cannot open event loop"));
+        throw Error(errno(), "cannot open event loop");
       }
       this.handle = _convert<i64>(fd) + 1;
-      return SystemResult.Ok;
+      return;
     }
 
     /** Close the queue and forget registrations without closing watched descriptors. */
@@ -125,79 +125,79 @@ public module std.io {
      * Zero interest suspends normal readiness; error/hangup reporting varies by OS.
      * Registration changes may allocate through the supplied allocator.
      */
-    public method add(fd: i32, events: i16, token: u64) SystemResult<void> {
-      try this.check_interest(fd, events);
+    public method add(fd: i32, events: i16, token: u64) void throws {
+      this.check_interest(fd, events);
       if (this.registrations.contains(fd)) {
-        return SystemResult.Error(Error(17, "descriptor is already registered"));
+        throw Error(17, "descriptor is already registered");
       }
-      var generation = try this.allocate_generation();
-      try this.change(fd, 0, events, 1);
+      var generation = this.allocate_generation();
+      this.change(fd, 0, events, 1);
       var entry = EventRegistration(events, token);
       entry.generation = generation;
-      try this.registrations.insert(fd, entry);
-      return SystemResult.Ok;
+      this.registrations.insert(fd, entry);
+      return;
     }
 
     /** Replace a registration's interest and token for subsequent waits. */
-    public method modify(fd: i32, events: i16, token: u64) SystemResult<void> {
-      try this.check_interest(fd, events);
+    public method modify(fd: i32, events: i16, token: u64) void throws {
+      this.check_interest(fd, events);
       var old: i16 = 0;
-      match this.registrations.get(fd) {
-        LookupResult.Ok(entry) => {
-          old = entry.events;
-        },
-        LookupResult.NotFound(e) => {
-          return SystemResult.Error(Error(2, "descriptor is not registered"));
-        }
-      };
-      var generation = try this.allocate_generation();
-      try this.change(fd, old, events, 3);
+      try {
+        var entry = this.registrations.get(fd);
+
+        old = entry.events;
+      } catch (e: NotFoundError) {
+        throw Error(2, "descriptor is not registered");
+      }
+      var generation = this.allocate_generation();
+      this.change(fd, old, events, 3);
       var entry = EventRegistration(events, token);
       entry.generation = generation;
-      try this.registrations.insert(fd, entry);
-      return SystemResult.Ok;
+      this.registrations.insert(fd, entry);
+      return;
     }
 
     /** Stop watching a registered descriptor. Remove it before closing it. */
-    public method remove(fd: i32) SystemResult<void> {
-      try this.check_interest(fd, 0);
+    public method remove(fd: i32) void throws {
+      this.check_interest(fd, 0);
       var old: i16 = 0;
-      match this.registrations.get(fd) {
-        LookupResult.Ok(entry) => {
-          old = entry.events;
-        },
-        LookupResult.NotFound(e) => {
-          return SystemResult.Error(Error(2, "descriptor is not registered"));
-        }
-      };
-      try this.change(fd, old, 0, 2);
-      ignore_error(this.registrations.remove(fd));
-      return SystemResult.Ok;
+      try {
+        var entry = this.registrations.get(fd);
+
+        old = entry.events;
+      } catch (e: NotFoundError) {
+        throw Error(2, "descriptor is not registered");
+      }
+      this.change(fd, old, 0, 2);
+      try {
+        this.registrations.remove(fd);
+      } catch {}
+      return;
     }
 
     /** Allocate a registration identity without ever reusing a generation. */
-    method allocate_generation() SystemResult<u64> {
+    method allocate_generation() u64 throws {
       if (this.next_generation == 0) {
-        return SystemResult.Error(Error(22, "event loop registration identities exhausted"));
+        throw Error(22, "event loop registration identities exhausted");
       }
       var generation = this.next_generation;
       this.next_generation = generation == 18446744073709551615u64 ? 0u64 : generation + 1u64;
-      return SystemResult.Ok(generation);
+      return generation;
     }
 
     /** Validate portable interest flags and require an open queue. */
-    method check_interest(fd: i32, events: i16) SystemResult<void> {
+    method check_interest(fd: i32, events: i16) void throws {
       if (this.handle == 0 or fd < 0) {
-        return SystemResult.Error(Error(9, "event loop or descriptor is closed"));
+        throw Error(9, "event loop or descriptor is closed");
       }
       if ((events & ~(POLLIN | POLLOUT)) != 0) {
-        return SystemResult.Error(Error(22, "unsupported event loop interest"));
+        throw Error(22, "unsupported event loop interest");
       }
-      return SystemResult.Ok;
+      return;
     }
 
     /** Apply a native change; close the queue if a partial change cannot be undone. */
-    method change(fd: i32, old: i16, events: i16, operation: i32) SystemResult<void> {
+    method change(fd: i32, old: i16, events: i16, operation: i32) void throws {
       var error: i32 = native_loop_change(
         _convert<i32>(this.handle - 1),
         fd,
@@ -207,12 +207,12 @@ public module std.io {
       );
       if (error < 0) {
         this.close();
-        return SystemResult.Error(Error(0 - error, "event loop rollback failed; queue closed"));
+        throw Error(0 - error, "event loop rollback failed; queue closed");
       }
       if (error != 0) {
-        return SystemResult.Error(Error(error, "event loop registration failed"));
+        throw Error(error, "event loop registration failed");
       }
-      return SystemResult.Ok;
+      return;
     }
 
     /**
@@ -222,11 +222,11 @@ public module std.io {
      * Modifying or removing a registration invalidates only its cached events.
      * event_at rejects them even if the descriptor and token have been reused.
      */
-    public method wait(timeout_ms: i32) SystemResult<i32> {
+    public method wait(timeout_ms: i32) i32 throws {
       this.ready.clear();
-      try this.check_interest(0, 0);
+      this.check_interest(0, 0);
       if (timeout_ms < -1) {
-        return SystemResult.Error(Error(22, "invalid event loop timeout"));
+        throw Error(22, "invalid event loop timeout");
       }
       var count: i32 = native_loop_wait(
         _convert<i32>(this.handle - 1),
@@ -235,24 +235,23 @@ public module std.io {
         timeout_ms
       );
       if (count < 0) {
-        return SystemResult.Error(Error(errno(), "event loop wait failed"));
+        throw Error(errno(), "event loop wait failed");
       }
       for (var i: i64 = 0; i < count; i = i + 1) {
         var event = native_loop_event(this.native_events.raw_data(), i);
-        match this.registrations.get(event.fd()) {
-          LookupResult.Ok(entry) => {
-            var ready = ReadyEvent(event, entry.token);
-            ready.generation = entry.generation;
-            try this.ready.push(ready);
-          },
-          LookupResult.NotFound(e) => {}
-        };
+        try {
+          var entry = this.registrations.get(event.fd());
+
+          var ready = ReadyEvent(event, entry.token);
+          ready.generation = entry.generation;
+          this.ready.push(ready);
+        } catch (e: NotFoundError) {}
       }
-      return SystemResult.Ok(_convert<i32>(this.ready.size()));
+      return _convert<i32>(this.ready.size());
     }
 
     /** Wait for a finite duration, rounding fractional milliseconds upward. */
-    public method wait(timeout: const ref std.time.Duration) SystemResult<i32> {
+    public method wait(timeout: const ref std.time.Duration) i32 throws {
       return this.wait(poll_timeout_millis(timeout));
     }
 
@@ -261,23 +260,15 @@ public module std.io {
      * the registration changed since wait; skip that slot and continue dispatch.
      * Snapshots already returned remain historical values after later changes.
      */
-    public const method event_at(index: i64) AccessResult<ReadyEvent> {
-      return match this.ready.get(index) {
-        AccessResult.Ok(event) => {
-          match this.registrations.get(event.fd()) {
-            LookupResult.Ok(entry) => {
-              if (entry.generation == event.generation) {
-                return AccessResult.Ok(
-                  ReadyEvent(Event(event.fd(), event.events()), event.token())
-                );
-              }
-            },
-            LookupResult.NotFound(error) => {}
-          };
-          return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
-        },
-        AccessResult.OutOfBounds(error) => AccessResult.OutOfBounds(error)
-      };
+    public const method event_at(index: i64) ReadyEvent throws {
+      var event = this.ready.get(index);
+      try {
+        var entry = this.registrations.get(event.fd());
+        if (entry.generation == event.generation) {
+          return ReadyEvent(Event(event.fd(), event.events()), event.token());
+        }
+      } catch (error: NotFoundError) {}
+      throw IndexOutOfBoundsError(index);
     }
   }
 }

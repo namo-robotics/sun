@@ -14,48 +14,54 @@ public module std.xml {
     }
 
     /** Borrows an element or reports a kind mismatch. */
-    public method element() XmlResult<ref XmlElement> {
-      return match this.value {
-        XmlNodeValue.Element(e) => XmlResult.Ok(e),
-        _ => XmlResult.Error(xml_error("node is not an element"))
+    public method element() ref XmlElement throws {
+      match this.value {
+        XmlNodeValue.Element(e) => {
+          return e;
+        },
+        _ => {
+          throw xml_error("node is not an element");
+        }
       };
     }
 
     /** Borrows text or reports a kind mismatch. */
-    public const method text() XmlResult<const ref String> {
-      return match this.value {
-        XmlNodeValue.Text(t) => XmlResult.Ok(t),
-        _ => XmlResult.Error(xml_error("node is not text"))
+    public const method text() const ref String throws {
+      match this.value {
+        XmlNodeValue.Text(t) => {
+          return t;
+        },
+        _ => {
+          throw xml_error("node is not text");
+        }
       };
     }
 
     /** Replaces text after validating it, without changing other node kinds. */
-    public method set_text(text: String) XmlResult<void> {
-      try xml_validate_text(text);
+    public method set_text(text: String) void throws {
+      xml_validate_text(text);
       match this.value {
         XmlNodeValue.Text(_) => {},
         _ => {
-          return XmlResult.Error(xml_error("node is not text"));
+          throw xml_error("node is not text");
         }
       };
       this.value = XmlNodeValue.Text(text);
-      return XmlResult.Ok;
+      return;
     }
 
     /** Explicitly copies a subtree. */
-    public const method clone(alloc: const ref HeapAllocator) AllocationResult<XmlNode> {
-      return AllocationResult.Ok(
-        match this.value {
-          XmlNodeValue.Element(e) => XmlNode(XmlNodeValue.Element(try e.clone(alloc))),
-          XmlNodeValue.Text(t) => XmlNode(XmlNodeValue.Text(try t.clone(alloc))),
-          XmlNodeValue.Comment(t) => XmlNode(XmlNodeValue.Comment(try t.clone(alloc))),
-          XmlNodeValue.Instruction(p) => XmlNode(
-            XmlNodeValue.Instruction(
-              XmlInstruction(try p.target.clone(alloc), try p.data.clone(alloc))
-            )
+    public const method clone(alloc: const ref HeapAllocator) XmlNode throws {
+      return match this.value {
+        XmlNodeValue.Element(e) => XmlNode(XmlNodeValue.Element(e.clone(alloc))),
+        XmlNodeValue.Text(t) => XmlNode(XmlNodeValue.Text(t.clone(alloc))),
+        XmlNodeValue.Comment(t) => XmlNode(XmlNodeValue.Comment(t.clone(alloc))),
+        XmlNodeValue.Instruction(p) => XmlNode(
+          XmlNodeValue.Instruction(
+            XmlInstruction(p.target.clone(alloc), p.data.clone(alloc))
           )
-        }
-      );
+        )
+      };
     }
 
     /** Updates descendant depths after ownership moves between trees. */
@@ -69,7 +75,7 @@ public module std.xml {
     }
 
     /** Checks a subtree at its intended depth before insertion or serialization. */
-    method validate(depth: i64) XmlResult<void> {
+    method validate(depth: i64) void throws {
       return match this.value {
         XmlNodeValue.Element(e) => e.validate(depth),
         XmlNodeValue.Text(t) => xml_validate_text(t),
@@ -88,11 +94,11 @@ public module std.xml {
     var namespaces: Vec<XmlNamespace>;
 
     /** Creates an empty element using explicit storage allocation. */
-    init(alloc: const ref HeapAllocator, name: XmlName) AllocationResult<void> {
+    init(alloc: const ref HeapAllocator, name: XmlName) throws {
       this.name_ = name;
-      this.attributes = try Vec<XmlAttribute>(alloc, 4);
-      this.children = try Vec<XmlNode>(alloc, 4);
-      this.namespaces = try Vec<XmlNamespace>(alloc, 4);
+      this.attributes = Vec<XmlAttribute>(alloc, 4);
+      this.children = Vec<XmlNode>(alloc, 4);
+      this.namespaces = Vec<XmlNamespace>(alloc, 4);
     }
 
     /** Borrows the expanded element name. */
@@ -101,10 +107,10 @@ public module std.xml {
     }
 
     /** Replaces the name after validation. */
-    public method set_name(name: XmlName) XmlResult<void> {
-      try name.validate();
+    public method set_name(name: XmlName) void throws {
+      name.validate();
       this.name_ = name;
-      return XmlResult.Ok;
+      return;
     }
 
     /** Returns the number of child nodes, including whitespace. */
@@ -113,11 +119,13 @@ public module std.xml {
     }
 
     /** Borrows a child by its ordered index. */
-    public method child(index: i64) XmlResult<ref XmlNode> {
-      return match this.children.get(index) {
-        AccessResult.Ok(n) => XmlResult.Ok(n),
-        AccessResult.OutOfBounds(_) => XmlResult.Error(xml_error("child index out of range"))
-      };
+    public method child(index: i64) ref XmlNode throws {
+      try {
+        var n = this.children.get(index);
+        return n;
+      } catch (ignored_error: IndexOutOfBoundsError) {
+        throw xml_error("child index out of range");
+      }
     }
 
     /** Finds the first direct child matching an expanded name. */
@@ -151,11 +159,11 @@ public module std.xml {
     }
 
     /** Borrows a namespace declaration by its original position. */
-    public const method namespace_at(index: i64) XmlResult<const ref XmlNamespace> {
+    public const method namespace_at(index: i64) const ref XmlNamespace throws {
       if (index < 0 or index >= this.namespaces.size()) {
-        return XmlResult.Error(xml_error("namespace index out of range"));
+        throw xml_error("namespace index out of range");
       }
-      return XmlResult.Ok(this.namespaces[index]);
+      return this.namespaces[index];
     }
 
     /** Returns the number of ordinary attributes; namespace declarations are separate. */
@@ -164,58 +172,50 @@ public module std.xml {
     }
 
     /** Borrows an attribute's expanded name by index. */
-    public const method attribute_name(index: i64) XmlResult<const ref XmlName> {
+    public const method attribute_name(index: i64) const ref XmlName throws {
       if (index < 0 or index >= this.attributes.size()) {
-        return XmlResult.Error(xml_error("attribute index out of range"));
+        throw xml_error("attribute index out of range");
       }
-      return XmlResult.Ok(this.attributes[index].name);
+      return this.attributes[index].name;
     }
 
     /** Returns the original attribute range, absent for newly created attributes. */
-    public const method attribute_source_span(index: i64) XmlResult<Option<XmlSourceSpan>> {
+    public const method attribute_source_span(index: i64) Option<XmlSourceSpan> throws {
       if (index < 0 or index >= this.attributes.size()) {
-        return XmlResult.Error(xml_error("attribute index out of range"));
+        throw xml_error("attribute index out of range");
       }
-      return XmlResult.Ok(
-        match this.attributes[index].source_span {
-          Option.Some(span) => Option.Some(span.copy()),
-          Option.None => Option.None
-        }
-      );
+      return match this.attributes[index].source_span {
+        Option.Some(span) => Option.Some(span.copy()),
+        Option.None => Option.None
+      };
     }
 
     /** Inserts or replaces an attribute by expanded name, preserving its position. */
-    public method set_attribute(name: XmlName, value: String) Result<void> {
-      try name.validate();
-      try xml_validate_text(value);
+    public method set_attribute(name: XmlName, value: String) void throws {
+      name.validate();
+      xml_validate_text(value);
       if (name.uri_.is_empty() and name.local_.equals_literal("xmlns")) {
-        return Result.Xml(xml_error("namespace declarations are managed separately"));
+        throw xml_error("namespace declarations are managed separately");
       }
       for (var i: i64 = 0; i < this.attributes.size(); i += 1) {
         if (this.attributes[i].name.equals(name)) {
-          match this.attributes.set(i, XmlAttribute(name, value)) {
-            AccessResult.Ok => {},
-            AccessResult.OutOfBounds(_) => {
-              return Result.Xml(xml_error("attribute index out of range"));
-            }
-          };
-          return Result.Ok;
+          try {
+            this.attributes.set(i, XmlAttribute(name, value));
+          } catch (ignored_error: IndexOutOfBoundsError) {
+            throw xml_error("attribute index out of range");
+          }
+          return;
         }
       }
-      try this.attributes.push(XmlAttribute(name, value));
-      return Result.Ok;
+      this.attributes.push(XmlAttribute(name, value));
+      return;
     }
 
     /** Removes an attribute and returns its owned value when present. */
-    public method remove_attribute(name: const ref XmlName) Option<String> {
+    public method remove_attribute(name: const ref XmlName) Option<String> throws {
       for (var i: i64 = 0; i < this.attributes.size(); i += 1) {
         if (this.attributes[i].name.equals(name)) {
-          var attr = match this.attributes.remove(i) {
-            AccessResult.Ok(a) => a,
-            AccessResult.OutOfBounds(_) => {
-              return Option.None;
-            }
-          };
+          var attr = this.attributes.remove(i);
           return Option.Some(attr.value);
         }
       }
@@ -223,79 +223,79 @@ public module std.xml {
     }
 
     /** Appends a valid owned subtree; the complete document is checked again when written. */
-    public method append(node: XmlNode) Result<void> {
-      try node.validate(this.depth_ + 1);
+    public method append(node: XmlNode) void throws {
+      node.validate(this.depth_ + 1);
       node.rebase(this.depth_ + 1);
-      try this.children.push(node);
-      return Result.Ok;
+      this.children.push(node);
+      return;
     }
 
     /** Inserts a child at an existing position or at the end. */
-    public method insert(index: i64, node: XmlNode) Result<void> {
+    public method insert(index: i64, node: XmlNode) void throws {
       if (index < 0 or index > this.children.size()) {
-        return Result.Xml(xml_error("child index out of range"));
+        throw xml_error("child index out of range");
       }
-      try node.validate(this.depth_ + 1);
+      node.validate(this.depth_ + 1);
       node.rebase(this.depth_ + 1);
       var carry = node;
       for (var i = index; i < this.children.size(); i += 1) {
-        carry = match this.children.replace(i, carry) {
-          AccessResult.Ok(old) => old,
-          AccessResult.OutOfBounds(_) => {
-            return Result.Xml(xml_error("child index out of range"));
-          }
-        };
+        try {
+          var old = this.children.replace(i, carry);
+          carry = old;
+        } catch (ignored_error: IndexOutOfBoundsError) {
+          throw xml_error("child index out of range");
+        }
       }
-      try this.children.push(carry);
-      return Result.Ok;
+      this.children.push(carry);
+      return;
     }
 
     /** Replaces a child and returns the old owned subtree. */
-    public method replace(index: i64, node: XmlNode) XmlResult<XmlNode> {
+    public method replace(index: i64, node: XmlNode) XmlNode throws {
       if (index < 0 or index >= this.children.size()) {
-        return XmlResult.Error(xml_error("child index out of range"));
+        throw xml_error("child index out of range");
       }
-      try node.validate(this.depth_ + 1);
+      node.validate(this.depth_ + 1);
       node.rebase(this.depth_ + 1);
-      return match this.children.replace(index, node) {
-        AccessResult.Ok(old) => {
-          old.rebase(1);
-          return XmlResult.Ok(old);
-        },
-        AccessResult.OutOfBounds(_) => XmlResult.Error(xml_error("child index out of range"))
-      };
+      try {
+        var old = this.children.replace(index, node);
+        old.rebase(1);
+        return old;
+      } catch (ignored_error: IndexOutOfBoundsError) {
+        throw xml_error("child index out of range");
+      }
     }
 
     /** Detaches and returns a child without copying it. */
-    public method remove(index: i64) XmlResult<XmlNode> {
-      return match this.children.remove(index) {
-        AccessResult.Ok(old) => {
-          old.rebase(1);
-          return XmlResult.Ok(old);
-        },
-        AccessResult.OutOfBounds(_) => XmlResult.Error(xml_error("child index out of range"))
-      };
+    public method remove(index: i64) XmlNode throws {
+      try {
+        var old = this.children.remove(index);
+        old.rebase(1);
+        return old;
+      } catch (ignored_error: IndexOutOfBoundsError) {
+        throw xml_error("child index out of range");
+      }
     }
 
     /** Explicitly copies this element and all owned content. */
-    public const method clone(alloc: const ref HeapAllocator) AllocationResult<XmlElement> {
-      var result = try XmlElement(alloc, try this.name_.clone(alloc));
+    public const method clone(alloc: const ref HeapAllocator) XmlElement throws {
+      var result = XmlElement(alloc, this.name_.clone(alloc));
       for (var i: i64 = 0; i < this.attributes.size(); i += 1) {
-        try result.attributes.push(
+        result.attributes.push(
           XmlAttribute(
-            try this.attributes[i].name.clone(alloc),
-            try this.attributes[i].value.clone(alloc)
+            this.attributes[i].name.clone(alloc),
+            this.attributes[i].value.clone(alloc)
           )
         );
       }
       for (var i: i64 = 0; i < this.namespaces.size(); i += 1) {
-        try result.namespaces.push(try this.namespaces[i].clone(alloc));
+        result.namespaces.push(this.namespaces[i].clone(alloc));
       }
       for (var i: i64 = 0; i < this.children.size(); i += 1) {
-        try result.children.push(try this.children[i].clone(alloc));
+        result.children.push(this.children[i].clone(alloc));
       }
       result.rebase(1);
-      return AllocationResult.Ok(result);
+      return result;
     }
 
     /** Records actual depths so edits through borrowed children enforce the document limit. */
@@ -307,19 +307,19 @@ public module std.xml {
     }
 
     /** Validates the subtree, including the complete element depth. */
-    method validate(depth: i64) XmlResult<void> {
+    method validate(depth: i64) void throws {
       if (depth > 256) {
-        return XmlResult.Error(xml_error("XML nesting too deep"));
+        throw xml_error("XML nesting too deep");
       }
-      try this.name_.validate();
+      this.name_.validate();
       for (var i: i64 = 0; i < this.attributes.size(); i += 1) {
-        try this.attributes[i].name.validate();
-        try xml_validate_text(this.attributes[i].value);
+        this.attributes[i].name.validate();
+        xml_validate_text(this.attributes[i].value);
       }
       for (var i: i64 = 0; i < this.children.size(); i += 1) {
-        try this.children[i].validate(depth + 1);
+        this.children[i].validate(depth + 1);
       }
-      return XmlResult.Ok;
+      return;
     }
   }
 
@@ -330,11 +330,11 @@ public module std.xml {
     var after: Vec<XmlNode>;
 
     /** Moves a root into a new document. */
-    init(alloc: const ref HeapAllocator, root: XmlElement) AllocationResult<void> {
+    init(alloc: const ref HeapAllocator, root: XmlElement) throws {
       root.rebase(1);
       this.root_ = root;
-      this.before = try Vec<XmlNode>(alloc, 4);
-      this.after = try Vec<XmlNode>(alloc, 4);
+      this.before = Vec<XmlNode>(alloc, 4);
+      this.after = Vec<XmlNode>(alloc, 4);
     }
 
     /** Borrows the editable root. */
@@ -343,38 +343,38 @@ public module std.xml {
     }
 
     /** Replaces a validated root and returns the old root. */
-    public method replace_root(root: XmlElement) XmlResult<XmlElement> {
-      try root.validate(1);
+    public method replace_root(root: XmlElement) XmlElement throws {
+      root.validate(1);
       root.rebase(1);
-      return XmlResult.Ok(std.replace(this.root_, root));
+      return std.replace(this.root_, root);
     }
 
     /** Explicitly copies the complete document. */
-    public const method clone(alloc: const ref HeapAllocator) AllocationResult<XmlDocument> {
-      var result = try XmlDocument(alloc, try this.root_.clone(alloc));
+    public const method clone(alloc: const ref HeapAllocator) XmlDocument throws {
+      var result = XmlDocument(alloc, this.root_.clone(alloc));
       for (var i: i64 = 0; i < this.before.size(); i += 1) {
-        try result.before.push(try this.before[i].clone(alloc));
+        result.before.push(this.before[i].clone(alloc));
       }
       for (var i: i64 = 0; i < this.after.size(); i += 1) {
-        try result.after.push(try this.after[i].clone(alloc));
+        result.after.push(this.after[i].clone(alloc));
       }
-      return AllocationResult.Ok(result);
+      return result;
     }
 
     /** Appends a complete XML document; discard the output if serialization fails. */
-    public method write(alloc: const ref HeapAllocator, output: ref String) Result<void> {
-      try this.root_.validate(1);
-      var writer = try XmlWriter(alloc, output);
-      try writer.declaration();
+    public method write(alloc: const ref HeapAllocator, output: ref String) void throws {
+      this.root_.validate(1);
+      var writer = XmlWriter(alloc, output);
+      writer.declaration();
       for (var i: i64 = 0; i < this.before.size(); i += 1) {
-        try xml_write_node(writer, this.before[i]);
+        xml_write_node(writer, this.before[i]);
       }
-      try xml_write_element(writer, this.root_);
+      xml_write_element(writer, this.root_);
       for (var i: i64 = 0; i < this.after.size(); i += 1) {
-        try xml_write_node(writer, this.after[i]);
+        xml_write_node(writer, this.after[i]);
       }
-      try writer.finish();
-      return Result.Ok;
+      writer.finish();
+      return;
     }
   }
 }

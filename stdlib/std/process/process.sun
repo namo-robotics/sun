@@ -70,33 +70,33 @@ public module std.process {
   // -------------------------------------------------------------------
 
   /** Sends a signal to the selected process or process group and returns Error on failure. */
-  public function kill(target: i32, sig: i32) SystemResult<void> {
+  public function kill(target: i32, sig: i32) void throws {
     if (unsafe { c_kill(target, sig); } != 0) {
-      return SystemResult.Error(Error(errno(), "failed to signal process"));
+      throw Error(errno(), "failed to signal process");
     }
-    return SystemResult.Ok;
+    return;
   }
 
   /**
    * Put a process in a process group. pid or pgid of 0 means "this one".
    */
-  public function set_pgid(target: i32, pgid: i32) SystemResult<void> {
+  public function set_pgid(target: i32, pgid: i32) void throws {
     if (unsafe { c_setpgid(target, pgid); } != 0) {
-      return SystemResult.Error(Error(errno(), "failed to set process group"));
+      throw Error(errno(), "failed to set process group");
     }
-    return SystemResult.Ok;
+    return;
   }
 
   /**
    * Start a new session, detaching from the controlling terminal.
    * Returns the new session id.
    */
-  public function create_new_session() SystemResult<i32> {
+  public function create_new_session() i32 throws {
     var sid: i32 = unsafe { c_setsid(); };
     if (sid < 0) {
-      return SystemResult.Error(Error(errno(), "failed to start a new session"));
+      throw Error(errno(), "failed to start a new session");
     }
-    return SystemResult.Ok(sid);
+    return sid;
   }
 
   /**
@@ -127,22 +127,22 @@ public module std.process {
    * signal handler — no allocation, no method calls that might allocate. Use
    * Command below unless you have a reason not to.
    */
-  public function fork() SystemResult<i32> {
+  public function fork() i32 throws {
     var result: i32 = unsafe { c_fork(); };
     if (result < 0) {
-      return SystemResult.Error(Error(errno(), "failed to fork"));
+      throw Error(errno(), "failed to fork");
     }
-    return SystemResult.Ok(result);
+    return result;
   }
 
   /**
    * Replace this process with `cmd`, searching PATH. Only returns on
    * failure.
    */
-  public function exec(cmd: ref Command) SystemResult<void> {
-    var argv: ContiguousBuffer<raw_ptr<u8>> = try cmd.build_argv_array();
+  public function exec(cmd: ref Command) void throws {
+    var argv: ContiguousBuffer<raw_ptr<u8>> = cmd.build_argv_array();
     unsafe { c_execvp(cmd.program(), argv.raw_data()); };
-    return SystemResult.Error(Error(errno(), "failed to exec"));
+    throw Error(errno(), "failed to exec");
   }
 
   /**
@@ -151,7 +151,7 @@ public module std.process {
    * With WNOHANG and no child ready, returns 0 for the pid, so the status
    * is meaningless — use Child.try_wait for that case.
    */
-  public function wait_pid(target: i32, options: i32) SystemResult<i32> {
+  public function wait_pid(target: i32, options: i32) i32 throws {
     var status: i32 = 0;
     var got: i32 = unsafe {
       c_waitpid(
@@ -161,9 +161,9 @@ public module std.process {
       );
     };
     if (got < 0) {
-      return SystemResult.Error(Error(errno(), "failed to wait for child"));
+      throw Error(errno(), "failed to wait for child");
     }
-    return SystemResult.Ok(status);
+    return status;
   }
 
   /**
@@ -248,26 +248,26 @@ public module std.process {
   /**
    * Create a pipe and return its two ends. Throws if the system refuses.
    */
-  public function open_pipe(alloc: const ref HeapAllocator) SystemResult<Pipe> {
-    var fds: ContiguousBuffer<i32> = try ContiguousBuffer<i32>(alloc, 2);
+  public function open_pipe(alloc: const ref HeapAllocator) Pipe throws {
+    var fds: ContiguousBuffer<i32> = ContiguousBuffer<i32>(alloc, 2);
     unsafe { fds.set_unchecked(0, 0); };
     unsafe { fds.set_unchecked(1, 0); };
     if (unsafe { c_pipe(_ptr_as_raw<i32>(fds.raw_data())); } != 0) {
-      return SystemResult.Error(Error(errno(), "failed to create pipe"));
+      throw Error(errno(), "failed to create pipe");
     }
     var read_end: i32 = unsafe { fds.get_unchecked(0); };
     var write_end: i32 = unsafe { fds.get_unchecked(1); };
-    return SystemResult.Ok(Pipe(read_end, write_end));
+    return Pipe(read_end, write_end);
   }
 
   /**
    * Point `new_fd` at whatever `old_fd` refers to, closing `new_fd` first.
    */
-  public function dup_fd(old_fd: i32, new_fd: i32) SystemResult<void> {
+  public function dup_fd(old_fd: i32, new_fd: i32) void throws {
     if (unsafe { c_dup2(old_fd, new_fd); } < 0) {
-      return SystemResult.Error(Error(errno(), "failed to duplicate descriptor"));
+      throw Error(errno(), "failed to duplicate descriptor");
     }
-    return SystemResult.Ok;
+    return;
   }
 
   // -------------------------------------------------------------------
@@ -301,56 +301,56 @@ public module std.process {
      * Build a command for a program named by a literal. The name also becomes
      * argv[0].
      */
-    init(allocator: const ref HeapAllocator, program: static_ptr<u8>) AllocationResult<void> {
+    init(allocator: const ref HeapAllocator, program: static_ptr<u8>) throws {
       this.alloc = allocator.copy();
-      this.blob = try String(allocator, "");
-      this.offsets = try Vec<i64>(allocator, 4);
-      try this.add_arg(program);
+      this.blob = String(allocator, "");
+      this.offsets = Vec<i64>(allocator, 4);
+      this.add_arg(program);
     }
 
     /**
      * Build a command for a program named at runtime. The name also becomes
      * argv[0].
      */
-    init(allocator: const ref HeapAllocator, program: const ref String) AllocationResult<void> {
+    init(allocator: const ref HeapAllocator, program: const ref String) throws {
       this.alloc = allocator.copy();
-      this.blob = try String(allocator, "");
-      this.offsets = try Vec<i64>(allocator, 4);
-      try this.add_arg(program);
+      this.blob = String(allocator, "");
+      this.offsets = Vec<i64>(allocator, 4);
+      this.add_arg(program);
     }
 
     /**
      * Append one argument. The program itself is argv[0].
      */
-    public method add_arg(value: static_ptr<u8>) AllocationResult<void> {
+    public method add_arg(value: static_ptr<u8>) void throws {
       var length: i64 = value.length();
       if (length >= std.I64_MAX - this.blob.length()) {
-        return AllocationResult.Overflow(OverflowError());
+        throw OverflowError();
       }
-      try this.offsets.reserve(this.offsets.size() + 1);
-      try this.blob.reserve(this.blob.length() + length + 1);
-      try this.offsets.push(this.blob.length());
-      try this.blob.append(value);
-      try this.blob.append_char(b'\0');
+      this.offsets.reserve(this.offsets.size() + 1);
+      this.blob.reserve(this.blob.length() + length + 1);
+      this.offsets.push(this.blob.length());
+      this.blob.append(value);
+      this.blob.append_char(b'\0');
 
-      return AllocationResult.Ok;
+      return;
     }
 
     /**
      * Append one argument built at runtime. The text is copied in.
      */
-    public method add_arg(value: const ref String) AllocationResult<void> {
+    public method add_arg(value: const ref String) void throws {
       var length: i64 = value.length();
       if (length >= std.I64_MAX - this.blob.length()) {
-        return AllocationResult.Overflow(OverflowError());
+        throw OverflowError();
       }
-      try this.offsets.reserve(this.offsets.size() + 1);
-      try this.blob.reserve(this.blob.length() + length + 1);
-      try this.offsets.push(this.blob.length());
-      try this.blob.append(value);
-      try this.blob.append_char(b'\0');
+      this.offsets.reserve(this.offsets.size() + 1);
+      this.blob.reserve(this.blob.length() + length + 1);
+      this.offsets.push(this.blob.length());
+      this.blob.append(value);
+      this.blob.append_char(b'\0');
 
-      return AllocationResult.Ok;
+      return;
     }
 
     /**
@@ -386,9 +386,9 @@ public module std.process {
      * A NUL-terminated char** for execvp. Built from one base pointer, so
      * it stays valid as long as the blob is not appended to.
      */
-    public method build_argv_array() AllocationResult<ContiguousBuffer<raw_ptr<u8>>> {
+    public method build_argv_array() ContiguousBuffer<raw_ptr<u8>> throws {
       var count: i64 = this.offsets.size();
-      var argv: ContiguousBuffer<raw_ptr<u8>> = try ContiguousBuffer<raw_ptr<u8>>(
+      var argv: ContiguousBuffer<raw_ptr<u8>> = ContiguousBuffer<raw_ptr<u8>>(
         this.alloc,
         count + 1
       );
@@ -398,17 +398,17 @@ public module std.process {
         unsafe { argv.set_unchecked(i, unsafe { _ptr_offset(base, at); }); };
       }
       unsafe { argv.set_unchecked(count, null); };
-      return AllocationResult.Ok(argv);
+      return argv;
     }
 
     /**
      * Run the program in a new process. The child's end of every pipe is
      * closed here, so reading from Child hits end-of-file when it exits.
      */
-    public method start() SystemResult<Child> {
+    public method start() Child throws {
       // Everything the child touches is prepared first: after fork it may
       // only call things that are safe in a signal handler.
-      var argv: ContiguousBuffer<raw_ptr<u8>> = try this.build_argv_array();
+      var argv: ContiguousBuffer<raw_ptr<u8>> = this.build_argv_array();
       var prog: raw_ptr<u8> = unsafe { _load<raw_ptr<u8>>(argv.raw_data(), 0); };
 
       var in_read: i32 = 0;
@@ -420,17 +420,17 @@ public module std.process {
       var devnull: i32 = 0;
 
       if (this.stdin_mode == Stdio.Piped) {
-        var p: Pipe = try open_pipe(this.alloc);
+        var p: Pipe = open_pipe(this.alloc);
         in_read = p.read_fd();
         in_write = p.write_fd();
       }
       if (this.stdout_mode == Stdio.Piped) {
-        var p: Pipe = try open_pipe(this.alloc);
+        var p: Pipe = open_pipe(this.alloc);
         out_read = p.read_fd();
         out_write = p.write_fd();
       }
       if (this.stderr_mode == Stdio.Piped) {
-        var p: Pipe = try open_pipe(this.alloc);
+        var p: Pipe = open_pipe(this.alloc);
         err_read = p.read_fd();
         err_write = p.write_fd();
       }
@@ -441,7 +441,7 @@ public module std.process {
 
       var child: i32 = unsafe { c_fork(); };
       if (child < 0) {
-        return SystemResult.Error(Error(errno(), "failed to fork"));
+        throw Error(errno(), "failed to fork");
       }
 
       if (child == 0) {
@@ -510,25 +510,25 @@ public module std.process {
         }
       };
 
-      return SystemResult.Ok(Child(child, in_write, out_read, err_read));
+      return Child(child, in_write, out_read, err_read);
     }
 
     /**
      * Run to completion, inheriting the streams. Returns the exit code.
      */
-    public method status() SystemResult<i32> {
-      var child: Child = try this.start();
-      return SystemResult.Ok((try child.wait()));
+    public method status() i32 throws {
+      var child: Child = this.start();
+      return (child.wait());
     }
 
     /**
      * Run to completion with stdout and stderr captured.
      */
-    public method output() SystemResult<Output> {
+    public method output() Output throws {
       this.stdout_mode = Stdio.Piped;
       this.stderr_mode = Stdio.Piped;
-      var child: Child = try this.start();
-      return SystemResult.Ok((try child.collect(this.alloc)));
+      var child: Child = this.start();
+      return (child.collect(this.alloc));
     }
   }
 
@@ -565,13 +565,11 @@ public module std.process {
     /**
      * Write to the child's stdin. Requires stdin(Stdio.Piped).
      */
-    public method write_stdin(data: ref String) AllocationResult<i64> {
+    public method write_stdin(data: ref String) i64 throws {
       if (this.stdin_fd <= 0) {
-        return AllocationResult.Ok(-1);
+        return -1;
       }
-      return AllocationResult.Ok(
-        unsafe { c_write(this.stdin_fd, try data.c_str(), data.length()); }
-      );
+      return unsafe { c_write(this.stdin_fd, data.c_str(), data.length()); };
     }
 
     /**
@@ -588,26 +586,26 @@ public module std.process {
      * Wait for the child and return its exit code. A child killed by a
      * signal reports 128 + the signal, as a shell does.
      */
-    public method wait() SystemResult<i32> {
+    public method wait() i32 throws {
       if (this.pid_ <= 0) {
-        return SystemResult.Error(Error(-1, "no child to wait for"));
+        throw Error(-1, "no child to wait for");
       }
       this.close_stdin();
-      var status: i32 = try wait_pid(this.pid_, 0);
+      var status: i32 = wait_pid(this.pid_, 0);
       this.pid_ = 0;
       if (is_signaled(status)) {
-        return SystemResult.Ok(128 + get_term_signal(status));
+        return 128 + get_term_signal(status);
       }
-      return SystemResult.Ok(exit_status(status));
+      return exit_status(status);
     }
 
     /**
      * The exit code if the child has already finished, None if it is still
      * running.
      */
-    public method try_wait() SystemResult<Option<i32>> {
+    public method try_wait() Option<i32> throws {
       if (this.pid_ <= 0) {
-        return SystemResult.Ok(Option.None);
+        return Option.None;
       }
       var status: i32 = 0;
       var got: i32 = unsafe {
@@ -618,30 +616,30 @@ public module std.process {
         );
       };
       if (got < 0) {
-        return SystemResult.Error(Error(errno(), "failed to poll child"));
+        throw Error(errno(), "failed to poll child");
       }
       if (got == 0) {
-        return SystemResult.Ok(Option.None);
+        return Option.None;
       }
       this.pid_ = 0;
       if (is_signaled(status)) {
-        return SystemResult.Ok(Option.Some(128 + get_term_signal(status)));
+        return Option.Some(128 + get_term_signal(status));
       }
-      return SystemResult.Ok(Option.Some(exit_status(status)));
+      return Option.Some(exit_status(status));
     }
 
     /**
      * Send a signal to the child. Throws if there is no child or the system
      * refuses.
      */
-    public method kill(sig: i32) SystemResult<void> {
+    public method kill(sig: i32) void throws {
       if (this.pid_ <= 0) {
-        return SystemResult.Error(Error(-1, "no child to signal"));
+        throw Error(-1, "no child to signal");
       }
       if (unsafe { c_kill(this.pid_, sig); } != 0) {
-        return SystemResult.Error(Error(errno(), "failed to signal child"));
+        throw Error(errno(), "failed to signal child");
       }
-      return SystemResult.Ok;
+      return;
     }
 
     /**
@@ -667,11 +665,11 @@ public module std.process {
      * other: a child that fills the stderr pipe while the parent is stuck
      * reading stdout would deadlock.
      */
-    public method collect(alloc: const ref HeapAllocator) SystemResult<Output> {
-      var out: String = try String(alloc, "");
-      var err: String = try String(alloc, "");
-      var buf: ContiguousBuffer<u8> = try ContiguousBuffer<u8>(alloc, 4096);
-      var poller: Poller = try Poller(alloc);
+    public method collect(alloc: const ref HeapAllocator) Output throws {
+      var out: String = String(alloc, "");
+      var err: String = String(alloc, "");
+      var buf: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 4096);
+      var poller: Poller = Poller(alloc);
 
       var out_open: bool = this.stdout_fd > 0;
       var err_open: bool = this.stderr_fd > 0;
@@ -679,12 +677,12 @@ public module std.process {
       while (out_open or err_open) {
         poller.clear();
         if (out_open) {
-          try poller.add_read(this.stdout_fd);
+          poller.add_read(this.stdout_fd);
         }
         if (err_open) {
-          try poller.add_read(this.stderr_fd);
+          poller.add_read(this.stderr_fd);
         }
-        try poller.wait(-1);
+        poller.wait(-1);
 
         var slot: i64 = 0;
         if (out_open) {
@@ -702,7 +700,7 @@ public module std.process {
               out_open = false;
             } else {
               for (var i: i64 = 0; i < n; i = i + 1) {
-                try out.append_char(unsafe { buf.get_unchecked(i); });
+                out.append_char(unsafe { buf.get_unchecked(i); });
               }
             }
           }
@@ -723,15 +721,15 @@ public module std.process {
               err_open = false;
             } else {
               for (var i: i64 = 0; i < n; i = i + 1) {
-                try err.append_char(unsafe { buf.get_unchecked(i); });
+                err.append_char(unsafe { buf.get_unchecked(i); });
               }
             }
           }
         }
       }
 
-      var code: i32 = try this.wait();
-      return SystemResult.Ok(Output(code, out, err));
+      var code: i32 = this.wait();
+      return Output(code, out, err);
     }
 
     /**

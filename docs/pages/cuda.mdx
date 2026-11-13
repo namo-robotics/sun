@@ -76,16 +76,16 @@ The calling thread's previous CUDA device is restored.
 
 ## Arithmetic
 
-Inside a function returning `GpuResult<T>`, use `try` to propagate failures:
+Inside a function declared `throws`, call operations directly to propagate failures:
 
 ```sun
-var a = try device.upload(host_a);
-var b = try device.upload(host_b);
-var c = try a.matmul(b);
-var d = try (a * b);
-var sum = try (c + d);
-try a.matmul_into(b, c);
-try sum.copy_to_host(host_output);
+var a =  device.upload(host_a);
+var b =  device.upload(host_b);
+var c =  a.matmul(b);
+var d =  (a * b);
+var sum =  (c + d);
+ a.matmul_into(b, c);
+ sum.copy_to_host(host_output);
 ```
 
 | Method | Behavior |
@@ -104,20 +104,20 @@ calls `a.scale(scalar)`. Each allocates a result. Use `_into` methods to reuse
 storage; separate outputs must not alias inputs. Inputs must share a context,
 even if separate contexts target the same physical device.
 
-Operators return `GpuResult<DeviceMatrix<T>>`, just like methods. Unwrap
-intermediate results explicitly; `try (a * b + c)` does not automatically
-unwrap the inner product. Scalar-left multiplication, elementwise products,
+Operators return `DeviceMatrix<T>` and throw on failure. Expressions such as
+`a * b + c` compose directly. Scalar-left multiplication, elementwise products,
 compound assignment, automatic CPU fallback, and asynchronous execution are
 not provided.
 
 ## Errors, precision, and allocations
 
-`GpuResult<T>` contains `Ok(T)` or `Error(GpuError)`. Errors implement `IError`
+GPU operations throw `GpuError`, which carries a bounded inline operation label.
+These exceptions implement `IError`
 and expose `operation()`, `category()`, `code()`, and `native_code()`.
 Categories distinguish validation, resource, CUDA runtime, and cuBLAS failures.
 Encoded codes use negative values for validation/resources, CUDA status plus
 10000 for runtime failures, and BLAS status plus 20000 for BLAS failures.
-`message()` allocates a diagnostic string only when requested.
+`message()` and `operation()` explicitly allocate String copies only when requested.
 
 Operations synchronize even on submission failure. A failed synchronization
 invalidates the context for further operations; destruction still attempts

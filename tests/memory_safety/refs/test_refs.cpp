@@ -398,11 +398,11 @@ TEST(MemorySafety_Refs, string_assigned_through_ref_replaces_and_frees_once) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i64> {
-  var b: String = try `..`;
+function main() i64 throws {
+  var b: String =  `..`;
   var c: ref String = b;
-  c = try `test!`;
-  return Result.Ok(b.length());
+  c =  `test!`;
+  return b.length();
 }
 )");
   EXPECT_EQ(value, 5);

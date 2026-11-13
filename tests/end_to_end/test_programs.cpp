@@ -406,12 +406,12 @@ using std;
 using std.io;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var s = try String(allocator, "hi");
+  var s =  String(allocator, "hi");
   print(s);
   println(s);
-  return Result.Ok(0);
+  return 0;
 }
 )");
   EXPECT_EQ(value, 0);
@@ -616,7 +616,7 @@ using std;
 using std.io;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   eprint(-2147483647 - 1);
   eprint("|");
   eprint(-9223372036854775807i64 - 1i64);
@@ -640,9 +640,9 @@ function main() Result<i32> {
   eprintln('é');
   eprintln(true);
   var alloc = make_heap_allocator();
-  var s = try String(alloc, "borrowed");
+  var s =  String(alloc, "borrowed");
   eprintln(s);
-  return Result.Ok(0);
+  return 0;
 }
 )");
   auto err = testing::internal::GetCapturedStderr();
@@ -675,18 +675,18 @@ function check_empty(s: const ref String) bool {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var s = try String(alloc, "A\0B");
-  var empty = try String(alloc, "");
+  var s =  String(alloc, "A\0B");
+  var empty =  String(alloc, "");
   if (not check(s) or not check_empty(empty)) {
-    return Result.Ok(1);
+    return 1;
   }
-  try s.append_char(b'C');
+   s.append_char(b'C');
   if (unsafe { s.unsafe_at(3); } != b'C') {
-    return Result.Ok(2);
+    return 2;
   }
-  return Result.Ok(0);
+  return 0;
 }
 )");
   EXPECT_EQ(value, 0);
@@ -700,11 +700,11 @@ using std.linalg;
 
 /** Runs both floating-point specializations from the imported bundle. */
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var a = try Matrix<f64>([[1.0, 2.0], [3.0, 4.0]], alloc);
-  var c = try Matrix<f64>(alloc, [2, 2]);
-  match std.linalg.gemm<f64>(
+  var a =  Matrix<f64>([[1.0, 2.0], [3.0, 4.0]], alloc);
+  var c =  Matrix<f64>(alloc, [2, 2]);
+  try { std.linalg.gemm<f64>(
     1.0,
     a,
     std.linalg.Transpose.None,
@@ -712,24 +712,19 @@ function main() Result<i32> {
     std.linalg.Transpose.None,
     0.0,
     c
-  ) {
-    std.linalg.LinalgResult.Ok => {},
-    std.linalg.LinalgResult.Error(error) => {
-      return Result.Ok(-1);
-    },
-    std.linalg.LinalgResult.Allocation(error) => {
-      return Result.Ok(-1);
-    },
-    std.linalg.LinalgResult.InvalidArgument(error) => {
-      return Result.Ok(-1);
-    },
-    std.linalg.LinalgResult.Overflow(error) => {
-      return Result.Ok(-1);
-    }
-  };
-  var x = try Matrix<f32>([[2.0f32]], alloc);
-  var y = try Matrix<f32>(alloc, [1, 1]);
-  match std.linalg.gemm<f32>(
+  );
+ } catch (error: LinalgError) {
+      return -1;
+     } catch (error: AllocationError) {
+      return -1;
+     } catch (error: InvalidArgumentError) {
+      return -1;
+     } catch (error: OverflowError) {
+      return -1;
+     }
+  var x =  Matrix<f32>([[2.0f32]], alloc);
+  var y =  Matrix<f32>(alloc, [1, 1]);
+  try { std.linalg.gemm<f32>(
     1.0f32,
     x,
     std.linalg.Transpose.Transpose,
@@ -737,22 +732,17 @@ function main() Result<i32> {
     std.linalg.Transpose.None,
     0.0f32,
     y
-  ) {
-    std.linalg.LinalgResult.Ok => {},
-    std.linalg.LinalgResult.Error(error) => {
-      return Result.Ok(-2);
-    },
-    std.linalg.LinalgResult.Allocation(error) => {
-      return Result.Ok(-2);
-    },
-    std.linalg.LinalgResult.InvalidArgument(error) => {
-      return Result.Ok(-2);
-    },
-    std.linalg.LinalgResult.Overflow(error) => {
-      return Result.Ok(-2);
-    }
-  };
-  return Result.Ok(_convert<i32>(c[1, 1]) + _convert<i32>(y[0, 0]));
+  );
+ } catch (error: LinalgError) {
+      return -2;
+     } catch (error: AllocationError) {
+      return -2;
+     } catch (error: InvalidArgumentError) {
+      return -2;
+     } catch (error: OverflowError) {
+      return -2;
+     }
+  return _convert<i32>(c[1, 1]) + _convert<i32>(y[0, 0]);
 }
 )"),
             26);
@@ -766,10 +756,10 @@ using std.linalg;
 
 /** Attempts an unsupported integer multiplication. */
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var a = try Matrix<i32>([[2]], alloc);
-  var c = try Matrix<i32>(alloc, [1, 1]);
+  var a =  Matrix<i32>([[2]], alloc);
+  var c =  Matrix<i32>(alloc, [1, 1]);
   var result = std.linalg.gemm<i32>(
     1,
     a,
@@ -779,7 +769,7 @@ function main() Result<i32> {
     0,
     c
   );
-  return Result.Ok(0);
+  return 0;
 }
 )"),
                                 "does not satisfy constraint '_Float'");
@@ -793,66 +783,51 @@ using std;
 using std.linalg;
 
 /** Returns an owning product after its local operands have been destroyed. */
-function calculate() LinalgResult<Matrix<f64>> {
+function calculate() Matrix<f64> throws {
   var alloc = make_heap_allocator();
-  var a = try Matrix<f64>([[1.0, 2.0], [3.0, 4.0]], alloc);
-  var square = try (a * a);
+  var a =  Matrix<f64>([[1.0, 2.0], [3.0, 4.0]], alloc);
+  var square =  (a * a);
   return square * a;
 }
 
 /** Exercises output methods and explicit operator error propagation. */
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var a = try Matrix<f32>([[1.0f32, 2.0f32], [3.0f32, 4.0f32]], alloc);
-  var output = try Matrix<f32>(alloc, [2, 2]);
-  match a.matmul_into(a, output) {
-    LinalgResult.Ok => {},
-    LinalgResult.Error(error) => {
-      return Result.Ok(-1);
-    },
-    LinalgResult.Allocation(error) => {
-      return Result.Ok(-1);
-    },
-    LinalgResult.InvalidArgument(error) => {
-      return Result.Ok(-1);
-    },
-    LinalgResult.Overflow(error) => {
-      return Result.Ok(-1);
-    }
-  };
-  match output.gemm(1.0f32, a, Transpose.None, a, Transpose.None, 1.0f32) {
-    LinalgResult.Ok => {},
-    LinalgResult.Error(error) => {
-      return Result.Ok(-2);
-    },
-    LinalgResult.Allocation(error) => {
-      return Result.Ok(-2);
-    },
-    LinalgResult.InvalidArgument(error) => {
-      return Result.Ok(-2);
-    },
-    LinalgResult.Overflow(error) => {
-      return Result.Ok(-2);
-    }
-  };
-  match calculate() {
-    LinalgResult.Ok(product) => {
-      return Result.Ok(_convert<i32>(product[1, 1]) + _convert<i32>(output[1, 1]));
-    },
-    LinalgResult.Error(error) => {
-      return Result.Ok(-3);
-    },
-    LinalgResult.Allocation(error) => {
-      return Result.Ok(-3);
-    },
-    LinalgResult.InvalidArgument(error) => {
-      return Result.Ok(-3);
-    },
-    LinalgResult.Overflow(error) => {
-      return Result.Ok(-3);
-    }
-  };
+  var a =  Matrix<f32>([[1.0f32, 2.0f32], [3.0f32, 4.0f32]], alloc);
+  var output =  Matrix<f32>(alloc, [2, 2]);
+  try { a.matmul_into(a, output);
+ } catch (error: LinalgError) {
+      return -1;
+     } catch (error: AllocationError) {
+      return -1;
+     } catch (error: InvalidArgumentError) {
+      return -1;
+     } catch (error: OverflowError) {
+      return -1;
+     }
+  try { output.gemm(1.0f32, a, Transpose.None, a, Transpose.None, 1.0f32);
+ } catch (error: LinalgError) {
+      return -2;
+     } catch (error: AllocationError) {
+      return -2;
+     } catch (error: InvalidArgumentError) {
+      return -2;
+     } catch (error: OverflowError) {
+      return -2;
+     }
+  try { var product = calculate();
+
+      return _convert<i32>(product[1, 1]) + _convert<i32>(output[1, 1]);
+     } catch (error: LinalgError) {
+      return -3;
+     } catch (error: AllocationError) {
+      return -3;
+     } catch (error: InvalidArgumentError) {
+      return -3;
+     } catch (error: OverflowError) {
+      return -3;
+     }
 }
 )"),
             162);
@@ -869,13 +844,12 @@ TEST(EndToEnd_Programs, matrix_multiplication_methods_reject_integer) {
       using std;
       using std.linalg;
       /** Attempts a floating-point-only operation on integer matrices. */
-      function main() Result<i32> {
+      function main() i32 throws {
         var alloc = make_heap_allocator();
-        var a = try Matrix<i32>([[2]], alloc);
-        var c = try Matrix<i32>(alloc, [1, 1]);
-        var result = )" + call + R"(;
-        ignore_error(result);
-        return Result.Ok(0);
+        var a =  Matrix<i32>([[2]], alloc);
+        var c =  Matrix<i32>(alloc, [1, 1]);
+        )" + call + R"(;
+        return 0;
       }
     )"),
                                   "does not satisfy constraint '_Float'");
@@ -890,13 +864,13 @@ using std.linalg;
 
 /** Attempts to multiply matrices with different element types. */
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var a = try Matrix<f32>([[2.0f32]], alloc);
-  var b = try Matrix<f64>([[3.0]], alloc);
+  var a =  Matrix<f32>([[2.0f32]], alloc);
+  var b =  Matrix<f64>([[3.0]], alloc);
   var result = a * b;
   ignore_error(result);
-  return Result.Ok(0);
+  return 0;
 }
 )"),
                SunError);

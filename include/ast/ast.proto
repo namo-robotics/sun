@@ -115,6 +115,8 @@ message ASTNode {
     TryCatch try_catch = 90;
     ThrowExpr throw_expr = 91;
     DeclareType declare_type = 92;
+    NativeTryCatch native_try_catch = 93;
+    ThrowExpr native_throw = 94;
   }
 }
 
@@ -656,6 +658,8 @@ message ClassDef {
   repeated string lifetime_params = 12;     // class Bus<'a, 'b>
   // Concrete class shapes whose ordinary methods are present in the bundle.
   repeated CompiledSpecialization compiled_specializations = 13;
+  bool is_exception = 15;
+  optional TypeAnnotation exception_parent = 16;
   uint64 alignment = 14; // Minimum class alignment in bytes; zero is natural.
 }
 
@@ -751,6 +755,17 @@ message CatchClause {
 message TryCatch {
   BlockExpr try_block = 1;
   repeated CatchClause catch_clauses = 2;
+}
+
+/** Stores a bounded exception handler, including its ordinary local binding. */
+message NativeExceptionHandler {
+  ASTNode binding = 1;
+  ASTNode body = 2;
+}
+/** Stores native exception syntax separately from the removed C++ exception ABI. */
+message NativeTryCatch {
+  ASTNode body = 1;
+  repeated NativeExceptionHandler handlers = 2;
 }
 
 /** Stores throw expression data in the compiler serialization format. */

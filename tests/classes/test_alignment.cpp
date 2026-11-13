@@ -180,10 +180,10 @@ class A {
 
 /** Allocates and frees a typed value and a typed array. */
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i64> {
+function main() i64 throws {
   var alloc = HeapAllocator();
-  var one = try alloc.create<A>(42);
-  var many = try alloc.alloc<A>(3);
+  var one =  alloc.create<A>(42);
+  var many =  alloc.alloc<A>(3);
   var result: i64 = 0;
   unsafe {
     result = sun_test_alignment_remainder(_bitcast<raw_ptr<u8>>(one), 256) +
@@ -192,7 +192,7 @@ function main() Result<i64> {
   };
   alloc.dealloc<A>(one, 1);
   alloc.dealloc<A>(many, 3);
-  return Result.Ok(result);
+  return result;
 }
 )"),
             0);
@@ -224,15 +224,15 @@ function worker(value: A) A {
 
 /** Moves a value to a worker and checks its returned storage. */
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i64> {
+function main() i64 throws {
   var value: A = { value: 42 };
-  var thread = try std.thread.spawn(worker, value);
+  var thread =  std.thread.spawn(worker, value);
   var result = thread.join();
   if (unsafe { sun_test_alignment_remainder(_bitcast<raw_ptr<u8>>(_address_of<A>(result)), 64); } !=
     0) {
-    return Result.Ok(0);
+    return 0;
   }
-  return Result.Ok(result.value);
+  return result.value;
 }
 )"),
             42);

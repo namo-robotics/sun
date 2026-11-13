@@ -14,6 +14,7 @@ void validateCompilerSupport(const proto::CompilerAbiSupport& support) {
   const std::map<std::pair<std::string, std::string>, std::string> bindings{
       {{"moon.interface", "1"}, "moon_interface_v1"},
       {{"moon.metadata", "1"}, "moon_metadata_v1"},
+      {{"sun.exceptions.bounded", "1"}, "sun_bounded_exceptions_v1"},
       {{"llvm.bitcode", "reader-contract"}, "llvm_bitcode_reader"},
       {{"sun.experimental.semantics", "experimental"},
        "sun_semantics_experimental"},

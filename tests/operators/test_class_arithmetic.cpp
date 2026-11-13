@@ -59,23 +59,24 @@ TEST(Operators_ClassArithmetic, fallible_operator) {
 
     using std;
     /** Supplies the error protocol for a fallible result. */
-    class Failure implements IError {
+    exception Failure implements IError {
       /** Returns an error code. */
       public const method code() i32 { return 1; }
       /** Returns an error message. */
-      public const method message() AllocationResult<String> { return String("failed"); }
+      public const method message() String throws { return String("failed"); }
     }
     /** Wraps an integer result. */
-    enum Outcome<T> { Ok(T), Error(Failure) }
+
     /** Provides a fallible operator. */
     class Number {
       /** Produces an explicit successful result. */
-      public const method __multiply__(value: i32) Outcome<i32> { return Outcome.Ok(value); }
+      public const method __multiply__(value: i32) i32 throws { return value; }
     }
     /** Propagates operator errors explicitly. */
-    function calculate() Outcome<i32> { var n = Number(); return Outcome.Ok(try (n * 42)); }
+    function calculate() i32 throws { var n = Number(); return  (n * 42); }
     /** Handles the explicitly propagated result. */
-    function main() i32 { return match calculate() { Outcome.Ok(value) => value, _ => 0 }; }
+    function main() i32 { try { var value = calculate();
+return value; } catch { return 0; } }
   )"),
             42);
 }

@@ -15,7 +15,6 @@ using sun::support::logAndThrowError;
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 using sun::types::ArrayType;
-using sun::types::ErrorUnionType;
 using sun::types::FunctionType;
 using sun::types::LambdaType;
 using sun::types::NominalType;
@@ -285,9 +284,6 @@ PortableTypeKey PortableTypeKey::fromType(const Type& type,
                       value.canThrow(), true, value.hasRefCaptures(),
                       value.requiresUnsafe());
     }
-    case Type::Kind::ErrorUnion:
-      return errorUnion(
-          encode(static_cast<const ErrorUnionType&>(type).getValueType()));
     default:
       logAndThrowError("Portable identity requires a concrete value type");
   }
@@ -404,8 +400,6 @@ PortableTypeKey PortableTypeKey::function(
                   integer(requiresUnsafe)}));
 }
 
-PortableTypeKey PortableTypeKey::errorUnion(const PortableTypeKey& value) {
-  return PortableTypeKey(tuple('U', {value.encoding()}));
-}
+
 
 }  // namespace sun::semantic_analysis

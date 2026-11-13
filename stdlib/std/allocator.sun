@@ -4,10 +4,10 @@ public module std {
   /** Allocates storage explicitly; callers own successful allocations. */
   public interface IAllocator {
     /** Allocate aligned storage for count elements, checking the byte size. */
-    public const method alloc<T>(count: i64) AllocationResult<raw_ptr<T>>;
+    public const method alloc<T>(count: i64) raw_ptr<T> throws;
 
     /** Allocate uninitialized bytes, reporting invalid sizes and allocation failures. */
-    public const method alloc_raw(size: i64) AllocationResult<raw_ptr<u8>>;
+    public const method alloc_raw(size: i64) raw_ptr<u8> throws;
 
     /** Release typed storage after its initialized elements have been destroyed. */
     public const method dealloc<T>(p: raw_ptr<T>, count: i64) void;
@@ -16,10 +16,10 @@ public module std {
     public const method dealloc_raw(p: raw_ptr<u8>, size: i64) void;
 
     /** Allocate and initialize a value, propagating supported constructor errors. */
-    public const method create<T>(args...: _params_of<T>) Result<raw_ptr<T>>;
+    public const method create<T>(args...: _params_of<T>) raw_ptr<T> throws;
 
     /** Allocate an initialized value with automatic destruction and deallocation. */
-    public const method create_unique<T>(args...: _params_of<T>) Result<Unique<T>>;
+    public const method create_unique<T>(args...: _params_of<T>) Unique<T> throws;
   }
 
   /** Owns uninitialized storage until construction succeeds or fails. */
@@ -50,13 +50,13 @@ public module std {
     init() {}
 
     /** Allocate aligned storage; zero-sized requests still own a freeable pointer. */
-    public const method alloc<T>(count: i64) AllocationResult<raw_ptr<T>> {
+    public const method alloc<T>(count: i64) raw_ptr<T> throws {
       if (count < 0) {
-        return AllocationResult.InvalidArgument(InvalidArgumentError("negative size"));
+        throw InvalidArgumentError("negative size");
       }
       var width = _sizeof<T>();
       if (width != 0 and count > std.I64_MAX / width) {
-        return AllocationResult.Overflow(OverflowError());
+        throw OverflowError();
       }
       var size = count * width;
       var physical_size = size;
@@ -65,15 +65,15 @@ public module std {
       }
       var pointer = unsafe { _aligned_malloc<T>(physical_size); };
       if (pointer == null) {
-        return AllocationResult.Allocation(AllocationError(size));
+        throw AllocationError(size);
       }
-      return AllocationResult.Ok(unsafe { _ptr_as_raw<T>(pointer); });
+      return unsafe { _ptr_as_raw<T>(pointer); };
     }
 
     /** Allocate bytes; negative requests fail and zero requests own one physical byte. */
-    public const method alloc_raw(size: i64) AllocationResult<raw_ptr<u8>> {
+    public const method alloc_raw(size: i64) raw_ptr<u8> throws {
       if (size < 0) {
-        return AllocationResult.InvalidArgument(InvalidArgumentError("negative size"));
+        throw InvalidArgumentError("negative size");
       }
       var physical_size = size;
       if (physical_size == 0) {
@@ -81,9 +81,9 @@ public module std {
       }
       var pointer: raw_ptr<u8> = unsafe { _ptr_as_raw<u8>(_malloc(physical_size)); };
       if (pointer == null) {
-        return AllocationResult.Allocation(AllocationError(size));
+        throw AllocationError(size);
       }
-      return AllocationResult.Ok(pointer);
+      return pointer;
     }
 
     /** Release typed storage; the count does not affect system heap deallocation. */
@@ -97,16 +97,16 @@ public module std {
     }
 
     /** Construct a value only after allocation succeeds. Arguments are consumed normally. */
-    public const method create<T>(args...: _params_of<T>) Result<raw_ptr<T>> {
-      var pointer = try this.alloc<T>(1);
+    public const method create<T>(args...: _params_of<T>) raw_ptr<T> throws {
+      var pointer = this.alloc<T>(1);
       var storage = AllocationStorage(unsafe { _ptr_as_raw<u8>(pointer); });
-      unsafe { try _init<T>(pointer, args...); };
-      return Result.Ok(unsafe { _ptr_as_raw<T>(storage.release()); });
+      unsafe { _init<T>(pointer, args...); };
+      return unsafe { _ptr_as_raw<T>(storage.release()); };
     }
 
     /** Return sole ownership of a successfully initialized value. */
-    public const method create_unique<T>(args...: _params_of<T>) Result<Unique<T>> {
-      return Result.Ok(Unique<T>(try this.create<T>(args...)));
+    public const method create_unique<T>(args...: _params_of<T>) Unique<T> throws {
+      return Unique<T>(this.create<T>(args...));
     }
 
     /** Explicitly copy the stateless allocator without allocating. */

@@ -67,28 +67,20 @@ struct MatchArm {
 class MatchExprAST : public ExprAST {
   std::unique_ptr<ExprAST> discriminant;  // The value being matched
   std::vector<MatchArm> arms;             // Match arms
-  bool propagation_ = false;              // Source spelling is prefix try.
 
  public:
   /** Creates this syntax node and takes ownership of any supplied child
    * expressions. */
   MatchExprAST(std::unique_ptr<ExprAST> discriminant,
-               std::vector<MatchArm> arms, bool propagation = false)
+               std::vector<MatchArm> arms)
       : discriminant(std::move(discriminant)),
-        arms(std::move(arms)),
-        propagation_(propagation) {}
-
-  /** Reports whether this match implements prefix error propagation. */
-  bool isPropagation() const { return propagation_; }
+        arms(std::move(arms)) {}
 
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::MATCH; }
 
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
-    if (propagation_) {
-      return "try " + discriminant->toString();
-    }
     std::string result = "match " + discriminant->toString() + " {";
     for (size_t i = 0; i < arms.size(); ++i) {
       if (i > 0) {

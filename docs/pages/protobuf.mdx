@@ -16,7 +16,7 @@ manifest {
 using std;
 using namo.telemetry;      // the proto `package`
 
-function main() i32 {
+function main() i32 throws {
     var alloc = make_heap_allocator();
 
     var status = RobotStatus(alloc);      // zero-value init (proto3 defaults)
@@ -28,10 +28,8 @@ function main() i32 {
     var buf = Vec<u8>(alloc, 64);
     status.encode(buf);                   // appends wire bytes
 
-    return match RobotStatus_decode(alloc, buf) {
-        ProtoResult.Ok(back) => back.robot_id,
-        ProtoResult.Error(_) => -1
-    };
+    var back = RobotStatus_decode(alloc, buf);
+    return back.robot_id;
 }
 ```
 
@@ -96,15 +94,15 @@ Every message class also has:
 
 Decoding is a free function per message (Sun has no static methods):
 
-- `M_decode(alloc: ref HeapAllocator, buf: ref Vec<u8>) ProtoResult<M>`
-- `M_decode_delimited(alloc: ref HeapAllocator, r: ref ProtoReader) ProtoResult<M>`
+- `M_decode(alloc: ref HeapAllocator, buf: ref Vec<u8>) M throws`
+- `M_decode_delimited(alloc: ref HeapAllocator, r: ref ProtoReader) M throws`
   reads one length-prefixed message from a stream reader (`ProtoReader(buf)`,
   from the stdlib's `proto_wire` module).
 
-Malformed input (truncated buffers, over-long varints, bad lengths) returns
-`ProtoResult.Error` with an owned `ProtoDecodeError`. Use `try M_decode(alloc, buf)`
-to extract a message and propagate errors from a function returning a compatible
-result enum, such as `std.Result<T>`.
+Malformed input (truncated buffers, over-long varints, or bad lengths) throws
+`ProtoDecodeError`, which stores bounded inline diagnostic text. Decode calls
+return the message directly; handle failures in a `try` block or declare
+`throws` on the caller.
 
 ## Ownership
 

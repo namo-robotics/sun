@@ -19,60 +19,182 @@ public module std.xml {
   }
 
   /** Reports XML syntax, unsupported features, limits, or invalid API operations. */
-  public class XmlError implements IError {
-    var explanation: static_ptr<u8>;
+  public exception XmlError implements IError {
+    var text_: array<u8, 64> = [
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8
+    ];
+    var filename_: array<u8, 24> = [
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8
+    ];
+    var text_length_: i32 = 0;
+    var filename_length_: i32 = -1;
     var offset_: i64;
     var line_: i64;
     var column_: i64;
-    var filename_: Option<String> = Option.None;
 
-    /** Creates a diagnostic; negative coordinates mean no source location. */
+    /** Copies a bounded description and retains the input coordinates. */
     init(message: static_ptr<u8>, offset: i64, line: i64, column: i64) {
-      this.explanation = message;
       this.offset_ = offset;
       this.line_ = line;
       this.column_ = column;
+      for (var i: i64 = 0; i < message.length() and i < 64; i += 1) {
+        this.text_[i] = unsafe { _load<u8>(message.raw(), i); };
+        this.text_length_ += 1;
+      }
     }
 
-    /** Borrows the owned source filename, or None for unnamed input and API errors. */
-    public const method filename() Option<const ref String> {
-      match this.filename_ {
-        Option.Some(value) => {
-          return Option.Some(value);
-        },
-        Option.None => {}
-      };
-      return Option.None;
+    /** Copies the bounded diagnostic without allocating or retaining references. */
+    public const method copy() XmlError {
+      var result = XmlError("", this.offset_, this.line_, this.column_);
+      result.text_length_ = this.text_length_;
+      result.filename_length_ = this.filename_length_;
+      for (var i: i64 = 0; i < 64; i += 1) {
+        result.text_[i] = this.text_[i];
+      }
+      for (var i: i64 = 0; i < 24; i += 1) {
+        result.filename_[i] = this.filename_[i];
+      }
+      return result;
     }
 
-    /** Identifies the XML error category. */
+    /** Copies a bounded filename without retaining the source string. */
+    public method set_filename(filename: const ref String) void {
+      this.filename_length_ = 0;
+      for (var i: i64 = 0; i < filename.length() and i < 24; i += 1) {
+        this.filename_[i] = unsafe { filename.unsafe_at(i); };
+        this.filename_length_ += 1;
+      }
+    }
+
+    /** Returns an explicitly requested owned copy of the optional filename. */
+    public const method filename() Option<String> throws {
+      if (this.filename_length_ < 0) {
+        return Option.None;
+      }
+      var text = String("");
+      for (var i: i64 = 0; i < _convert<i64>(this.filename_length_); i += 1) {
+        text.append_char(this.filename_[i]);
+      }
+      return Option.Some(text);
+    }
+
+    /** Returns the XML failure category. */
     public const method code() i32 {
       return 61;
     }
 
-    /** Returns an owned description, as required by IError. */
-    public const method message() AllocationResult<String> {
-      return String(this.explanation);
+    /** Copies the bounded diagnostic into an explicitly requested owned string. */
+    public const method message() String throws {
+      var text = String("");
+      for (var i: i64 = 0; i < _convert<i64>(this.text_length_); i += 1) {
+        text.append_char(this.text_[i]);
+      }
+      return text;
     }
 
-    /** Returns the original input byte offset, or -1. */
+    /** Returns the original byte offset, or -1 when unavailable. */
     public const method offset() i64 {
       return this.offset_;
     }
 
-    /** Returns the one-based source line, or -1. */
+    /** Returns the original source line, or -1 when unavailable. */
     public const method line() i64 {
       return this.line_;
     }
 
-    /** Returns the one-based Unicode character column, or -1. */
+    /** Returns the original source column, or -1 when unavailable. */
     public const method column() i64 {
       return this.column_;
     }
   }
 
   /** Returns a value or an XML diagnostic. */
-  public enum XmlResult<T> { Ok(T), Error(XmlError) }
 
   /** Creates a diagnostic for operations without an input position. */
   function xml_error(message: static_ptr<u8>) XmlError {
@@ -81,10 +203,12 @@ public module std.xml {
 
   /** Reads a byte, using -1 for end of input. */
   function xml_byte(text: const ref String, pos: i64) i64 {
-    return match text.at(pos) {
-      AccessResult.Ok(c) => _convert<i64>(c),
-      AccessResult.OutOfBounds(_) => -1
-    };
+    try {
+      var c = text.at(pos);
+      return _convert<i64>(c);
+    } catch (ignored_error: IndexOutOfBoundsError) {
+      return -1;
+    }
   }
 
   /** Recognizes XML whitespace. */
@@ -111,7 +235,7 @@ public module std.xml {
   }
 
   /** Validates one UTF-8 sequence and XML character. */
-  function xml_scalar(text: const ref String, pos: i64) XmlResult<XmlScalar> {
+  function xml_scalar(text: const ref String, pos: i64) XmlScalar throws {
     var lead = xml_byte(text, pos);
     var count: i64 = 1;
     var code = lead;
@@ -130,30 +254,30 @@ public module std.xml {
         code = lead & 7;
         minimum = 65536;
       } else {
-        return XmlResult.Error(xml_error("invalid UTF-8"));
+        throw xml_error("invalid UTF-8");
       }
       for (var i: i64 = 1; i < count; i += 1) {
         var c = xml_byte(text, pos + i);
         if (c < 128 or c > 191) {
-          return XmlResult.Error(xml_error("invalid UTF-8 continuation"));
+          throw xml_error("invalid UTF-8 continuation");
         }
         code = code * 64 + (c & 63);
       }
     }
     if (code < minimum or not xml_character(code)) {
-      return XmlResult.Error(xml_error("invalid XML character"));
+      throw xml_error("invalid XML character");
     }
-    return XmlResult.Ok(XmlScalar(code, count));
+    return XmlScalar(code, count);
   }
 
   /** Validates an entire string as XML character data. */
-  function xml_validate_text(text: const ref String) XmlResult<void> {
+  function xml_validate_text(text: const ref String) void throws {
     var pos: i64 = 0;
     while (pos < text.length()) {
-      var scalar = try xml_scalar(text, pos);
+      var scalar = xml_scalar(text, pos);
       pos += scalar.width;
     }
-    return XmlResult.Ok;
+    return;
   }
 
   /** Recognizes an XML name's first character, excluding namespace separators. */
@@ -172,19 +296,19 @@ public module std.xml {
   }
 
   /** Validates a local name or prefix. */
-  function xml_validate_ncname(text: const ref String) XmlResult<void> {
+  function xml_validate_ncname(text: const ref String) void throws {
     if (text.is_empty()) {
-      return XmlResult.Error(xml_error("empty XML name"));
+      throw xml_error("empty XML name");
     }
     var pos: i64 = 0;
     while (pos < text.length()) {
-      var scalar = try xml_scalar(text, pos);
+      var scalar = xml_scalar(text, pos);
       if ((pos == 0 and not xml_name_start(scalar.value)) or not xml_name_char(scalar.value)) {
-        return XmlResult.Error(xml_error("invalid XML name"));
+        throw xml_error("invalid XML name");
       }
       pos += scalar.width;
     }
-    return XmlResult.Ok;
+    return;
   }
 
   /** Copies a byte range using the caller's allocator. */
@@ -193,12 +317,12 @@ public module std.xml {
     text: const ref String,
     start: i64,
     end: i64
-  ) AllocationResult<String> {
-    var result = try String(alloc, "");
+  ) String throws {
+    var result = String(alloc, "");
     for (var i = start; i < end; i += 1) {
-      try result.append_char(_convert<u8>(xml_byte(text, i)));
+      result.append_char(_convert<u8>(xml_byte(text, i)));
     }
-    return AllocationResult.Ok(result);
+    return result;
   }
 
   /** Stores expanded name identity independently of the preferred prefix. */
@@ -230,13 +354,11 @@ public module std.xml {
     }
 
     /** Explicitly copies this name. */
-    public const method clone(alloc: const ref HeapAllocator) AllocationResult<XmlName> {
-      return AllocationResult.Ok(
-        XmlName(
-          try this.uri_.clone(alloc),
-          try this.local_.clone(alloc),
-          try this.prefix_.clone(alloc)
-        )
+    public const method clone(alloc: const ref HeapAllocator) XmlName throws {
+      return XmlName(
+        this.uri_.clone(alloc),
+        this.local_.clone(alloc),
+        this.prefix_.clone(alloc)
       );
     }
 
@@ -246,24 +368,24 @@ public module std.xml {
     }
 
     /** Validates expanded identity and reserved namespace names. */
-    public const method validate() XmlResult<void> {
-      try xml_validate_ncname(this.local_);
-      try xml_validate_text(this.uri_);
+    public const method validate() void throws {
+      xml_validate_ncname(this.local_);
+      xml_validate_text(this.uri_);
       if (not this.prefix_.is_empty()) {
-        try xml_validate_ncname(this.prefix_);
+        xml_validate_ncname(this.prefix_);
       }
       if (this.prefix_.equals_literal("xmlns") or
         this.uri_.equals_literal("http://www.w3.org/2000/xmlns/")) {
-        return XmlResult.Error(xml_error("reserved xmlns name"));
+        throw xml_error("reserved xmlns name");
       }
       if (this.prefix_.equals_literal("xml") and
         not this.uri_.equals_literal("http://www.w3.org/XML/1998/namespace")) {
-        return XmlResult.Error(xml_error("xml prefix requires its reserved namespace"));
+        throw xml_error("xml prefix requires its reserved namespace");
       }
       if (not this.prefix_.is_empty() and this.uri_.is_empty()) {
-        return XmlResult.Error(xml_error("prefix requires a namespace"));
+        throw xml_error("prefix requires a namespace");
       }
-      return XmlResult.Ok;
+      return;
     }
   }
 
@@ -289,10 +411,8 @@ public module std.xml {
     }
 
     /** Explicitly copies a declaration. */
-    public const method clone(alloc: const ref HeapAllocator) AllocationResult<XmlNamespace> {
-      return AllocationResult.Ok(
-        XmlNamespace(try this.prefix.clone(alloc), try this.uri.clone(alloc))
-      );
+    public const method clone(alloc: const ref HeapAllocator) XmlNamespace throws {
+      return XmlNamespace(this.prefix.clone(alloc), this.uri.clone(alloc));
     }
   }
 
@@ -332,40 +452,37 @@ public module std.xml {
   }
 
   /** Validates processing instructions without interpreting their content. */
-  function xml_validate_instruction(
-    target: const ref String,
-    data: const ref String
-  ) XmlResult<void> {
+  function xml_validate_instruction(target: const ref String, data: const ref String) void throws {
     // XML permits colons in processing instruction targets.
     if (target.is_empty()) {
-      return XmlResult.Error(xml_error("empty processing instruction target"));
+      throw xml_error("empty processing instruction target");
     }
     var pos: i64 = 0;
     while (pos < target.length()) {
-      var scalar = try xml_scalar(target, pos);
+      var scalar = xml_scalar(target, pos);
       if (scalar.value != 58 and
         ((pos == 0 and not xml_name_start(scalar.value)) or not xml_name_char(scalar.value))) {
-        return XmlResult.Error(xml_error("invalid processing instruction target"));
+        throw xml_error("invalid processing instruction target");
       }
       pos += scalar.width;
     }
     if (target.length() == 3 and (xml_byte(target, 0) | 32) == 120 and
       (xml_byte(target, 1) | 32) == 109 and (xml_byte(target, 2) | 32) == 108) {
-      return XmlResult.Error(xml_error("reserved processing instruction target"));
+      throw xml_error("reserved processing instruction target");
     }
-    try xml_validate_text(data);
+    xml_validate_text(data);
     if (data.contains("?>")) {
-      return XmlResult.Error(xml_error("processing instruction contains terminator"));
+      throw xml_error("processing instruction contains terminator");
     }
-    return XmlResult.Ok;
+    return;
   }
 
   /** Validates comment text. */
-  function xml_validate_comment(text: const ref String) XmlResult<void> {
-    try xml_validate_text(text);
+  function xml_validate_comment(text: const ref String) void throws {
+    xml_validate_text(text);
     if (text.contains("--") or text.ends_with("-")) {
-      return XmlResult.Error(xml_error("invalid XML comment"));
+      throw xml_error("invalid XML comment");
     }
-    return XmlResult.Ok;
+    return;
   }
 }

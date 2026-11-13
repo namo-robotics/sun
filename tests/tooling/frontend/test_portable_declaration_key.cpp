@@ -185,7 +185,6 @@ TEST(Tooling_Frontend_PortableIdentity,
                              Types::Array(Types::StaticPointer(i32), {2}),
                              Types::Reference(Types::RawPointer(i32)),
                              Types::Reference(Types::StaticPointer(i32)),
-                             std::make_shared<sun::types::ErrorUnionType>(i32),
                              std::make_shared<sun::types::FunctionType>(
                                  i32, std::vector<TypePtr>{i32}),
                              std::make_shared<sun::types::FunctionType>(

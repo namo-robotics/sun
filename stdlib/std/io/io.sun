@@ -4,7 +4,7 @@
 //   using std.io;
 //
 //   var f = File();
-//   try f.open("test.txt", FileMode.Write);
+//   f.open("test.txt", FileMode.Write);
 //   f.write("Hello, World!");
 //   f.close();
 //
@@ -193,8 +193,7 @@ public module std.io {
   public enum ReadResult {
     Data(i64),
     Eof,
-    WouldBlock,
-    Error(Error)
+    WouldBlock
   }
 
   /** Describes a bounded line read; line() holds bytes without the LF delimiter. */
@@ -203,8 +202,7 @@ public module std.io {
     Eof,
     Incomplete,
     TooLong,
-    WouldBlock,
-    Error(Error)
+    WouldBlock
   }
 
   /**
@@ -234,13 +232,13 @@ public module std.io {
       file: ref File,
       max_line_length: i64,
       buffer_size: i64
-    ) SystemResult<void> {
+    ) throws {
       if (max_line_length < 0 or buffer_size <= 0) {
-        return SystemResult.Error(Error(22, "invalid line reader bounds"));
+        throw Error(22, "invalid line reader bounds");
       }
       this.file = file;
-      this.buffer = try ContiguousBuffer<u8>(alloc, buffer_size);
-      this.text = try String(alloc, "");
+      this.buffer = ContiguousBuffer<u8>(alloc, buffer_size);
+      this.text = String(alloc, "");
       this.maximum = max_line_length;
     }
 
@@ -259,9 +257,9 @@ public module std.io {
      * the next call to read the following line. WouldBlock and Error retain
      * progress. Repeated calls after EOF return Eof with an empty line.
      */
-    public method next() AllocationResult<LineReadResult> {
+    public method next() LineReadResult throws {
       var operation = NativeByteIo();
-      return AllocationResult.Ok(try next_line_using(this, operation));
+      return next_line_using(this, operation);
     }
   }
 
@@ -269,7 +267,7 @@ public module std.io {
   function next_line_using<Operation: ByteReader>(
     reader: ref LineReader,
     operation: ref Operation
-  ) AllocationResult<LineReadResult> {
+  ) LineReadResult throws {
     if (reader.delivered) {
       reader.text.clear();
       reader.overlong = false;
@@ -278,34 +276,33 @@ public module std.io {
     while (true) {
       if (reader.position == reader.available) {
         if (reader.finished) {
-          return AllocationResult.Ok(LineReadResult.Eof);
+          return LineReadResult.Eof;
         }
         var bytes = MutableByteSlice(reader.buffer);
-        match read_slice_using(reader.file.get_fd(), bytes, operation) {
-          ReadResult.Data(n) => {
-            reader.position = 0;
-            reader.available = n;
-          },
-          ReadResult.Eof => {
-            reader.finished = true;
-            reader.delivered = true;
-            if (reader.overlong) {
-              return AllocationResult.Ok(LineReadResult.TooLong);
+        try {
+          match read_slice_using(reader.file.get_fd(), bytes, operation) {
+            ReadResult.Data(n) => {
+              reader.position = 0;
+              reader.available = n;
+            },
+            ReadResult.Eof => {
+              reader.finished = true;
+              reader.delivered = true;
+              if (reader.overlong) {
+                return LineReadResult.TooLong;
+              }
+              if (reader.text.length() > 0) {
+                return LineReadResult.Incomplete;
+              }
+              return LineReadResult.Eof;
+            },
+            ReadResult.WouldBlock => {
+              return LineReadResult.WouldBlock;
             }
-            if (reader.text.length() > 0) {
-              return AllocationResult.Ok(LineReadResult.Incomplete);
-            }
-            return AllocationResult.Ok(LineReadResult.Eof);
-          },
-          ReadResult.WouldBlock => {
-            return AllocationResult.Ok(LineReadResult.WouldBlock);
-          },
-          ReadResult.Error(e) => {
-            return AllocationResult.Ok(
-              LineReadResult.Error(Error(e.code(), "failed to read line"))
-            );
-          }
-        };
+          };
+        } catch (e: Error) {
+          throw Error(e.code(), "failed to read line");
+        }
       }
       // The native read initialized every byte below available.
       var ch: u8 = unsafe { reader.buffer.get_unchecked(reader.position); };
@@ -313,24 +310,50 @@ public module std.io {
       if (ch == b'\n') {
         reader.delivered = true;
         if (reader.overlong) {
-          return AllocationResult.Ok(LineReadResult.TooLong);
+          return LineReadResult.TooLong;
         }
-        return AllocationResult.Ok(LineReadResult.Complete);
+        return LineReadResult.Complete;
       }
       if (reader.text.length() < reader.maximum) {
-        try reader.text.append_char(ch);
+        reader.text.append_char(ch);
       } else {
         reader.overlong = true;
       }
     }
-    return AllocationResult.Ok(LineReadResult.Eof);
+    return LineReadResult.Eof;
   }
 
   /** Reports write completion or progress before blocking or failure; resume after that prefix. */
   public enum WriteResult {
     Complete(i64),
-    WouldBlock(i64),
-    Error(i64, Error)
+    WouldBlock(i64)
+  }
+
+  /** Reports a failed write while preserving the successfully transferred prefix. */
+  public exception WriteError implements IError {
+    var code_: i32;
+    var written_: i64;
+
+    /** Records the native error and the bytes already written without allocating. */
+    init(code: i32, written: i64) {
+      this.code_ = code;
+      this.written_ = written;
+    }
+
+    /** Returns the native failure code; zero means the write made no progress. */
+    public const method code() i32 {
+      return this.code_;
+    }
+
+    /** Returns the prefix that must not be retransmitted. */
+    public const method transferred() i64 {
+      return this.written_;
+    }
+
+    /** Produces an explicitly requested owned diagnostic. */
+    public const method message() String throws {
+      return String("write failed after partial progress");
+    }
   }
 
   /** Internal contract for a native read into caller-validated storage. */
@@ -359,7 +382,7 @@ public module std.io {
   }
 
   /** Reads once after retrying interruptions; an empty buffer returns Data(0), never EOF. */
-  function read_slice(fd: i32, buffer: ref MutableByteSlice) ReadResult {
+  function read_slice(fd: i32, buffer: ref MutableByteSlice) ReadResult throws {
     var operation = NativeByteIo();
     return read_slice_using(fd, buffer, operation);
   }
@@ -369,7 +392,7 @@ public module std.io {
     fd: i32,
     buffer: ref MutableByteSlice,
     read_op: ref Operation
-  ) ReadResult {
+  ) ReadResult throws {
     if (buffer.size() == 0) {
       return ReadResult.Data(0);
     }
@@ -386,14 +409,14 @@ public module std.io {
         return ReadResult.WouldBlock;
       }
       if (code != INTERRUPTED_ERRNO) {
-        return ReadResult.Error(Error(code, "failed to read bytes"));
+        throw Error(code, "failed to read bytes");
       }
     }
     return ReadResult.Data(0);
   }
 
   /** Writes the entire slice unless blocked or failed, retrying interruptions and short writes. */
-  function write_slice(fd: i32, buffer: const ref ByteSlice) WriteResult {
+  function write_slice(fd: i32, buffer: const ref ByteSlice) WriteResult throws {
     var operation = NativeByteIo();
     return write_slice_using(fd, buffer, operation);
   }
@@ -403,7 +426,7 @@ public module std.io {
     fd: i32,
     buffer: const ref ByteSlice,
     write_op: ref Operation
-  ) WriteResult {
+  ) WriteResult throws {
     var written: i64 = 0;
     while (written < buffer.size()) {
       var n: i64 = unsafe {
@@ -413,14 +436,14 @@ public module std.io {
         written = written + n;
       } else {
         if (n == 0) {
-          return WriteResult.Error(written, Error(0, "write made no progress"));
+          throw std.io.WriteError(0, written);
         }
         var code = errno();
         if (code == WOULD_BLOCK_ERRNO) {
           return WriteResult.WouldBlock(written);
         }
         if (code != INTERRUPTED_ERRNO) {
-          return WriteResult.Error(written, Error(code, "failed to write bytes"));
+          throw std.io.WriteError(code, written);
         }
       }
     }
@@ -442,12 +465,12 @@ public module std.io {
     }
 
     /** Reads at most the slice's size, distinguishing empty input, EOF, and would-block. */
-    public const method read(buffer: ref MutableByteSlice) ReadResult {
+    public const method read(buffer: ref MutableByteSlice) ReadResult throws {
       return read_slice(this.fd, buffer);
     }
 
     /** Writes until complete, blocked, or failed; every result reports the transferred prefix. */
-    public const method write_all(buffer: const ref ByteSlice) WriteResult {
+    public const method write_all(buffer: const ref ByteSlice) WriteResult throws {
       return write_slice(this.fd, buffer);
     }
   }
@@ -470,9 +493,9 @@ public module std.io {
   /** A file handle that starts empty; open or adopt a descriptor before use. */
   public class File {
     /** Inspect this open file without changing its position or resolving its path again. */
-    public const method metadata() SystemResult<FileMetadata> {
+    public const method metadata() FileMetadata throws {
       if (not this.owns_fd) {
-        return SystemResult.Error(Error(9, "file is closed"));
+        throw Error(9, "file is closed");
       }
       return descriptor_metadata(this.fd);
     }
@@ -484,31 +507,31 @@ public module std.io {
     /**
      * Open a file with the specified mode
      */
-    public method open(path: static_ptr<u8>, mode: FileMode) SystemResult<void> {
-      try this.open_cstr(path.raw(), mode);
-      return SystemResult.Ok;
+    public method open(path: static_ptr<u8>, mode: FileMode) void throws {
+      this.open_cstr(path.raw(), mode);
+      return;
     }
 
     /**
      * Open a file named at runtime. Throws if the system refuses.
      */
-    public method open(path: ref String, mode: FileMode) SystemResult<void> {
-      try this.open_cstr(try path.c_str(), mode);
-      return SystemResult.Ok;
+    public method open(path: ref String, mode: FileMode) void throws {
+      this.open_cstr(path.c_str(), mode);
+      return;
     }
 
     /**
      * Open a file named by a C string. The one place the open syscall is made.
      */
-    method open_cstr(path: raw_ptr<u8>, mode: FileMode) SystemResult<void> {
+    method open_cstr(path: raw_ptr<u8>, mode: FileMode) void throws {
       var result: i32 = unsafe { c_open(path, open_flags(mode), CREATE_MODE); };
       if (result < 0) {
-        return SystemResult.Error(Error(errno(), "failed to open file"));
+        throw Error(errno(), "failed to open file");
       }
       this.close();
       this.fd = result;
       this.owns_fd = true;
-      return SystemResult.Ok;
+      return;
     }
 
     /**
@@ -539,20 +562,20 @@ public module std.io {
     /**
      * Read the rest of the file into a String
      */
-    public method read_all(alloc: const ref HeapAllocator) SystemResult<String> {
-      var out: String = try String(alloc, "");
-      var chunk: ContiguousBuffer<u8> = try ContiguousBuffer<u8>(alloc, 4096);
+    public method read_all(alloc: const ref HeapAllocator) String throws {
+      var out: String = String(alloc, "");
+      var chunk: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 4096);
       var n: i64 = unsafe { c_read(this.fd, chunk.raw_data(), 4096); };
       while (n > 0) {
         for (var i: i64 = 0; i < n; i = i + 1) {
-          try out.append_char(unsafe { chunk.get_unchecked(i); });
+          out.append_char(unsafe { chunk.get_unchecked(i); });
         }
         n = unsafe { c_read(this.fd, chunk.raw_data(), 4096); };
       }
       if (n < 0) {
-        return SystemResult.Error(Error(errno(), "failed to read file"));
+        throw Error(errno(), "failed to read file");
       }
-      return SystemResult.Ok(out);
+      return out;
     }
 
     /**
@@ -598,23 +621,23 @@ public module std.io {
     /**
      * Flush file data to disk
      */
-    public method sync() SystemResult<void> {
+    public method sync() void throws {
       var result: i32 = unsafe { c_fsync(this.fd); };
       if (result < 0) {
-        return SystemResult.Error(Error(errno(), "failed to sync file"));
+        throw Error(errno(), "failed to sync file");
       }
-      return SystemResult.Ok;
+      return;
     }
 
     /**
      * Truncate or extend file to specified length
      */
-    public method truncate(length: i64) SystemResult<void> {
+    public method truncate(length: i64) void throws {
       var result: i32 = unsafe { c_ftruncate(this.fd, length); };
       if (result < 0) {
-        return SystemResult.Error(Error(errno(), "failed to truncate file"));
+        throw Error(errno(), "failed to truncate file");
       }
-      return SystemResult.Ok;
+      return;
     }
 
     /**
@@ -628,12 +651,12 @@ public module std.io {
     }
 
     /** Reads into a bounded mutable slice, retrying interruptions. */
-    public method read(buffer: ref MutableByteSlice) ReadResult {
+    public method read(buffer: ref MutableByteSlice) ReadResult throws {
       return read_slice(this.fd, buffer);
     }
 
     /** Writes a bounded read-only slice, reporting progress if blocked or failed. */
-    public method write_all(buffer: const ref ByteSlice) WriteResult {
+    public method write_all(buffer: const ref ByteSlice) WriteResult throws {
       return write_slice(this.fd, buffer);
     }
 
@@ -667,52 +690,49 @@ public module std.io {
   public function read_to_string(
     alloc: const ref HeapAllocator,
     path: static_ptr<u8>
-  ) SystemResult<String> {
+  ) String throws {
     var f: File = File();
-    try f.open(path, FileMode.Read);
-    var text: String = try f.read_all(alloc);
+    f.open(path, FileMode.Read);
+    var text: String = f.read_all(alloc);
     f.close();
-    return SystemResult.Ok(text);
+    return text;
   }
 
   /**
    * Read a whole file named at runtime into a new String.
    */
-  public function read_to_string(
-    alloc: const ref HeapAllocator,
-    path: ref String
-  ) SystemResult<String> {
+  public function read_to_string(alloc: const ref HeapAllocator, path: ref String) String throws {
     var f: File = File();
-    try f.open(path, FileMode.Read);
-    var text: String = try f.read_all(alloc);
+    f.open(path, FileMode.Read);
+    var text: String = f.read_all(alloc);
     f.close();
-    return SystemResult.Ok(text);
+    return text;
   }
 
   /**
    * Write a String over a file named by a literal, replacing what was there.
    */
-  public function write_string(path: static_ptr<u8>, contents: ref String) SystemResult<void> {
+  public function write_string(path: static_ptr<u8>, contents: ref String) void throws {
     var f: File = File();
-    try f.open(path, FileMode.Write);
+    f.open(path, FileMode.Write);
     if (f.write(contents) < 0) {
-      return SystemResult.Error(Error(errno(), "failed to write file"));
+      throw Error(errno(), "failed to write file");
     }
     f.close();
-    return SystemResult.Ok;
+    return;
   }
 
   /**
    * Write a String over a file named at runtime, replacing what was there.
    */
-  public function write_string(path: ref String, contents: ref String) SystemResult<void> {
+  public function write_string(path: ref String, contents: ref String) void throws {
     var f: File = File();
-    try f.open(path, FileMode.Write);
+    f.open(path, FileMode.Write);
     if (f.write(contents) < 0) {
-      return SystemResult.Error(Error(errno(), "failed to write file"));
+      throw Error(errno(), "failed to write file");
     }
     f.close();
-    return SystemResult.Ok;
+    return;
   }
 
   // -------------------------------------------------------------------
@@ -720,131 +740,128 @@ public module std.io {
   // -------------------------------------------------------------------
 
   /** Removes the file at a null-terminated path and returns Error if removal fails. */
-  function remove_file_cstr(path: raw_ptr<u8>) SystemResult<void> {
+  function remove_file_cstr(path: raw_ptr<u8>) void throws {
     var result: i32 = unsafe { c_unlink(path); };
     if (result < 0) {
-      return SystemResult.Error(Error(errno(), "failed to remove file"));
+      throw Error(errno(), "failed to remove file");
     }
-    return SystemResult.Ok;
+    return;
   }
 
   /**
    * Remove a file
    */
-  public function remove_file(path: static_ptr<u8>) SystemResult<void> {
-    try remove_file_cstr(path.raw());
-    return SystemResult.Ok;
+  public function remove_file(path: static_ptr<u8>) void throws {
+    remove_file_cstr(path.raw());
+    return;
   }
 
   /**
    * Delete a file named at runtime. Throws if it cannot be removed.
    */
-  public function remove_file(path: ref String) SystemResult<void> {
-    try remove_file_cstr(try path.c_str());
-    return SystemResult.Ok;
+  public function remove_file(path: ref String) void throws {
+    remove_file_cstr(path.c_str());
+    return;
   }
 
   /**
    * Rename a file, both paths as C strings. The one place the rename syscall is
    * made.
    */
-  function rename_file_cstr(old_path: raw_ptr<u8>, new_path: raw_ptr<u8>) SystemResult<void> {
+  function rename_file_cstr(old_path: raw_ptr<u8>, new_path: raw_ptr<u8>) void throws {
     var result: i32 = unsafe { c_rename(old_path, new_path); };
     if (result < 0) {
-      return SystemResult.Error(Error(errno(), "failed to rename file"));
+      throw Error(errno(), "failed to rename file");
     }
-    return SystemResult.Ok;
+    return;
   }
 
   /**
    * Rename or move a file
    */
-  public function rename_file(
-    old_path: static_ptr<u8>,
-    new_path: static_ptr<u8>
-  ) SystemResult<void> {
-    try rename_file_cstr(old_path.raw(), new_path.raw());
-    return SystemResult.Ok;
+  public function rename_file(old_path: static_ptr<u8>, new_path: static_ptr<u8>) void throws {
+    rename_file_cstr(old_path.raw(), new_path.raw());
+    return;
   }
 
   /**
    * Rename a file from a literal path to one built at runtime.
    */
-  public function rename_file(old_path: static_ptr<u8>, new_path: ref String) SystemResult<void> {
-    try rename_file_cstr(old_path.raw(), try new_path.c_str());
-    return SystemResult.Ok;
+  public function rename_file(old_path: static_ptr<u8>, new_path: ref String) void throws {
+    rename_file_cstr(old_path.raw(), new_path.c_str());
+    return;
   }
 
   /**
    * Rename a file from a path built at runtime to a literal one.
    */
-  public function rename_file(old_path: ref String, new_path: static_ptr<u8>) SystemResult<void> {
-    try rename_file_cstr(try old_path.c_str(), new_path.raw());
-    return SystemResult.Ok;
+  public function rename_file(old_path: ref String, new_path: static_ptr<u8>) void throws {
+    rename_file_cstr(old_path.c_str(), new_path.raw());
+    return;
   }
 
   /**
    * Rename a file, both paths built at runtime.
    */
-  public function rename_file(old_path: ref String, new_path: ref String) SystemResult<void> {
-    try rename_file_cstr(try old_path.c_str(), try new_path.c_str());
-    return SystemResult.Ok;
+  public function rename_file(old_path: ref String, new_path: ref String) void throws {
+    rename_file_cstr(old_path.c_str(), new_path.c_str());
+    return;
   }
 
   /**
    * Create a directory named by a C string. The one place the mkdir syscall is
    * made.
    */
-  function make_dir_cstr(path: raw_ptr<u8>, mode: i32) SystemResult<void> {
+  function make_dir_cstr(path: raw_ptr<u8>, mode: i32) void throws {
     var result: i32 = unsafe { c_mkdir(path, mode); };
     if (result < 0) {
-      return SystemResult.Error(Error(errno(), "failed to create directory"));
+      throw Error(errno(), "failed to create directory");
     }
-    return SystemResult.Ok;
+    return;
   }
 
   /**
    * Create a directory with the specified mode (e.g. 0755 = 493)
    */
-  public function make_dir(path: static_ptr<u8>, mode: i32) SystemResult<void> {
-    try make_dir_cstr(path.raw(), mode);
-    return SystemResult.Ok;
+  public function make_dir(path: static_ptr<u8>, mode: i32) void throws {
+    make_dir_cstr(path.raw(), mode);
+    return;
   }
 
   /**
    * Create a directory named at runtime, with the given permission bits.
    */
-  public function make_dir(path: ref String, mode: i32) SystemResult<void> {
-    try make_dir_cstr(try path.c_str(), mode);
-    return SystemResult.Ok;
+  public function make_dir(path: ref String, mode: i32) void throws {
+    make_dir_cstr(path.c_str(), mode);
+    return;
   }
 
   /**
    * Remove a directory named by a C string. The one place the rmdir syscall is
    * made.
    */
-  function remove_dir_cstr(path: raw_ptr<u8>) SystemResult<void> {
+  function remove_dir_cstr(path: raw_ptr<u8>) void throws {
     var result: i32 = unsafe { c_rmdir(path); };
     if (result < 0) {
-      return SystemResult.Error(Error(errno(), "failed to remove directory"));
+      throw Error(errno(), "failed to remove directory");
     }
-    return SystemResult.Ok;
+    return;
   }
 
   /**
    * Remove an empty directory
    */
-  public function remove_dir(path: static_ptr<u8>) SystemResult<void> {
-    try remove_dir_cstr(path.raw());
-    return SystemResult.Ok;
+  public function remove_dir(path: static_ptr<u8>) void throws {
+    remove_dir_cstr(path.raw());
+    return;
   }
 
   /**
    * Remove a directory named at runtime. It must already be empty.
    */
-  public function remove_dir(path: ref String) SystemResult<void> {
-    try remove_dir_cstr(try path.c_str());
-    return SystemResult.Ok;
+  public function remove_dir(path: ref String) void throws {
+    remove_dir_cstr(path.c_str());
+    return;
   }
 
   // -------------------------------------------------------------------
@@ -868,8 +885,8 @@ public module std.io {
   /**
    * Report whether anything exists at a path built at runtime.
    */
-  public function exists(path: ref String) AllocationResult<bool> {
-    return AllocationResult.Ok(exists_cstr(try path.c_str()));
+  public function exists(path: ref String) bool throws {
+    return exists_cstr(path.c_str());
   }
 
   /**
@@ -894,8 +911,8 @@ public module std.io {
   /**
    * Report whether a path built at runtime is a directory.
    */
-  public function is_dir(path: ref String) AllocationResult<bool> {
-    return AllocationResult.Ok(is_dir_cstr(try path.c_str()));
+  public function is_dir(path: ref String) bool throws {
+    return is_dir_cstr(path.c_str());
   }
 
   /**
@@ -908,37 +925,37 @@ public module std.io {
   /**
    * Report whether a path built at runtime is an ordinary file.
    */
-  public function is_file(path: ref String) AllocationResult<bool> {
-    return AllocationResult.Ok(try exists(path) and not try is_dir(path));
+  public function is_file(path: ref String) bool throws {
+    return exists(path) and not is_dir(path);
   }
 
   /**
    * The size in bytes of the file at a literal path. Throws if it cannot be
    * opened.
    */
-  public function get_file_size(path: static_ptr<u8>) SystemResult<i64> {
+  public function get_file_size(path: static_ptr<u8>) i64 throws {
     var f: File = File();
-    try f.open(path, FileMode.Read);
+    f.open(path, FileMode.Read);
     var size: i64 = f.seek(0, Whence.End);
     f.close();
     if (size < 0) {
-      return SystemResult.Error(Error(errno(), "failed to size file"));
+      throw Error(errno(), "failed to size file");
     }
-    return SystemResult.Ok(size);
+    return size;
   }
 
   /**
    * The size in bytes of the file at a path built at runtime.
    */
-  public function get_file_size(path: ref String) SystemResult<i64> {
+  public function get_file_size(path: ref String) i64 throws {
     var f: File = File();
-    try f.open(path, FileMode.Read);
+    f.open(path, FileMode.Read);
     var size: i64 = f.seek(0, Whence.End);
     f.close();
     if (size < 0) {
-      return SystemResult.Error(Error(errno(), "failed to size file"));
+      throw Error(errno(), "failed to size file");
     }
-    return SystemResult.Ok(size);
+    return size;
   }
 
   // -------------------------------------------------------------------
@@ -1040,17 +1057,14 @@ public module std.io {
    * List a directory. "." and ".." are left out; the order is whatever the
    * filesystem gives, not sorted.
    */
-  function read_dir_cstr(
-    alloc: const ref HeapAllocator,
-    path: raw_ptr<u8>
-  ) SystemResult<Vec<DirEntry>> {
+  function read_dir_cstr(alloc: const ref HeapAllocator, path: raw_ptr<u8>) Vec<DirEntry> throws {
     var dir: raw_ptr<u8> = unsafe { c_opendir(path); };
     if (dir == null) {
-      return SystemResult.Error(Error(errno(), "failed to open directory"));
+      throw Error(errno(), "failed to open directory");
     }
 
     var stream = DirectoryStream(dir);
-    var entries: Vec<DirEntry> = try Vec<DirEntry>(alloc, 8);
+    var entries: Vec<DirEntry> = Vec<DirEntry>(alloc, 8);
     var rec: raw_ptr<u8> = unsafe { c_readdir(dir); };
     while (rec != null) {
       // struct dirent's head differs per OS; the two byte offsets that
@@ -1059,12 +1073,12 @@ public module std.io {
       var name: raw_ptr<u8> = unsafe { _ptr_offset(rec, DIRENT_NAME_OFFSET); };
       if (not is_dot_entry(name)) {
         var d_type: u8 = unsafe { _load<u8>(rec, DIRENT_TYPE_OFFSET); };
-        try entries.push(DirEntry(try from_c_str(alloc, name), kind_of(d_type)));
+        entries.push(DirEntry(from_c_str(alloc, name), kind_of(d_type)));
       }
       rec = unsafe { c_readdir(dir); };
     }
 
-    return SystemResult.Ok(entries);
+    return entries;
   }
 
   /**
@@ -1074,18 +1088,15 @@ public module std.io {
   public function read_dir(
     alloc: const ref HeapAllocator,
     path: static_ptr<u8>
-  ) SystemResult<Vec<DirEntry>> {
-    return SystemResult.Ok((try read_dir_cstr(alloc, path.raw())));
+  ) Vec<DirEntry> throws {
+    return (read_dir_cstr(alloc, path.raw()));
   }
 
   /**
    * List the entries of a directory at a path built at runtime.
    */
-  public function read_dir(
-    alloc: const ref HeapAllocator,
-    path: ref String
-  ) SystemResult<Vec<DirEntry>> {
-    return SystemResult.Ok((try read_dir_cstr(alloc, try path.c_str())));
+  public function read_dir(alloc: const ref HeapAllocator, path: ref String) Vec<DirEntry> throws {
+    return (read_dir_cstr(alloc, path.c_str()));
   }
 
   // -------------------------------------------------------------------
@@ -1097,9 +1108,9 @@ public module std.io {
    * input with nothing read. Unbuffered on purpose: a buffered reader would
    * swallow bytes a later child process expects to find on the descriptor.
    */
-  public function read_line(alloc: const ref HeapAllocator) AllocationResult<Option<String>> {
-    var line: String = try String(alloc, "");
-    var byte: ContiguousBuffer<u8> = try ContiguousBuffer<u8>(alloc, 1);
+  public function read_line(alloc: const ref HeapAllocator) Option<String> throws {
+    var line: String = String(alloc, "");
+    var byte: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 1);
     var got_any: bool = false;
 
     var n: i64 = unsafe { c_read(STDIN_FD, byte.raw_data(), 1); };
@@ -1107,16 +1118,16 @@ public module std.io {
       got_any = true;
       var ch: u8 = unsafe { byte.get_unchecked(0); };
       if (ch == 10) {
-        return AllocationResult.Ok(Option.Some(line));
+        return Option.Some(line);
       }
-      try line.append_char(ch);
+      line.append_char(ch);
       n = unsafe { c_read(STDIN_FD, byte.raw_data(), 1); };
     }
 
     if (not got_any) {
-      return AllocationResult.Ok(Option.None);
+      return Option.None;
     }
-    return AllocationResult.Ok(Option.Some(line));
+    return Option.Some(line);
   }
 
   // -------------------------------------------------------------------
@@ -1134,45 +1145,45 @@ public module std.io {
     /**
      * Build an empty poller. Add descriptors before waiting.
      */
-    init(alloc: const ref HeapAllocator) AllocationResult<void> {
+    init(alloc: const ref HeapAllocator) throws {
       this.alloc = alloc.copy();
-      this.fds = try Vec<PollFd>(alloc, 4);
+      this.fds = Vec<PollFd>(alloc, 4);
     }
 
     /**
      * Watch for an arbitrary combination of the POLL* bits.
      */
-    public method add(fd: i32, events: i16) AllocationResult<void> {
-      try this.fds.push(PollFd(fd, events));
+    public method add(fd: i32, events: i16) void throws {
+      this.fds.push(PollFd(fd, events));
 
-      return AllocationResult.Ok;
+      return;
     }
 
     /**
      * Watch for readable data (or the peer hanging up).
      */
-    public method add_read(fd: i32) AllocationResult<void> {
-      try this.fds.push(PollFd(fd, POLLIN));
+    public method add_read(fd: i32) void throws {
+      this.fds.push(PollFd(fd, POLLIN));
 
-      return AllocationResult.Ok;
+      return;
     }
 
     /**
      * Watch for room to write.
      */
-    public method add_write(fd: i32) AllocationResult<void> {
-      try this.fds.push(PollFd(fd, POLLOUT));
+    public method add_write(fd: i32) void throws {
+      this.fds.push(PollFd(fd, POLLOUT));
 
-      return AllocationResult.Ok;
+      return;
     }
 
     /**
      * Watch a descriptor for both readable data and room to write.
      */
-    public method add_read_write(fd: i32) AllocationResult<void> {
-      try this.fds.push(PollFd(fd, POLLIN | POLLOUT));
+    public method add_read_write(fd: i32) void throws {
+      this.fds.push(PollFd(fd, POLLIN | POLLOUT));
 
-      return AllocationResult.Ok;
+      return;
     }
 
     /**
@@ -1230,7 +1241,7 @@ public module std.io {
      * Blocks until something is ready, the timeout expires, or a signal
      * arrives. -1 waits forever. Returns how many descriptors are ready.
      */
-    public method wait(timeout_ms: i32) SystemResult<i32> {
+    public method wait(timeout_ms: i32) i32 throws {
       var ready: i32 = unsafe {
         c_poll(
           this.fds.raw_data(),
@@ -1239,28 +1250,28 @@ public module std.io {
         );
       };
       if (ready < 0) {
-        return SystemResult.Error(Error(errno(), "poll failed"));
+        throw Error(errno(), "poll failed");
       }
-      return SystemResult.Ok(ready);
+      return ready;
     }
 
     /**
      * Wait for a finite duration and return the descriptors that became ready.
      */
-    public method wait(timeout: const ref std.time.Duration) SystemResult<Vec<Event>> {
-      var ready_count: i32 = try this.wait(poll_timeout_millis(timeout));
+    public method wait(timeout: const ref std.time.Duration) Vec<Event> throws {
+      var ready_count: i32 = this.wait(poll_timeout_millis(timeout));
       var capacity: i64 = _convert<i64>(ready_count);
       if (capacity < 1) {
         capacity = 1;
       }
-      var ready: Vec<Event> = try Vec<Event>(this.alloc, capacity);
+      var ready: Vec<Event> = Vec<Event>(this.alloc, capacity);
       for (var i: i64 = 0; i < this.fds.size(); i = i + 1) {
         var entry: ref PollFd = unsafe { this.fds.get_unchecked(i); };
         if (entry.revents != 0) {
-          try ready.push(Event(entry.fd, entry.revents));
+          ready.push(Event(entry.fd, entry.revents));
         }
       }
-      return SystemResult.Ok(ready);
+      return ready;
     }
 
     /**

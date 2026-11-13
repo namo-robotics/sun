@@ -10,37 +10,37 @@ public module std.http {
   /**
      * Builds "GET /index.html HTTP/1.1\r\nHost: x\r\n\r\n"
      */
-  function build_request(alloc: ref HeapAllocator) AllocationResult<String> {
-    var raw = try String(alloc, "GET /index.html HTTP/1.1");
-    try append_crlf(raw);
-    try raw.append("Host: x");
-    try append_crlf(raw);
-    try append_crlf(raw);
-    return AllocationResult.Ok(raw);
+  function build_request(alloc: ref HeapAllocator) String throws {
+    var raw = String(alloc, "GET /index.html HTTP/1.1");
+    append_crlf(raw);
+    raw.append("Host: x");
+    append_crlf(raw);
+    append_crlf(raw);
+    return raw;
   }
 
   /** Checks parse request method and path. */
   test_function parse_request_method_and_path() {
     var alloc = make_heap_allocator();
-    var raw = try build_request(alloc);
-    var req = try HttpRequest(alloc);
-    try parse_http_request(raw, req);
-    try std.test.assert(req.method.equals_literal("GET"), "method should be GET");
-    try std.test.assert(req.path.equals_literal("/index.html"), "path should be /index.html");
-    try std.test.assert(req.headers.starts_with("Host: x"), "headers should start with Host: x");
+    var raw = build_request(alloc);
+    var req = HttpRequest(alloc);
+    parse_http_request(raw, req);
+    std.test.assert(req.method.equals_literal("GET"), "method should be GET");
+    std.test.assert(req.path.equals_literal("/index.html"), "path should be /index.html");
+    std.test.assert(req.headers.starts_with("Host: x"), "headers should start with Host: x");
   }
 
   /** Checks find header end finds terminator. */
   test_function find_header_end_finds_terminator() {
     var alloc = make_heap_allocator();
-    var complete = try build_request(alloc);
-    var incomplete = try String(alloc, "GET / HTTP/1.1");
-    try append_crlf(incomplete);
-    try std.test.assert(
+    var complete = build_request(alloc);
+    var incomplete = String(alloc, "GET / HTTP/1.1");
+    append_crlf(incomplete);
+    std.test.assert(
       std.http.find_header_end(incomplete) < 0,
       "incomplete headers have no terminator"
     );
-    try std.test.assert(
+    std.test.assert(
       std.http.find_header_end(complete) >= 0,
       "complete headers have a terminator"
     );
@@ -52,64 +52,64 @@ public module std.http {
      */
   test_function find_header_end_returns_the_run_start() {
     var alloc = make_heap_allocator();
-    var s = try String(alloc, "GET / HTTP/1.1\r\nHost: x\r\n\r\nbody");
+    var s = String(alloc, "GET / HTTP/1.1\r\nHost: x\r\n\r\nbody");
     // The run starts at the CRLF that ends the last header line, not
     // after it: "GET / HTTP/1.1" (14) + CRLF (2) + "Host: x" (7) = 23.
-    try std.test.assert_eq(std.http.find_header_end(s), 23);
+    std.test.assert_eq(std.http.find_header_end(s), 23);
 
     // A terminator at the very start, and one at the very end
-    var lead = try String(alloc, "\r\n\r\nrest");
-    try std.test.assert_eq(std.http.find_header_end(lead), 0);
-    var trail = try String(alloc, "ab\r\n\r\n");
-    try std.test.assert_eq(std.http.find_header_end(trail), 2);
+    var lead = String(alloc, "\r\n\r\nrest");
+    std.test.assert_eq(std.http.find_header_end(lead), 0);
+    var trail = String(alloc, "ab\r\n\r\n");
+    std.test.assert_eq(std.http.find_header_end(trail), 2);
 
     // Three CRs in a row: the match starts at the first complete run
-    var tricky = try String(alloc, "\r\r\n\r\n");
-    try std.test.assert_eq(std.http.find_header_end(tricky), 1);
+    var tricky = String(alloc, "\r\r\n\r\n");
+    std.test.assert_eq(std.http.find_header_end(tricky), 1);
 
     // Never a partial match
-    var cut = try String(alloc, "a\r\n\r");
-    try std.test.assert(std.http.find_header_end(cut) < 0, "partial run must not match");
-    var empty = try String(alloc, "");
-    try std.test.assert(std.http.find_header_end(empty) < 0, "empty text has no terminator");
+    var cut = String(alloc, "a\r\n\r");
+    std.test.assert(std.http.find_header_end(cut) < 0, "partial run must not match");
+    var empty = String(alloc, "");
+    std.test.assert(std.http.find_header_end(empty) < 0, "empty text has no terminator");
   }
 
   /** Checks response defaults and setters. */
   test_function response_defaults_and_setters() {
     var alloc = make_heap_allocator();
-    var resp = try HttpResponse(alloc);
-    try std.test.assert_eq(resp.status, 200);
-    try std.test.assert(
+    var resp = HttpResponse(alloc);
+    std.test.assert_eq(resp.status, 200);
+    std.test.assert(
       resp.content_type.equals_literal("text/html"),
       "default content type is text/html"
     );
-    try std.test.assert_eq(resp.body.length(), 0);
+    std.test.assert_eq(resp.body.length(), 0);
 
     resp.set_status(404);
-    try resp.set_content_type("application/json");
-    try resp.set_body("{}");
-    try std.test.assert_eq(resp.status, 404);
-    try std.test.assert(
+    resp.set_content_type("application/json");
+    resp.set_body("{}");
+    std.test.assert_eq(resp.status, 404);
+    std.test.assert(
       resp.content_type.equals_literal("application/json"),
       "content type setter"
     );
-    try std.test.assert(resp.body.equals_literal("{}"), "body setter");
+    std.test.assert(resp.body.equals_literal("{}"), "body setter");
   }
 
   /** Checks status reason phrases. */
   test_function status_reason_phrases() {
     var alloc = make_heap_allocator();
-    var ok = try String(alloc, "");
-    try append_reason_phrase(ok, 200);
-    try std.test.assert(ok.equals_literal("OK"), "200 is OK");
+    var ok = String(alloc, "");
+    append_reason_phrase(ok, 200);
+    std.test.assert(ok.equals_literal("OK"), "200 is OK");
 
-    var nf = try String(alloc, "");
-    try append_reason_phrase(nf, 404);
-    try std.test.assert(nf.equals_literal("Not Found"), "404 is Not Found");
+    var nf = String(alloc, "");
+    append_reason_phrase(nf, 404);
+    std.test.assert(nf.equals_literal("Not Found"), "404 is Not Found");
 
-    var unknown = try String(alloc, "");
-    try append_reason_phrase(unknown, 599);
-    try std.test.assert(unknown.equals_literal("Status"), "unknown codes say Status");
+    var unknown = String(alloc, "");
+    append_reason_phrase(unknown, 599);
+    std.test.assert(unknown.equals_literal("Status"), "unknown codes say Status");
   }
 
   /** Checks server handler lambda compiles. */
@@ -118,14 +118,14 @@ public module std.http {
     // API wires up (bind to port 0 is skipped - just construct and stop).
     var alloc = make_heap_allocator();
     var server = HttpServer(alloc);
-    var req = try HttpRequest(alloc);
-    var resp = try HttpResponse(alloc);
-    var handler = (r: ref HttpRequest, w: ref HttpResponse) => Result<void> {
+    var req = HttpRequest(alloc);
+    var resp = HttpResponse(alloc);
+    var handler = (r: ref HttpRequest, w: ref HttpResponse) => void throws {
       w.set_status(404);
-      return Result.Ok;
+      return;
     };
-    try handler(req, resp);
+    handler(req, resp);
     server.stop();
-    try std.test.assert_eq(resp.status, 404);
+    std.test.assert_eq(resp.status, 404);
   }
 }

@@ -217,11 +217,6 @@ pbc::TypeAnnotation exportType(
                      type)) {
     nominal(out, *value, value->getDisplayName(), value->getGenericArgs(),
             declarations);
-  } else if (auto* value =
-                 sun::codegen::support::tryGetType<sun::types::ErrorUnionType>(
-                     type)) {
-    out = exportType(value->getValueType(), declarations);
-    out.set_can_error(true);
   } else {
     out.set_base_name(type->toString());
   }

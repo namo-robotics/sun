@@ -6,12 +6,12 @@
 //   using std.time;
 //
 //   if (is_terminal(STDIN_FD)) {
-//       var mode = try TerminalMode(STDIN_FD, Mode.Raw, SignalPolicy.AsInput);
-//       var size = try get_size(STDOUT_FD);
+//       var mode = TerminalMode(STDIN_FD, Mode.Raw, SignalPolicy.AsInput);
+//       var size = get_size(STDOUT_FD);
 //       while (true) {
-//           match try read_key(STDIN_FD, create_duration_millis(250)) {
+//           match read_key(STDIN_FD, create_duration_millis(250)) {
 //               Option.Some(key) => { if (key == 3 or key == b'q') { break; } },
-//               Option.None => { size = try get_size(STDOUT_FD); }  // maybe resized
+//               Option.None => { size = get_size(STDOUT_FD); }  // maybe resized
 //           };
 //       }
 //   }   // `mode` leaves scope here and the terminal is restored
@@ -79,25 +79,25 @@ public module std.terminal {
    * The terminal's current size. Returns an error when the descriptor is not a terminal
    * (errno ENOTTY) or the driver refuses the request.
    */
-  public function get_size(fd: i32) SystemResult<Size> {
+  public function get_size(fd: i32) Size throws {
     var ws: Winsize = Winsize();
     var result: i32 = unsafe { c_ioctl(fd, TIOCGWINSZ, _address_of<Winsize>(ws)); };
     if (result != 0) {
-      return SystemResult.Error(Error(errno(), "failed to read terminal size"));
+      throw Error(errno(), "failed to read terminal size");
     }
-    return SystemResult.Ok(Size(_convert<i64>(ws.row), _convert<i64>(ws.col)));
+    return Size(_convert<i64>(ws.row), _convert<i64>(ws.col));
   }
 
   /**
    * A snapshot of the terminal's line-discipline settings. Returns an error when the
    * descriptor is not a terminal (errno ENOTTY).
    */
-  public function read_attributes(fd: i32) SystemResult<Termios> {
+  public function read_attributes(fd: i32) Termios throws {
     var attrs: Termios = Termios();
     if (unsafe { c_tcgetattr(fd, attrs); } != 0) {
-      return SystemResult.Error(Error(errno(), "failed to read terminal attributes"));
+      throw Error(errno(), "failed to read terminal attributes");
     }
-    return SystemResult.Ok(attrs);
+    return attrs;
   }
 
   /** Whether typed characters are echoed back (the ECHO flag). */
@@ -134,11 +134,11 @@ public module std.terminal {
      * changing anything when the descriptor is not a terminal (errno ENOTTY)
      * or the driver rejects the new settings.
      */
-    init(fd: i32, mode: Mode, signals: SignalPolicy) SystemResult<void> {
-      this.saved = (try read_attributes(fd));
+    init(fd: i32, mode: Mode, signals: SignalPolicy) throws {
+      this.saved = (read_attributes(fd));
       // A second read rather than a copy: Sun has no implicit copies and the
       // mirror has no clone; one more syscall is cheaper than a per-OS one.
-      var next: Termios = try read_attributes(fd);
+      var next: Termios = read_attributes(fd);
 
       match mode {
         Mode.Raw => {
@@ -164,7 +164,7 @@ public module std.terminal {
       next.cc[VTIME] = 0u8;
 
       if (unsafe { c_tcsetattr(fd, TCSANOW, next); } != 0) {
-        return SystemResult.Error(Error(errno(), "failed to set terminal attributes"));
+        throw Error(errno(), "failed to set terminal attributes");
       }
       this.fd = fd;
       this.active = true;
@@ -175,15 +175,15 @@ public module std.terminal {
      * Returns an error if the terminal refuses, in which case the guard stays active
      * and its destructor tries once more.
      */
-    public method restore() SystemResult<void> {
+    public method restore() void throws {
       if (not this.active) {
-        return SystemResult.Ok;
+        return;
       }
       if (unsafe { c_tcsetattr(this.fd, TCSANOW, this.saved); } != 0) {
-        return SystemResult.Error(Error(errno(), "failed to restore terminal attributes"));
+        throw Error(errno(), "failed to restore terminal attributes");
       }
       this.active = false;
-      return SystemResult.Ok;
+      return;
     }
 
     /** Whether the terminal is still in the mode this guard applied. */
@@ -211,32 +211,32 @@ public module std.terminal {
    * several calls; after a 27, drain the rest with try_read_key. Allocates
    * nothing.
    */
-  public function read_key(fd: i32, timeout: const ref std.time.Duration) SystemResult<Option<u8>> {
+  public function read_key(fd: i32, timeout: const ref std.time.Duration) Option<u8> throws {
     var pfd: PollFd = PollFd(fd, POLLIN);
     var ready: i32 = unsafe {
       c_poll(_bitcast<raw_ptr<u8>>(_address_of<PollFd>(pfd)), 1, poll_timeout_millis(timeout));
     };
     if (ready < 0) {
-      return SystemResult.Error(Error(errno(), "poll failed"));
+      throw Error(errno(), "poll failed");
     }
     if (ready == 0) {
-      return SystemResult.Ok(Option.None);
+      return Option.None;
     }
 
     var byte: u8 = 0;
     var n: i64 = unsafe { c_read(fd, _address_of<u8>(byte), 1); };
     if (n == 1) {
-      return SystemResult.Ok(Option.Some(byte));
+      return Option.Some(byte);
     }
     if (n == 0) {
-      return SystemResult.Error(Error(0, "end of input"));
+      throw Error(0, "end of input");
     }
-    return SystemResult.Error(Error(errno(), "failed to read key"));
+    throw Error(errno(), "failed to read key");
   }
 
   /** read_key without waiting: the byte if one is already pending, else None. */
-  public function try_read_key(fd: i32) SystemResult<Option<u8>> {
+  public function try_read_key(fd: i32) Option<u8> throws {
     var now: std.time.Duration = std.time.create_duration_millis(0);
-    return SystemResult.Ok((try read_key(fd, now)));
+    return (read_key(fd, now));
   }
 }

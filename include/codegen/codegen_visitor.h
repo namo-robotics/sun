@@ -95,7 +95,6 @@ class CodegenVisitor {
   std::shared_ptr<ClassType>& currentClass;
   bool& currentFunctionCanError;
   bool& currentFunctionReturnsRef;
-  llvm::Type*& currentFunctionValueType;
 
   // ---------------------------------------------------------------
   // Components
@@ -149,7 +148,6 @@ class CodegenVisitor {
         currentClass(state_.frame.currentClass),
         currentFunctionCanError(state_.frame.canError),
         currentFunctionReturnsRef(state_.frame.returnsRef),
-        currentFunctionValueType(state_.frame.valueType),
         externC(ctx, ctx.mainModule.get()) {}
 
   // ---------------------------------------------------------------

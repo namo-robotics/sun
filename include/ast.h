@@ -63,6 +63,7 @@
 #include "ast/prototype_ast.h"
 
 // Error handling nodes
+#include "ast/exception_ast.h"
 
 // Module nodes
 #include "ast/manifest_ast.h"

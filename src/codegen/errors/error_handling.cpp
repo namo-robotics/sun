@@ -41,11 +41,10 @@ Value* ErrorGenerator::codegen(const sun::ast::UnsafeBlockAST& expr) {
 // =============================================================================
 // LLVM Exception Handling Helpers
 // =============================================================================
-// These functions declare/get the C++ ABI exception handling functions
-// needed for LLVM's native exception handling mechanism.
+// These helpers declare Sun's personality for native unwind tables.
 
 // Get the personality function for exception handling.
-// We use __gxx_personality_v0 for C++ ABI compatibility.
+// The platform unwinder delegates Sun handler selection to this function.
 Constant* ErrorGenerator::getPersonalityFunction() {
   auto* i32Ty = llvm::Type::getInt32Ty(ctx.getContext());
   auto* i64Ty = llvm::Type::getInt64Ty(ctx.getContext());
@@ -54,7 +53,7 @@ Constant* ErrorGenerator::getPersonalityFunction() {
   // the verifier is happy about the personality reference.
   llvm::FunctionType* fnType = llvm::FunctionType::get(
       i32Ty, {i32Ty, i32Ty, i64Ty, ptrTy, ptrTy}, false);
-  auto fn = module->getOrInsertFunction("__gxx_personality_v0", fnType);
+  auto fn = module->getOrInsertFunction("sun_eh_personality", fnType);
   return cast<Constant>(fn.getCallee());
 }
 
@@ -67,63 +66,18 @@ void ErrorGenerator::ensurePersonality(Function* fn) {
 }
 
 // A call that can unwind needs a cleanup pad when live owners would be skipped.
-// Drop those owners and resume unwinding; Sun does not install catch handlers.
+// Each exceptional edge selects a handler and releases the owners it leaves.
 // Each pad records the owners that are live at its particular call site.
 Value* ErrorGenerator::emitPossiblyThrowingCall(llvm::FunctionType* fnTy,
                                                 Value* callee,
                                                 ArrayRef<Value*> args,
                                                 bool canThrow,
                                                 const Twine& name) {
-  const auto descriptor = sun::abi::CallDescriptor::forCall(fnTy, callee);
-  /** Applies the same ABI to ordinary calls and calls with cleanup edges. */
-  auto finish = [&](llvm::CallBase* call) -> llvm::Value* {
-    descriptor.apply(*call);
-    return call;
-  };
-  bool isVoid = fnTy->getReturnType()->isVoidTy();
-  if (!canThrow) {
-    return finish(
-        ctx.builder->CreateCall(fnTy, callee, args, isVoid ? "" : name));
-  }
-
-  size_t cleanupDepth = scopes().functionBoundaryDepth();
-  bool needsCleanup = scopes().hasLiveOwners(cleanupDepth);
-
-  if (!needsCleanup) {
-    // Nothing to clean: let the exception unwind straight into the caller.
-    return finish(
-        ctx.builder->CreateCall(fnTy, callee, args, isVoid ? "" : name));
-  }
-
-  Function* curFn = ctx.builder->GetInsertBlock()->getParent();
-  ensurePersonality(curFn);
-  BasicBlock* contBB =
-      BasicBlock::Create(ctx.getContext(), "invoke.cont", curFn);
-
-  BasicBlock* unwindDest;
-  {
-    // Build the per-call-site cleanup pad.
-    auto* ptrTy = PointerType::getUnqual(ctx.getContext());
-    auto* i32Ty = llvm::Type::getInt32Ty(ctx.getContext());
-    llvm::StructType* lpadTy = StructType::get(ptrTy, i32Ty);
-
-    BasicBlock* padBB =
-        BasicBlock::Create(ctx.getContext(), "cleanup.pad", curFn);
-    sun::codegen::CodegenState::InsertPointGuard here(state_);
-    ctx.builder->SetInsertPoint(padBB);
-    llvm::LandingPadInst* lp =
-        ctx.builder->CreateLandingPad(lpadTy, 1, "cleanup.lp");
-    // Drop owners, then continue unwinding to the caller.
-    lp->setCleanup(true);
-    scopes().emitCleanupToDepth(cleanupDepth, /*unwinding=*/true);
-    ctx.builder->CreateResume(lp);
-    unwindDest = padBB;
-  }
-
-  Value* inv = finish(ctx.builder->CreateInvoke(
-      fnTy, callee, contBB, unwindDest, args, isVoid ? "" : name));
-  ctx.builder->SetInsertPoint(contBB);
-  return inv;
+  if (canThrow) return emitNativeCall(fnTy, callee, args, name);
+  auto* call = ctx.builder->CreateCall(
+      fnTy, callee, args, fnTy->getReturnType()->isVoidTy() ? "" : name);
+  sun::abi::CallDescriptor::forCall(fnTy, callee).apply(*call);
+  return call;
 }
 
 Value* ErrorGenerator::emitPossiblyThrowingCall(FunctionCallee callee,

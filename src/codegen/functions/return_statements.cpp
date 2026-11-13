@@ -106,24 +106,7 @@ Value* FunctionGenerator::codegen(const sun::ast::ReturnExprAST& expr) {
           retVal, expr.getValue()->getResolvedType());
     }
 
-    // A failed constructor releases initialized fields without running deinit
-    // on an object that never became fully initialized.
-    auto* returnedCall =
-        dynamic_cast<const sun::ast::CallExprAST*>(expr.getValue());
-    auto* returnedVariant =
-        returnedCall ? dynamic_cast<const sun::ast::MemberAccessAST*>(
-                           returnedCall->getCallee())
-                     : nullptr;
-    if (func->hasFnAttribute("sun.fallible_init") && returnedVariant &&
-        returnedVariant->getMemberName() !=
-            static_cast<const sun::types::EnumType&>(*expr.getTargetType())
-                .getVariants()
-                .front()
-                .name) {
-      scopes().emitCleanupToDepth(scopes().functionBoundaryDepth(), true);
-    } else {
-      scopes().emitScopeCleanup();
-    }
+    scopes().emitScopeCleanup();
 
     // A void function may still be written `return <expr>;` when the
     // expression is itself void — `return _thread_join<T>(c);` in a
@@ -159,7 +142,7 @@ Value* FunctionGenerator::codegen(const sun::ast::ReturnExprAST& expr) {
 
     ctx.builder->CreateRet(retVal);
   } else {
-    // Void return - clean up and return. A 'void throws IError' function
+    // Void return - clean up and return. A 'void throws' function
     // returns plain void now (exceptions carry error state, not the return
     // value).
     scopes().emitScopeCleanup();

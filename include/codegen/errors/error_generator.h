@@ -22,11 +22,11 @@ class ScopeManager;
 #include "ast.h"
 #include "codegen/codegen_state.h"
 
-/** Generates value-based error support and call cleanup. */
+/** Generates native exception handling and ownership cleanup. */
 namespace sun::codegen::errors {
 using sun::ast::ExprAST;
 
-/** Emits unsafe blocks and calls with ownership cleanup. */
+/** Emits throws, handlers, unsafe blocks, and calls with ownership cleanup. */
 class ErrorGenerator {
  public:
   /** Binds error propagation generation to the shared expression visitor and
@@ -60,7 +60,42 @@ class ErrorGenerator {
                                         llvm::ArrayRef<llvm::Value*> args,
                                         bool canThrow, const llvm::Twine& name);
 
+  /** Emits a bounded transfer through the native unwinder. */
+  llvm::Value* codegen(const sun::ast::ThrowAST& statement);
+  /** Emits protected blocks and stack-owned catches. */
+  llvm::Value* codegen(const sun::ast::TryCatchAST& statement);
+  /** Terminates if a destructor violates its non-throwing boundary. */
+  void emitDestructorCall(llvm::Function* callee, llvm::Value* receiver);
+
  private:
+  /** Describes a handler in the currently generated function. */
+  struct NativeHandler {
+    llvm::Function* function;
+    llvm::Constant* type;
+    llvm::BasicBlock* block;
+    llvm::PHINode* exception;
+    std::size_t depth;
+  };
+  /** Retains the full concrete value while a catch exposes its family view. */
+  struct NativeCatch {
+    llvm::Function* function;
+    sun::semantic_analysis::DeclarationId binding;
+    llvm::Value* record;
+  };
+  std::vector<NativeHandler> nativeHandlers_;
+  std::vector<NativeCatch> nativeCatches_;
+  /** Emits immutable nominal metadata including the payload layout contract. */
+  llvm::Constant* exceptionDescriptor(const sun::types::ClassType& type);
+  /** Allocates bounded storage in the entry block instead of growing loops. */
+  llvm::AllocaInst* exceptionStorage(std::size_t size, const llvm::Twine& name);
+  /** Emits an invoke and the cleanup edges needed for Sun-native exceptions. */
+  llvm::Value* emitNativeCall(llvm::FunctionType* type, llvm::Value* callee,
+                              llvm::ArrayRef<llvm::Value*> args,
+                              const llvm::Twine& name);
+  /** Runs exceptional cleanup with a separate stable record for nested throws. */
+  void emitNativeCleanup(std::size_t depth);
+  /** Terminates at a non-throwing boundary without invoking further cleanup. */
+  void emitExceptionTermination();
   sun::codegen::CodegenState& state_;
   sun::codegen::CodegenVisitor& gen_;
   sun::codegen::CodegenContext& ctx;

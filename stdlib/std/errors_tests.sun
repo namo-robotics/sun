@@ -1,0 +1,33 @@
+/** Verifies bounded diagnostic storage independently of message allocation. */
+public module std {
+
+  /** Truncates literal diagnostics to the inline capacity while retaining the code. */
+  test_function exception_literal_message_is_bounded() {
+    var source = "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789";
+    try {
+      throw Error(73, source);
+    } catch (error: Error) {
+      test.assert_eq(error.code(), 73);
+      var message = error.message();
+      test.assert_eq(message.length(), 96);
+      test.assert_eq(message.at(95), b'5');
+    }
+  }
+
+  /** Throws a copy of text whose original String is destroyed during unwinding. */
+  function throw_temporary_diagnostic() void throws {
+    var text = String("temporary diagnostic");
+    throw Error(19, text);
+  }
+
+  /** Inline diagnostic bytes survive destruction of the String used to construct them. */
+  test_function exception_message_survives_source_cleanup() {
+    try {
+      throw_temporary_diagnostic();
+      test.fail("expected an exception");
+    } catch (error: Error) {
+      var message = error.message();
+      test.assert(message.equals_literal("temporary diagnostic"));
+    }
+  }
+}

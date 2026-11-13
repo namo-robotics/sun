@@ -27,7 +27,7 @@
 //   socket.bind(ipv4_any(), 0);            // port 0: the OS picks one
 //   var port: i32 = socket.local_port();   // read the picked port back
 //   socket.send_str_to("ping", ipv4_loopback(), 9000);
-//   var buf = try ContiguousBuffer<u8>(global_allocator, 1024);
+//   var buf = ContiguousBuffer<u8>(global_allocator, 1024);
 //   var datagram = socket.recv_from(buf);  // who sent what
 //   socket.close();
 
@@ -35,17 +35,17 @@
 public module std.net {
 
   /** Nonblocking connection progress; errors close the attempted connection. */
-  public enum ConnectResult { Connected, Pending, Error(Error), Allocation(AllocationError), InvalidArgument(InvalidArgumentError), Overflow(OverflowError) }
+  public enum ConnectResult { Connected, Pending }
 
   /** A newly owned connection, routine would-block, or an actual accept failure. */
-  public enum AcceptResult { Accepted(TcpStream), WouldBlock, Error(Error), Allocation(AllocationError), InvalidArgument(InvalidArgumentError), Overflow(OverflowError) }
+  public enum AcceptResult { Accepted(TcpStream), WouldBlock }
 
   /** Configure a newly accepted socket before handing it to application code. */
-  function configure_accepted_socket(fd: i32) SystemResult<void> {
-    try set_fd_nonblocking(fd, true);
-    try set_fd_close_on_exec(fd, true);
-    try configure_socket_sigpipe(fd);
-    return SystemResult.Ok;
+  function configure_accepted_socket(fd: i32) void throws {
+    set_fd_nonblocking(fd, true);
+    set_fd_close_on_exec(fd, true);
+    configure_socket_sigpipe(fd);
+    return;
   }
 
   /** Apply listener options before binding; the caller owns cleanup on failure. */
@@ -55,16 +55,16 @@ public module std.net {
     port: i32,
     reuse_address: bool,
     reuse_port: bool
-  ) SystemResult<void> {
-    try set_fd_close_on_exec(fd, true);
-    try set_socket_reuse_address(fd, reuse_address);
+  ) void throws {
+    set_fd_close_on_exec(fd, true);
+    set_socket_reuse_address(fd, reuse_address);
     if (reuse_port) {
-      try set_socket_reuse_port(fd, true);
+      set_socket_reuse_port(fd, true);
     }
     if (unsafe { __bind_ipv4(fd, ip, port); } < 0) {
-      return SystemResult.Error(Error(errno(), "failed to bind listener"));
+      throw Error(errno(), "failed to bind listener");
     }
-    return SystemResult.Ok;
+    return;
   }
 
   // -------------------------------------------------------------------
@@ -97,11 +97,11 @@ public module std.net {
    * Borrows fd without closing it. Returns a system error if reading or updating
    * the flags fails. Descriptors sharing the same open file description are affected.
    */
-  public function set_fd_nonblocking(fd: i32, enabled: bool) SystemResult<void> {
+  public function set_fd_nonblocking(fd: i32, enabled: bool) void throws {
     var flags: i32 = unsafe { c_fcntl(fd, F_GETFL); };
     if (flags < 0) {
       var err_code: i32 = errno();
-      return SystemResult.Error(Error(err_code, "failed to read descriptor flags"));
+      throw Error(err_code, "failed to read descriptor flags");
     }
 
     var next_flags: i32 = flags;
@@ -114,9 +114,9 @@ public module std.net {
     var result: i32 = unsafe { c_fcntl(fd, F_SETFL, next_flags); };
     if (result < 0) {
       var err_code: i32 = errno();
-      return SystemResult.Error(Error(err_code, "failed to set descriptor flags"));
+      throw Error(err_code, "failed to set descriptor flags");
     }
-    return SystemResult.Ok;
+    return;
   }
 
   // -------------------------------------------------------------------
@@ -129,14 +129,14 @@ public module std.net {
    * or has no IPv4 address. Field offsets are documented at the getaddrinfo
    * declaration in sys.sun.
    */
-  public function resolve_host_ipv4(host: ref String) SystemResult<i32> {
+  public function resolve_host_ipv4(host: ref String) i32 throws {
     var list: raw_ptr<u8> = null;
     var rc: i32 = unsafe {
-      c_getaddrinfo(try host.c_str(), null, null, _address_of<raw_ptr<u8>>(list));
+      c_getaddrinfo(host.c_str(), null, null, _address_of<raw_ptr<u8>>(list));
     };
     if (rc != 0) {
-      var msg: String = try from_c_str(global_allocator, unsafe { c_gai_strerror(rc); });
-      return SystemResult.Error(try Error(rc, msg));
+      var msg: String = from_c_str(global_allocator, unsafe { c_gai_strerror(rc); });
+      throw Error(rc, msg);
     }
     var entry: raw_ptr<u8> = list;
     while (entry != null) {
@@ -147,12 +147,12 @@ public module std.net {
         var sa: raw_ptr<u8> = unsafe { _load<raw_ptr<u8>>(entry, ADDRINFO_ADDR_INDEX); };
         var ip: i32 = unsafe { _load<i32>(sa, 1); };  // sin_addr @4, network order
         unsafe { c_freeaddrinfo(list); };
-        return SystemResult.Ok(ip);
+        return ip;
       }
       entry = unsafe { _load<raw_ptr<u8>>(entry, 5); };  // ai_next @40
     }
     unsafe { c_freeaddrinfo(list); };
-    return SystemResult.Error(Error(-1, "host has no IPv4 address"));
+    throw Error(-1, "host has no IPv4 address");
   }
 
   // -------------------------------------------------------------------
@@ -201,16 +201,16 @@ public module std.net {
     /**
      * Format as dotted-quad text, e.g. "192.168.1.10".
      */
-    public const method to_string(alloc: const ref HeapAllocator) AllocationResult<String> {
-      var text: String = try String(alloc, "");
-      try text.append(this.octet(0));
-      try text.append_char(46);  // '.'
-      try text.append(this.octet(1));
-      try text.append_char(46);
-      try text.append(this.octet(2));
-      try text.append_char(46);
-      try text.append(this.octet(3));
-      return AllocationResult.Ok(text);
+    public const method to_string(alloc: const ref HeapAllocator) String throws {
+      var text: String = String(alloc, "");
+      text.append(this.octet(0));
+      text.append_char(46);  // '.'
+      text.append(this.octet(1));
+      text.append_char(46);
+      text.append(this.octet(2));
+      text.append_char(46);
+      text.append(this.octet(3));
+      return text;
     }
   }
 
@@ -242,7 +242,7 @@ public module std.net {
    * Parse dotted-quad text like "239.255.0.1". Throws unless the text is
    * exactly four octets in the range 0-255, separated by dots.
    */
-  public function parse_ipv4(text: const ref String) SystemResult<Ipv4Addr> {
+  public function parse_ipv4(text: const ref String) Ipv4Addr throws {
     var net: i32 = 0;
     var octet_value: i32 = 0;
     var digits: i32 = 0;
@@ -256,27 +256,27 @@ public module std.net {
         octet_value = octet_value * 10 + (ch - 48);
         digits = digits + 1;
         if (digits > 3 or octet_value > 255) {
-          return SystemResult.Error(Error(-1, "malformed IPv4 address"));
+          throw Error(-1, "malformed IPv4 address");
         }
       } else if (ch == 46) {
         // '.'
         if (digits == 0 or parts == 3) {
-          return SystemResult.Error(Error(-1, "malformed IPv4 address"));
+          throw Error(-1, "malformed IPv4 address");
         }
         net = net | (octet_value << (parts * 8));
         parts = parts + 1;
         octet_value = 0;
         digits = 0;
       } else {
-        return SystemResult.Error(Error(-1, "malformed IPv4 address"));
+        throw Error(-1, "malformed IPv4 address");
       }
       i = i + 1;
     }
     if (digits == 0 or parts != 3) {
-      return SystemResult.Error(Error(-1, "malformed IPv4 address"));
+      throw Error(-1, "malformed IPv4 address");
     }
     net = net | (octet_value << 24);
-    return SystemResult.Ok(ipv4_from_network(net));
+    return ipv4_from_network(net);
   }
 
   // -------------------------------------------------------------------
@@ -286,34 +286,21 @@ public module std.net {
   /** A TCP connection that starts without an open socket. */
   public class TcpStream {
     /** Start a nonblocking connection on an unopened stream; close on setup failure. */
-    public method start_connect(addr: const ref Ipv4Addr, port: i32) ConnectResult {
+    public method start_connect(addr: const ref Ipv4Addr, port: i32) ConnectResult throws {
       if (this.is_open() or port < 1 or port > 65535) {
-        return ConnectResult.Error(Error(22, "invalid connection state or port"));
+        throw Error(22, "invalid connection state or port");
       }
       this.fd = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
       if (this.fd < 0) {
-        return ConnectResult.Error(Error(errno(), "socket failed"));
+        throw Error(errno(), "socket failed");
       }
       this.owns_fd = true;
-      match configure_accepted_socket(this.fd) {
-        SystemResult.Ok => {},
-        SystemResult.Error(error) => {
-          this.close();
-          return ConnectResult.Error(error);
-        },
-        SystemResult.Allocation(error) => {
-          this.close();
-          return ConnectResult.Allocation(error);
-        },
-        SystemResult.InvalidArgument(error) => {
-          this.close();
-          return ConnectResult.InvalidArgument(error);
-        },
-        SystemResult.Overflow(error) => {
-          this.close();
-          return ConnectResult.Overflow(error);
-        }
-      };
+      try {
+        configure_accepted_socket(this.fd);
+      } catch {
+        this.close();
+        throw;
+      }
       if (unsafe { __connect_ipv4(this.fd, addr.to_network_i32(), port); } == 0) {
         return ConnectResult.Connected;
       }
@@ -322,11 +309,11 @@ public module std.net {
         return ConnectResult.Pending;
       }
       this.close();
-      return ConnectResult.Error(Error(code, "connection failed"));
+      throw Error(code, "connection failed");
     }
 
     /** Check a pending connection after writable/error readiness; close on failure. */
-    public method finish_connect() ConnectResult {
+    public method finish_connect() ConnectResult throws {
       var code: i32 = 0;
       var length: u32 = 4;
       if (unsafe {
@@ -345,13 +332,13 @@ public module std.net {
       }
       if (code != 0) {
         this.close();
-        return ConnectResult.Error(Error(code, "connection failed"));
+        throw Error(code, "connection failed");
       }
       return ConnectResult.Connected;
     }
 
     /** Read bounded storage, retrying interruptions and distinguishing EOF and would-block. */
-    public method try_read(buffer: ref MutableByteSlice) std.io.ReadResult {
+    public method try_read(buffer: ref MutableByteSlice) std.io.ReadResult throws {
       if (buffer.size() == 0) {
         return std.io.ReadResult.Data(0);
       }
@@ -368,7 +355,7 @@ public module std.net {
           return std.io.ReadResult.WouldBlock;
         }
         if (code != INTERRUPTED_ERRNO) {
-          return std.io.ReadResult.Error(Error(code, "failed to receive bytes"));
+          throw Error(code, "failed to receive bytes");
         }
       }
       return std.io.ReadResult.Data(0);
@@ -379,7 +366,7 @@ public module std.net {
      * Sun sends suppress SIGPIPE. Native TLS writes need the caller's Linux
      * signal policy; on macOS the socket's SO_NOSIGPIPE also protects native writes.
      */
-    public method try_write(buffer: const ref ByteSlice) std.io.WriteResult {
+    public method try_write(buffer: const ref ByteSlice) std.io.WriteResult throws {
       var written: i64 = 0;
       while (written < buffer.size()) {
         var count = unsafe {
@@ -398,7 +385,7 @@ public module std.net {
             return std.io.WriteResult.WouldBlock(written);
           }
           if (count == 0 or code != INTERRUPTED_ERRNO) {
-            return std.io.WriteResult.Error(written, Error(code, "failed to send bytes"));
+            throw std.io.WriteError(code, written);
           }
         }
       }
@@ -406,12 +393,12 @@ public module std.net {
     }
 
     /** Configure TCP_NODELAY, returning configuration failures. */
-    public method set_nodelay(enabled: bool) SystemResult<void> {
+    public method set_nodelay(enabled: bool) void throws {
       return set_tcp_nodelay(this.fd, enabled);
     }
 
     /** Set descriptor inheritance across exec. */
-    public method set_close_on_exec(enabled: bool) SystemResult<void> {
+    public method set_close_on_exec(enabled: bool) void throws {
       return set_fd_close_on_exec(this.fd, enabled);
     }
 
@@ -429,149 +416,123 @@ public module std.net {
     /**
      * Connect to loopback (127.0.0.1) on port
      */
-    public method connect_local(port: i32) SystemResult<void> {
+    public method connect_local(port: i32) void throws {
       var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
       if (sock_fd < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "failed to create socket"));
+        throw Error(err_code, "failed to create socket");
       }
       this.fd = sock_fd;
       this.owns_fd = true;
-      match configure_socket_sigpipe(this.fd) {
-        SystemResult.Ok => {},
-        SystemResult.Error(error) => {
-          this.close();
-          return SystemResult.Error(error);
-        },
-        SystemResult.Allocation(error) => {
-          this.close();
-          return SystemResult.Allocation(error);
-        },
-        SystemResult.InvalidArgument(error) => {
-          this.close();
-          return SystemResult.InvalidArgument(error);
-        },
-        SystemResult.Overflow(error) => {
-          this.close();
-          return SystemResult.Overflow(error);
-        }
-      };
+      try {
+        configure_socket_sigpipe(this.fd);
+      } catch {
+        this.close();
+        throw;
+      }
 
       var result: i32 = unsafe { __connect_ipv4(this.fd, INADDR_LOOPBACK, port); };
       if (result < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "failed to connect"));
+        throw Error(err_code, "failed to connect");
       }
-      return SystemResult.Ok;
+      return;
     }
 
     /**
      * Connect to specific IP (in network byte order) and port
      */
-    public method connect_ip(ip: i32, port: i32) SystemResult<void> {
+    public method connect_ip(ip: i32, port: i32) void throws {
       var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
       if (sock_fd < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "failed to create socket"));
+        throw Error(err_code, "failed to create socket");
       }
       this.fd = sock_fd;
       this.owns_fd = true;
-      match configure_socket_sigpipe(this.fd) {
-        SystemResult.Ok => {},
-        SystemResult.Error(error) => {
-          this.close();
-          return SystemResult.Error(error);
-        },
-        SystemResult.Allocation(error) => {
-          this.close();
-          return SystemResult.Allocation(error);
-        },
-        SystemResult.InvalidArgument(error) => {
-          this.close();
-          return SystemResult.InvalidArgument(error);
-        },
-        SystemResult.Overflow(error) => {
-          this.close();
-          return SystemResult.Overflow(error);
-        }
-      };
+      try {
+        configure_socket_sigpipe(this.fd);
+      } catch {
+        this.close();
+        throw;
+      }
 
       var result: i32 = unsafe { __connect_ipv4(this.fd, ip, port); };
       if (result < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "failed to connect"));
+        throw Error(err_code, "failed to connect");
       }
-      return SystemResult.Ok;
+      return;
     }
 
     /**
      * Resolve a hostname and connect to its first IPv4 address
      */
-    public method connect_host(host: ref String, port: i32) SystemResult<void> {
-      var ip: i32 = try resolve_host_ipv4(host);
-      try this.connect_ip(ip, port);
-      return SystemResult.Ok;
+    public method connect_host(host: ref String, port: i32) void throws {
+      var ip: i32 = resolve_host_ipv4(host);
+      this.connect_ip(ip, port);
+      return;
     }
 
     /**
      * Connect to an Ipv4Addr and port
      */
-    public method connect_addr(addr: const ref Ipv4Addr, port: i32) SystemResult<void> {
-      try this.connect_ip(addr.to_network_i32(), port);
-      return SystemResult.Ok;
+    public method connect_addr(addr: const ref Ipv4Addr, port: i32) void throws {
+      this.connect_ip(addr.to_network_i32(), port);
+      return;
     }
 
     /**
      * Send string data
      */
-    public method send_str(data: static_ptr<u8>) SystemResult<i64> {
+    public method send_str(data: static_ptr<u8>) i64 throws {
       var str_ptr: raw_ptr<u8> = data.raw();
       var len: i64 = data.length();
       var result: i64 = unsafe { __send(this.fd, str_ptr, len, MSG_NOSIGNAL); };
       if (result < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "send failed"));
+        throw Error(err_code, "send failed");
       }
-      return SystemResult.Ok(result);
+      return result;
     }
 
     /**
      * Send raw bytes
      */
-    public method send_bytes(data: raw_ptr<u8>, len: i64) SystemResult<i64> {
+    public method send_bytes(data: raw_ptr<u8>, len: i64) i64 throws {
       var result: i64 = unsafe { __send(this.fd, data, len, MSG_NOSIGNAL); };
       if (result < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "send failed"));
+        throw Error(err_code, "send failed");
       }
-      return SystemResult.Ok(result);
+      return result;
     }
 
     /**
      * Send a String's contents
      */
-    public method send_string(data: const ref String) SystemResult<i64> {
-      return SystemResult.Ok((try this.send_bytes(data.data.raw_data(), data.length())));
+    public method send_string(data: const ref String) i64 throws {
+      return (this.send_bytes(data.data.raw_data(), data.length()));
     }
 
     /**
      * Receive into ContiguousBuffer, returns bytes read
      */
-    public method recv(buf: ref ContiguousBuffer<u8>) SystemResult<i64> {
+    public method recv(buf: ref ContiguousBuffer<u8>) i64 throws {
       var result: i64 = unsafe { __recv(this.fd, buf.raw_data(), buf.size(), 0); };
       if (result < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "recv failed"));
+        throw Error(err_code, "recv failed");
       }
-      return SystemResult.Ok(result);
+      return result;
     }
 
     /**
      * Change whether operations on this socket wait for readiness.
      */
-    public method set_nonblocking(enabled: bool) SystemResult<void> {
-      try set_fd_nonblocking(this.fd, enabled);
-      return SystemResult.Ok;
+    public method set_nonblocking(enabled: bool) void throws {
+      set_fd_nonblocking(this.fd, enabled);
+      return;
     }
 
     /**
@@ -613,7 +574,7 @@ public module std.net {
      * first. Accepted streams are always nonblocking and close-on-exec; setup
      * failure closes the new descriptor. Flag setup is not atomic with fork/exec.
      */
-    public method try_accept() AcceptResult {
+    public method try_accept() AcceptResult throws {
       while (true) {
         var fd = unsafe { __accept_fd(this.fd); };
         if (fd < 0) {
@@ -624,34 +585,19 @@ public module std.net {
           if (code == INTERRUPTED_ERRNO) {
             continue;
           }
-          return AcceptResult.Error(Error(code, "failed to accept connection"));
+          throw Error(code, "failed to accept connection");
         }
         var stream = TcpStream();
         stream.fd = fd;
         stream.owns_fd = true;
-        match configure_accepted_socket(fd) {
-          SystemResult.Ok => {
-            return AcceptResult.Accepted(stream);
-          },
-          SystemResult.Error(error) => {
-            return AcceptResult.Error(error);
-          },
-          SystemResult.Allocation(error) => {
-            return AcceptResult.Allocation(error);
-          },
-          SystemResult.InvalidArgument(error) => {
-            return AcceptResult.InvalidArgument(error);
-          },
-          SystemResult.Overflow(error) => {
-            return AcceptResult.Overflow(error);
-          }
-        };
+        configure_accepted_socket(fd);
+        return AcceptResult.Accepted(stream);
       }
       return AcceptResult.WouldBlock;
     }
 
     /** Set descriptor inheritance across exec. */
-    public method set_close_on_exec(enabled: bool) SystemResult<void> {
+    public method set_close_on_exec(enabled: bool) void throws {
       return set_fd_close_on_exec(this.fd, enabled);
     }
 
@@ -665,38 +611,25 @@ public module std.net {
       port: i32,
       reuse_address: bool,
       reuse_port: bool
-    ) SystemResult<void> {
+    ) void throws {
       if (this.owns_fd) {
-        return SystemResult.Error(Error(22, "listener is already open"));
+        throw Error(22, "listener is already open");
       }
       var fd = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
       if (fd < 0) {
-        return SystemResult.Error(Error(errno(), "failed to create listener"));
+        throw Error(errno(), "failed to create listener");
       }
       this.fd = fd;
       this.owns_fd = true;
-      match configure_listener(fd, addr.to_network_i32(), port, reuse_address, reuse_port) {
-        SystemResult.Ok => {
-          return SystemResult.Ok;
-        },
-        SystemResult.Error(error) => {
-          this.close();
-          return SystemResult.Error(error);
-        },
-        SystemResult.Allocation(error) => {
-          this.close();
-          return SystemResult.Allocation(error);
-        },
-        SystemResult.InvalidArgument(error) => {
-          this.close();
-          return SystemResult.InvalidArgument(error);
-        },
-        SystemResult.Overflow(error) => {
-          this.close();
-          return SystemResult.Overflow(error);
-        }
-      };
-      return SystemResult.Ok;
+      try {
+        configure_listener(fd, addr.to_network_i32(), port, reuse_address, reuse_port);
+
+        return;
+      } catch {
+        this.close();
+        throw;
+      }
+      return;
     }
 
     var fd: i32 = -1;
@@ -713,114 +646,114 @@ public module std.net {
     /**
      * Allow rebinding the port immediately after a restart
      */
-    public method enable_reuse_addr() SystemResult<void> {
+    public method enable_reuse_addr() void throws {
       return set_socket_reuse_address(this.fd, true);
     }
 
     /**
      * Create and bind to port on all interfaces (0.0.0.0)
      */
-    public method bind_port(port: i32) SystemResult<void> {
+    public method bind_port(port: i32) void throws {
       var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
       if (sock_fd < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "failed to create socket"));
+        throw Error(err_code, "failed to create socket");
       }
       this.fd = sock_fd;
       this.owns_fd = true;
-      try this.enable_reuse_addr();
+      this.enable_reuse_addr();
 
       var result: i32 = unsafe { __bind_ipv4(this.fd, INADDR_ANY, port); };
       if (result < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "failed to bind socket"));
+        throw Error(err_code, "failed to bind socket");
       }
-      return SystemResult.Ok;
+      return;
     }
 
     /**
      * Create and bind to loopback (127.0.0.1) on port
      */
-    public method bind_loopback(port: i32) SystemResult<void> {
+    public method bind_loopback(port: i32) void throws {
       var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
       if (sock_fd < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "failed to create socket"));
+        throw Error(err_code, "failed to create socket");
       }
       this.fd = sock_fd;
       this.owns_fd = true;
-      try this.enable_reuse_addr();
+      this.enable_reuse_addr();
 
       var result: i32 = unsafe { __bind_ipv4(this.fd, INADDR_LOOPBACK, port); };
       if (result < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "failed to bind socket"));
+        throw Error(err_code, "failed to bind socket");
       }
-      return SystemResult.Ok;
+      return;
     }
 
     /**
      * Create and bind to an Ipv4Addr and port
      */
-    public method bind_addr(addr: const ref Ipv4Addr, port: i32) SystemResult<void> {
+    public method bind_addr(addr: const ref Ipv4Addr, port: i32) void throws {
       var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
       if (sock_fd < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "failed to create socket"));
+        throw Error(err_code, "failed to create socket");
       }
       this.fd = sock_fd;
       this.owns_fd = true;
-      try this.enable_reuse_addr();
+      this.enable_reuse_addr();
 
       var result: i32 = unsafe { __bind_ipv4(this.fd, addr.to_network_i32(), port); };
       if (result < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "failed to bind socket"));
+        throw Error(err_code, "failed to bind socket");
       }
-      return SystemResult.Ok;
+      return;
     }
 
     /**
      * Start listening for connections
      */
-    public method listen(backlog: i32) SystemResult<void> {
+    public method listen(backlog: i32) void throws {
       var result: i32 = unsafe { __listen(this.fd, backlog); };
       if (result < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "failed to listen"));
+        throw Error(err_code, "failed to listen");
       }
-      return SystemResult.Ok;
+      return;
     }
 
     /**
      * Accept a new connection, returns TcpStream
      */
-    public method accept() SystemResult<TcpStream> {
+    public method accept() TcpStream throws {
       var client_fd: i32 = unsafe { __accept_fd(this.fd); };
       if (client_fd < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "failed to accept connection"));
+        throw Error(err_code, "failed to accept connection");
       }
       var stream = TcpStream();
       stream.fd = client_fd;
       stream.owns_fd = true;
-      try configure_socket_sigpipe(client_fd);
-      return SystemResult.Ok(stream);
+      configure_socket_sigpipe(client_fd);
+      return stream;
     }
 
     /**
      * Change whether operations on this socket wait for readiness.
      */
-    public method set_nonblocking(enabled: bool) SystemResult<void> {
-      try set_fd_nonblocking(this.fd, enabled);
-      return SystemResult.Ok;
+    public method set_nonblocking(enabled: bool) void throws {
+      set_fd_nonblocking(this.fd, enabled);
+      return;
     }
 
     /**
      * The port the listener is actually bound to — the answer after binding
      * port 0 and letting the OS pick.
      */
-    public method local_port() SystemResult<i32> {
+    public method local_port() i32 throws {
       var ip: i32 = 0;
       var port: i32 = 0;
       var result: i32 = unsafe {
@@ -828,9 +761,9 @@ public module std.net {
       };
       if (result < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "failed to read socket address"));
+        throw Error(err_code, "failed to read socket address");
       }
-      return SystemResult.Ok(port);
+      return port;
     }
 
     /**
@@ -947,14 +880,14 @@ public module std.net {
   /** A UDP socket that starts closed. */
   public class UdpSocket {
     /** Select the local IPv4 address used for outgoing multicast datagrams. */
-    public method set_multicast_interface(addr: const ref Ipv4Addr) SystemResult<void> {
+    public method set_multicast_interface(addr: const ref Ipv4Addr) void throws {
       var value = addr.to_network_i32();
       if (unsafe {
         __setsockopt(this.fd, IPPROTO_IP, MULTICAST_INTERFACE_OPTION, _address_of<i32>(value), 4);
       } < 0) {
-        return SystemResult.Error(Error(errno(), "failed to select multicast interface"));
+        throw Error(errno(), "failed to select multicast interface");
       }
-      return SystemResult.Ok;
+      return;
     }
 
     var fd: i32 = -1;
@@ -969,66 +902,53 @@ public module std.net {
     }
 
     /** Allow this socket to share its address with other reuse-enabled sockets. */
-    public method enable_reuse_addr() SystemResult<void> {
+    public method enable_reuse_addr() void throws {
       var optval: i32 = 1;
       var result: i32 = unsafe {
         __setsockopt(this.fd, SOL_SOCKET, SO_REUSEADDR, _address_of<i32>(optval), 4);
       };
       if (result < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "failed to enable address reuse"));
+        throw Error(err_code, "failed to enable address reuse");
       }
-      return SystemResult.Ok;
+      return;
     }
 
     /** Bind exclusively to addr:port. Port zero asks the OS for a free port. */
-    public method bind(addr: const ref Ipv4Addr, port: i32) SystemResult<void> {
-      try this.bind(addr, port, false);
-      return SystemResult.Ok;
+    public method bind(addr: const ref Ipv4Addr, port: i32) void throws {
+      this.bind(addr, port, false);
+      return;
     }
 
     /** Bind to addr:port, enabling SO_REUSEADDR only when reuse is true.
-     * Failed binds close the socket and return an Error with the native errno.
+     * Failed binds close the socket and throw Error with the native errno.
      */
-    public method bind(addr: const ref Ipv4Addr, port: i32, reuse: bool) SystemResult<void> {
+    public method bind(addr: const ref Ipv4Addr, port: i32, reuse: bool) void throws {
       this.close();
       var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_DGRAM, 0); };
       if (sock_fd < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "failed to create socket"));
+        throw Error(err_code, "failed to create socket");
       }
       this.fd = sock_fd;
       this.owns_fd = true;
       suppress_sigpipe(this.fd);
       if (reuse) {
-        match this.enable_reuse_addr() {
-          SystemResult.Ok => {},
-          SystemResult.Error(error) => {
-            this.close();
-            return SystemResult.Error(error);
-          },
-          SystemResult.Allocation(error) => {
-            this.close();
-            return SystemResult.Allocation(error);
-          },
-          SystemResult.InvalidArgument(error) => {
-            this.close();
-            return SystemResult.InvalidArgument(error);
-          },
-          SystemResult.Overflow(error) => {
-            this.close();
-            return SystemResult.Overflow(error);
-          }
-        };
+        try {
+          this.enable_reuse_addr();
+        } catch {
+          this.close();
+          throw;
+        }
       }
 
       var result: i32 = unsafe { __bind_ipv4(this.fd, addr.to_network_i32(), port); };
       if (result < 0) {
         var err_code: i32 = errno();
         this.close();
-        return SystemResult.Error(Error(err_code, "failed to bind socket"));
+        throw Error(err_code, "failed to bind socket");
       }
-      return SystemResult.Ok;
+      return;
     }
 
     /**
@@ -1039,15 +959,15 @@ public module std.net {
       len: i64,
       addr: const ref Ipv4Addr,
       port: i32
-    ) SystemResult<i64> {
+    ) i64 throws {
       var result: i64 = unsafe {
         __sendto_ipv4(this.fd, data, len, MSG_NOSIGNAL, addr.to_network_i32(), port);
       };
       if (result < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "send failed"));
+        throw Error(err_code, "send failed");
       }
-      return SystemResult.Ok(result);
+      return result;
     }
 
     /**
@@ -1057,15 +977,15 @@ public module std.net {
       data: static_ptr<u8>,
       addr: const ref Ipv4Addr,
       port: i32
-    ) SystemResult<i64> {
-      return SystemResult.Ok((try this.send_to(data.raw(), data.length(), addr, port)));
+    ) i64 throws {
+      return (this.send_to(data.raw(), data.length(), addr, port));
     }
 
     /**
      * Receive one datagram into the buffer, reporting its size and sender.
      * A datagram longer than the buffer is cut to fit; the rest is dropped.
      */
-    public method recv_from(buf: ref ContiguousBuffer<u8>) SystemResult<UdpDatagram> {
+    public method recv_from(buf: ref ContiguousBuffer<u8>) UdpDatagram throws {
       var sender_ip: i32 = 0;
       var sender_port: i32 = 0;
       var result: i64 = unsafe {
@@ -1080,9 +1000,9 @@ public module std.net {
       };
       if (result < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "recv failed"));
+        throw Error(err_code, "recv failed");
       }
-      return SystemResult.Ok(UdpDatagram(result, sender_ip, sender_port));
+      return UdpDatagram(result, sender_ip, sender_port);
     }
 
     /**
@@ -1090,19 +1010,16 @@ public module std.net {
      * ipv4_any() to let the OS pick the interface. The socket then receives
      * datagrams sent to the group on its bound port.
      */
-    public method join_multicast(
-      group: const ref Ipv4Addr,
-      iface: const ref Ipv4Addr
-    ) SystemResult<void> {
+    public method join_multicast(group: const ref Ipv4Addr, iface: const ref Ipv4Addr) void throws {
       var request = IpMreq(group.to_network_i32(), iface.to_network_i32());
       var result: i32 = unsafe {
         __setsockopt(this.fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, _address_of<IpMreq>(request), 8);
       };
       if (result < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "failed to join multicast group"));
+        throw Error(err_code, "failed to join multicast group");
       }
-      return SystemResult.Ok;
+      return;
     }
 
     /**
@@ -1111,23 +1028,23 @@ public module std.net {
     public method leave_multicast(
       group: const ref Ipv4Addr,
       iface: const ref Ipv4Addr
-    ) SystemResult<void> {
+    ) void throws {
       var request = IpMreq(group.to_network_i32(), iface.to_network_i32());
       var result: i32 = unsafe {
         __setsockopt(this.fd, IPPROTO_IP, IP_DROP_MEMBERSHIP, _address_of<IpMreq>(request), 8);
       };
       if (result < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "failed to leave multicast group"));
+        throw Error(err_code, "failed to leave multicast group");
       }
-      return SystemResult.Ok;
+      return;
     }
 
     /**
      * How many router hops outgoing multicast datagrams may cross. The
      * default of 1 keeps them on the local network.
      */
-    public method set_multicast_ttl(ttl: i32) SystemResult<void> {
+    public method set_multicast_ttl(ttl: i32) void throws {
       // Both OSes accept a one-byte value; macOS insists on it.
       var value: u8 = _convert<u8>(ttl & 255);
       var result: i32 = unsafe {
@@ -1135,15 +1052,15 @@ public module std.net {
       };
       if (result < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "failed to set multicast TTL"));
+        throw Error(err_code, "failed to set multicast TTL");
       }
-      return SystemResult.Ok;
+      return;
     }
 
     /**
      * Whether this host's own multicast sends loop back to local listeners.
      */
-    public method set_multicast_loop(enabled: bool) SystemResult<void> {
+    public method set_multicast_loop(enabled: bool) void throws {
       var value: u8 = 0;
       if (enabled) {
         value = 1;
@@ -1153,16 +1070,16 @@ public module std.net {
       };
       if (result < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "failed to set multicast loopback"));
+        throw Error(err_code, "failed to set multicast loopback");
       }
-      return SystemResult.Ok;
+      return;
     }
 
     /**
      * Make a blocking recv_from give up after the timeout, returning an error
      * for which is_would_block(e.code()) is true.
      */
-    public method set_recv_timeout(timeout: const ref std.time.Duration) SystemResult<void> {
+    public method set_recv_timeout(timeout: const ref std.time.Duration) void throws {
       var micros: i64 = timeout.as_micros();
       if (micros == 0 and timeout.as_nanos() > 0) {
         micros = 1;  // a zero timeval would mean "wait forever"
@@ -1174,16 +1091,16 @@ public module std.net {
       };
       if (result < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "failed to set receive timeout"));
+        throw Error(err_code, "failed to set receive timeout");
       }
-      return SystemResult.Ok;
+      return;
     }
 
     /**
      * The port the socket is actually bound to — the answer after binding
      * port 0.
      */
-    public method local_port() SystemResult<i32> {
+    public method local_port() i32 throws {
       var ip: i32 = 0;
       var port: i32 = 0;
       var result: i32 = unsafe {
@@ -1191,15 +1108,15 @@ public module std.net {
       };
       if (result < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "failed to read socket address"));
+        throw Error(err_code, "failed to read socket address");
       }
-      return SystemResult.Ok(port);
+      return port;
     }
 
     /**
      * The address the socket is bound to.
      */
-    public method local_addr() SystemResult<Ipv4Addr> {
+    public method local_addr() Ipv4Addr throws {
       var ip: i32 = 0;
       var port: i32 = 0;
       var result: i32 = unsafe {
@@ -1207,17 +1124,17 @@ public module std.net {
       };
       if (result < 0) {
         var err_code: i32 = errno();
-        return SystemResult.Error(Error(err_code, "failed to read socket address"));
+        throw Error(err_code, "failed to read socket address");
       }
-      return SystemResult.Ok(ipv4_from_network(ip));
+      return ipv4_from_network(ip);
     }
 
     /**
      * Change whether operations on this socket wait for readiness.
      */
-    public method set_nonblocking(enabled: bool) SystemResult<void> {
-      try set_fd_nonblocking(this.fd, enabled);
-      return SystemResult.Ok;
+    public method set_nonblocking(enabled: bool) void throws {
+      set_fd_nonblocking(this.fd, enabled);
+      return;
     }
 
     /**

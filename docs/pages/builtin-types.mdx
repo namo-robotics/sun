@@ -33,7 +33,7 @@ checks apply inside `unsafe` blocks. Statically invalid operations are rejected
 at compile time. These operators do not propagate errors or run cleanup on a panic.
 
 Use `std.checked_div(a, b)` or `std.checked_rem(a, b)` when failure should be handled.
-They return `_Result<T, std.ArithmeticError>` and work with `match` and prefix `try`.
+They return the promoted integer type and throw `std.ArithmeticError` on failure.
 
 Shifts `<<` and `>>` mask the count with `width - 1`, using the bit width
 of the operands after integer widening. This includes negative counts:
@@ -162,14 +162,14 @@ var maybe: Option<char> = char_of(128512);
 ```sun
 using std.io;
 
-var s = try String(alloc, "héllo😀");
+var s =  String(alloc, "héllo😀");
 s.length();      // 10 bytes
 s.count_chars();  // 6 scalar values
 
 var it = s.iterate_chars();
 for (var c: char in it) { print(c); }
 
-try s.push('!');            // appends the UTF-8 encoding
+ s.push('!');            // appends the UTF-8 encoding
 s.find('😀');           // byte index, or None
 ```
 

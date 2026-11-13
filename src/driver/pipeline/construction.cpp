@@ -6,6 +6,8 @@
 #include "abi/abi_compatibility_checker.h"
 #include "driver/driver.h"
 #include "jit_runtime.h"
+#include "runtime/exceptions.h"
+#include "runtime/panic.h"
 #include "moon_bundling/library_cache.h"
 
 using sun::codegen::CodegenVisitor;
@@ -123,6 +125,15 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
   // Process-lifetime registrations must not reach the real libc from code
   // that lives only as long as this driver; see the JIT exit handlers above.
   // (On glibc these also live in libc_nonshared.a, out of dlsym's sight.)
+  provide("sun_eh_initialize", reinterpret_cast<void*>(&sun_eh_initialize));
+  provide("sun_eh_raise", reinterpret_cast<void*>(&sun_eh_raise));
+  provide("sun_eh_take", reinterpret_cast<void*>(&sun_eh_take));
+  provide("sun_eh_push", reinterpret_cast<void*>(&sun_eh_push));
+  provide("sun_eh_pop", reinterpret_cast<void*>(&sun_eh_pop));
+  provide("sun_eh_matches", reinterpret_cast<void*>(&sun_eh_matches));
+  provide("sun_eh_personality", reinterpret_cast<void*>(&sun_eh_personality));
+  provide("sun_eh_terminate", reinterpret_cast<void*>(&sun_eh_terminate));
+  provide("sun_panic", reinterpret_cast<void*>(&sun_panic));
   provide("atexit", reinterpret_cast<void*>(&jitAtExit));
   provide("at_quick_exit", reinterpret_cast<void*>(&jitAtExit));
   provide("pthread_atfork", reinterpret_cast<void*>(&jitAtFork));

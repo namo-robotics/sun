@@ -445,19 +445,19 @@ TEST(MemorySafety_Drops_FieldInit,
      a_catch_that_reassigns_the_field_is_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(withPreamble(R"(
 
-    class Boom {
+    exception Boom {
       init() {}
       const method code() i32 { return 1; }
       const method message() static_ptr<u8> { return "boom"; }
     }
 
-    function boom(f: bool) _Result<void, Boom> { if (f) { return _Result.Err(Boom()); } return _Result.Ok; }
+    function boom(f: bool) void throws { if (f) { throw Boom(); } return; }
 
     class Holder {
       var r: Res;
       init(f: bool) {
         if (f) { this.r = Res(1); }
-        match boom(f) { _Result.Ok => {}, _Result.Err(_) => { this.r = Res(2); } };
+        try { boom(f); } catch (error: Boom) { this.r = Res(2); }
       }
     }
 
@@ -471,19 +471,19 @@ TEST(MemorySafety_Drops_FieldInit,
 TEST(MemorySafety_Drops_FieldInit, a_field_settled_before_a_try_is_certain) {
   auto value = executeString(withPreamble(R"(
 
-    class Boom {
+    exception Boom {
       init() {}
       const method code() i32 { return 1; }
       const method message() static_ptr<u8> { return "boom"; }
     }
 
-    function boom(f: bool) _Result<void, Boom> { if (f) { return _Result.Err(Boom()); } return _Result.Ok; }
+    function boom(f: bool) void throws { if (f) { throw Boom(); } return; }
 
     class Holder {
       var r: Res;
       init(f: bool) {
         this.r = Res(0);
-        match boom(f) { _Result.Ok => { this.r = Res(1); }, _Result.Err(_) => { this.r = Res(2); } };
+        try { boom(f); this.r = Res(1); } catch (error: Boom) { this.r = Res(2); }
       }
     }
 

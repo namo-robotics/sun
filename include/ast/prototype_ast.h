@@ -465,7 +465,7 @@ class PrototypeAST {
   }
 
   /**
-   * Check if this function can throw (declared with "throws IError")
+   * Check if this function can throw (declared with "throws")
    */
   bool canThrow() const {
     return returnType.has_value() && returnType->canError;

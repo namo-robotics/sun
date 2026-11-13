@@ -1,4 +1,4 @@
-// stdlib/std/option_tests.sun - Tests for option.sun (Option/_Result) and the
+// stdlib/std/option_tests.sun - Tests for option.sun (Option) and the
 // stdlib APIs that signal absence through them.
 // Replaces the C++ suite Stdlib_Option.
 
@@ -8,13 +8,13 @@ using std;
 public module std {
 
   /**
-     * Classifies an i32 for the _Result tests: negative values are an error.
+     * Rejects negative input with a typed exception.
      */
-  function parse_positive(x: i32) _Result<i32, i32> {
+  function parse_positive(x: i32) i32 throws {
     if (x < 0) {
-      return _Result.Err(-1);
+      throw InvalidArgumentError("negative input");
     }
-    return _Result.Ok(x);
+    return x;
   }
 
   /** Checks option from stdlib. */
@@ -29,22 +29,20 @@ public module std {
       Option.Some(v) => v,
       Option.None => 2
     };
-    try std.test.assert_eq(av + bv, 42);
+    std.test.assert_eq(av + bv, 42);
   }
 
-  /** Checks result from stdlib. */
-  test_function ResultFromStdlib() {
+  /** Success returns directly while invalid input raises an exception. */
+  test_function ExceptionFromStdlib() {
     var good = parse_positive(41);
-    var bad = parse_positive(-5);
-    var g = match good {
-      _Result.Ok(v) => v,
-      _Result.Err(e) => 0
-    };
-    var b = match bad {
-      _Result.Ok(v) => 0,
-      _Result.Err(e) => 1
-    };
-    try std.test.assert_eq(g + b, 42);
+    var caught = false;
+    try {
+      parse_positive(-5);
+    } catch (error: InvalidArgumentError) {
+      caught = true;
+    }
+    std.test.assert(caught);
+    std.test.assert_eq(good, 41);
   }
 
   /**
@@ -52,8 +50,8 @@ public module std {
      */
   test_function MapFind() {
     var allocator = make_heap_allocator();
-    var m = try Map<i64, i32>(allocator, 16);
-    try m.insert(1, 40);
+    var m = Map<i64, i32>(allocator, 16);
+    m.insert(1, 40);
     var hit = match m.find(1) {
       Option.Some(v) => v,
       Option.None => 0
@@ -62,13 +60,13 @@ public module std {
       Option.Some(v) => 0,
       Option.None => 2
     };
-    try std.test.assert_eq(hit + miss, 42);
+    std.test.assert_eq(hit + miss, 42);
   }
 
   /** Checks string find char. */
   test_function StringFindChar() {
     var allocator = make_heap_allocator();
-    var s = try String(allocator, "hello world");
+    var s = String(allocator, "hello world");
     // first 'o' at 4
     var first = match s.find_char(111) {
       Option.Some(i) => i,
@@ -84,7 +82,7 @@ public module std {
       Option.Some(i) => i,
       Option.None => 31
     };
-    try std.test.assert_eq(first + last + missing, 42);  // 4 + 7 + 31
+    std.test.assert_eq(first + last + missing, 42);  // 4 + 7 + 31
   }
 
   /**
@@ -92,13 +90,13 @@ public module std {
      */
   test_function VecFirstLast() {
     var allocator = make_heap_allocator();
-    var v = try Vec<i32>(allocator, 8);
+    var v = Vec<i32>(allocator, 8);
     var empty = match v.first() {
       Option.Some(x) => 0,
       Option.None => 2
     };
-    try v.push(10);
-    try v.push(30);
+    v.push(10);
+    v.push(30);
     var f = match v.first() {
       Option.Some(x) => x,
       Option.None => 0
@@ -107,7 +105,7 @@ public module std {
       Option.Some(x) => x,
       Option.None => 0
     };
-    try std.test.assert_eq(empty + f + l, 42);  // 2 + 10 + 30
+    std.test.assert_eq(empty + f + l, 42);  // 2 + 10 + 30
   }
 
   /**
@@ -115,13 +113,13 @@ public module std {
      */
   test_function NewVecSpecializationWithOption() {
     var allocator = make_heap_allocator();
-    var v = try Vec<u32>(allocator, 4);
-    try v.push(42);
+    var v = Vec<u32>(allocator, 4);
+    v.push(42);
     var got: u32 = match v.last() {
       Option.Some(x) => x,
       Option.None => 0
     };
-    try std.test.assert_eq(got, 42);
+    std.test.assert_eq(got, 42);
   }
 
   /**
@@ -158,7 +156,7 @@ public module std {
       Option.Some(item) => item.get(),
       Option.None => 0
     };
-    try std.test.assert_eq(got, 42);
+    std.test.assert_eq(got, 42);
   }
 
   /** Checks linked list first lsyntax tree. */
@@ -169,8 +167,8 @@ public module std {
       Option.Some(x) => 0,
       Option.None => 2
     };
-    try ll.push_back(10);
-    try ll.push_back(30);
+    ll.push_back(10);
+    ll.push_back(30);
     var f = match ll.first() {
       Option.Some(x) => x,
       Option.None => 0
@@ -179,15 +177,15 @@ public module std {
       Option.Some(x) => x,
       Option.None => 0
     };
-    try std.test.assert_eq(empty + f + l, 42);  // 2 + 10 + 30
+    std.test.assert_eq(empty + f + l, 42);  // 2 + 10 + 30
   }
 
   /** Checks vec pop. */
   test_function VecPop() {
     var allocator = make_heap_allocator();
-    var v = try Vec<i32>(allocator, 4);
-    try v.push(30);
-    try v.push(10);
+    var v = Vec<i32>(allocator, 4);
+    v.push(30);
+    v.push(10);
     var a = match v.pop() {
       Option.Some(x) => x,
       Option.None => 0
@@ -200,7 +198,7 @@ public module std {
       Option.Some(x) => 0,
       Option.None => 2
     };
-    try std.test.assert_eq(a + b + c + v.size(), 42);  // 10 + 30 + 2 + 0
+    std.test.assert_eq(a + b + c + v.size(), 42);  // 10 + 30 + 2 + 0
   }
 
   /**
@@ -208,9 +206,9 @@ public module std {
      */
   test_function IteratorNextReturnsOption() {
     var allocator = make_heap_allocator();
-    var v = try Vec<i32>(allocator, 4);
-    try v.push(20);
-    try v.push(22);
+    var v = Vec<i32>(allocator, 4);
+    v.push(20);
+    v.push(22);
     var it = v.iter();
     var sum: i32 = 0;
     var going = true;
@@ -224,13 +222,13 @@ public module std {
         }
       };
     }
-    try std.test.assert_eq(sum, 42);
+    std.test.assert_eq(sum, 42);
     // Exhausted iterators keep returning None
     var again = match it.next(v) {
       Option.Some(x) => 0,
       Option.None => 1
     };
-    try std.test.assert_eq(again, 1);
+    std.test.assert_eq(again, 1);
   }
 
   /**
@@ -238,16 +236,16 @@ public module std {
      */
   test_function ForInOverStdlibContainers() {
     var allocator = make_heap_allocator();
-    var v = try Vec<i32>(allocator, 4);
-    try v.push(1);
-    try v.push(2);
+    var v = Vec<i32>(allocator, 4);
+    v.push(1);
+    v.push(2);
     var ll = LinkedList<i32>(allocator);
-    try ll.push_back(3);
-    try ll.push_back(4);
-    var m = try Map<i64, i32>(allocator, 8);
-    try m.insert(1, 5);
-    try m.insert(2, 6);
-    var buf = try ContiguousBuffer<i32>(allocator, 2);
+    ll.push_back(3);
+    ll.push_back(4);
+    var m = Map<i64, i32>(allocator, 8);
+    m.insert(1, 5);
+    m.insert(2, 6);
+    var buf = ContiguousBuffer<i32>(allocator, 2);
     buf[0] = 7;
     buf[1] = 14;
     var sum: i32 = 0;
@@ -263,7 +261,7 @@ public module std {
     for (var x: i32 in buf) {
       sum = sum + x;
     }
-    try std.test.assert_eq(sum, 42);  // 3 + 7 + 11 + 21
+    std.test.assert_eq(sum, 42);  // 3 + 7 + 11 + 21
   }
 
   /**
@@ -276,6 +274,6 @@ public module std {
     for (var x: i32 in ll) {
       count = 0;
     }
-    try std.test.assert_eq(count, 42);
+    std.test.assert_eq(count, 42);
   }
 }

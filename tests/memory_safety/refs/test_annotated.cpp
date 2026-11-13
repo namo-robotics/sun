@@ -103,17 +103,17 @@ using std;
 public class Holder {
   public var a: String;
 
-  init(alloc: ref HeapAllocator) Result<void> {
-    this.a = try String(alloc, "one");
+  init(alloc: ref HeapAllocator)  throws {
+    this.a =  String(alloc, "one");
   }
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i64> {
+function main() i64 throws {
   var alloc = make_heap_allocator();
-  var h = try Holder(alloc);
+  var h =  Holder(alloc);
   var pick: ref String = h.a;
-  return Result.Ok(pick.length());
+  return pick.length();
 }
 )");
   EXPECT_EQ(value, 3);
@@ -124,10 +124,10 @@ TEST(MemorySafety_Refs_Annotated, temporary_target_is_error) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var r: ref String = try String(alloc, "temp");
-  return Result.Ok(0);
+  var r: ref String =  String(alloc, "temp");
+  return 0;
 }
 )"),
                                 "Cannot bind reference");
@@ -169,18 +169,18 @@ using std;
 public class Holder {
   public var a: String;
 
-  init(alloc: ref HeapAllocator) Result<void> {
-    this.a = try String(alloc, "one");
+  init(alloc: ref HeapAllocator)  throws {
+    this.a =  String(alloc, "one");
   }
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var h = try Holder(alloc);
+  var h =  Holder(alloc);
   var moved = h.a;
   var pick: ref String = h.a;
-  return Result.Ok(0);
+  return 0;
 }
 )"),
                                 "Borrow check failed");
@@ -230,13 +230,13 @@ TEST(MemorySafety_Refs_Annotated, conditional_binds_distinct_classes) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i64> {
+function main() i64 throws {
   var alloc = make_heap_allocator();
-  var s1 = try String(alloc, "aaa");
-  var s2 = try String(alloc, "bb");
+  var s1 =  String(alloc, "aaa");
+  var s2 =  String(alloc, "bb");
   var takeFirst: bool = false;
   var r: ref String = takeFirst ? s1 : s2;
-  return Result.Ok(r.length());
+  return r.length();
 }
 )");
   EXPECT_EQ(value, 2);

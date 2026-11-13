@@ -59,8 +59,6 @@ inline const char* describeKind(sun::types::Type::Kind kind) {
       return "an interface type";
     case sun::types::Type::Kind::Enum:
       return "an enum type";
-    case sun::types::Type::Kind::ErrorUnion:
-      return "an error union type";
     case sun::types::Type::Kind::Array:
       return "an array type";
     case sun::types::Type::Kind::Slice:

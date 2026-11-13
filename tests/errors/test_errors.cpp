@@ -32,10 +32,7 @@ TEST(Errors, basic_function_call) {
 TEST(Errors, throw_basic) {
   auto value = executeString(R"(
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -45,20 +42,16 @@ class TestError {
   }
 }
 
-function mayThrow(x: i32) Outcome<i32> {
+function mayThrow(x: i32) i32 throws {
   if (x < 0) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(x * 2);
+  return x * 2;
 }
 
 function main() i32 {
-  return match mayThrow(5) {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -1;
-    }
-  };
+  try { var value = mayThrow(5);
+return value; } catch (e: TestError) { return -1; }
 }
 )");
   EXPECT_EQ(value, 10);
@@ -67,10 +60,7 @@ function main() i32 {
 TEST(Errors, throw_triggers_catch) {
   auto value = executeString(R"(
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -80,20 +70,16 @@ class TestError {
   }
 }
 
-function mayThrow(x: i32) Outcome<i32> {
+function mayThrow(x: i32) i32 throws {
   if (x < 0) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(x * 2);
+  return x * 2;
 }
 
 function main() i32 {
-  return match mayThrow(-5) {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return 99;
-    }
-  };
+  try { var value = mayThrow(-5);
+return value; } catch (e: TestError) { return 99; }
 }
 )");
   EXPECT_EQ(value, 99);
@@ -102,10 +88,7 @@ function main() i32 {
 TEST(Errors, try_catch_success_path) {
   auto value = executeString(R"(
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -115,20 +98,16 @@ class TestError {
   }
 }
 
-function compute(a: i32, b: i32) Outcome<i32> {
+function compute(a: i32, b: i32) i32 throws {
   if (b == 0) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(a / b);
+  return a / b;
 }
 
 function main() i32 {
-  return match compute(20, 4) {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -1;
-    }
-  };
+  try { var value = compute(20, 4);
+return value; } catch (e: TestError) { return -1; }
 }
 )");
   EXPECT_EQ(value, 5);
@@ -140,10 +119,7 @@ function main() i32 {
 TEST(Errors, catch_binding_code_is_usable) {
   auto value = executeString(R"(
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), MyError(MyError) }
-
-class MyError {
+exception MyError {
   init() {}
   const method code() i32 {
     return 7;
@@ -153,20 +129,16 @@ class MyError {
   }
 }
 
-function mayThrow(x: i32) Outcome<i32> {
+function mayThrow(x: i32) i32 throws {
   if (x < 0) {
-    return Outcome.MyError(MyError());
+    throw MyError();
   }
-  return Outcome.Ok(x);
+  return x;
 }
 
 function main() i32 {
-  return match mayThrow(-1) {
-    Outcome.Ok(value) => value,
-    (e: ref MyError) => {
-      return e.code() + 100;
-    }
-  };
+  try { var value = mayThrow(-1);
+return value; } catch (e: MyError) { return e.code() + 100; }
 }
 )");
   EXPECT_EQ(value, 107);
@@ -184,10 +156,7 @@ interface IError {
   const method message() static_ptr<u8>;
 }
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), ErrA(ErrA), ErrB(ErrB) }
-
-class ErrA implements IError {
+exception ErrA implements IError {
   init() {}
   const method code() i32 {
     return 10;
@@ -196,7 +165,7 @@ class ErrA implements IError {
     return "a";
   }
 }
-class ErrB implements IError {
+exception ErrB implements IError {
   init() {}
   const method code() i32 {
     return 20;
@@ -206,20 +175,16 @@ class ErrB implements IError {
   }
 }
 
-function pick(x: i32) Outcome<i32> {
+function pick(x: i32) i32 throws {
   if (x == 1) {
-    return Outcome.ErrA(ErrA());
+    throw ErrA();
   }
-  return Outcome.ErrB(ErrB());
+  throw ErrB();
 }
 
 function main() i32 {
-  return match pick(2) {
-    Outcome.Ok(value) => value,
-    (e: ref IError) => {
-      return e.code();
-    }
-  };
+  try { var value = pick(2);
+return value; } catch (e: ErrA) { return e.code(); } catch (e: ErrB) { return e.code(); }
 }
 )");
   EXPECT_EQ(value, 20);
@@ -240,17 +205,17 @@ interface IError {
   const method message() static_ptr<u8>;
 }
 
-    class ErrA implements IError {
+    exception ErrA implements IError {
       init() {}
       const method code() i32 { return 1; }
       const method message() static_ptr<u8> { return "a"; }
     }
-    class ErrB implements IError {
+    exception ErrB implements IError {
       init() {}
       const method code() i32 { return 2; }
       const method message() static_ptr<u8> { return "b"; }
     }
-    class ErrC implements IError {
+    exception ErrC implements IError {
       init() {}
       const method code() i32 { return 3; }
       const method message() static_ptr<u8> { return "c"; }
@@ -260,54 +225,28 @@ interface IError {
 
 TEST(Errors, typed_catch_selects_matching_clause) {
   auto value = executeString(std::string(kTypedErrors) + R"(
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), ErrA(ErrA), ErrB(ErrB) }
-
-function pick(x: i32) Outcome<i32> {
+function pick(x: i32) i32 throws {
   if (x == 1) {
-    return Outcome.ErrA(ErrA());
+    throw ErrA();
   }
-  return Outcome.ErrB(ErrB());
+  throw ErrB();
 }
 function main() i32 {
-  return match pick(2) {
-    Outcome.Ok(value) => value,
-    (e: ref ErrA) => {
-      return 10;
-    },
-    (e: ref ErrB) => {
-      return 20;
-    },
-    (e: ref IError) => {
-      return 30;
-    }
-  };
+  try { var value = pick(2);
+return value; } catch (e: ErrA) { return 10; } catch (e: ErrB) { return 20; } catch { return 30; }
 }
 )");
   EXPECT_EQ(value, 20);
 }
 
-TEST(Errors, typed_catch_falls_through_to_ierror) {
+TEST(Errors, typed_catch_falls_through_to_catch_all) {
   auto value = executeString(std::string(kTypedErrors) + R"(
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), ErrA(ErrA), ErrB(ErrB), ErrC(ErrC) }
-
-function pick() Outcome<i32> {
-  return Outcome.ErrC(ErrC());
+function pick() i32 throws {
+  throw ErrC();
 }
 function main() i32 {
-  return match pick() {
-    Outcome.Ok(value) => value,
-    (e: ref ErrA) => {
-      return 10;
-    },
-    (e: ref ErrB) => {
-      return 20;
-    },
-    (e: ref IError) => {
-      return e.code();
-    }
-  };
+  try { var value = pick();
+return value; } catch (e: ErrA) { return 10; } catch (e: ErrB) { return 20; } catch { return 3; }
 }
 )");
   EXPECT_EQ(value, 3);  // ErrC.code()
@@ -318,10 +257,7 @@ TEST(Errors, typed_catch_concrete_binding_reads_field) {
   // (not on IError) is callable.
   auto value = executeString(R"(
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), BoundsErr(BoundsErr) }
-
-class BoundsErr {
+exception BoundsErr {
   var idx_: i64;
   init(i: i64) {
     this.idx_ = i;
@@ -336,24 +272,20 @@ class BoundsErr {
     return this.idx_;
   }
 }
-function may(x: i64) Outcome<i64> {
+function may(x: i64) i64 throws {
   if (x < 0) {
-    return Outcome.BoundsErr(BoundsErr(77));
+    throw BoundsErr(77);
   }
-  return Outcome.Ok(x);
+  return x;
 }
 function main() i32 {
   /** Executes a fallible operation. */
-  var attempt_0 = () => Outcome<i32> {
-    var r = try may(-1);
-    return Outcome.Ok(0);
+  var attempt_0 = () => i32 throws {
+    var r =  may(-1);
+    return 0;
   };
-  return match attempt_0() {
-    Outcome.Ok(value) => value,
-    (e: ref BoundsErr) => {
-      return e.idx();
-    }
-  };
+  try { var value = attempt_0();
+return value; } catch (e: BoundsErr) { return e.idx(); }
 }
 )");
   EXPECT_EQ(value, 77);
@@ -363,37 +295,20 @@ TEST(Errors, typed_catch_unmatched_rethrows_to_outer) {
   // Inner try catches only ErrA; a thrown ErrB has no match and rethrows to the
   // enclosing try, which catches it.
   auto value = executeString(std::string(kTypedErrors) + R"(
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), ErrA(ErrA), ErrB(ErrB) }
-
-function pick(x: i32) Outcome<i32> {
+function pick(x: i32) i32 throws {
   if (x == 1) {
-    return Outcome.ErrA(ErrA());
+    throw ErrA();
   }
-  return Outcome.ErrB(ErrB());
+  throw ErrB();
 }
 function main() i32 {
   /** Executes a fallible operation. */
-  var attempt_0 = () => Outcome<i32> {
-    return match pick(2) {
-      Outcome.Ok(value) => Outcome.Ok(value),
-      (e: ref ErrA) => {
-        return Outcome.Ok(10);
-      },
-      Outcome.ErrB(error) => {
-        return Outcome.ErrB(error);
-      }
-    };
+  var attempt_0 = () => i32 throws {
+    try { var value = pick(2);
+return value; } catch (e: ErrA) { return 10; } catch (error: ErrB) { throw error; }
   };
-  return match attempt_0() {
-    Outcome.Ok(value) => value,
-    (e: ref ErrB) => {
-      return 20;
-    },
-    Outcome.ErrA(error) => {
-      return error.code();
-    }
-  };
+  try { var value = attempt_0();
+return value; } catch (e: ErrB) { return 20; } catch (error: ErrA) { return error.code(); }
 }
 )");
   EXPECT_EQ(value, 20);
@@ -402,10 +317,7 @@ function main() i32 {
 TEST(Errors, try_catch_error_path) {
   auto value = executeString(R"(
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -415,20 +327,16 @@ class TestError {
   }
 }
 
-function compute(a: i32, b: i32) Outcome<i32> {
+function compute(a: i32, b: i32) i32 throws {
   if (b == 0) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(a / b);
+  return a / b;
 }
 
 function main() i32 {
-  return match compute(20, 0) {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -1;
-    }
-  };
+  try { var value = compute(20, 0);
+return value; } catch (e: TestError) { return -1; }
 }
 )");
   EXPECT_EQ(value, -1);
@@ -441,10 +349,7 @@ function main() i32 {
 TEST(Errors, nested_try_catch) {
   auto value = executeString(R"(
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -454,25 +359,21 @@ class TestError {
   }
 }
 
-function inner(x: i32) Outcome<i32> {
+function inner(x: i32) i32 throws {
   if (x == 0) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(x);
+  return x;
 }
 
-function outer(x: i32) Outcome<i32> {
-  var result = try inner(x);
-  return Outcome.Ok(result * 2);
+function outer(x: i32) i32 throws {
+  var result =  inner(x);
+  return result * 2;
 }
 
 function main() i32 {
-  return match outer(5) {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -1;
-    }
-  };
+  try { var value = outer(5);
+return value; } catch (e: TestError) { return -1; }
 }
 )");
   EXPECT_EQ(value, 10);
@@ -481,10 +382,7 @@ function main() i32 {
 TEST(Errors, nested_error_propagation) {
   auto value = executeString(R"(
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -494,25 +392,21 @@ class TestError {
   }
 }
 
-function inner(x: i32) Outcome<i32> {
+function inner(x: i32) i32 throws {
   if (x == 0) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(x);
+  return x;
 }
 
-function outer(x: i32) Outcome<i32> {
-  var result = try inner(x);
-  return Outcome.Ok(result * 2);
+function outer(x: i32) i32 throws {
+  var result =  inner(x);
+  return result * 2;
 }
 
 function main() i32 {
-  return match outer(0) {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -1;
-    }
-  };
+  try { var value = outer(0);
+return value; } catch (e: TestError) { return -1; }
 }
 )");
   EXPECT_EQ(value, -1);
@@ -520,10 +414,7 @@ function main() i32 {
 
 TEST(Errors, pass_mayThrow_to_function) {
   auto value = executeString(R"(
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
 
   const method code() i32 {
@@ -535,11 +426,11 @@ class TestError {
   }
 }
 
-function mayThrow(x: i32) Outcome<i32> {
+function mayThrow(x: i32) i32 throws {
   if (x < 0) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(x);
+  return x;
 }
 
 function foo(y: i32) i32 {
@@ -548,13 +439,9 @@ function foo(y: i32) i32 {
 
 function main() i32 {
   /** Propagates an error before evaluating the receiving call. */
-  var invoke = () => Outcome<i32> { return Outcome.Ok(foo(try mayThrow(-5))); };
-  return match invoke() {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -1;
-    }
-  };
+  var invoke = () => i32 throws { return foo( mayThrow(-5)); };
+  try { var value = invoke();
+return value; } catch (e: TestError) { return -1; }
 }
 )");
   EXPECT_EQ(value, -1);
@@ -562,10 +449,7 @@ function main() i32 {
 
 TEST(Errors, pass_mayThrow_success) {
   auto value = executeString(R"(
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
 
   const method code() i32 {
@@ -577,11 +461,11 @@ class TestError {
   }
 }
 
-function mayThrow(x: i32) Outcome<i32> {
+function mayThrow(x: i32) i32 throws {
   if (x < 0) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(x);
+  return x;
 }
 
 function foo(y: i32) i32 {
@@ -590,13 +474,9 @@ function foo(y: i32) i32 {
 
 function main() i32 {
   /** Propagates failure before passing the value to another function. */
-  var invoke = () => Outcome<i32> { return Outcome.Ok(foo(try mayThrow(1))); };
-  return match invoke() {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -1;
-    }
-  };
+  var invoke = () => i32 throws { return foo( mayThrow(1)); };
+  try { var value = invoke();
+return value; } catch (e: TestError) { return -1; }
 }
 )");
   EXPECT_EQ(value, 1);
@@ -609,10 +489,7 @@ function main() i32 {
 TEST(Errors, safe_divide_success) {
   auto value = executeString(R"(
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -622,20 +499,16 @@ class TestError {
   }
 }
 
-function safeDivide(a: i32, b: i32) Outcome<i32> {
+function safeDivide(a: i32, b: i32) i32 throws {
   if (b == 0) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(a / b);
+  return a / b;
 }
 
 function main() i32 {
-  return match safeDivide(42, 7) {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -1;
-    }
-  };
+  try { var value = safeDivide(42, 7);
+return value; } catch (e: TestError) { return -1; }
 }
 )");
   EXPECT_EQ(value, 6);
@@ -644,10 +517,7 @@ function main() i32 {
 TEST(Errors, safe_divide_by_zero) {
   auto value = executeString(R"(
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -657,20 +527,16 @@ class TestError {
   }
 }
 
-function safeDivide(a: i32, b: i32) Outcome<i32> {
+function safeDivide(a: i32, b: i32) i32 throws {
   if (b == 0) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(a / b);
+  return a / b;
 }
 
 function main() i32 {
-  return match safeDivide(42, 0) {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -1;
-    }
-  };
+  try { var value = safeDivide(42, 0);
+return value; } catch (e: TestError) { return -1; }
 }
 )");
   EXPECT_EQ(value, -1);
@@ -681,7 +547,7 @@ TEST(Errors, auto_safe_division_success) {
   auto value = executeString(R"(
 
 /** Represents a fixture failure without a standard-library dependency. */
-class Error {
+exception Error {
   /** Creates the fixture failure. */
   init() {}
   /** Returns its numeric code. */
@@ -693,20 +559,13 @@ class Error {
     return "failure";
   }
 }
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), Error(Error) }
-
-function divide(a: i32, b: i32) Outcome<i32> {
-  return Outcome.Ok(a / b);
+function divide(a: i32, b: i32) i32 throws {
+  return a / b;
 }
 
 function main() i32 {
-  return match divide(100, 5) {
-    Outcome.Ok(value) => value,
-    (e: ref Error) => {
-      return -1;
-    }
-  };
+  try { var value = divide(100, 5);
+return value; } catch (e: Error) { return -1; }
 }
 )");
   EXPECT_EQ(value, 20);
@@ -719,10 +578,7 @@ function main() i32 {
 TEST(Errors, try_catch_with_computation) {
   auto value = executeString(R"(
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -732,25 +588,21 @@ class TestError {
   }
 }
 
-function compute(x: i32) Outcome<i32> {
+function compute(x: i32) i32 throws {
   if (x < 0) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(x * 2);
+  return x * 2;
 }
 
 function main() i32 {
   /** Executes a fallible operation. */
-  var attempt_0 = () => Outcome<i32> {
-    var result = try compute(5);
-    return Outcome.Ok(result + 1);
+  var attempt_0 = () => i32 throws {
+    var result =  compute(5);
+    return result + 1;
   };
-  return match attempt_0() {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return 0;
-    }
-  };
+  try { var value = attempt_0();
+return value; } catch (e: TestError) { return 0; }
 }
 )");
   EXPECT_EQ(value, 11);
@@ -758,10 +610,7 @@ function main() i32 {
 
 TEST(Errors, try_catch_with_multiple_calls) {
   auto value = executeString(R"(
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
 
   const method code() i32 {
@@ -773,32 +622,28 @@ class TestError {
   }
 }
 
-function add(a: i32, b: i32) Outcome<i32> {
+function add(a: i32, b: i32) i32 throws {
   if (a < 0) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(a + b);
+  return a + b;
 }
 
-function mul(a: i32, b: i32) Outcome<i32> {
+function mul(a: i32, b: i32) i32 throws {
   if (b < 0) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(a * b);
+  return a * b;
 }
 
 function main() i32 {
   /** Executes a fallible operation. */
-  var attempt_0 = () => Outcome<i32> {
-    var x = try mul(2, 3);
-    return Outcome.Ok(try add(x, 4));
+  var attempt_0 = () => i32 throws {
+    var x =  mul(2, 3);
+    return  add(x, 4);
   };
-  return match attempt_0() {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -1;
-    }
-  };
+  try { var value = attempt_0();
+return value; } catch (e: TestError) { return -1; }
 }
 )");
   EXPECT_EQ(value, 10);
@@ -807,10 +652,7 @@ function main() i32 {
 TEST(Errors, try_catch_with_variable_args) {
   auto value = executeString(R"(
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -820,23 +662,19 @@ class TestError {
   }
 }
 
-function combine(a: i32, b: i32, c: i32) Outcome<i32> {
+function combine(a: i32, b: i32, c: i32) i32 throws {
   if (a < 0) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(a + b + c);
+  return a + b + c;
 }
 
 function main() i32 {
   var x: i32 = 1;
   var y: i32 = 2;
   var z: i32 = 3;
-  return match combine(x, y, z) {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -1;
-    }
-  };
+  try { var value = combine(x, y, z);
+return value; } catch (e: TestError) { return -1; }
 }
 )");
   EXPECT_EQ(value, 6);
@@ -849,10 +687,7 @@ function main() i32 {
 TEST(Errors, catch_returns_different_value) {
   auto value = executeString(R"(
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -862,20 +697,16 @@ class TestError {
   }
 }
 
-function mayFail(x: i32) Outcome<i32> {
+function mayFail(x: i32) i32 throws {
   if (x == 0) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(x * 10);
+  return x * 10;
 }
 
 function main() i32 {
-  return match mayFail(0) {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return 42;
-    }
-  };
+  try { var value = mayFail(0);
+return value; } catch (e: TestError) { return 42; }
 }
 )");
   EXPECT_EQ(value, 42);
@@ -884,10 +715,7 @@ function main() i32 {
 TEST(Errors, success_returns_original_value) {
   auto value = executeString(R"(
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -897,20 +725,16 @@ class TestError {
   }
 }
 
-function mayFail(x: i32) Outcome<i32> {
+function mayFail(x: i32) i32 throws {
   if (x == 0) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(x * 10);
+  return x * 10;
 }
 
 function main() i32 {
-  return match mayFail(5) {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return 42;
-    }
-  };
+  try { var value = mayFail(5);
+return value; } catch (e: TestError) { return 42; }
 }
 )");
   EXPECT_EQ(value, 50);
@@ -923,10 +747,7 @@ function main() i32 {
 TEST(Errors, multiple_throw_conditions) {
   auto value = executeString(R"(
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -936,23 +757,19 @@ class TestError {
   }
 }
 
-function validate(x: i32) Outcome<i32> {
+function validate(x: i32) i32 throws {
   if (x < 0) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
   if (x > 100) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(x);
+  return x;
 }
 
 function main() i32 {
-  return match validate(50) {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -1;
-    }
-  };
+  try { var value = validate(50);
+return value; } catch (e: TestError) { return -1; }
 }
 )");
   EXPECT_EQ(value, 50);
@@ -961,10 +778,7 @@ function main() i32 {
 TEST(Errors, first_condition_throws) {
   auto value = executeString(R"(
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -974,23 +788,19 @@ class TestError {
   }
 }
 
-function validate(x: i32) Outcome<i32> {
+function validate(x: i32) i32 throws {
   if (x < 0) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
   if (x > 100) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(x);
+  return x;
 }
 
 function main() i32 {
-  return match validate(-5) {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -1;
-    }
-  };
+  try { var value = validate(-5);
+return value; } catch (e: TestError) { return -1; }
 }
 )");
   EXPECT_EQ(value, -1);
@@ -999,10 +809,7 @@ function main() i32 {
 TEST(Errors, second_condition_throws) {
   auto value = executeString(R"(
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -1012,23 +819,19 @@ class TestError {
   }
 }
 
-function validate(x: i32) Outcome<i32> {
+function validate(x: i32) i32 throws {
   if (x < 0) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
   if (x > 100) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(x);
+  return x;
 }
 
 function main() i32 {
-  return match validate(150) {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -2;
-    }
-  };
+  try { var value = validate(150);
+return value; } catch (e: TestError) { return -2; }
 }
 )");
   EXPECT_EQ(value, -2);
@@ -1041,10 +844,7 @@ function main() i32 {
 TEST(Errors, throw_inside_for_loop) {
   auto value = executeString(R"(
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -1054,28 +854,24 @@ class TestError {
   }
 }
 
-function mayThrow(x: i32) Outcome<i32> {
+function mayThrow(x: i32) i32 throws {
   if (x == 5) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(x);
+  return x;
 }
 
 function main() i32 {
   var sum: i32 = 0;
   /** Executes a fallible operation. */
-  var attempt_0 = [ref sum]() => Outcome<i32> {
+  var attempt_0 = [ref sum]() => i32 throws {
     for (var i: i32 = 0; i < 10; i = i + 1) {
-      sum = sum + try mayThrow(i);
+      sum = sum +  mayThrow(i);
     }
-    return Outcome.Ok(sum);
+    return sum;
   };
-  return match attempt_0() {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -1;
-    }
-  };
+  try { var value = attempt_0();
+return value; } catch (e: TestError) { return -1; }
 }
 )");
   // Loop runs i=0,1,2,3,4 then throws at i=5
@@ -1085,10 +881,7 @@ function main() i32 {
 TEST(Errors, throw_inside_while_loop) {
   auto value = executeString(R"(
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -1098,30 +891,26 @@ class TestError {
   }
 }
 
-function mayThrow(x: i32) Outcome<i32> {
+function mayThrow(x: i32) i32 throws {
   if (x == 5) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(x);
+  return x;
 }
 
 function main() i32 {
   var sum: i32 = 0;
   var i: i32 = 0;
   /** Executes a fallible operation. */
-  var attempt_0 = [ref sum, ref i]() => Outcome<i32> {
+  var attempt_0 = [ref sum, ref i]() => i32 throws {
     while (i < 10) {
-      sum = sum + try mayThrow(i);
+      sum = sum +  mayThrow(i);
       i = i + 1;
     }
-    return Outcome.Ok(sum);
+    return sum;
   };
-  return match attempt_0() {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -1;
-    }
-  };
+  try { var value = attempt_0();
+return value; } catch (e: TestError) { return -1; }
 }
 )");
   // Loop runs i=0,1,2,3,4 then throws at i=5
@@ -1131,10 +920,7 @@ function main() i32 {
 TEST(Errors, for_loop_completes_without_throw) {
   auto value = executeString(R"(
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -1144,28 +930,24 @@ class TestError {
   }
 }
 
-function mayThrow(x: i32) Outcome<i32> {
+function mayThrow(x: i32) i32 throws {
   if (x < 0) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(x);
+  return x;
 }
 
 function main() i32 {
   var sum: i32 = 0;
   /** Executes a fallible operation. */
-  var attempt_0 = [ref sum]() => Outcome<i32> {
+  var attempt_0 = [ref sum]() => i32 throws {
     for (var i: i32 = 0; i < 5; i = i + 1) {
-      sum = sum + try mayThrow(i);
+      sum = sum +  mayThrow(i);
     }
-    return Outcome.Ok(sum);
+    return sum;
   };
-  return match attempt_0() {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -1;
-    }
-  };
+  try { var value = attempt_0();
+return value; } catch (e: TestError) { return -1; }
 }
 )");
   // 0+1+2+3+4 = 10
@@ -1175,10 +957,7 @@ function main() i32 {
 TEST(Errors, while_loop_completes_without_throw) {
   auto value = executeString(R"(
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -1188,30 +967,26 @@ class TestError {
   }
 }
 
-function mayThrow(x: i32) Outcome<i32> {
+function mayThrow(x: i32) i32 throws {
   if (x < 0) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(x);
+  return x;
 }
 
 function main() i32 {
   var sum: i32 = 0;
   var i: i32 = 0;
   /** Executes a fallible operation. */
-  var attempt_0 = [ref sum, ref i]() => Outcome<i32> {
+  var attempt_0 = [ref sum, ref i]() => i32 throws {
     while (i < 5) {
-      sum = sum + try mayThrow(i);
+      sum = sum +  mayThrow(i);
       i = i + 1;
     }
-    return Outcome.Ok(sum);
+    return sum;
   };
-  return match attempt_0() {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -1;
-    }
-  };
+  try { var value = attempt_0();
+return value; } catch (e: TestError) { return -1; }
 }
 )");
   // 0+1+2+3+4 = 10
@@ -1221,10 +996,7 @@ function main() i32 {
 TEST(Errors, throw_inside_nested_for_loops) {
   auto value = executeString(R"(
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -1234,32 +1006,28 @@ class TestError {
   }
 }
 
-function mayThrow(x: i32, y: i32) Outcome<i32> {
+function mayThrow(x: i32, y: i32) i32 throws {
   if (x == 2) {
     if (y == 3) {
-      return Outcome.TestError(TestError());
+      throw TestError();
     }
   }
-  return Outcome.Ok(x + y);
+  return x + y;
 }
 
 function main() i32 {
   var sum: i32 = 0;
   /** Executes a fallible operation. */
-  var attempt_0 = [ref sum]() => Outcome<i32> {
+  var attempt_0 = [ref sum]() => i32 throws {
     for (var i: i32 = 0; i < 5; i = i + 1) {
       for (var j: i32 = 0; j < 5; j = j + 1) {
-        sum = sum + try mayThrow(i, j);
+        sum = sum +  mayThrow(i, j);
       }
     }
-    return Outcome.Ok(sum);
+    return sum;
   };
-  return match attempt_0() {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -1;
-    }
-  };
+  try { var value = attempt_0();
+return value; } catch (e: TestError) { return -1; }
 }
 )");
   // Throws when i=2, j=3
@@ -1269,10 +1037,7 @@ function main() i32 {
 TEST(Errors, throw_inside_for_loop_with_break) {
   auto value = executeString(R"(
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -1282,31 +1047,27 @@ class TestError {
   }
 }
 
-function mayThrow(x: i32) Outcome<i32> {
+function mayThrow(x: i32) i32 throws {
   if (x == 8) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(x);
+  return x;
 }
 
 function main() i32 {
   var sum: i32 = 0;
   /** Executes a fallible operation. */
-  var attempt_0 = [ref sum]() => Outcome<i32> {
+  var attempt_0 = [ref sum]() => i32 throws {
     for (var i: i32 = 0; i < 10; i = i + 1) {
       if (i == 5) {
         break;
       }
-      sum = sum + try mayThrow(i);
+      sum = sum +  mayThrow(i);
     }
-    return Outcome.Ok(sum);
+    return sum;
   };
-  return match attempt_0() {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -1;
-    }
-  };
+  try { var value = attempt_0();
+return value; } catch (e: TestError) { return -1; }
 }
 )");
   // Loop breaks at i=5 before throw at i=8
@@ -1317,10 +1078,7 @@ function main() i32 {
 TEST(Errors, throw_inside_while_loop_with_continue) {
   auto value = executeString(R"(
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -1330,33 +1088,29 @@ class TestError {
   }
 }
 
-function mayThrow(x: i32) Outcome<i32> {
+function mayThrow(x: i32) i32 throws {
   if (x == 10) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(x);
+  return x;
 }
 
 function main() i32 {
   var sum: i32 = 0;
   var i: i32 = 0;
   /** Executes a fallible operation. */
-  var attempt_0 = [ref sum, ref i]() => Outcome<i32> {
+  var attempt_0 = [ref sum, ref i]() => i32 throws {
     while (i < 8) {
       i = i + 1;
       if (i / 2 * 2 == i) {
         continue;
       }
-      sum = sum + try mayThrow(i);
+      sum = sum +  mayThrow(i);
     }
-    return Outcome.Ok(sum);
+    return sum;
   };
-  return match attempt_0() {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -1;
-    }
-  };
+  try { var value = attempt_0();
+return value; } catch (e: TestError) { return -1; }
 }
 )");
   // Adds odd numbers 1+3+5+7 = 16
@@ -1365,10 +1119,7 @@ function main() i32 {
 
 TEST(Errors, throw_after_loop_iteration) {
   auto value = executeString(R"(
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
 
   const method code() i32 {
@@ -1380,28 +1131,24 @@ class TestError {
   }
 }
 
-function process(x: i32) Outcome<i32> {
+function process(x: i32) i32 throws {
   if (x > 20) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(x);
+  return x;
 }
 
 function main() i32 {
   var sum: i32 = 0;
   /** Executes a fallible operation. */
-  var attempt_0 = [ref sum]() => Outcome<i32> {
+  var attempt_0 = [ref sum]() => i32 throws {
     for (var i: i32 = 1; i <= 5; i = i + 1) {
       sum = sum + i;
     }
-    return Outcome.Ok(try process(sum));
+    return  process(sum);
   };
-  return match attempt_0() {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -1;
-    }
-  };
+  try { var value = attempt_0();
+return value; } catch (e: TestError) { return -1; }
 }
 )");
   // sum = 1+2+3+4+5 = 15, process(15) succeeds
@@ -1410,10 +1157,7 @@ function main() i32 {
 
 TEST(Errors, throw_after_loop_exceeds_limit) {
   auto value = executeString(R"(
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
 
   const method code() i32 {
@@ -1425,28 +1169,24 @@ class TestError {
   }
 }
 
-function process(x: i32) Outcome<i32> {
+function process(x: i32) i32 throws {
   if (x > 20) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(x);
+  return x;
 }
 
 function main() i32 {
   var sum: i32 = 0;
   /** Executes a fallible operation. */
-  var attempt_0 = [ref sum]() => Outcome<i32> {
+  var attempt_0 = [ref sum]() => i32 throws {
     for (var i: i32 = 1; i <= 10; i = i + 1) {
       sum = sum + i;
     }
-    return Outcome.Ok(try process(sum));
+    return  process(sum);
   };
-  return match attempt_0() {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -1;
-    }
-  };
+  try { var value = attempt_0();
+return value; } catch (e: TestError) { return -1; }
 }
 )");
   // sum = 1+2+...+10 = 55 > 20, so process throws
@@ -1461,38 +1201,54 @@ TEST(Errors, error_carries_a_computed_string_message) {
   auto value = executeStringWithStdlib(R"(
 using std;
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), Error(Error), Allocation(AllocationError), InvalidArgument(InvalidArgumentError), Overflow(OverflowError) }
+function boom(path: ref String) void throws {
+  throw  Error(-7, path);
 
-function boom(path: ref String) Outcome<void> {
-  return Outcome.Error(try Error(-7, path));
-
-  return Outcome.Ok;
+  return;
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var a = make_heap_allocator();
-  var path = try String(a, "/tmp/");
-  try path.append("computed.txt");
+  var path =  String(a, "/tmp/");
+   path.append("computed.txt");
   /** Executes a fallible operation. */
-  var attempt_0 = [ref path]() => Outcome<void> {
-    try boom(path);
+  var attempt_0 = [ref path]() => void throws {
+     boom(path);
 
-    return Outcome.Ok;
+    return;
   };
-  match attempt_0() {
-    Outcome.Ok => {},
-    (e: ref IError) => {
+  try { attempt_0();
+ } catch (e: Error) {
       // The message outlives the String's scope: Error keeps its own copy.
-      var msg: String = try e.message();
+      var msg: String =  e.message();
       if (not msg.equals(path)) {
-        return Result.Ok(-2);
+        return -2;
       }
-      return Result.Ok(e.code());
-    }
-  };
-  return Result.Ok(0);
+      return e.code();
+     } catch (e: AllocationError) {
+      // The message outlives the String's scope: Error keeps its own copy.
+      var msg: String =  e.message();
+      if (not msg.equals(path)) {
+        return -2;
+      }
+      return e.code();
+     } catch (e: InvalidArgumentError) {
+      // The message outlives the String's scope: Error keeps its own copy.
+      var msg: String =  e.message();
+      if (not msg.equals(path)) {
+        return -2;
+      }
+      return e.code();
+     } catch (e: OverflowError) {
+      // The message outlives the String's scope: Error keeps its own copy.
+      var msg: String =  e.message();
+      if (not msg.equals(path)) {
+        return -2;
+      }
+      return e.code();
+     }
+  return 0;
 }
 )");
   EXPECT_EQ(value, -7);
@@ -1502,43 +1258,68 @@ TEST(Errors, computed_error_message_survives_the_string_it_came_from) {
   auto value = executeStringWithStdlib(R"(
 using std;
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), Error(Error), Allocation(AllocationError), InvalidArgument(InvalidArgumentError), Overflow(OverflowError) }
-
 // The String is built, moved into the Error and dropped here; only the
 // Error's copy is left for the caller to read.
-function make(a: ref HeapAllocator) Outcome<void> {
-  var msg = try String(a, "gone");
-  try msg.append(" by now");
-  return Outcome.Error(try Error(3, msg));
+function make(a: ref HeapAllocator) void throws {
+  var msg =  String(a, "gone");
+   msg.append(" by now");
+  throw  Error(3, msg);
 
-  return Outcome.Ok;
+  return;
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var a = make_heap_allocator();
   /** Executes a fallible operation. */
-  var attempt_0 = [ref a]() => Outcome<void> {
-    try make(a);
+  var attempt_0 = [ref a]() => void throws {
+     make(a);
 
-    return Outcome.Ok;
+    return;
   };
-  match attempt_0() {
-    Outcome.Ok => {},
-    (e: ref IError) => {
-      var text: String = try e.message();
+  try { attempt_0();
+ } catch (e: Error) {
+      var text: String =  e.message();
       if (text.length() != 11) {
-        return Result.Ok(-2);
+        return -2;
       }
       // 'g' is 103: the clone is real bytes, not freed storage.
       if (unsafe { text.unsafe_at(0); } != 103) {
-        return Result.Ok(-3);
+        return -3;
       }
-      return Result.Ok(e.code());
-    }
-  };
-  return Result.Ok(0);
+      return e.code();
+     } catch (e: AllocationError) {
+      var text: String =  e.message();
+      if (text.length() != 11) {
+        return -2;
+      }
+      // 'g' is 103: the clone is real bytes, not freed storage.
+      if (unsafe { text.unsafe_at(0); } != 103) {
+        return -3;
+      }
+      return e.code();
+     } catch (e: InvalidArgumentError) {
+      var text: String =  e.message();
+      if (text.length() != 11) {
+        return -2;
+      }
+      // 'g' is 103: the clone is real bytes, not freed storage.
+      if (unsafe { text.unsafe_at(0); } != 103) {
+        return -3;
+      }
+      return e.code();
+     } catch (e: OverflowError) {
+      var text: String =  e.message();
+      if (text.length() != 11) {
+        return -2;
+      }
+      // 'g' is 103: the clone is real bytes, not freed storage.
+      if (unsafe { text.unsafe_at(0); } != 103) {
+        return -3;
+      }
+      return e.code();
+     }
+  return 0;
 }
 )");
   EXPECT_EQ(value, 3);
@@ -1549,10 +1330,10 @@ TEST(Errors, error_still_takes_a_literal_message) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var e: Error = Error(5, "plain literal");
-  var msg: String = try e.message();
-  return Result.Ok(_convert<i32>(e.code() + _convert<i32>(msg.length())));
+  var msg: String =  e.message();
+  return _convert<i32>(e.code() + _convert<i32>(msg.length()));
 }
 )");
   EXPECT_EQ(value, 18);  // 5 + 13
@@ -1563,13 +1344,13 @@ TEST(Errors, message_returns_an_independent_clone_each_time) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var e: Error = Error(1, "abc");
-  var first: String = try e.message();
-  try first.append("!");
+  var first: String =  e.message();
+   first.append("!");
   // Mutating one clone must not leak into the next.
-  var second: String = try e.message();
-  return Result.Ok(_convert<i32>(first.length() * 10 + second.length()));
+  var second: String =  e.message();
+  return _convert<i32>(first.length() * 10 + second.length());
 }
 )");
   EXPECT_EQ(value, 43);  // first grew to 4, second is a fresh 3
@@ -1599,10 +1380,7 @@ TEST(Errors, throw_and_catch_work_without_stdlib) {
   // literal message with nothing imported.
   auto value = executeString(R"(
 
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), Boom(Boom) }
-
-class Boom {
+exception Boom {
   init() {}
   const method code() i32 {
     return 9;
@@ -1612,17 +1390,13 @@ class Boom {
   }
 }
 
-function fail() Outcome<i32> {
-  return Outcome.Boom(Boom());
+function fail() i32 throws {
+  throw Boom();
 }
 
 function main() i32 {
-  return match fail() {
-    Outcome.Ok(value) => value,
-    (e: ref Boom) => {
-      return e.code() + _convert<i32>(e.message().length());
-    }
-  };
+  try { var value = fail();
+return value; } catch (e: Boom) { return e.code() + _convert<i32>(e.message().length()); }
 }
 )");
   EXPECT_EQ(value, 13);  // 9 + 4
@@ -1688,7 +1462,7 @@ TEST(Errors, returning_from_inside_the_try_is_the_value_form) {
   auto value = executeString(R"(
 
 /** Represents a fixture failure without a standard-library dependency. */
-class Error {
+exception Error {
   /** Creates the fixture failure. */
   init() {}
   /** Returns its numeric code. */
@@ -1700,19 +1474,12 @@ class Error {
     return "failure";
   }
 }
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), Error(Error) }
-
-function g() Outcome<i32> {
-  return Outcome.Ok(5);
+function g() i32 throws {
+  return 5;
 }
 function main() i32 {
-  return match g() {
-    Outcome.Ok(value) => value,
-    (e: ref Error) => {
-      return -1;
-    }
-  };
+  try { var value = g();
+return value; } catch (e: Error) { return -1; }
 }
 )");
   EXPECT_EQ(value, 5);
@@ -1720,10 +1487,7 @@ function main() i32 {
 
 TEST(Errors, bool_leading_class_return_field_access) {
   auto value = executeString(R"(
-/** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
-
-class TestError {
+exception TestError {
   init() {}
 
   const method code() i32 {
@@ -1736,7 +1500,7 @@ class TestError {
 }
 
 class R {
-  public var ok: bool;
+  public var ok: bool = false;
   public var t: i64;
 
   init() {
@@ -1745,36 +1509,34 @@ class R {
   }
 }
 
-function make(fail: bool) Outcome<R> {
+function make(fail: bool) R throws {
   if (fail) {
-    return Outcome.TestError(TestError());
+    throw TestError();
   }
-  return Outcome.Ok(R());
+  return R();
 }
 
 function main() i32 {
   var result: i32 = 0;
   /** Executes a fallible operation. */
-  var attempt_0 = [ref result]() => Outcome<i32> {
-    if ((try make(false)).ok) {
+  var attempt_0 = [ref result]() => i32 throws {
+    if (( make(false)).ok) {
       result = 40;
     }
-    if ((try make(false)).t != 37) {
-      return Outcome.Ok(1);
+    if (( make(false)).t != 37) {
+      return 1;
     }
-    if ((try make(true)).ok) {
-      return Outcome.Ok(2);
+    if (( make(true)).ok) {
+      return 2;
     }
-    return Outcome.Ok(3);
+    return 3;
   };
-  match attempt_0() {
-    Outcome.Ok(value) => {
+  try { var value = attempt_0();
+
       return value;
-    },
-    (e: ref TestError) => {
+     } catch (e: TestError) {
       result = result + 2;
-    }
-  };
+     }
   return result;
 }
 )");

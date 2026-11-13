@@ -410,6 +410,23 @@ pbc::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
       serializeQualifiedName(
           static_cast<const sun::ast::QualifiedNameAST&>(expr), &node);
       break;
+    case ASTNodeType::THROW: {
+      const auto& value = static_cast<const sun::ast::ThrowAST&>(expr).value;
+      auto* output = node.mutable_native_throw();
+      if (value) *output->mutable_error_expr() = serialize(*value);
+      break;
+    }
+    case ASTNodeType::TRY_CATCH: {
+      const auto& input = static_cast<const sun::ast::TryCatchAST&>(expr);
+      auto* output = node.mutable_native_try_catch();
+      *output->mutable_body() = serialize(*input.body);
+      for (const auto& handler : input.handlers) {
+        auto* target = output->add_handlers();
+        if (handler.binding) *target->mutable_binding() = serialize(*handler.binding);
+        *target->mutable_body() = serialize(*handler.body);
+      }
+      break;
+    }
     case ASTNodeType::CLASS_DEFINITION:
       serializeClassDef(static_cast<const sun::ast::ClassDefinitionAST&>(expr),
                         &node);
@@ -692,7 +709,6 @@ void ASTSerializer::serializeIf(const sun::ast::IfExprAST& expr,
 void ASTSerializer::serializeMatch(const sun::ast::MatchExprAST& expr,
                                    pbc::ASTNode* node) const {
   auto* match = node->mutable_match_expr();
-  match->set_propagation(expr.isPropagation());
   *match->mutable_discriminant() = serialize(*expr.getDiscriminant());
   for (const auto& arm : expr.getArms()) {
     auto* armProto = match->add_arms();
@@ -907,6 +923,9 @@ void ASTSerializer::serializeClassDef(const sun::ast::ClassDefinitionAST& expr,
   node->mutable_class_def()->set_source_file_id(expr.getSourceFileId());
   auto* cls = node->mutable_class_def();
   cls->set_name(expr.getName());
+  cls->set_is_exception(expr.isException());
+  if (expr.getExceptionParent())
+    *cls->mutable_exception_parent() = serializeTypeAnnotation(*expr.getExceptionParent());
   for (const auto& name : expr.getCompiledSpecializations()) {
     cls->add_compiled_specializations()->set_declaration_key(name);
   }

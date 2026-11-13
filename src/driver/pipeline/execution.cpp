@@ -14,6 +14,7 @@
 #include <sstream>
 
 #include "abi/abi_compatibility_checker.h"
+#include "ast/ast_children.h"
 #include "borrow_checker/borrow_checker.h"
 #include "debug/ast_dot_generator.h"
 #include "debug/scope_tree_generator.h"
@@ -44,6 +45,29 @@ namespace sun::driver {
 
 static llvm::ExitOnError ExitOnErr;
 using llvm::orc::ThreadSafeModule;
+
+/** Retains the exception ABI requirement even for uninstantiated generic bodies. */
+static bool requiresNativeExceptions(const sun::ast::ExprAST& expression) {
+  using sun::ast::ASTNodeType;
+  if (expression.getType() == ASTNodeType::THROW ||
+      expression.getType() == ASTNodeType::TRY_CATCH) {
+    return true;
+  }
+  if (expression.getType() == ASTNodeType::CLASS_DEFINITION &&
+      static_cast<const sun::ast::ClassDefinitionAST&>(expression).isException()) {
+    return true;
+  }
+  if (expression.getType() == ASTNodeType::FUNCTION &&
+      static_cast<const sun::ast::FunctionAST&>(expression).getProto().canThrow()) {
+    return true;
+  }
+  bool required = false;
+  /** Includes retained bodies that have not yet produced LLVM functions. */
+  sun::ast::forEachChild(expression, [&](const sun::ast::ExprAST& child) {
+    if (!required) required = requiresNativeExceptions(child);
+  });
+  return required;
+}
 
 /**
  * Strip library code the program never uses before optimizing an executable.
@@ -266,6 +290,10 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
   // Generate code into single module
   {
     ScopedStage stage("codegen");
+    if (requiresNativeExceptions(*blockAst)) {
+      ctx->mainModule->addModuleFlag(llvm::Module::Max,
+                                    "sun.exceptions.bounded", 1);
+    }
     codegenVisitor->codegen(*blockAst);
     if (mainAdapter) {
       auto* adapter = codegenVisitor->functionRegistry().lookupFunctionById(

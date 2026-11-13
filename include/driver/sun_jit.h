@@ -2,13 +2,13 @@
 
 #include <memory>
 
+#include "driver/jit/unwind_registration.h"
+
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ExecutionEngine/JITLink/EHFrameSupport.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/DebugObjectManagerPlugin.h"
-#include "llvm/ExecutionEngine/Orc/EHFrameRegistrationPlugin.h"
 #include "llvm/ExecutionEngine/Orc/EPCDebugObjectRegistrar.h"
 #include "llvm/ExecutionEngine/Orc/ExecutionUtils.h"
 #include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
@@ -51,8 +51,9 @@ class SunJIT {
   JITDylib& MainJD;
 
   /**
-   * Build the JITLink object layer. Eh-frame registration lets thrown Sun
-   * errors unwind through JITed frames. (If exception interop proves
+   * Build the JITLink object layer. Frame registration prepares native lookup
+   * indexes before code becomes callable and keeps personality cells local to
+   * their owning modules. (If exception interop proves
    * incomplete on Apple Silicon, the known next step is MachOPlatform with
    * the ORC runtime, which also registers compact-unwind info.) The debug
    * object plugin hands each JITed ELF object to gdb's JIT interface so -g
@@ -61,8 +62,7 @@ class SunJIT {
    */
   static std::unique_ptr<ObjectLayer> makeObjectLayer(ExecutionSession& ES) {
     auto Layer = std::make_unique<ObjectLinkingLayer>(ES);
-    Layer->addPlugin(std::make_unique<EHFrameRegistrationPlugin>(
-        ES, std::make_unique<jitlink::InProcessEHFrameRegistrar>()));
+    jit::addUnwindRegistration(*Layer, ES);
     // The registrar calls straight into this process's copy of LLVM's gdb
     // loader, the same way the eh-frame registrar above does. Every object is
     // registered, not only those with debug sections, so gdb can still place

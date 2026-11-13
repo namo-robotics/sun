@@ -64,7 +64,7 @@ TEST(Interfaces, class_implements_interface) {
 
     class SimpleCounter implements Counter {
       var value: i32;
-      
+
       init() {
         this.value = 0;
       }
@@ -92,7 +92,7 @@ TEST(Interfaces, interface_field_inherited) {
       init(v: i32) {
         this.value = v;
       }
-      
+
       method get() i32 {
         return this.value;
       }
@@ -138,7 +138,7 @@ TEST(Interfaces, override_default_method) {
     class SmartThinker implements Answerable {
       init() {
       }
-      
+
       method answer() i32 {
         return 100;
       }
@@ -171,7 +171,7 @@ TEST(Interfaces, multiple_interfaces) {
         this.x = px;
         this.y = py;
       }
-      
+
       method sum() i32 {
         return this.x + this.y;
       }
@@ -198,11 +198,11 @@ TEST(Interfaces, multiple_interfaces_with_methods) {
     class Calculator implements Adder, Multiplier {
       init() {
       }
-      
+
       method add(a: i32, b: i32) i32 {
         return a + b;
       }
-      
+
       method mult(a: i32, b: i32) i32 {
         return a * b;
       }
@@ -224,7 +224,7 @@ TEST(Interfaces, interface_default_uses_field) {
   auto value = executeString(R"(
     interface Incrementable {
       var counter: i32;
-      
+
       method increment() i32 {
         return this.counter + 1;
       }
@@ -256,12 +256,12 @@ TEST(Interfaces, class_own_plus_interface_fields) {
 
     class Entity implements HasId {
       var name_length: i32;
-      
+
       init(id: i32, len: i32) {
         this.id = id;
         this.name_length = len;
       }
-      
+
       method total() i32 {
         return this.id + this.name_length;
       }
@@ -781,21 +781,21 @@ class NumB implements IValue {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var items = try Vec<NumA>(alloc, 8);
+  var items =  Vec<NumA>(alloc, 8);
   var a = NumA(10);
   var b = NumA(10);
   var c = NumA(3);
-  try items.push(a);
-  try items.push(b);
-  try items.push(c);
+   items.push(a);
+   items.push(b);
+   items.push(c);
   var sum: i32 = 0;
   for (var item: ref NumA in items) {
     var view: ref IValue = item;
     sum = sum + view.get();
   }
-  return Result.Ok(sum);
+  return sum;
 }
 )");
   // Concrete elements are borrowed through the interface during iteration.
@@ -1564,13 +1564,13 @@ interface IError {
 }
 
 /** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), MyError(MyError) }
+
 
 /** Adds an error category. */
 interface Failure extends IError {
 }
 /** Supplies the inherited error contract. */
-class MyError implements Failure {
+exception MyError implements Failure {
   /** Constructs the error. */
   init() {}
   /** Returns its error code. */
@@ -1583,23 +1583,21 @@ class MyError implements Failure {
   }
 }
 /** Throws the descendant implementation. */
-function fail() Outcome<void> {
-  return Outcome.MyError(MyError());
-  return Outcome.Ok;
+function fail() void throws {
+  throw MyError();
+  return;
 }
 /** Catches through the ancestor. */
 function main() i32 {
   /** Executes a fallible operation. */
-  var attempt_0 = () => Outcome<void> {
-    try fail();
-    return Outcome.Ok;
+  var attempt_0 = () => void throws {
+     fail();
+    return;
   };
-  match attempt_0() {
-    Outcome.Ok => {},
-    (error: ref IError) => {
+  try { attempt_0();
+ } catch (error: MyError) {
       return error.code();
-    }
-  };
+     }
   return 0;
 }
 )"),
@@ -1622,7 +1620,7 @@ TEST(Interfaces, owning_ancestor_assignment_is_rejected) {
     /** Requires a readable value. */ interface Base { /** Reads the value. */ method read() i32; }
     /** Inherits the contract. */ interface Child extends Base {}
     /** Stores a concrete value. */ class Item implements Child {
-      var value: i32;
+      var value: i32 = 0;
       /** Initializes the value. */ init(value: i32) { this.value = value; }
       /** Reads the value. */ method read() i32 { return this.value; }
     }
@@ -1859,15 +1857,15 @@ interface IError {
 }
 
 /** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), Failure(Failure) }
+
 
 /** Describes a fallible operation. */
 interface Operation {
   /** Runs the operation. */
-  method run() Outcome<void>;
+  method run() void throws;
 }
 /** Identifies a failed operation. */
-class Failure implements IError {
+exception Failure implements IError {
   /** Creates the error. */
   init() {}
   /** Returns the error code. */
@@ -1884,19 +1882,17 @@ class Task implements Operation {
   /** Creates the task. */
   init() {}
   /** Reports failure. */
-  method run() Outcome<void> {
-    return Outcome.Failure(Failure());
-    return Outcome.Ok;
+  method run() void throws {
+    throw Failure();
+    return;
   }
 }
 /** Catches an error from an indirect call. */
 function invoke(task: ref Operation) i32 {
-  match task.run() {
-    Outcome.Ok => {},
-    (error: ref IError) => {
+  try { task.run();
+ } catch (error: Failure) {
       return error.code();
-    }
-  };
+     }
   return 0;
 }
 /** Exercises interface dispatch. */
@@ -1921,16 +1917,16 @@ interface IError {
 }
 
 /** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), Failure(Failure) }
+
 
 /** Provides a fallible value. */
 interface Source<T> {
   /** Obtains the value. */
-  method read() Outcome<T>;
+  method read() T throws;
 
   /** Forwards the operation. */
-  method forward() Outcome<T> {
-    return Outcome.Ok(try this.read());
+  method forward() T throws {
+    return  this.read();
   }
 }
 
@@ -1939,7 +1935,7 @@ interface Child extends Source<i32> {
 }
 
 /** Identifies a failed read. */
-class Failure implements IError {
+exception Failure implements IError {
   /** Creates the error. */
   init() {}
 
@@ -1960,30 +1956,22 @@ class Reader implements Child {
   init() {}
 
   /** Reports failure. */
-  method read() Outcome<i32> {
-    return Outcome.Failure(Failure());
+  method read() i32 throws {
+    throw Failure();
   }
 }
 
 /** Catches failure through an inherited vtable slot. */
 function invoke(reader: ref Child) i32 {
-  return match reader.forward() {
-    Outcome.Ok(value) => value,
-    (error: ref IError) => {
-      return error.code();
-    }
-  };
+  try { var value = reader.forward();
+return value; } catch (error: Failure) { return error.code(); }
 }
 
 /** Exercises the default on concrete and erased receivers. */
 function main() i32 {
   var reader = Reader();
-  return match reader.forward() {
-    Outcome.Ok(value) => value,
-    (error: ref IError) => {
-      return invoke(reader);
-    }
-  };
+  try { var value = reader.forward();
+return value; } catch (error: Failure) { return invoke(reader); }
 }
 )"),
             42);
@@ -2002,7 +1990,7 @@ interface IError {
 }
 
 /** Represents a fixture failure without a standard-library dependency. */
-class Error implements IError {
+exception Error implements IError {
   /** Creates the fixture failure. */
   init() {}
 
@@ -2018,18 +2006,18 @@ class Error implements IError {
 }
 
 /** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), Error(Error) }
+
 
 /** Permits a failing implementation. */
 interface Source {
   /** Reads a value. */
-  method read() Outcome<i32>;
+  method read() i32 throws;
 }
 
 /** Narrows the inherited error contract. */
 interface Child extends Source {
   /** Reads without failure. */
-  method read() Outcome<i32>;
+  method read() i32 throws;
 }
 
 /** Always produces a value. */
@@ -2038,8 +2026,8 @@ class Reader implements Child {
   init() {}
 
   /** Returns the value. */
-  method read() Outcome<i32> {
-    return Outcome.Ok(42);
+  method read() i32 throws {
+    return 42;
   }
 }
 
@@ -2049,13 +2037,13 @@ class DirectReader implements Source {
   init() {}
 
   /** Returns the value. */
-  method read() Outcome<i32> {
-    return Outcome.Ok(21);
+  method read() i32 throws {
+    return 21;
   }
 }
 
 /** Calls through the fallible parent contract. */
-function invoke(reader: ref Source) Outcome<i32> {
+function invoke(reader: ref Source) i32 throws {
   return reader.read();
 }
 
@@ -2064,15 +2052,11 @@ function main() i32 {
   var reader = Reader();
   var direct = DirectReader();
   /** Propagates each operation before adding successful values. */
-  var combine = [ref reader, ref direct]() => Outcome<i32> {
-    return Outcome.Ok(try invoke(reader) + try invoke(direct));
+  var combine = [ref reader, ref direct]() => i32 throws {
+    return  invoke(reader) +  invoke(direct);
   };
-  return match combine() {
-    Outcome.Ok(value) => value,
-    (error: ref IError) => {
-      return 0;
-    }
-  };
+  try { var value = combine();
+return value; } catch (error: Error) { return 0; }
 }
 )"),
             63);
@@ -2083,12 +2067,12 @@ function main() i32 {
 TEST(Interfaces, throwing_method_requires_error_handling) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     /** Describes a fallible operation. */
-    interface Operation { /** Runs the operation. */ method run() _Result<void, i32>; }
+    interface Operation { /** Runs the operation. */ method run() void throws; }
     /** Omits the required handler. */
     function invoke(task: ref Operation) void { task.run(); }
     /** Supplies an entry point. */ function main() i32 { return 0; }
   )"),
-                                "Error result must be handled");
+                                "requires a try block or a throws declaration");
 }
 
 /** Implementations cannot add failure to an infallible interface contract. */
@@ -2099,11 +2083,11 @@ TEST(Interfaces, throwing_method_cannot_implement_nonthrowing_contract) {
     /** Attempts to weaken the contract. */
     class Task implements Operation {
       /** Creates the task. */ init() {}
-      /** Declares possible failure. */ method run() _Result<void, i32> { return _Result.Ok; }
+      /** Declares possible failure. */ method run() void throws { return; }
     }
     /** Supplies an entry point. */ function main() i32 { return 0; }
   )"),
-                                "return type");
+                                "cannot implement a non-throwing interface method");
 }
 
 /** Child interfaces cannot add failure to an inherited method. */
@@ -2112,7 +2096,7 @@ TEST(Interfaces, throwing_override_cannot_weaken_parent_contract) {
     /** Promises an infallible operation. */
     interface Parent { /** Runs without failure. */ method run() void; }
     /** Attempts to weaken the inherited promise. */
-    interface Child extends Parent { /** Adds possible failure. */ method run() _Result<void, i32>; }
+    interface Child extends Parent { /** Adds possible failure. */ method run() void throws; }
     /** Supplies an entry point. */ function main() i32 { return 0; }
   )"),
                                 "changes its inherited contract");
@@ -2125,7 +2109,7 @@ TEST(Interfaces, throwing_method_rejects_invalid_error_type) {
     interface Operation { /** Uses an unsupported error type. */ method run() void throws i32; }
     /** Supplies an entry point. */ function main() i32 { return 0; }
   )"),
-                                "'throws' is no longer supported");
+                                "'throws' does not take an error type");
 }
 
 /** Default bodies must handle calls to fallible interface requirements. */
@@ -2133,22 +2117,22 @@ TEST(Interfaces, throwing_call_in_nonthrowing_default_is_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     /** Defines a fallible requirement and an invalid default. */
     interface Operation {
-      /** Runs the operation. */ method run() _Result<void, i32>;
+      /** Runs the operation. */ method run() void throws;
       /** Omits the required handler. */ method forward() void { this.run(); }
     }
     /** Supplies an entry point. */ function main() i32 { return 0; }
   )"),
-                                "Error result must be handled");
+                                "requires a try block or a throws declaration");
 }
 
 /** Generic callers must honor the error contract on their type constraint. */
 TEST(Interfaces, throwing_constrained_method_requires_error_handling) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     /** Describes a fallible operation. */
-    interface Operation { /** Runs the operation. */ method run() _Result<void, i32>; }
+    interface Operation { /** Runs the operation. */ method run() void throws; }
     /** Omits the required handler in a generic body. */
     function invoke<T: Operation>(task: ref T) void { task.run(); }
     /** Supplies an entry point. */ function main() i32 { return 0; }
   )"),
-                                "Error result must be handled");
+                                "requires a try block or a throws declaration");
 }

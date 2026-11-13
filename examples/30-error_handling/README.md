@@ -1,9 +1,8 @@
 # Error Handling
 
-Functions that can fail return an enum. The first variant holds success;
-other variants own concrete errors. Use `try expression` to propagate a failure,
-or `match` to handle it. One typed interface arm can handle several error
-variants without erasing the owned payload types.
+Functions that can fail declare `throws` and return ordinary values on success.
+Use `exception` to define a failure type and `extends` to group related failures.
+A `try` block with a family catch handles every descendant of that family.
 
 ## Build and run
 

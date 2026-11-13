@@ -381,7 +381,14 @@ BundleContract describeContract(const llvm::Module& module) {
   require(contract, "llvm.bitcode", emissionImplementation("llvm.bitcode"));
   require(contract, "sun.experimental.semantics",
           emissionImplementation("sun.experimental.semantics"));
+  if (module.getModuleFlag("sun.exceptions.bounded")) {
+    require(contract, "sun.exceptions.bounded",
+            emissionImplementation("sun.exceptions.bounded"));
+  }
   for (const auto& function : module) {
+    if (function.getName().starts_with("sun_eh_") || function.getName() == "sun_panic")
+      require(contract, "sun.exceptions.bounded",
+              emissionImplementation("sun.exceptions.bounded"));
     const bool guarded = hasGuardedCPURequirements(function);
     const auto features = function.getFnAttribute("target-features");
     if (features.isValid() && !guarded) {

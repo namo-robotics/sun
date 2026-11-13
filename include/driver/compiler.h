@@ -401,6 +401,12 @@ inline bool linkExecutable(const std::string& objectPath,
   for (const auto& argument : linkOpts.arguments) {
     cmd += " " + shellQuote(argument);
   }
+  // The prototype archive is built for the compiler's host target.
+  if (triple.getArch() == llvm::Triple(llvm::sys::getDefaultTargetTriple()).getArch() &&
+      ((triple.isOSDarwin() && llvm::Triple(llvm::sys::getDefaultTargetTriple()).isOSDarwin()) ||
+       (triple.isOSLinux() && llvm::Triple(llvm::sys::getDefaultTargetTriple()).isOSLinux()))) {
+    cmd += " " + shellQuote(SUN_EXCEPTION_RUNTIME_ARCHIVE);
+  }
   cmd += isDarwin ? " -lc++" : " -lstdc++";
 
   // Capture the driver's diagnostics so every line has a Sun severity label.

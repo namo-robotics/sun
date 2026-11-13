@@ -85,6 +85,8 @@ class ClassDefinitionAST : public ExprAST {
   uint64_t alignment_ = 0;  // Zero means natural alignment.
   bool isPartial_ = false;  // True for "partial class X {}" (methods only)
   bool isPacked_ = false;   // True for "packed class X {}" (no field padding)
+  bool isException_ = false;
+  std::optional<TypeAnnotation> exceptionParent_;
   std::string doc_;         // Comment written above the class
 
  protected:
@@ -107,6 +109,18 @@ class ClassDefinitionAST : public ExprAST {
   }
 
  public:
+  /** Marks a bounded exception declaration without enabling class inheritance. */
+  void setException(bool value) { isException_ = value; }
+  /** Reports whether this declaration can be thrown and caught. */
+  bool isException() const { return isException_; }
+  /** Records the optional parent family as source type syntax. */
+  void setExceptionParent(std::optional<TypeAnnotation> parent) {
+    exceptionParent_ = std::move(parent);
+  }
+  /** Returns the declared parent family, if present. */
+  const std::optional<TypeAnnotation>& getExceptionParent() const {
+    return exceptionParent_;
+  }
   /** Creates this syntax node and takes ownership of any supplied child
    * expressions. */
   ClassDefinitionAST(std::string name, std::vector<TypeParameter> typeParams,
@@ -337,7 +351,7 @@ class ClassDefinitionAST : public ExprAST {
    * Keyword that introduces this qualifiedName in source
    */
   const char* classKeyword() const {
-    return isPacked_ ? "packed_class" : "class";
+    return isException_ ? "exception" : (isPacked_ ? "packed_class" : "class");
   }
 };
 

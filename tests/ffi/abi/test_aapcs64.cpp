@@ -664,17 +664,17 @@ bool haveAarch64MuslToolchain() {
 // genuinely depends on the toolchain shipping a musl-built libstdc++.
 constexpr const char* kThrowingProgram = R"(
 
-    class DivByZero {
+    exception DivByZero {
       init() {}
       const method code() i32 { return 1; }
       const method message() static_ptr<u8> { return "division by zero"; }
     }
-    function divide(a: i32, b: i32) _Result<i32, DivByZero> {
-        if (b == 0) { return _Result.Err(DivByZero()); }
-        return _Result.Ok(a / b);
+    function divide(a: i32, b: i32) i32 throws {
+        if (b == 0) { throw DivByZero(); }
+        return a / b;
     }
     function main() i32 {
-        return match divide(10, 0) { _Result.Ok(_) => 1, _Result.Err(_) => 42 };
+        try { divide(10, 0); } catch (error: DivByZero) { return 42; } return 1;
     }
 )";
 

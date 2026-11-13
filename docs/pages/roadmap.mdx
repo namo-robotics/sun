@@ -10,9 +10,8 @@ into "a user can do it themselves". Table stakes before novelty.
 
 ## Optionals — Remaining Work
 
-`Option<T>` ships in the stdlib (`stdlib/std/option.sun`); `_Result<T, E>` is builtin
-and usable without the standard library. Both use generic payload enums with owning
-payloads and drop glue. The absence APIs
+`Option<T>` ships in the stdlib (`stdlib/std/option.sun`) and uses a generic
+payload enum with owning payloads and drop glue. The absence APIs
 (`Map.find`, `String.find_char`/`rfind_char`, `Vec.first`/`last`/`pop`,
 `LinkedList.first`/`last`) return `Option<T>`, and the iteration protocol
 (`stdlib/std/iterator.sun`) is `next(ref Container) Option<T>`. What remains:
@@ -159,6 +158,10 @@ libprotobuf. Docs: `docs/pages/protobuf.mdx`. Deferred:
 - [ ] Extensions
 - [ ] Recursive messages by value (need indirection)
 - [ ] `--dump-proto-sun` in the LSP
+
+## Exceptions
+
+- [ ] Generate Sun exception transport, personality, and termination helpers as LLVM IR, replacing the current compiled runtime archive.
 
 ## MacOS Target
 

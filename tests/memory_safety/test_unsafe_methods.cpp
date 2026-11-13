@@ -139,11 +139,11 @@ TEST(MemorySafety_UnsafeMethods, imported_string_unsafe_access_requires_block) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var s = try String(alloc, "hello");
+  var s =  String(alloc, "hello");
   s.unsafe_set_at(0, b'H');
-  return Result.Ok(0);
+  return 0;
 }
 )"),
                                 "requires an unsafe block");
@@ -190,10 +190,10 @@ class Reader {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var r = Reader();
-  var t = try spawn(r.read);
-  return Result.Ok(t.join());
+  var t =  spawn(r.read);
+  return t.join();
 }
 )"),
                                 "spawned function must be safe");
@@ -204,10 +204,10 @@ TEST(MemorySafety_UnsafeMethods, imported_string_unsafe_read_requires_block) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var s = try String(alloc, "hello");
-  return Result.Ok(_convert<i32>(s.unsafe_at(0)));
+  var s =  String(alloc, "hello");
+  return _convert<i32>(s.unsafe_at(0));
 }
 )"),
                                 "requires an unsafe block");
@@ -219,11 +219,11 @@ TEST(MemorySafety_UnsafeMethods,
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var b = try ContiguousBuffer<i32>(alloc, 1);
+  var b =  ContiguousBuffer<i32>(alloc, 1);
   b.set_unchecked(0, 42);
-  return Result.Ok(0);
+  return 0;
 }
 )"),
                                 "requires an unsafe block");
@@ -235,11 +235,11 @@ TEST(MemorySafety_UnsafeMethods,
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var v = try Vec<i32>(alloc, 1);
-  try v.push(42);
-  return Result.Ok(v.get_unchecked(0));
+  var v =  Vec<i32>(alloc, 1);
+   v.push(42);
+  return v.get_unchecked(0);
 }
 )"),
                                 "requires an unsafe block");

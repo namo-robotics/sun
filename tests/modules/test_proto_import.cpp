@@ -379,52 +379,50 @@ TEST(Modules_ProtoImport, wire_varint_roundtrip_small_and_multibyte) {
 
     using std;
     /** Checks a protobuf operation and propagates errors. */
-    function check() Result<i32> {
+    function check() i32 throws {
       var alloc = make_heap_allocator();
-      var buf = try Vec<u8>(alloc, 16);
-      try proto_write_varint(buf, 1);
-      try proto_write_varint(buf, 300);
-      try proto_write_varint(buf, 0);
+      var buf =  Vec<u8>(alloc, 16);
+       proto_write_varint(buf, 1);
+       proto_write_varint(buf, 300);
+       proto_write_varint(buf, 0);
       // 300 = 0xAC 0x02 (two bytes)
       if (buf.size() != 4) {
-        return Result.Ok(-1);
+        return -1;
       }
       if (unsafe { buf.get_unchecked(1); } != 172) {
-        return Result.Ok(-2);
+        return -2;
       }
       if (unsafe { buf.get_unchecked(2); } != 2) {
-        return Result.Ok(-3);
+        return -3;
       }
       var r = ProtoReader(buf);
       var a: u64 = 0;
       var b: u64 = 0;
       var c: u64 = 0;
 
-      a = try r.read_varint();
-      b = try r.read_varint();
-      c = try r.read_varint();
+      a =  r.read_varint();
+      b =  r.read_varint();
+      c =  r.read_varint();
 
       if (a != 1) {
-        return Result.Ok(-5);
+        return -5;
       }
       if (b != 300) {
-        return Result.Ok(-6);
+        return -6;
       }
       if (c != 0) {
-        return Result.Ok(-7);
+        return -7;
       }
       if (r.at_end() == false) {
-        return Result.Ok(-8);
+        return -8;
       }
-      return Result.Ok(0);
+      return 0;
     }
 
     /** Reports any unexpected returned error as test failure. */
     function main() i32 {
-      return match check() {
-        Result.Ok(value) => value,
-        _ => -100
-      };
+      try { var value = check();
+return value; } catch { return -100; }
     }
   )");
   EXPECT_EQ(value, 0);
@@ -435,29 +433,27 @@ TEST(Modules_ProtoImport, wire_negative_int32_is_ten_bytes_and_roundtrips) {
 
     using std;
     /** Checks a protobuf operation and propagates errors. */
-    function check() Result<i32> {
+    function check() i32 throws {
       var alloc = make_heap_allocator();
-      var buf = try Vec<u8>(alloc, 16);
+      var buf =  Vec<u8>(alloc, 16);
       var neg: i32 = -1;
-      try proto_write_int32(buf, neg);
+       proto_write_int32(buf, neg);
       if (buf.size() != 10) {
-        return Result.Ok(-1);
+        return -1;
       }
       var r = ProtoReader(buf);
       var back: i32 = 0;
-      back = try r.read_int32();
+      back =  r.read_int32();
       if (back != -1) {
-        return Result.Ok(-3);
+        return -3;
       }
-      return Result.Ok(0);
+      return 0;
     }
 
     /** Reports any unexpected returned error as test failure. */
     function main() i32 {
-      return match check() {
-        Result.Ok(value) => value,
-        _ => -100
-      };
+      try { var value = check();
+return value; } catch { return -100; }
     }
   )");
   EXPECT_EQ(value, 0);
@@ -468,48 +464,46 @@ TEST(Modules_ProtoImport, wire_zigzag_sint_roundtrip) {
 
     using std;
     /** Checks a protobuf operation and propagates errors. */
-    function check() Result<i32> {
+    function check() i32 throws {
       var alloc = make_heap_allocator();
-      var buf = try Vec<u8>(alloc, 16);
+      var buf =  Vec<u8>(alloc, 16);
       var m1: i32 = -1;
       var p2: i32 = 2;
       var big: i64 = -123456789012;
-      try proto_write_sint32(buf, m1);  // zigzag(-1) = 1
-      try proto_write_sint32(buf, p2);  // zigzag(2)  = 4
-      try proto_write_sint64(buf, big);
+       proto_write_sint32(buf, m1);  // zigzag(-1) = 1
+       proto_write_sint32(buf, p2);  // zigzag(2)  = 4
+       proto_write_sint64(buf, big);
       if (unsafe { buf.get_unchecked(0); } != 1) {
-        return Result.Ok(-1);
+        return -1;
       }
       if (unsafe { buf.get_unchecked(1); } != 4) {
-        return Result.Ok(-2);
+        return -2;
       }
       var r = ProtoReader(buf);
       var a: i32 = 0;
       var b: i32 = 0;
       var c: i64 = 0;
 
-      a = try r.read_sint32();
-      b = try r.read_sint32();
-      c = try r.read_sint64();
+      a =  r.read_sint32();
+      b =  r.read_sint32();
+      c =  r.read_sint64();
 
       if (a != -1) {
-        return Result.Ok(-4);
+        return -4;
       }
       if (b != 2) {
-        return Result.Ok(-5);
+        return -5;
       }
       if (c != -123456789012) {
-        return Result.Ok(-6);
+        return -6;
       }
-      return Result.Ok(0);
+      return 0;
     }
 
     /** Reports any unexpected returned error as test failure. */
     function main() i32 {
-      return match check() {
-        Result.Ok(value) => value,
-        _ => -100
-      };
+      try { var value = check();
+return value; } catch { return -100; }
     }
   )");
   EXPECT_EQ(value, 0);
@@ -520,22 +514,22 @@ TEST(Modules_ProtoImport, wire_fixed_and_float_roundtrip) {
 
     using std;
     /** Checks a protobuf operation and propagates errors. */
-    function check() Result<i32> {
+    function check() i32 throws {
       var alloc = make_heap_allocator();
-      var buf = try Vec<u8>(alloc, 32);
+      var buf =  Vec<u8>(alloc, 32);
       var u: u32 = 305419896;  // 0x12345678
       var d: f64 = 3.5;
       var f: f32 = -2.25;
       var s: i64 = -5;
-      try proto_write_fixed32(buf, u);
-      try proto_write_double(buf, d);
-      try proto_write_float(buf, f);
-      try proto_write_sfixed64(buf, s);
+       proto_write_fixed32(buf, u);
+       proto_write_double(buf, d);
+       proto_write_float(buf, f);
+       proto_write_sfixed64(buf, s);
       if (buf.size() != 4 + 8 + 4 + 8) {
-        return Result.Ok(-1);
+        return -1;
       }
       if (unsafe { buf.get_unchecked(0); } != 120) {
-        return Result.Ok(-2);  // little-endian 0x78
+        return -2;  // little-endian 0x78
       }
       var r = ProtoReader(buf);
       var u2: u32 = 0;
@@ -543,32 +537,30 @@ TEST(Modules_ProtoImport, wire_fixed_and_float_roundtrip) {
       var f2: f32 = 0.0;
       var s2: i64 = 0;
 
-      u2 = try r.read_fixed32();
-      d2 = try r.read_double();
-      f2 = try r.read_float();
-      s2 = try r.read_sfixed64();
+      u2 =  r.read_fixed32();
+      d2 =  r.read_double();
+      f2 =  r.read_float();
+      s2 =  r.read_sfixed64();
 
       if (u2 != u) {
-        return Result.Ok(-4);
+        return -4;
       }
       if (d2 != 3.5) {
-        return Result.Ok(-5);
+        return -5;
       }
       if (f2 != -2.25) {
-        return Result.Ok(-6);
+        return -6;
       }
       if (s2 != -5) {
-        return Result.Ok(-7);
+        return -7;
       }
-      return Result.Ok(0);
+      return 0;
     }
 
     /** Reports any unexpected returned error as test failure. */
     function main() i32 {
-      return match check() {
-        Result.Ok(value) => value,
-        _ => -100
-      };
+      try { var value = check();
+return value; } catch { return -100; }
     }
   )");
   EXPECT_EQ(value, 0);
@@ -579,47 +571,45 @@ TEST(Modules_ProtoImport, wire_string_and_bytes_roundtrip) {
 
     using std;
     /** Checks a protobuf operation and propagates errors. */
-    function check() Result<i32> {
+    function check() i32 throws {
       var alloc = make_heap_allocator();
-      var buf = try Vec<u8>(alloc, 32);
-      var s = try String(alloc, "hello");
-      var raw = try Vec<u8>(alloc, 4);
-      try raw.push(7);
-      try raw.push(9);
-      try proto_write_string(buf, s);
-      try proto_write_bytes(buf, raw);
+      var buf =  Vec<u8>(alloc, 32);
+      var s =  String(alloc, "hello");
+      var raw =  Vec<u8>(alloc, 4);
+       raw.push(7);
+       raw.push(9);
+       proto_write_string(buf, s);
+       proto_write_bytes(buf, raw);
       // 1 + 5 + 1 + 2
       if (buf.size() != 9) {
-        return Result.Ok(-1);
+        return -1;
       }
       var r = ProtoReader(buf);
-      var back = try String(alloc, "");
-      var backBytes = try Vec<u8>(alloc, 1);
+      var back =  String(alloc, "");
+      var backBytes =  Vec<u8>(alloc, 1);
 
-      back = try r.read_string_field(alloc);
-      backBytes = try r.read_bytes_field(alloc);
+      back =  r.read_string_field(alloc);
+      backBytes =  r.read_bytes_field(alloc);
 
       if (back.length() != 5) {
-        return Result.Ok(-3);
+        return -3;
       }
       if (unsafe { back.unsafe_at(4); } != 111) {
-        return Result.Ok(-4);  // 'o'
+        return -4;  // 'o'
       }
       if (backBytes.size() != 2) {
-        return Result.Ok(-5);
+        return -5;
       }
       if (unsafe { backBytes.get_unchecked(1); } != 9) {
-        return Result.Ok(-6);
+        return -6;
       }
-      return Result.Ok(0);
+      return 0;
     }
 
     /** Reports any unexpected returned error as test failure. */
     function main() i32 {
-      return match check() {
-        Result.Ok(value) => value,
-        _ => -100
-      };
+      try { var value = check();
+return value; } catch { return -100; }
     }
   )");
   EXPECT_EQ(value, 0);
@@ -630,58 +620,56 @@ TEST(Modules_ProtoImport, wire_tags_limits_and_skip_unknown) {
 
     using std;
     /** Checks a protobuf operation and propagates errors. */
-    function check() Result<i32> {
+    function check() i32 throws {
       var alloc = make_heap_allocator();
-      var buf = try Vec<u8>(alloc, 32);
+      var buf =  Vec<u8>(alloc, 32);
       // field 3, varint 150 ; field 4, len-delimited "ab" ; field 5 fixed32 1
-      try proto_write_tag(buf, 3, 0);
-      try proto_write_varint(buf, 150);
-      try proto_write_tag(buf, 4, 2);
-      var ab = try String(alloc, "ab");
-      try proto_write_string(buf, ab);
-      try proto_write_tag(buf, 5, 5);
+       proto_write_tag(buf, 3, 0);
+       proto_write_varint(buf, 150);
+       proto_write_tag(buf, 4, 2);
+      var ab =  String(alloc, "ab");
+       proto_write_string(buf, ab);
+       proto_write_tag(buf, 5, 5);
       var one: u32 = 1;
-      try proto_write_fixed32(buf, one);
+       proto_write_fixed32(buf, one);
 
       var r = ProtoReader(buf);
-      var unknown = try Vec<u8>(alloc, 32);
+      var unknown =  Vec<u8>(alloc, 32);
       var seen3: u64 = 0;
 
-      var t1: u64 = try r.read_tag();
+      var t1: u64 =  r.read_tag();
       if (proto_read_tag_field(t1) != 3) {
-        return Result.Ok(-1);
+        return -1;
       }
       if (proto_read_tag_wire_type(t1) != 0) {
-        return Result.Ok(-2);
+        return -2;
       }
-      seen3 = try r.read_varint();
-      var t2: u64 = try r.read_tag();
-      try r.skip_field(proto_read_tag_wire_type(t2), t2, unknown);
-      var t3: u64 = try r.read_tag();
-      try r.skip_field(proto_read_tag_wire_type(t3), t3, unknown);
+      seen3 =  r.read_varint();
+      var t2: u64 =  r.read_tag();
+       r.skip_field(proto_read_tag_wire_type(t2), t2, unknown);
+      var t3: u64 =  r.read_tag();
+       r.skip_field(proto_read_tag_wire_type(t3), t3, unknown);
 
       if (seen3 != 150) {
-        return Result.Ok(-4);
+        return -4;
       }
       if (r.at_end() == false) {
-        return Result.Ok(-5);
+        return -5;
       }
       // unknown holds: tag(4,2)=34, len 2, 'a','b', tag(5,5)=45, 4 bytes
       if (unknown.size() != 1 + 1 + 2 + 1 + 4) {
-        return Result.Ok(-6);
+        return -6;
       }
       if (unsafe { unknown.get_unchecked(0); } != 34) {
-        return Result.Ok(-7);
+        return -7;
       }
-      return Result.Ok(0);
+      return 0;
     }
 
     /** Reports any unexpected returned error as test failure. */
     function main() i32 {
-      return match check() {
-        Result.Ok(value) => value,
-        _ => -100
-      };
+      try { var value = check();
+return value; } catch { return -100; }
     }
   )");
   EXPECT_EQ(value, 0);
@@ -692,17 +680,13 @@ TEST(Modules_ProtoImport, wire_truncated_input_returns_error) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var buf = try Vec<u8>(alloc, 4);
-  try buf.push(128);  // continuation bit set, then EOF
+  var buf =  Vec<u8>(alloc, 4);
+   buf.push(128);  // continuation bit set, then EOF
   var r = ProtoReader(buf);
-  return Result.Ok(_convert<i32>(
-    match r.read_varint() {
-      ProtoResult.Ok(_) => -1,
-      ProtoResult.Error(_) => 1
-    }
-  ));
+  try { r.read_varint(); } catch (error: ProtoDecodeError) { return 1; }
+  return -1;
 }
 )");
   EXPECT_EQ(value, 1);
@@ -713,32 +697,30 @@ TEST(Modules_ProtoImport, map_string_keys) {
 using std;
 
 /** Checks a protobuf operation and propagates errors. */
-function check() Result<i32> {
+function check() i32 throws {
   var alloc = make_heap_allocator();
-  var m = try Map<String, i32>(alloc, 8);
-  try m.insert(try String(alloc, "one"), 1);
-  try m.insert(try String(alloc, "two"), 2);
-  try m.insert(try String(alloc, "one"), 11);  // overwrite
+  var m =  Map<String, i32>(alloc, 8);
+   m.insert( String(alloc, "one"), 1);
+   m.insert( String(alloc, "two"), 2);
+   m.insert( String(alloc, "one"), 11);  // overwrite
   var got: i32 = 0;
 
   const ref readable = m;
-  got = (try readable.get(try String(alloc, "one"))) + try readable.get(try String(alloc, "two"));
+  got = ( readable.get( String(alloc, "one"))) +  readable.get( String(alloc, "two"));
 
-  if (m.contains(try String(alloc, "three"))) {
-    return Result.Ok(-2);
+  if (m.contains( String(alloc, "three"))) {
+    return -2;
   }
   if (m.size() != 2) {
-    return Result.Ok(-3);
+    return -3;
   }
-  return Result.Ok(got);
+  return got;
 }
 
 /** Reports any unexpected returned error as test failure. */
 function main() i32 {
-  return match check() {
-    Result.Ok(value) => value,
-    _ => -100
-  };
+  try { var value = check();
+return value; } catch { return -100; }
 }
 )");
   EXPECT_EQ(value, 13);
@@ -780,89 +762,87 @@ using std;
 using t;
 
 /** Checks a protobuf operation and propagates errors. */
-function check() Result<i32> {
+function check() i32 throws {
   var alloc = make_heap_allocator();
-  var st = try Status(alloc);
+  var st =  Status(alloc);
   st.robot_id = 7;
-  st.name = try String(alloc, "rover");
-  try st.samples.push(1);
-  try st.samples.push(300);
-  try st.samples.push(-5);
+  st.name =  String(alloc, "rover");
+   st.samples.push(1);
+   st.samples.push(300);
+   st.samples.push(-5);
   st.mode = Mode.FAULT;
   st.pose.x = 1.5;
   st.pose.y = -2.0;
-  try st.blob.push(9);
-  try st.blob.push(0);
-  try st.tags.push(try String(alloc, "a"));
-  try st.tags.push(try String(alloc, "bc"));
+   st.blob.push(9);
+   st.blob.push(0);
+   st.tags.push( String(alloc, "a"));
+   st.tags.push( String(alloc, "bc"));
   st.ok = true;
   st.delta = -3;
   st.crc = 305419896;
   st.big = 1234567890123;
   st.ratio = 0.5;
 
-  var buf = try Vec<u8>(alloc, 64);
-  try st.encode(buf);
+  var buf =  Vec<u8>(alloc, 64);
+   st.encode(buf);
 
-  var b = try Status_decode(alloc, buf);
+  var b =  Status_decode(alloc, buf);
   if (b.robot_id != 7) {
-    return Result.Ok(1);
+    return 1;
   }
   if (b.name.length() != 5) {
-    return Result.Ok(2);
+    return 2;
   }
   if (b.samples.size() != 3) {
-    return Result.Ok(3);
+    return 3;
   }
   if (unsafe { b.samples.get_unchecked(1); } != 300) {
-    return Result.Ok(4);
+    return 4;
   }
   if (unsafe { b.samples.get_unchecked(2); } != -5) {
-    return Result.Ok(5);
+    return 5;
   }
   if (proto_enum_to_i32_Mode(b.mode) != 7) {
-    return Result.Ok(6);
+    return 6;
   }
   if (b.pose.x != 1.5) {
-    return Result.Ok(7);
+    return 7;
   }
   if (b.pose.y != -2.0) {
-    return Result.Ok(8);
+    return 8;
   }
   if (b.blob.size() != 2) {
-    return Result.Ok(9);
+    return 9;
   }
   if (b.tags.size() != 2) {
-    return Result.Ok(10);
+    return 10;
   }
   if (unsafe { b.tags.get_unchecked(1); }.length() != 2) {
-    return Result.Ok(11);
+    return 11;
   }
   if (b.ok == false) {
-    return Result.Ok(12);
+    return 12;
   }
   if (b.delta != -3) {
-    return Result.Ok(13);
+    return 13;
   }
   if (b.crc != 305419896) {
-    return Result.Ok(14);
+    return 14;
   }
   if (b.big != 1234567890123) {
-    return Result.Ok(15);
+    return 15;
   }
   if (b.ratio != 0.5) {
-    return Result.Ok(16);
+    return 16;
   }
 
-  return Result.Ok(0);
+  return 0;
 }
 
 /** Reports any unexpected returned error as test failure. */
 function main() i32 {
-  return match check() {
-    Result.Ok(value) => value,
-    _ => -100
-  };
+  try { var value = check();
+return value; } catch { return -100; }
 }
 )");
   EXPECT_EQ(value, 0);
@@ -874,43 +854,41 @@ TEST(Modules_ProtoImport, zero_values_encode_to_empty_and_decode_defaults) {
     using std;
     using t;
     /** Checks a protobuf operation and propagates errors. */
-    function check() Result<i32> {
+    function check() i32 throws {
       var alloc = make_heap_allocator();
-      var st = try Status(alloc);
-      var buf = try Vec<u8>(alloc, 8);
-      try st.encode(buf);
+      var st =  Status(alloc);
+      var buf =  Vec<u8>(alloc, 8);
+       st.encode(buf);
       // Only the always-written empty sub-message: tag(5,2) + len 0
       if (buf.size() != 2) {
-        return Result.Ok(1);
+        return 1;
       }
-      var empty = try Vec<u8>(alloc, 1);
+      var empty =  Vec<u8>(alloc, 1);
 
-      var b = try Status_decode(alloc, empty);
+      var b =  Status_decode(alloc, empty);
       if (b.robot_id != 0) {
-        return Result.Ok(2);
+        return 2;
       }
       if (b.name.length() != 0) {
-        return Result.Ok(3);
+        return 3;
       }
       if (b.samples.size() != 0) {
-        return Result.Ok(4);
+        return 4;
       }
       if (proto_enum_to_i32_Mode(b.mode) != 0) {
-        return Result.Ok(5);
+        return 5;
       }
       if (b.ok) {
-        return Result.Ok(6);
+        return 6;
       }
 
-      return Result.Ok(0);
+      return 0;
     }
 
     /** Reports any unexpected returned error as test failure. */
     function main() i32 {
-      return match check() {
-        Result.Ok(value) => value,
-        _ => -100
-      };
+      try { var value = check();
+return value; } catch { return -100; }
     }
   )");
   EXPECT_EQ(value, 0);
@@ -922,48 +900,46 @@ TEST(Modules_ProtoImport, unknown_fields_survive_reencode) {
     using std;
     using t;
     /** Checks a protobuf operation and propagates errors. */
-    function check() Result<i32> {
+    function check() i32 throws {
       var alloc = make_heap_allocator();
       // Hand-built: field 1 = 9, then unknown field 99 (varint 5), then
       // unknown field 100 (len-delimited "xy")
-      var wire = try Vec<u8>(alloc, 16);
-      try proto_write_tag(wire, 1, 0);
-      try proto_write_int32(wire, 9);
-      try proto_write_tag(wire, 99, 0);
-      try proto_write_varint(wire, 5);
-      try proto_write_tag(wire, 100, 2);
-      var xy = try String(alloc, "xy");
-      try proto_write_string(wire, xy);
+      var wire =  Vec<u8>(alloc, 16);
+       proto_write_tag(wire, 1, 0);
+       proto_write_int32(wire, 9);
+       proto_write_tag(wire, 99, 0);
+       proto_write_varint(wire, 5);
+       proto_write_tag(wire, 100, 2);
+      var xy =  String(alloc, "xy");
+       proto_write_string(wire, xy);
       var n: i64 = wire.size();
 
-      var m = try Status_decode(alloc, wire);
+      var m =  Status_decode(alloc, wire);
       if (m.robot_id != 9) {
-        return Result.Ok(1);
+        return 1;
       }
-      var out = try Vec<u8>(alloc, 16);
-      try m.encode(out);
+      var out =  Vec<u8>(alloc, 16);
+       m.encode(out);
       // robot_id + empty pose (2 bytes) + unknown bytes replayed
       if (out.size() != n + 2) {
-        return Result.Ok(2);
+        return 2;
       }
       // Decode again: still parses, unknowns still carried
-      var m2 = try Status_decode(alloc, out);
+      var m2 =  Status_decode(alloc, out);
       if (m2.robot_id != 9) {
-        return Result.Ok(3);
+        return 3;
       }
       if (m2.unknown_fields.size() == 0) {
-        return Result.Ok(4);
+        return 4;
       }
 
-      return Result.Ok(0);
+      return 0;
     }
 
     /** Reports any unexpected returned error as test failure. */
     function main() i32 {
-      return match check() {
-        Result.Ok(value) => value,
-        _ => -100
-      };
+      try { var value = check();
+return value; } catch { return -100; }
     }
   )");
   EXPECT_EQ(value, 0);
@@ -975,34 +951,32 @@ TEST(Modules_ProtoImport, unpacked_repeated_scalars_decode) {
     using std;
     using t;
     /** Checks a protobuf operation and propagates errors. */
-    function check() Result<i32> {
+    function check() i32 throws {
       var alloc = make_heap_allocator();
       // samples (field 3) written unpacked: three separate varint records
-      var wire = try Vec<u8>(alloc, 16);
-      try proto_write_tag(wire, 3, 0);
-      try proto_write_int64(wire, 10);
-      try proto_write_tag(wire, 3, 0);
-      try proto_write_int64(wire, 20);
-      try proto_write_tag(wire, 3, 0);
-      try proto_write_int64(wire, 30);
+      var wire =  Vec<u8>(alloc, 16);
+       proto_write_tag(wire, 3, 0);
+       proto_write_int64(wire, 10);
+       proto_write_tag(wire, 3, 0);
+       proto_write_int64(wire, 20);
+       proto_write_tag(wire, 3, 0);
+       proto_write_int64(wire, 30);
 
-      var m = try Status_decode(alloc, wire);
+      var m =  Status_decode(alloc, wire);
       if (m.samples.size() != 3) {
-        return Result.Ok(1);
+        return 1;
       }
       if (unsafe { m.samples.get_unchecked(2); } != 30) {
-        return Result.Ok(2);
+        return 2;
       }
 
-      return Result.Ok(0);
+      return 0;
     }
 
     /** Reports any unexpected returned error as test failure. */
     function main() i32 {
-      return match check() {
-        Result.Ok(value) => value,
-        _ => -100
-      };
+      try { var value = check();
+return value; } catch { return -100; }
     }
   )");
   EXPECT_EQ(value, 0);
@@ -1014,22 +988,20 @@ TEST(Modules_ProtoImport, unknown_enum_value_maps_to_zero_variant) {
     using std;
     using t;
     /** Checks a protobuf operation and propagates errors. */
-    function check() Result<i32> {
+    function check() i32 throws {
       var alloc = make_heap_allocator();
-      var wire = try Vec<u8>(alloc, 8);
-      try proto_write_tag(wire, 4, 0);
-      try proto_write_int32(wire, 42);  // not a declared Mode value
+      var wire =  Vec<u8>(alloc, 8);
+       proto_write_tag(wire, 4, 0);
+       proto_write_int32(wire, 42);  // not a declared Mode value
 
-      var m = try Status_decode(alloc, wire);
-      return Result.Ok(proto_enum_to_i32_Mode(m.mode));
+      var m =  Status_decode(alloc, wire);
+      return proto_enum_to_i32_Mode(m.mode);
     }
 
     /** Reports any unexpected returned error as test failure. */
     function main() i32 {
-      return match check() {
-        Result.Ok(value) => value,
-        _ => -100
-      };
+      try { var value = check();
+return value; } catch { return -100; }
     }
   )");
   EXPECT_EQ(value, 0);
@@ -1041,18 +1013,13 @@ using std;
 using t;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var wire = try Vec<u8>(alloc, 8);
-  try proto_write_tag(wire, 2, 0 + 2);
-  try proto_write_varint(wire, 50);  // claims 50 bytes, provides none
-  return Result.Ok(_convert<i32>(
-    match Status_decode(alloc, wire) {
-      Result.Ok(_) => -1,
-      Result.Decode(_) => 1,
-      _ => -2
-    }
-  ));
+  var wire =  Vec<u8>(alloc, 8);
+   proto_write_tag(wire, 2, 0 + 2);
+   proto_write_varint(wire, 50);  // claims 50 bytes, provides none
+  try { Status_decode(alloc, wire); } catch (error: ProtoDecodeError) { return 1; }
+  return -1;
 }
 )");
   EXPECT_EQ(value, 1);
@@ -1075,40 +1042,38 @@ TEST(Modules_ProtoImport, nested_message_types_flatten_with_underscore) {
     using std;
     using n;
     /** Checks a protobuf operation and propagates errors. */
-    function check() Result<i32> {
+    function check() i32 throws {
       var alloc = make_heap_allocator();
-      var o = try Outer(alloc);
+      var o =  Outer(alloc);
       o.inner.v = 5;
       o.kind = Outer_Kind.B;
-      var extra = try Outer_Inner(alloc);
+      var extra =  Outer_Inner(alloc);
       extra.v = 6;
-      try o.more.push(extra);
-      var buf = try Vec<u8>(alloc, 32);
-      try o.encode(buf);
+       o.more.push(extra);
+      var buf =  Vec<u8>(alloc, 32);
+       o.encode(buf);
 
-      var b = try Outer_decode(alloc, buf);
+      var b =  Outer_decode(alloc, buf);
       if (b.inner.v != 5) {
-        return Result.Ok(1);
+        return 1;
       }
       if (proto_enum_to_i32_Outer_Kind(b.kind) != 1) {
-        return Result.Ok(2);
+        return 2;
       }
       if (b.more.size() != 1) {
-        return Result.Ok(3);
+        return 3;
       }
       if (unsafe { b.more.get_unchecked(0); }.v != 6) {
-        return Result.Ok(4);
+        return 4;
       }
 
-      return Result.Ok(0);
+      return 0;
     }
 
     /** Reports any unexpected returned error as test failure. */
     function main() i32 {
-      return match check() {
-        Result.Ok(value) => value,
-        _ => -100
-      };
+      try { var value = check();
+return value; } catch { return -100; }
     }
   )");
   EXPECT_EQ(value, 0);
@@ -1120,41 +1085,39 @@ TEST(Modules_ProtoImport, delimited_stream_framing) {
     using std;
     using t;
     /** Checks a protobuf operation and propagates errors. */
-    function check() Result<i32> {
+    function check() i32 throws {
       var alloc = make_heap_allocator();
-      var a = try Pose(alloc);
+      var a =  Pose(alloc);
       a.x = 1.0;
-      var b = try Pose(alloc);
+      var b =  Pose(alloc);
       b.y = 2.0;
-      var stream = try Vec<u8>(alloc, 32);
-      try a.encode_delimited(stream);
-      try b.encode_delimited(stream);
+      var stream =  Vec<u8>(alloc, 32);
+       a.encode_delimited(stream);
+       b.encode_delimited(stream);
 
       var r = ProtoReader(stream);
-      var a2 = try Pose_decode_delimited(alloc, r);
-      var b2 = try Pose_decode_delimited(alloc, r);
+      var a2 =  Pose_decode_delimited(alloc, r);
+      var b2 =  Pose_decode_delimited(alloc, r);
       if (a2.x != 1.0) {
-        return Result.Ok(1);
+        return 1;
       }
       if (a2.y != 0.0) {
-        return Result.Ok(2);
+        return 2;
       }
       if (b2.y != 2.0) {
-        return Result.Ok(3);
+        return 3;
       }
       if (r.at_end() == false) {
-        return Result.Ok(4);
+        return 4;
       }
 
-      return Result.Ok(0);
+      return 0;
     }
 
     /** Reports any unexpected returned error as test failure. */
     function main() i32 {
-      return match check() {
-        Result.Ok(value) => value,
-        _ => -100
-      };
+      try { var value = check();
+return value; } catch { return -100; }
     }
   )");
   EXPECT_EQ(value, 0);
@@ -1233,22 +1196,22 @@ using std;
 using t;
 /** Encode bytes while propagating setup failures. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function test_main() i32 throws {
   var alloc = make_heap_allocator();
-  var st = try Status(alloc);
+  var st =  Status(alloc);
   st.robot_id = 7;
-  st.name = try String(alloc, "rover");
-  try st.samples.push(1);
-  try st.samples.push(300);
+  st.name =  String(alloc, "rover");
+   st.samples.push(1);
+   st.samples.push(300);
   st.mode = Mode.FAULT;
   st.pose.x = 1.5;
   st.pose.y = -2.0;
-  try st.tags.push(try String(alloc, "a"));
+   st.tags.push( String(alloc, "a"));
   st.ok = true;
   st.delta = -3;
   st.crc = 305419896;
-  var buf = try Vec<u8>(alloc, 64);
-  try st.encode(buf);
+  var buf =  Vec<u8>(alloc, 64);
+   st.encode(buf);
 )BOUNDARY" +
       proto_test::dumpBufferProgramTail(outFile));
   EXPECT_EQ(project.run(), 0);
@@ -1315,57 +1278,55 @@ using std;
 using f;
 
 /** Checks a protobuf operation and propagates errors. */
-function check() Result<i32> {
+function check() i32 throws {
   var alloc = make_heap_allocator();
-  var b = try Bag(alloc);
-  var buf0 = try Vec<u8>(alloc, 8);
-  try b.encode(buf0);
+  var b =  Bag(alloc);
+  var buf0 =  Vec<u8>(alloc, 8);
+   b.encode(buf0);
   if (buf0.size() != 0) {
-    return Result.Ok(1);  // unset optionals: nothing written
+    return 1;  // unset optionals: nothing written
   }
-  b.nickname = Option.Some(try String(alloc, "nick"));
+  b.nickname = Option.Some( String(alloc, "nick"));
   b.count = Option.Some(0);  // explicit zero IS written
-  var buf = try Vec<u8>(alloc, 16);
-  try b.encode(buf);
+  var buf =  Vec<u8>(alloc, 16);
+   b.encode(buf);
   if (buf.size() != 6 + 2) {
-    return Result.Ok(2);
+    return 2;
   }
 
-  var back = try Bag_decode(alloc, buf);
+  var back =  Bag_decode(alloc, buf);
   var nick: i64 = match back.nickname {
     Option.Some(s) => s.length(),
     Option.None => -1
   };
   if (nick != 4) {
-    return Result.Ok(3);
+    return 3;
   }
   var cnt: i32 = match back.count {
     Option.Some(v) => 100 + v,
     Option.None => -1
   };
   if (cnt != 100) {
-    return Result.Ok(4);
+    return 4;
   }
   // Decoding an empty buffer leaves optionals unset
-  var empty = try Vec<u8>(alloc, 1);
-  var b2 = try Bag_decode(alloc, empty);
+  var empty =  Vec<u8>(alloc, 1);
+  var b2 =  Bag_decode(alloc, empty);
   var unset: i32 = match b2.count {
     Option.Some(v) => 1,
     Option.None => 0
   };
   if (unset != 0) {
-    return Result.Ok(5);
+    return 5;
   }
 
-  return Result.Ok(0);
+  return 0;
 }
 
 /** Reports any unexpected returned error as test failure. */
 function main() i32 {
-  return match check() {
-    Result.Ok(value) => value,
-    _ => -100
-  };
+  try { var value = check();
+return value; } catch { return -100; }
 }
 )");
   EXPECT_EQ(value, 0);
@@ -1377,53 +1338,51 @@ using std;
 using f;
 
 /** Checks a protobuf operation and propagates errors. */
-function roundtrip(alloc: ref HeapAllocator, b: ref Bag) Result<i32> {
-  var buf = try Vec<u8>(alloc, 32);
-  try b.encode(buf);
-  var back = try Bag_decode(alloc, buf);
-  return Result.Ok(_convert<i32>(
+function roundtrip(alloc: ref HeapAllocator, b: ref Bag) i32 throws {
+  var buf =  Vec<u8>(alloc, 32);
+   b.encode(buf);
+  var back =  Bag_decode(alloc, buf);
+  return _convert<i32>(
     match back.power {
       Bag_power.BatteryPct(v) => 1000 + v,
       Bag_power.StationId(s) => 2000 + _convert<i32>(s.length()),
       Bag_power.Dock(d) => 3000 + d.id,
       Bag_power.NotSet => 0
     }
-  ));
+  );
 }
 
 /** Checks a protobuf operation and propagates errors. */
-function check() Result<i32> {
+function check() i32 throws {
   var alloc = make_heap_allocator();
-  var b = try Bag(alloc);
+  var b =  Bag(alloc);
 
-  if ((try roundtrip(alloc, b)) != 0) {
-    return Result.Ok(1);
+  if (( roundtrip(alloc, b)) != 0) {
+    return 1;
   }
   b.power = Bag_power.BatteryPct(55);
-  if ((try roundtrip(alloc, b)) != 1055) {
-    return Result.Ok(2);
+  if (( roundtrip(alloc, b)) != 1055) {
+    return 2;
   }
-  b.power = Bag_power.StationId(try String(alloc, "dock-7"));
-  if ((try roundtrip(alloc, b)) != 2006) {
-    return Result.Ok(3);
+  b.power = Bag_power.StationId( String(alloc, "dock-7"));
+  if (( roundtrip(alloc, b)) != 2006) {
+    return 3;
   }
-  var d = try Item(alloc);
+  var d =  Item(alloc);
   d.id = 9;
-  d.label = try String(alloc, "nine");
+  d.label =  String(alloc, "nine");
   b.power = Bag_power.Dock(d);
-  if ((try roundtrip(alloc, b)) != 3009) {
-    return Result.Ok(4);
+  if (( roundtrip(alloc, b)) != 3009) {
+    return 4;
   }
 
-  return Result.Ok(0);
+  return 0;
 }
 
 /** Reports any unexpected returned error as test failure. */
 function main() i32 {
-  return match check() {
-    Result.Ok(value) => value,
-    _ => -100
-  };
+  try { var value = check();
+return value; } catch { return -100; }
 }
 )");
   EXPECT_EQ(value, 0);
@@ -1435,33 +1394,31 @@ TEST(Modules_ProtoImport, oneof_last_field_on_wire_wins) {
     using std;
     using f;
     /** Checks a protobuf operation and propagates errors. */
-    function check() Result<i32> {
+    function check() i32 throws {
       var alloc = make_heap_allocator();
       // Two members of the same oneof on the wire: protobuf keeps the last
-      var wire = try Vec<u8>(alloc, 16);
-      try proto_write_tag(wire, 3, 0);
-      try proto_write_int32(wire, 1);
-      try proto_write_tag(wire, 4, 2);
-      var s = try String(alloc, "st");
-      try proto_write_string(wire, s);
+      var wire =  Vec<u8>(alloc, 16);
+       proto_write_tag(wire, 3, 0);
+       proto_write_int32(wire, 1);
+       proto_write_tag(wire, 4, 2);
+      var s =  String(alloc, "st");
+       proto_write_string(wire, s);
 
-      var b = try Bag_decode(alloc, wire);
-      return Result.Ok(_convert<i32>(
+      var b =  Bag_decode(alloc, wire);
+      return _convert<i32>(
         match b.power {
           Bag_power.StationId(x) => _convert<i32>(x.length()),
           Bag_power.BatteryPct(v) => -2,
           Bag_power.Dock(d) => -3,
           Bag_power.NotSet => -4
         }
-      ));
+      );
     }
 
     /** Reports any unexpected returned error as test failure. */
     function main() i32 {
-      return match check() {
-        Result.Ok(value) => value,
-        _ => -100
-      };
+      try { var value = check();
+return value; } catch { return -100; }
     }
   )");
   EXPECT_EQ(value, 2);
@@ -1479,48 +1436,46 @@ enum DecodeTestError {
 }
 
 /** Checks a protobuf operation and propagates errors. */
-function check() Result<i32> {
+function check() i32 throws {
   var alloc = make_heap_allocator();
-  var b = try Bag(alloc);
-  try b.scores.insert(try String(alloc, "alice"), 10);
-  try b.scores.insert(try String(alloc, "bob"), 20);
-  var it = try Item(alloc);
+  var b =  Bag(alloc);
+   b.scores.insert( String(alloc, "alice"), 10);
+   b.scores.insert( String(alloc, "bob"), 20);
+  var it =  Item(alloc);
   it.id = 3;
-  it.label = try String(alloc, "three");
-  try b.items.insert(3, it);
-  var buf = try Vec<u8>(alloc, 64);
-  try b.encode(buf);
+  it.label =  String(alloc, "three");
+   b.items.insert(3, it);
+  var buf =  Vec<u8>(alloc, 64);
+   b.encode(buf);
 
-  var back = try Bag_decode(alloc, buf);
+  var back =  Bag_decode(alloc, buf);
   const ref readable = back;
   if (readable.scores.size() != 2) {
-    return Result.Ok(1);
+    return 1;
   }
-  if ((try readable.scores.get(try String(alloc, "bob"))) != 20) {
-    return Result.Ok(2);
+  if (( readable.scores.get( String(alloc, "bob"))) != 20) {
+    return 2;
   }
-  if ((try readable.scores.get(try String(alloc, "alice"))) != 10) {
-    return Result.Ok(3);
+  if (( readable.scores.get( String(alloc, "alice"))) != 10) {
+    return 3;
   }
   if (back.items.size() != 1) {
-    return Result.Ok(4);
+    return 4;
   }
-  if ((try readable.items.get(3)).id != 3) {
-    return Result.Ok(5);
+  if (( readable.items.get(3)).id != 3) {
+    return 5;
   }
-  if ((try readable.items.get(3)).label.length() != 5) {
-    return Result.Ok(6);
+  if (( readable.items.get(3)).label.length() != 5) {
+    return 6;
   }
 
-  return Result.Ok(0);
+  return 0;
 }
 
 /** Reports any unexpected returned error as test failure. */
 function main() i32 {
-  return match check() {
-    Result.Ok(value) => value,
-    _ => -100
-  };
+  try { var value = check();
+return value; } catch { return -100; }
 }
 )");
   EXPECT_EQ(value, 0);
@@ -1545,35 +1500,33 @@ TEST(Modules_ProtoImport, proto_imports_generate_dependency_modules) {
     using app;
     using common;
     /** Checks a protobuf operation and propagates errors. */
-    function check() Result<i32> {
+    function check() i32 throws {
       var alloc = make_heap_allocator();
-      var e = try Event(alloc);
+      var e =  Event(alloc);
       e.when.secs = 1700000000;
       e.level = Level.HIGH;
-      e.what = try String(alloc, "boot");
-      var buf = try Vec<u8>(alloc, 32);
-      try e.encode(buf);
+      e.what =  String(alloc, "boot");
+      var buf =  Vec<u8>(alloc, 32);
+       e.encode(buf);
 
-      var back = try Event_decode(alloc, buf);
+      var back =  Event_decode(alloc, buf);
       if (back.when.secs != 1700000000) {
-        return Result.Ok(1);
+        return 1;
       }
       if (proto_enum_to_i32_Level(back.level) != 1) {
-        return Result.Ok(2);
+        return 2;
       }
       if (back.what.length() != 4) {
-        return Result.Ok(3);
+        return 3;
       }
 
-      return Result.Ok(0);
+      return 0;
     }
 
     /** Reports any unexpected returned error as test failure. */
     function main() i32 {
-      return match check() {
-        Result.Ok(value) => value,
-        _ => -100
-      };
+      try { var value = check();
+return value; } catch { return -100; }
     }
   )",
                   {"schemas/uses.proto"});
@@ -1591,21 +1544,21 @@ using std;
 using f;
 /** Encode bytes while propagating setup failures. */
 /** Runs the fixture with explicit error propagation. */
-function test_main() Result<i32> {
+function test_main() i32 throws {
   var alloc = make_heap_allocator();
-  var b = try Bag(alloc);
-  b.nickname = Option.Some(try String(alloc, "nick"));
+  var b =  Bag(alloc);
+  b.nickname = Option.Some( String(alloc, "nick"));
   b.count = Option.Some(0);
-  var d = try Item(alloc);
+  var d =  Item(alloc);
   d.id = 9;
   b.power = Bag_power.Dock(d);
-  try b.scores.insert(try String(alloc, "alice"), 10);
-  var it = try Item(alloc);
+   b.scores.insert( String(alloc, "alice"), 10);
+  var it =  Item(alloc);
   it.id = 3;
-  it.label = try String(alloc, "three");
-  try b.items.insert(3, it);
-  var buf = try Vec<u8>(alloc, 64);
-  try b.encode(buf);
+  it.label =  String(alloc, "three");
+   b.items.insert(3, it);
+  var buf =  Vec<u8>(alloc, 64);
+   b.encode(buf);
 )BOUNDARY" +
           proto_test::dumpBufferProgramTail(outFile));
   ASSERT_EQ(project.run(), 0);
@@ -1652,43 +1605,41 @@ TEST(Modules_ProtoImport, moon_exports_proto_messages_to_importers) {
     using std;
     using t;
     /** Checks a protobuf operation and propagates errors. */
-    function check() Result<i32> {
+    function check() i32 throws {
       var alloc = make_heap_allocator();
-      var st = try Status(alloc);
+      var st =  Status(alloc);
       st.robot_id = 7;
-      st.name = try String(alloc, "rover");
-      try st.samples.push(300);
+      st.name =  String(alloc, "rover");
+       st.samples.push(300);
       st.mode = Mode.FAULT;
       st.pose.y = -2.0;
-      var buf = try Vec<u8>(alloc, 32);
-      try st.encode(buf);
+      var buf =  Vec<u8>(alloc, 32);
+       st.encode(buf);
 
-      var back = try Status_decode(alloc, buf);
+      var back =  Status_decode(alloc, buf);
       if (back.robot_id != 7) {
-        return Result.Ok(1);
+        return 1;
       }
       if (back.name.length() != 5) {
-        return Result.Ok(2);
+        return 2;
       }
       if (unsafe { back.samples.get_unchecked(0); } != 300) {
-        return Result.Ok(3);
+        return 3;
       }
       if (proto_enum_to_i32_Mode(back.mode) != 7) {
-        return Result.Ok(4);
+        return 4;
       }
       if (back.pose.y != -2.0) {
-        return Result.Ok(5);
+        return 5;
       }
 
-      return Result.Ok(42);
+      return 42;
     }
 
     /** Reports any unexpected returned error as test failure. */
     function main() i32 {
-      return match check() {
-        Result.Ok(value) => value,
-        _ => -100
-      };
+      try { var value = check();
+return value; } catch { return -100; }
     }
   )");
   EXPECT_EQ(value, 42);
@@ -1732,23 +1683,21 @@ TEST(Modules_ProtoImport, moon_exports_nested_dotted_package_modules) {
     using std;
     using namo.telemetry;
     /** Checks a protobuf operation and propagates errors. */
-    function check() Result<i32> {
+    function check() i32 throws {
       var alloc = make_heap_allocator();
-      var p = try Ping(alloc);
+      var p =  Ping(alloc);
       p.seq = 9;
-      var buf = try Vec<u8>(alloc, 8);
-      try p.encode(buf);
+      var buf =  Vec<u8>(alloc, 8);
+       p.encode(buf);
 
-      var back = try Ping_decode(alloc, buf);
-      return Result.Ok(back.seq);
+      var back =  Ping_decode(alloc, buf);
+      return back.seq;
     }
 
     /** Reports any unexpected returned error as test failure. */
     function main() i32 {
-      return match check() {
-        Result.Ok(value) => value,
-        _ => -100
-      };
+      try { var value = check();
+return value; } catch { return -100; }
     }
   )");
   EXPECT_EQ(value, 9);

@@ -287,5 +287,5 @@ by a typed pattern; an ordinary variant pattern can distinguish them.
 Bindings borrow the active payload. They neither move nor copy it, and they
 cannot outlive its owner. Mutable bindings cannot borrow through a const value.
 Payload-free and multiple-payload variants use ordinary variant patterns or `_`.
-Nested enums require another match: matching `_Result<T, ErrorEnum>` against an
+Nested enums require another match: matching an enum that contains another enum against an
 interface does not recursively inspect the variants inside `ErrorEnum`.

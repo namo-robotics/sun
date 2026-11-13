@@ -436,7 +436,7 @@ class DiscoveryProtocolTests(unittest.TestCase):
         # A quote in the source path exercises both generated Sun and JSON escaping.
         quoted = self.directory / 'quoted"tests.sun'
         quoted.write_text("module outer { module inner { /* π😀 */ test_function fails() { "
-                          "try std.test.assert(false); } } }\n")
+                          "std.test.assert(false); } } }\n")
         self.entry.write_text('manifest { test_files: [' + json.dumps(quoted.name)
                              + '] libraries: [' + json.dumps(str(SERVER.parent / "stdlib.moon"))
                              + '] }\n')

@@ -4,7 +4,6 @@
 #include "types/array_type.h"
 #include "types/class_type.h"
 #include "types/enum_type.h"
-#include "types/error_union_type.h"
 #include "types/function_type.h"
 #include "types/interface_type.h"
 #include "types/lambda_type.h"

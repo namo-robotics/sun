@@ -495,15 +495,6 @@ DIType* DebugInfoBuilder::resolveTypeImpl(const sun::types::Type& type) {
       return structFor("slice", st, {{"start", i64}, {"end", i64}});
     }
 
-    case sun::types::Type::Kind::ErrorUnion: {
-      const auto& eu = static_cast<const sun::types::ErrorUnionType&>(type);
-      auto* st = dyn_cast<llvm::StructType>(eu.toLLVMType(ctx));
-      return structFor(
-          eu.toString(), st,
-          {{"is_error", di_->createBasicType("bool", 8, dwarf::DW_ATE_boolean)},
-           {"value", resolveType(eu.getValueType())}});
-    }
-
     case sun::types::Type::Kind::Function:
     case sun::types::Type::Kind::Lambda: {
       // Callable values are closure structs { ptr func, ptr env }.

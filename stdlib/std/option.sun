@@ -1,9 +1,6 @@
 // stdlib/std/option.sun - Optional values
 //
-// Option<T> represents a value that may be absent. The builtin _Result<T, E>
-// represents success or failure without a standard-library dependency. Stdlib
-// result enums live in result.sun. These types
-// are payload enums inspected with match:
+// Option<T> represents a value that may be absent. Inspect its payload with match:
 //
 //   var found = m.find(key);
 //   var v = match found {

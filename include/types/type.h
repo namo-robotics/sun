@@ -47,7 +47,6 @@ class Type {
     Interface,
     Enum,           // Enum type: enum Color { Red, Green, Blue }
     TypeParameter,  // Generic type parameter (T, U, etc.)
-    ErrorUnion,     // Type that can be a value or an error
     Array,          // Fixed-size array: array<T, N, M, ...>
     Slice,          // Builtin slice type: { start: i64, end: i64 }
     Module,         // Module/namespace reference (for mod_x.mod_y.var access)
@@ -151,8 +150,6 @@ class Type {
   bool isModule() const { return getKind() == Kind::Module; }
   /** Reports whether this type represents type parameter values. */
   bool isTypeParameter() const { return getKind() == Kind::TypeParameter; }
-  /** Reports whether this type represents error union values. */
-  bool isErrorUnion() const { return getKind() == Kind::ErrorUnion; }
   /** Reports whether this type represents array values. */
   bool isArray() const { return getKind() == Kind::Array; }
   /** Reports whether this type represents slice values. */

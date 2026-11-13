@@ -298,15 +298,15 @@ public module std.time {
     alloc: const ref HeapAllocator,
     dt: const ref DateTime,
     fmt: raw_ptr<u8>
-  ) AllocationResult<String> {
+  ) String throws {
     var tm: CTm = to_ctm(dt);
     tm.wday = dt.weekday;
     tm.yday = dt.yearday;
-    var buf: ContiguousBuffer<u8> = try ContiguousBuffer<u8>(alloc, 256);
+    var buf: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 256);
     var written: i64 = unsafe { c_strftime(buf.raw_data(), 256, fmt, tm); };
     if (written <= 0) {
-      return AllocationResult.Ok(try String(alloc, ""));
+      return String(alloc, "");
     }
-    return AllocationResult.Ok(try from_c_str(alloc, buf.raw_data()));
+    return from_c_str(alloc, buf.raw_data());
   }
 }

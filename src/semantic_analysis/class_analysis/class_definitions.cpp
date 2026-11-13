@@ -88,6 +88,7 @@ void ClassAnalyzer::analyzeClassDefinition(
       ctx_.types()->getClass(classDef.getDeclarationId(), qualifiedClass);
 
   // Layout must be decided before any getStructType() call memoizes it
+  classType->setException(classDef.isException());
   classType->setPacked(classDef.isPacked());
   classType->setAlignment(classDef.getAlignment());
   classType->visibility = classDef.getVisibility();
@@ -254,6 +255,8 @@ void ClassAnalyzer::analyzePartialClass(sun::ast::ClassDefinitionAST& classDef,
 
   auto existingClass = ctx_.lookupClass(baseName);
   if (existingClass) {
+    if (existingClass->isException())
+      logAndThrowError("Partial classes cannot extend exception declarations", classDef.getLocation());
     classDef.setTargetDeclarationId(existingClass->getDeclarationId());
     // Primary already analyzed — validate and merge methods now
     for (const auto& extMethod : classDef.getMethods()) {

@@ -65,7 +65,7 @@ with a Sun definition is an error.
 
 Supported global types are non-void primitives, payload-free enums,
 `raw_ptr<T>`, `ref T`, by-value classes, and valid non-throwing C function
-pointers. Arrays, slices, interfaces, lambdas, error unions, payload enums, and
+pointers. Arrays, slices, interfaces, lambdas, payload enums, and
 `static_ptr` have no supported C global representation.
 
 ### Renaming a symbol
@@ -147,11 +147,11 @@ function main() i32 {
 ```
 
 The declared pointer signature must match exactly. A C callback uses an ABI-compatible
-return value; adapt result enums to a C error code explicitly. Callback
+return value; catch exceptions inside the callback and translate them to a C error code. Callback
 parameters may be primitives, payload-free enums, `raw_ptr<T>`, or `ref T`.
 The return may be a primitive, a payload-free enum, or `raw_ptr<T>`. The
 compiler rejects throwing callbacks, lambdas, bound methods, by-value classes,
-interfaces, payload enums, error unions, callbacks returning another function
+interfaces, payload enums, callbacks returning another function
 pointer, and extern functions that return a function pointer. Aggregate extern
 parameters and returns remain supported for ordinary direct calls; they are
 only excluded from callback signatures.

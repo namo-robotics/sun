@@ -51,17 +51,17 @@ public module m {
     }
 
     /** Returns an empty sample vector. */
-    public method empty() AllocationResult<Vec<Sample<T>>> {
-      return AllocationResult.Ok(try Vec<Sample<T>>(global_allocator, 2));
+    public method empty() Vec<Sample<T>> throws {
+      return Vec<Sample<T>>(global_allocator, 2);
     }
 
     /** Wraps a value in a populated sample vector. */
-    public method make(v: T) AllocationResult<Vec<Sample<T>>> {
-      var out = try Vec<Sample<T>>(global_allocator, 2);
+    public method make(v: T) Vec<Sample<T>> throws {
+      var out = Vec<Sample<T>>(global_allocator, 2);
       var none: Option<T> = Option.None;
-      try out.push(Sample<T>(Info(), none));
-      try out.push(Sample<T>(Info(), Option.Some(v)));
-      return AllocationResult.Ok(out);
+      out.push(Sample<T>(Info(), none));
+      out.push(Sample<T>(Info(), Option.Some(v)));
+      return out;
     }
   }
 
@@ -93,43 +93,27 @@ function decode(d: ref m.Decoder, a: const ref HeapAllocator) Msg {
 }
 
 /** Runs the regression scenario and returns its observable result to the test harness. */
-function run_main() AllocationResult<i32> {
+function run_main() i32 throws {
   var s = m.Subscriber();
   var r = s.create_datareader<Msg>(
     m.TypeSupport<Msg>(decode),
-    try Shared<m.Info>(global_allocator, m.Info())
+    Shared<m.Info>(global_allocator, m.Info())
   );
-  var e = try r.empty();
-  var out = try r.make(Msg(7));
+  var e = r.empty();
+  var out = r.make(Msg(7));
   if (e.size() == 0 and out.size() == 2) {
-    var sample = match out.remove(1) {
-      AccessResult.Ok(value) => value,
-      AccessResult.OutOfBounds(_) => {
-        return AllocationResult.Ok(-100);
-      }
+    var sample = out.remove(1);
+    return match sample.data {
+      Option.Some(value) => value.v - 7,
+      Option.None => 1
     };
-    return AllocationResult.Ok(
-      match sample.data {
-        Option.Some(value) => value.v - 7,
-        Option.None => 1
-      }
-    );
   }
-  return AllocationResult.Ok(1);
+  return 1;
 }
 
-/** Reports entrypoint failures without requiring diagnostic allocation to succeed. */
-function main() i32 {
-  return match run_main() {
-    AllocationResult.Ok(code) => code,
-    (error: const ref std.IError) => {
-      match error.message() {
-        std.AllocationResult.Ok(message) => std.io.eprintln(message),
-        _ => std.io.eprintln("unable to allocate error message")
-      };
-      1;
-    }
-  };
+/** Runs the fixture and reports uncaught exceptions at the process boundary. */
+function main() i32 throws {
+  return run_main();
 }
 
 manifest {

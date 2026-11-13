@@ -8,13 +8,13 @@ No heap allocation occurs for vector construction or arithmetic.
 using std;
 
 /** Scales four samples, adds a bias, and stores the result without allocation. */
-function process(samples: ref ContiguousBuffer<f32>) AccessResult<void> {
-    var input = try std.simd.load(samples, 0);
+function process(samples: ref ContiguousBuffer<f32>) void throws {
+    var input =  std.simd.load(samples, 0);
     var gain = std.simd.splat(2.0f32);
     var bias = std.simd.splat(0.5f32);
     var output = input.fma(gain, bias);
-    try output.store(samples, 0);
-    return AccessResult.Ok;
+     output.store(samples, 0);
+    return;
 }
 ```
 
@@ -41,8 +41,8 @@ permits either fused or separate rounding so targets without hardware FMA
 can avoid a software fallback. No reassociation or general fast-math is requested. NaNs and
 infinities follow ordinary floating-point arithmetic.
 
-Load and store offsets count float elements, not bytes. Checked access returns
-`AccessResult`, rejects negative or incomplete ranges, and never reads or writes
+Load and store offsets count float elements, not bytes. Checked access throws
+`IndexOutOfBoundsError` for negative or incomplete ranges, and never reads or writes
 past the buffer. A failed store leaves the buffer unchanged. Loads require
 initialized input elements; stores can initialize previously unwritten elements.
 Only ordinary `f32` alignment is required, including for offset accesses.
@@ -69,12 +69,12 @@ but still require only ordinary `f32` alignment for external memory.
 
 ```sun
 /** Doubles eight initialized samples through checked buffer operations. */
-function process8(samples: ref ContiguousBuffer<f32>) AccessResult<void> {
-    var input = try std.simd.load8(samples, 0);
+function process8(samples: ref ContiguousBuffer<f32>) void throws {
+    var input =  std.simd.load8(samples, 0);
     var gain = std.simd.F32x8(2.0f32);
     var output = input * gain;
-    try output.store(samples, 0);
-    return AccessResult.Ok;
+     output.store(samples, 0);
+    return;
 }
 ```
 

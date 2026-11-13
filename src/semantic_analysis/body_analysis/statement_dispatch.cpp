@@ -15,6 +15,12 @@ using sun::types::Types;
 namespace sun::semantic_analysis {
 bool BodyAnalyzer::tryAnalyzeStatement(ExprAST& expr, TypePtr expectedType) {
   switch (expr.getType()) {
+    case ASTNodeType::THROW:
+      analyzeThrow(static_cast<sun::ast::ThrowAST&>(expr));
+      break;
+    case ASTNodeType::TRY_CATCH:
+      analyzeTryCatch(static_cast<sun::ast::TryCatchAST&>(expr));
+      break;
     case ASTNodeType::VARIABLE_ASSIGNMENT:
       analyzeVariableAssignment(
           static_cast<sun::ast::VariableAssignmentAST&>(expr));

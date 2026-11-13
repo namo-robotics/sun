@@ -7,770 +7,852 @@ public module std.xml {
   enum XmlChecks { Ok, Assertion(std.test.AssertionError), Xml(XmlError), Bounds(IndexOutOfBoundsError), Allocation(AllocationError), InvalidArgument(InvalidArgumentError), Overflow(OverflowError), System(Error), NotFound(NotFoundError), Empty(EmptyError), Io(IOError), Conversion(ConversionError), DivisionByZero(DivisionByZeroError), Arithmetic(ArithmeticError), Json(std.json.JsonError), Decode(ProtoDecodeError) }
 
   /** Constructs an unqualified owned name using the test allocator. */
-  function name(alloc: ref HeapAllocator, local: static_ptr<u8>) AllocationResult<XmlName> {
-    return AllocationResult.Ok(
-      XmlName(try String(alloc, ""), try String(alloc, local), try String(alloc, ""))
-    );
+  function name(alloc: ref HeapAllocator, local: static_ptr<u8>) XmlName throws {
+    return XmlName(String(alloc, ""), String(alloc, local), String(alloc, ""));
   }
 
   /** Asserts that a complete input is rejected. */
-  function rejects(text: static_ptr<u8>) XmlChecks {
+  function rejects(text: static_ptr<u8>) void throws {
     var alloc = make_heap_allocator();
-    var rejected = match parse_xml(alloc, text) {
-      Result.Ok(_) => false,
-      Result.Xml(_) => true,
-      _ => false
-    };
-    try std.test.assert(rejected, "invalid XML must be rejected");
-    return XmlChecks.Ok;
+    var rejected: bool = false;
+    try {
+      parse_xml(alloc, text);
+      rejected = false;
+    } catch (ignored_error: XmlError) {
+      rejected = true;
+    } catch {
+      rejected = false;
+    }
+    std.test.assert(rejected, "invalid XML must be rejected");
+    return;
   }
 
   /** Checks ordered text and elements, references, CDATA, and independent storage. */
-  test_function mixed_content() XmlChecks {
+  test_function mixed_content() {
     var alloc = make_heap_allocator();
-    var input = try String(alloc, "<p>Hello <b>Sun</b>!<![CDATA[<&]]>&#x1F600;</p>");
-    var doc = try parse_xml(alloc, input);
+    var input = String(alloc, "<p>Hello <b>Sun</b>!<![CDATA[<&]]>&#x1F600;</p>");
+    var doc = parse_xml(alloc, input);
     input.clear();
-    try std.test.assert_eq(doc.root().child_count(), 5);
-    try std.test.assert(
-      (try (try doc.root().child(0)).text()).equals_literal("Hello "),
+    std.test.assert_eq(doc.root().child_count(), 5);
+    std.test.assert(
+      ((doc.root().child(0)).text()).equals_literal("Hello "),
       "leading text preserved"
     );
-    try std.test.assert(
-      (try (try doc.root().child(1)).element()).name().local().equals_literal("b"),
+    std.test.assert(
+      ((doc.root().child(1)).element()).name().local().equals_literal("b"),
       "child order preserved"
     );
-    try std.test.assert(
-      (try (try doc.root().child(3)).text()).equals_literal("<&"),
+    std.test.assert(
+      ((doc.root().child(3)).text()).equals_literal("<&"),
       "CDATA decoded as text"
     );
-    var out = try String(alloc, "");
-    try doc.write(alloc, out);
-    var again = try parse_xml(alloc, out);
-    try std.test.assert_eq(again.root().child_count(), 3);
-    try std.test.assert(
-      (try (try again.root().child(2)).text()).equals_literal("!<&😀"),
+    var out = String(alloc, "");
+    doc.write(alloc, out);
+    var again = parse_xml(alloc, out);
+    std.test.assert_eq(again.root().child_count(), 3);
+    std.test.assert(
+      ((again.root().child(2)).text()).equals_literal("!<&😀"),
       "adjacent text is equivalent"
     );
-    return XmlChecks.Ok;
+    return;
   }
 
   /** Checks BOMs, Unicode names, declaration fields, and surrounding content. */
-  test_function unicode_and_prolog() XmlChecks {
+  test_function unicode_and_prolog() {
     var alloc = make_heap_allocator();
-    var doc = try parse_xml(
+    var doc = parse_xml(
       alloc,
       "\xef\xbb\xbf<?xml version='1.0' encoding='uTf-8' standalone='yes'?>\n<!--before--><?run value?><é 名='Ω'><𐀀/></é>\n<!--after-->"
     );
-    try std.test.assert(
+    std.test.assert(
       doc.root().name().local().equals_literal("é"),
       "Unicode root name"
     );
-    var out = try String(alloc, "");
-    try doc.write(alloc, out);
-    var again = try parse_xml(alloc, out);
-    try std.test.assert(
+    var out = String(alloc, "");
+    doc.write(alloc, out);
+    var again = parse_xml(alloc, out);
+    std.test.assert(
       out.contains("<!--before-->") and out.contains("<?run value?>") and
         out.contains("<!--after-->"),
       "miscellaneous content survives"
     );
-    return XmlChecks.Ok;
+    return;
   }
 
   /** Checks namespace identity, default namespaces, shadowing, and empty values. */
-  test_function namespaces() XmlChecks {
+  test_function namespaces() {
     var alloc = make_heap_allocator();
-    var doc = try parse_xml(
+    var doc = parse_xml(
       alloc,
       "<r xmlns='urn:one' xmlns:p='urn:attr' p:a='' a='plain'><p:c xmlns:p='urn:two'/><u xmlns=''/></r>"
     );
-    try std.test.assert(
+    std.test.assert(
       doc.root().name().uri().equals_literal("urn:one"),
       "default namespace applies to elements"
     );
     var key = XmlName(
-      try String(alloc, "urn:attr"),
-      try String(alloc, "a"),
-      try String(alloc, "other")
+      String(alloc, "urn:attr"),
+      String(alloc, "a"),
+      String(alloc, "other")
     );
     var present = match doc.root().attribute(key) {
       Option.Some(v) => v.is_empty(),
       Option.None => false
     };
-    try std.test.assert(present, "empty attribute is present and prefixes do not affect lookup");
-    var absent = try name(alloc, "missing");
-    try std.test.assert(
+    std.test.assert(present, "empty attribute is present and prefixes do not affect lookup");
+    var absent = name(alloc, "missing");
+    std.test.assert(
       match doc.root().attribute(absent) {
         Option.None => true,
         Option.Some(_) => false
       },
       "absence is distinct"
     );
-    try std.test.assert(
-      (try (try doc.root().child(0)).element()).name().uri().equals_literal("urn:two"),
+    std.test.assert(
+      ((doc.root().child(0)).element()).name().uri().equals_literal("urn:two"),
       "prefix shadowing"
     );
-    try std.test.assert(
-      (try (try doc.root().child(1)).element()).name().uri().is_empty(),
+    std.test.assert(
+      ((doc.root().child(1)).element()).name().uri().is_empty(),
       "default namespace reset"
     );
-    return XmlChecks.Ok;
+    return;
   }
 
   /** Checks XML whitespace and reference normalization without changing source input. */
-  test_function normalization() XmlChecks {
+  test_function normalization() {
     var alloc = make_heap_allocator();
-    var input = try String(
+    var input = String(
       alloc,
       "<r a='x\r\ny\tz&#9;&#10;&#13;'>&lt;&gt;&amp;&quot;&apos;\r\nX\rY</r>"
     );
-    var doc = try parse_xml(alloc, input);
-    var key = try name(alloc, "a");
-    try std.test.assert(
+    var doc = parse_xml(alloc, input);
+    var key = name(alloc, "a");
+    std.test.assert(
       match doc.root().attribute(key) {
         Option.Some(v) => v.equals_literal("x y z\t\n\r"),
         Option.None => false
       },
       "attribute normalization preserves references"
     );
-    try std.test.assert(
-      (try (try doc.root().child(0)).text()).equals_literal("<>&\"'\nX\nY"),
+    std.test.assert(
+      ((doc.root().child(0)).text()).equals_literal("<>&\"'\nX\nY"),
       "text normalization"
     );
-    try std.test.assert(input.contains("\r\n"), "input is unchanged");
-    var out = try String(alloc, "");
-    try doc.write(alloc, out);
-    var again = try parse_xml(alloc, out);
-    try std.test.assert(
+    std.test.assert(input.contains("\r\n"), "input is unchanged");
+    var out = String(alloc, "");
+    doc.write(alloc, out);
+    var again = parse_xml(alloc, out);
+    std.test.assert(
       match again.root().attribute(key) {
         Option.Some(v) => v.equals_literal("x y z\t\n\r"),
         Option.None => false
       },
       "writer preserves attribute whitespace"
     );
-    return XmlChecks.Ok;
+    return;
   }
 
   /** Rejects malformed syntax and unsupported XML features. */
-  test_function malformed_documents() XmlChecks {
-    try rejects("");
-    try rejects("<r>");
-    try rejects("<r></s>");
-    try rejects("<r/><s/>");
-    try rejects("x<r/>");
-    try rejects("<r/>x");
-    try rejects("<r a='1'a='2'/>");
-    try rejects("<r a='1' a='2'/>");
-    try rejects("<r a=x/>");
-    try rejects("<r a='<y'/>");
-    try rejects("<r>&unknown;</r>");
-    try rejects("<r>&#;</r>");
-    try rejects("<r>&#x;</r>");
-    try rejects("<r>&#xD800;</r>");
-    try rejects("<r>&#1114112;</r>");
-    try rejects("<r>&#9999999999999999999999999;</r>");
-    try rejects("<r>&amp</r>");
-    try rejects("<!DOCTYPE r><r/>");
-    try rejects("<?xml version='1.1'?><r/>");
-    try rejects("<?xml version='1.0' encoding='UTF-16'?><r/>");
-    try rejects(" <?xml version='1.0'?><r/>");
-    try rejects("<?XML x?><r/>");
-    try rejects("<?xml?><r/>");
-    try rejects("<?xml encoding='UTF-8'?><r/>");
-    try rejects("<?xml version='1.0' version='1.0'?><r/>");
-    try rejects("<r><!--a--b--></r>");
-    try rejects("<r><!--a---></r>");
-    try rejects("<r>]]></r>");
-    try rejects("<![CDATA[x]]><r/>");
-    try rejects("<r><?p?x?></r>");
-    try rejects("<1/>");
-    try rejects("<a:b:c/>");
-    try rejects("<:r/>");
-    try rejects("<r:/>");
-    try rejects("<r>\x00</r>");
-    try rejects("<r>\xc0\xaf</r>");
-    try rejects("<r>\xed\xa0\x80</r>");
-    try rejects("<r>\xf4\x90\x80\x80</r>");
-    try rejects("<r>\xe2\x82");
-    try rejects("<r>\x01</r>");
-    try rejects("<\xcc\x81/>");
-    return XmlChecks.Ok;
+  test_function malformed_documents() {
+    rejects("");
+    rejects("<r>");
+    rejects("<r></s>");
+    rejects("<r/><s/>");
+    rejects("x<r/>");
+    rejects("<r/>x");
+    rejects("<r a='1'a='2'/>");
+    rejects("<r a='1' a='2'/>");
+    rejects("<r a=x/>");
+    rejects("<r a='<y'/>");
+    rejects("<r>&unknown;</r>");
+    rejects("<r>&#;</r>");
+    rejects("<r>&#x;</r>");
+    rejects("<r>&#xD800;</r>");
+    rejects("<r>&#1114112;</r>");
+    rejects("<r>&#9999999999999999999999999;</r>");
+    rejects("<r>&amp</r>");
+    rejects("<!DOCTYPE r><r/>");
+    rejects("<?xml version='1.1'?><r/>");
+    rejects("<?xml version='1.0' encoding='UTF-16'?><r/>");
+    rejects(" <?xml version='1.0'?><r/>");
+    rejects("<?XML x?><r/>");
+    rejects("<?xml?><r/>");
+    rejects("<?xml encoding='UTF-8'?><r/>");
+    rejects("<?xml version='1.0' version='1.0'?><r/>");
+    rejects("<r><!--a--b--></r>");
+    rejects("<r><!--a---></r>");
+    rejects("<r>]]></r>");
+    rejects("<![CDATA[x]]><r/>");
+    rejects("<r><?p?x?></r>");
+    rejects("<1/>");
+    rejects("<a:b:c/>");
+    rejects("<:r/>");
+    rejects("<r:/>");
+    rejects("<r>\x00</r>");
+    rejects("<r>\xc0\xaf</r>");
+    rejects("<r>\xed\xa0\x80</r>");
+    rejects("<r>\xf4\x90\x80\x80</r>");
+    rejects("<r>\xe2\x82");
+    rejects("<r>\x01</r>");
+    rejects("<\xcc\x81/>");
+    return;
   }
 
   /** Rejects invalid or ambiguous namespace bindings. */
-  test_function invalid_namespaces() XmlChecks {
-    try rejects("<p:r/>");
-    try rejects("<r p:a='x'/>");
-    try rejects("<r xmlns:p=''/>");
-    try rejects("<r xmlns:xml='wrong'/>");
-    try rejects("<r xmlns:xmlns='urn:x'/>");
-    try rejects("<r xmlns:p='http://www.w3.org/XML/1998/namespace'/>");
-    try rejects("<r xmlns='http://www.w3.org/2000/xmlns/'/>");
-    try rejects("<r xmlns:='x'/>");
-    try rejects("<r xmlns:p='u' xmlns:q='u' p:a='1' q:a='2'/>");
-    try rejects("<r xmlns:p='a' xmlns:p='b'/>");
-    return XmlChecks.Ok;
+  test_function invalid_namespaces() {
+    rejects("<p:r/>");
+    rejects("<r p:a='x'/>");
+    rejects("<r xmlns:p=''/>");
+    rejects("<r xmlns:xml='wrong'/>");
+    rejects("<r xmlns:xmlns='urn:x'/>");
+    rejects("<r xmlns:p='http://www.w3.org/XML/1998/namespace'/>");
+    rejects("<r xmlns='http://www.w3.org/2000/xmlns/'/>");
+    rejects("<r xmlns:='x'/>");
+    rejects("<r xmlns:p='u' xmlns:q='u' p:a='1' q:a='2'/>");
+    rejects("<r xmlns:p='a' xmlns:p='b'/>");
+    return;
   }
 
   /** Checks original byte offsets and Unicode columns across CRLF. */
-  test_function error_locations_and_sticky_reader() XmlChecks {
+  test_function error_locations_and_sticky_reader() {
     var alloc = make_heap_allocator();
-    var input = try String(alloc, "<r>\r\né</r>!");
-    var reader = try XmlReader(alloc, input);
-    var a = try reader.next();
-    var b = try reader.next();
-    var c = try reader.next();
-    match reader.next() {
-      Result.Xml(e) => {
-        try std.test.assert_eq(e.offset(), 11);
-        try std.test.assert_eq(e.line(), 2);
-        try std.test.assert_eq(e.column(), 6);
-      },
-      Result.Ok(_) => {
-        try std.test.assert(false, "trailing text must fail");
-      },
-      _ => {
-        try std.test.assert(false, "unexpected result error");
-      }
-    };
-    match reader.next() {
-      Result.Xml(e) => {
-        try std.test.assert_eq(e.offset(), 11);
-      },
-      Result.Ok(_) => {
-        try std.test.assert(false, "reader failure is sticky");
-      },
-      _ => {
-        try std.test.assert(false, "unexpected result error");
-      }
-    };
-    var invalid = try String(alloc, "<r>\r\n\xc0");
-    match parse_xml(alloc, invalid) {
-      Result.Xml(e) => {
-        try std.test.assert_eq(e.offset(), 5);
-        try std.test.assert_eq(e.line(), 2);
-        try std.test.assert_eq(e.column(), 1);
-      },
-      Result.Ok(_) => {
-        try std.test.assert(false, "invalid UTF-8");
-      },
-      _ => {
-        try std.test.fail("unexpected allocation failure");
-      }
-    };
-    return XmlChecks.Ok;
+    var input = String(alloc, "<r>\r\né</r>!");
+    var reader = XmlReader(alloc, input);
+    var a = reader.next();
+    var b = reader.next();
+    var c = reader.next();
+    try {
+      reader.next();
+
+      std.test.assert(false, "trailing text must fail");
+    } catch (e: XmlError) {
+      std.test.assert_eq(e.offset(), 11);
+      std.test.assert_eq(e.line(), 2);
+      std.test.assert_eq(e.column(), 6);
+    } catch {
+      std.test.assert(false, "unexpected result error");
+    }
+    try {
+      reader.next();
+
+      std.test.assert(false, "reader failure is sticky");
+    } catch (e: XmlError) {
+      std.test.assert_eq(e.offset(), 11);
+    } catch {
+      std.test.assert(false, "unexpected result error");
+    }
+    var invalid = String(alloc, "<r>\r\n\xc0");
+    try {
+      parse_xml(alloc, invalid);
+
+      std.test.assert(false, "invalid UTF-8");
+    } catch (e: XmlError) {
+      std.test.assert_eq(e.offset(), 5);
+      std.test.assert_eq(e.line(), 2);
+      std.test.assert_eq(e.column(), 1);
+    } catch {
+      std.test.fail("unexpected allocation failure");
+    }
+    return;
   }
 
   /** Checks empty-element event pairs and successful repeated EOF. */
-  test_function reader_events() XmlChecks {
+  test_function reader_events() {
     var alloc = make_heap_allocator();
-    var input = try String(alloc, "<r/>");
-    var reader = try XmlReader(alloc, input);
-    var first = match (try reader.next()) {
+    var input = String(alloc, "<r/>");
+    var reader = XmlReader(alloc, input);
+    var first = match (reader.next()) {
       Option.Some(e) => e,
       Option.None => {
-        return XmlChecks.Xml(XmlError("missing event", -1, -1, -1));
+        throw XmlError("missing event", -1, -1, -1);
       }
     };
-    try std.test.assert(
+    std.test.assert(
       match first {
         XmlEvent.Start(_) => true,
         _ => false
       },
       "start event"
     );
-    var second = match (try reader.next()) {
+    var second = match (reader.next()) {
       Option.Some(e) => e,
       Option.None => {
-        return XmlChecks.Xml(XmlError("missing event", -1, -1, -1));
+        throw XmlError("missing event", -1, -1, -1);
       }
     };
-    try std.test.assert(
+    std.test.assert(
       match second {
         XmlEvent.End(_) => true,
         _ => false
       },
       "end event"
     );
-    try std.test.assert(
-      match (try reader.next()) {
+    std.test.assert(
+      match (reader.next()) {
         Option.None => true,
         _ => false
       },
       "EOF"
     );
-    try std.test.assert(
-      match (try reader.next()) {
+    std.test.assert(
+      match (reader.next()) {
         Option.None => true,
         _ => false
       },
       "repeat EOF"
     );
-    return XmlChecks.Ok;
+    return;
   }
 
   /** Exercises all tree mutations and explicit independent cloning. */
-  test_function editing() XmlChecks {
+  test_function editing() {
     var alloc = make_heap_allocator();
-    var doc = try parse_xml(alloc, "<r a='old'><a/>tail</r>");
-    try doc.root().set_attribute(try name(alloc, "a"), try String(alloc, "new"));
-    try doc.root().set_attribute(try name(alloc, "b"), try String(alloc, ""));
-    try std.test.assert_eq(doc.root().attribute_count(), 2);
-    var key = try name(alloc, "a");
+    var doc = parse_xml(alloc, "<r a='old'><a/>tail</r>");
+    doc.root().set_attribute(name(alloc, "a"), String(alloc, "new"));
+    doc.root().set_attribute(name(alloc, "b"), String(alloc, ""));
+    std.test.assert_eq(doc.root().attribute_count(), 2);
+    var key = name(alloc, "a");
     var removed = doc.root().remove_attribute(key);
-    try std.test.assert(
+    std.test.assert(
       match removed {
         Option.Some(v) => v.equals_literal("new"),
         Option.None => false
       },
       "remove returns value"
     );
-    try (try doc.root().child(1)).set_text(try String(alloc, "updated"));
-    var child = try doc.root().remove(0);
-    try doc.root().insert(1, child);
-    try doc.root().append(XmlNode(XmlNodeValue.Text(try String(alloc, "last"))));
-    var old = try doc.root().replace(2, XmlNode(XmlNodeValue.Comment(try String(alloc, "note"))));
-    try std.test.assert((try old.text()).equals_literal("last"), "replace returns old child");
-    var cloned = try doc.clone(alloc);
-    try doc.root().set_name(try name(alloc, "changed"));
-    try std.test.assert(cloned.root().name().local().equals_literal("r"), "clone is independent");
-    var original = try doc.replace_root(try XmlElement(alloc, try name(alloc, "newroot")));
-    try std.test.assert(
+    (doc.root().child(1)).set_text(String(alloc, "updated"));
+    var child = doc.root().remove(0);
+    doc.root().insert(1, child);
+    doc.root().append(XmlNode(XmlNodeValue.Text(String(alloc, "last"))));
+    var old = doc.root().replace(2, XmlNode(XmlNodeValue.Comment(String(alloc, "note"))));
+    std.test.assert((old.text()).equals_literal("last"), "replace returns old child");
+    var cloned = doc.clone(alloc);
+    doc.root().set_name(name(alloc, "changed"));
+    std.test.assert(cloned.root().name().local().equals_literal("r"), "clone is independent");
+    var original = doc.replace_root(XmlElement(alloc, name(alloc, "newroot")));
+    std.test.assert(
       original.name().local().equals_literal("changed"),
       "replace root returns old root"
     );
-    try std.test.assert(
-      match cloned.root().remove(99) {
-        XmlResult.Error(_) => true,
-        _ => false
-      },
+    var exception_check_1 = false;
+    try {
+      cloned.root().remove(99);
+      exception_check_1 = false;
+    } catch (ignored_error: std.xml.XmlError) {
+      exception_check_1 = true;
+    } catch {
+      exception_check_1 = false;
+    }
+    std.test.assert(
+      exception_check_1,
       "invalid index rejected"
     );
-    try std.test.assert_eq(cloned.root().child_count(), 3);
-    return XmlChecks.Ok;
+    std.test.assert_eq(cloned.root().child_count(), 3);
+    return;
   }
 
   /** Moves a subtree into conflicting namespaces without changing expanded names. */
-  test_function namespace_repair() XmlChecks {
+  test_function namespace_repair() {
     var alloc = make_heap_allocator();
-    var source = try parse_xml(alloc, "<r xmlns:p='urn:one'><p:item p:a='v'/></r>");
-    var target = try parse_xml(alloc, "<r xmlns='urn:default' xmlns:p='urn:two'/>");
-    var moved = try source.root().remove(0);
-    try target.root().append(moved);
-    try target.root().append(
-      XmlNode(XmlNodeValue.Element(try XmlElement(alloc, try name(alloc, "plain"))))
+    var source = parse_xml(alloc, "<r xmlns:p='urn:one'><p:item p:a='v'/></r>");
+    var target = parse_xml(alloc, "<r xmlns='urn:default' xmlns:p='urn:two'/>");
+    var moved = source.root().remove(0);
+    target.root().append(moved);
+    target.root().append(
+      XmlNode(XmlNodeValue.Element(XmlElement(alloc, name(alloc, "plain"))))
     );
-    var out = try String(alloc, "");
-    try target.write(alloc, out);
-    var again = try parse_xml(alloc, out);
-    try std.test.assert(
-      (try (try again.root().child(0)).element()).name().uri().equals_literal("urn:one"),
+    var out = String(alloc, "");
+    target.write(alloc, out);
+    var again = parse_xml(alloc, out);
+    std.test.assert(
+      ((again.root().child(0)).element()).name().uri().equals_literal("urn:one"),
       "moved name keeps URI"
     );
-    try std.test.assert(
-      (try (try again.root().child(1)).element()).name().uri().is_empty(),
+    std.test.assert(
+      ((again.root().child(1)).element()).name().uri().is_empty(),
       "unqualified child resets default"
     );
-    var out2 = try String(alloc, "");
-    try target.write(alloc, out2);
-    try std.test.assert(out.equals(out2), "deterministic prefixes");
-    return XmlChecks.Ok;
+    var out2 = String(alloc, "");
+    target.write(alloc, out2);
+    std.test.assert(out.equals(out2), "deterministic prefixes");
+    return;
   }
 
   /** Generates escaped SVG with automatic namespaces and verifies the result. */
-  test_function svg_writer() XmlChecks {
+  test_function svg_writer() {
     var alloc = make_heap_allocator();
-    var out = try String(alloc, "");
+    var out = String(alloc, "");
     if (true) {
-      var writer = try XmlWriter(alloc, out);
-      try writer.declaration();
+      var writer = XmlWriter(alloc, out);
+      writer.declaration();
       var svg = XmlName(
-        try String(alloc, "http://www.w3.org/2000/svg"),
-        try String(alloc, "svg"),
-        try String(alloc, "")
+        String(alloc, "http://www.w3.org/2000/svg"),
+        String(alloc, "svg"),
+        String(alloc, "")
       );
-      try writer.start_element(svg);
-      var label = try name(alloc, "label");
-      var value = try String(alloc, "A & B \"\t\n\r");
-      try writer.attribute(label, value);
-      var text = try String(alloc, "<Sun> & \r");
-      try writer.text(text);
-      try writer.end_element();
-      try writer.finish();
+      writer.start_element(svg);
+      var label = name(alloc, "label");
+      var value = String(alloc, "A & B \"\t\n\r");
+      writer.attribute(label, value);
+      var text = String(alloc, "<Sun> & \r");
+      writer.text(text);
+      writer.end_element();
+      writer.finish();
     }
-    var doc = try parse_xml(alloc, out);
-    try std.test.assert(
+    var doc = parse_xml(alloc, out);
+    std.test.assert(
       doc.root().name().uri().equals_literal("http://www.w3.org/2000/svg"),
       "SVG namespace"
     );
-    try std.test.assert(
-      (try (try doc.root().child(0)).text()).equals_literal("<Sun> & \r"),
+    std.test.assert(
+      ((doc.root().child(0)).text()).equals_literal("<Sun> & \r"),
       "text survives escaping"
     );
-    return XmlChecks.Ok;
+    return;
   }
 
   /** Rejects writer sequencing errors and keeps failure sticky. */
-  test_function writer_errors() XmlChecks {
+  test_function writer_errors() {
     var alloc = make_heap_allocator();
-    var out = try String(alloc, "");
-    var key = try name(alloc, "r");
-    var text = try String(alloc, "x");
+    var out = String(alloc, "");
+    var key = name(alloc, "r");
+    var text = String(alloc, "x");
     if (true) {
-      var writer = try XmlWriter(alloc, out);
-      try std.test.assert(
-        match writer.attribute(key, text) {
-          Result.Xml(_) => true,
-          _ => false
-        },
+      var writer = XmlWriter(alloc, out);
+      var exception_check_2 = false;
+      try {
+        writer.attribute(key, text);
+        exception_check_2 = false;
+      } catch (ignored_error: XmlError) {
+        exception_check_2 = true;
+      } catch {
+        exception_check_2 = false;
+      }
+      std.test.assert(
+        exception_check_2,
         "attribute before element"
       );
-      try std.test.assert(
-        match writer.start_element(key) {
-          Result.Xml(_) => true,
-          _ => false
-        },
+      var exception_check_3 = false;
+      try {
+        writer.start_element(key);
+        exception_check_3 = false;
+      } catch (ignored_error: XmlError) {
+        exception_check_3 = true;
+      } catch {
+        exception_check_3 = false;
+      }
+      std.test.assert(
+        exception_check_3,
         "sticky failure"
       );
     }
-    try std.test.assert(out.is_empty(), "failed operation appends nothing");
+    std.test.assert(out.is_empty(), "failed operation appends nothing");
     if (true) {
-      var writer = try XmlWriter(alloc, out);
-      try writer.start_element(key);
-      try writer.attribute(key, text);
-      try std.test.assert(
-        match writer.attribute(key, text) {
-          Result.Xml(_) => true,
-          _ => false
-        },
+      var writer = XmlWriter(alloc, out);
+      writer.start_element(key);
+      writer.attribute(key, text);
+      var exception_check_4 = false;
+      try {
+        writer.attribute(key, text);
+        exception_check_4 = false;
+      } catch (ignored_error: XmlError) {
+        exception_check_4 = true;
+      } catch {
+        exception_check_4 = false;
+      }
+      std.test.assert(
+        exception_check_4,
         "duplicate attribute"
       );
     }
     out.clear();
     if (true) {
-      var writer = try XmlWriter(alloc, out);
-      try writer.start_element(key);
-      try writer.text(text);
-      try std.test.assert(
-        match writer.attribute(key, text) {
-          Result.Xml(_) => true,
-          _ => false
-        },
+      var writer = XmlWriter(alloc, out);
+      writer.start_element(key);
+      writer.text(text);
+      var exception_check_5 = false;
+      try {
+        writer.attribute(key, text);
+        exception_check_5 = false;
+      } catch (ignored_error: XmlError) {
+        exception_check_5 = true;
+      } catch {
+        exception_check_5 = false;
+      }
+      std.test.assert(
+        exception_check_5,
         "late attribute"
       );
     }
     out.clear();
     if (true) {
-      var writer = try XmlWriter(alloc, out);
-      try writer.start_element(key);
-      try std.test.assert(
-        match writer.finish() {
-          XmlResult.Error(_) => true,
-          _ => false
-        },
+      var writer = XmlWriter(alloc, out);
+      writer.start_element(key);
+      var exception_check_6 = false;
+      try {
+        writer.finish();
+        exception_check_6 = false;
+      } catch (ignored_error: std.xml.XmlError) {
+        exception_check_6 = true;
+      } catch {
+        exception_check_6 = false;
+      }
+      std.test.assert(
+        exception_check_6,
         "unclosed element"
       );
     }
     out.clear();
     if (true) {
-      var writer = try XmlWriter(alloc, out);
-      try writer.start_element(key);
-      try writer.end_element();
-      try std.test.assert(
-        match writer.start_element(key) {
-          Result.Xml(_) => true,
-          _ => false
-        },
+      var writer = XmlWriter(alloc, out);
+      writer.start_element(key);
+      writer.end_element();
+      var exception_check_7 = false;
+      try {
+        writer.start_element(key);
+        exception_check_7 = false;
+      } catch (ignored_error: XmlError) {
+        exception_check_7 = true;
+      } catch {
+        exception_check_7 = false;
+      }
+      std.test.assert(
+        exception_check_7,
         "second root"
       );
     }
-    return XmlChecks.Ok;
+    return;
   }
 
   /** Checks the parsing and mutation depth boundary. */
-  test_function depth_limit() XmlChecks {
+  test_function depth_limit() {
     var alloc = make_heap_allocator();
-    var input = try String(alloc, "");
+    var input = String(alloc, "");
     for (var i: i64 = 0; i < 256; i += 1) {
-      try input.append("<r>");
+      input.append("<r>");
     }
     for (var i: i64 = 0; i < 256; i += 1) {
-      try input.append("</r>");
+      input.append("</r>");
     }
-    var doc = try parse_xml(alloc, input);
-    try std.test.assert(
-      match append_at_leaf(alloc, doc.root()) {
-        Result.Xml(_) => true,
-        _ => false
-      },
+    var doc = parse_xml(alloc, input);
+    var exception_check_8 = false;
+    try {
+      append_at_leaf(alloc, doc.root());
+      exception_check_8 = false;
+    } catch (ignored_error: XmlError) {
+      exception_check_8 = true;
+    } catch {
+      exception_check_8 = false;
+    }
+    std.test.assert(
+      exception_check_8,
       "borrowed descendant enforces document depth"
     );
-    var nested = try String(alloc, "<r>");
-    try nested.append(input);
-    try nested.append("</r>");
-    try std.test.assert(
-      match parse_xml(alloc, nested) {
-        Result.Xml(_) => true,
-        _ => false
-      },
+    var nested = String(alloc, "<r>");
+    nested.append(input);
+    nested.append("</r>");
+    var exception_check_9 = false;
+    try {
+      parse_xml(alloc, nested);
+      exception_check_9 = false;
+    } catch (ignored_error: XmlError) {
+      exception_check_9 = true;
+    } catch {
+      exception_check_9 = false;
+    }
+    std.test.assert(
+      exception_check_9,
       "depth limit"
     );
-    var parent = try XmlElement(alloc, try name(alloc, "parent"));
-    var too_deep = XmlNode(XmlNodeValue.Element(try doc.root().clone(alloc)));
-    try std.test.assert(
-      match parent.append(too_deep) {
-        Result.Xml(_) => true,
-        _ => false
-      },
+    var parent = XmlElement(alloc, name(alloc, "parent"));
+    var too_deep = XmlNode(XmlNodeValue.Element(doc.root().clone(alloc)));
+    var exception_check_10 = false;
+    try {
+      parent.append(too_deep);
+      exception_check_10 = false;
+    } catch (ignored_error: XmlError) {
+      exception_check_10 = true;
+    } catch {
+      exception_check_10 = false;
+    }
+    std.test.assert(
+      exception_check_10,
       "attachment depth limit"
     );
-    return XmlChecks.Ok;
+    return;
   }
 
   /** Queries GIR-shaped metadata using namespace URIs rather than conventional prefixes. */
-  test_function gir_metadata() XmlChecks {
+  test_function gir_metadata() {
     var alloc = make_heap_allocator();
-    var doc = try parse_xml(
+    var doc = parse_xml(
       alloc,
       "<repository xmlns='http://www.gtk.org/introspection/core/1.0' xmlns:abi='http://www.gtk.org/introspection/c/1.0'><namespace name='Tiny'><class name='Thing' abi:type='TinyThing'/></namespace></repository>"
     );
-    var ns = try (try doc.root().child(0)).element();
-    var cls = try (try ns.child(0)).element();
+    var ns = (doc.root().child(0)).element();
+    var cls = (ns.child(0)).element();
     var key = XmlName(
-      try String(alloc, "http://www.gtk.org/introspection/c/1.0"),
-      try String(alloc, "type"),
-      try String(alloc, "c")
+      String(alloc, "http://www.gtk.org/introspection/c/1.0"),
+      String(alloc, "type"),
+      String(alloc, "c")
     );
-    try std.test.assert(
+    std.test.assert(
       match cls.attribute(key) {
         Option.Some(v) => v.equals_literal("TinyThing"),
         Option.None => false
       },
       "GIR namespace lookup"
     );
-    return XmlChecks.Ok;
+    return;
   }
 
   /** Attempts to append below the deepest existing element. */
-  function append_at_leaf(alloc: ref HeapAllocator, element: ref XmlElement) Result<void> {
+  function append_at_leaf(alloc: ref HeapAllocator, element: ref XmlElement) void throws {
     if (element.child_count() != 0) {
-      return append_at_leaf(alloc, try (try element.child(0)).element());
+      return append_at_leaf(alloc, (element.child(0)).element());
     }
     return element.append(
-      XmlNode(XmlNodeValue.Element(try XmlElement(alloc, try name(alloc, "extra"))))
+      XmlNode(XmlNodeValue.Element(XmlElement(alloc, name(alloc, "extra"))))
     );
   }
 
   /** Checks whitespace outside the root and rejects invalid writer content. */
-  test_function writer_content_validation() XmlChecks {
+  test_function writer_content_validation() {
     var alloc = make_heap_allocator();
-    var out = try String(alloc, "");
-    var root = try name(alloc, "r");
+    var out = String(alloc, "");
+    var root = name(alloc, "r");
     if (true) {
-      var writer = try XmlWriter(alloc, out);
-      var whitespace = try String(alloc, "\r\n\t");
-      try writer.text(whitespace);
-      try writer.start_element(root);
-      try writer.end_element();
-      try writer.text(whitespace);
-      try writer.finish();
-      try std.test.assert(
-        match writer.finish() {
-          XmlResult.Error(_) => true,
-          _ => false
-        },
+      var writer = XmlWriter(alloc, out);
+      var whitespace = String(alloc, "\r\n\t");
+      writer.text(whitespace);
+      writer.start_element(root);
+      writer.end_element();
+      writer.text(whitespace);
+      writer.finish();
+      var exception_check_11 = false;
+      try {
+        writer.finish();
+        exception_check_11 = false;
+      } catch (ignored_error: std.xml.XmlError) {
+        exception_check_11 = true;
+      } catch {
+        exception_check_11 = false;
+      }
+      std.test.assert(
+        exception_check_11,
         "finished writer rejects further operations"
       );
     }
-    var document = try parse_xml(alloc, out);
+    var document = parse_xml(alloc, out);
     out.clear();
     if (true) {
-      var writer = try XmlWriter(alloc, out);
-      var comment = try String(alloc, "bad--comment");
-      try std.test.assert(
-        match writer.comment(comment) {
-          Result.Xml(_) => true,
-          _ => false
-        },
+      var writer = XmlWriter(alloc, out);
+      var comment = String(alloc, "bad--comment");
+      var exception_check_12 = false;
+      try {
+        writer.comment(comment);
+        exception_check_12 = false;
+      } catch (ignored_error: XmlError) {
+        exception_check_12 = true;
+      } catch {
+        exception_check_12 = false;
+      }
+      std.test.assert(
+        exception_check_12,
         "invalid comment rejected"
       );
     }
-    try std.test.assert(out.is_empty(), "invalid comment did not append output");
+    std.test.assert(out.is_empty(), "invalid comment did not append output");
     if (true) {
-      var writer = try XmlWriter(alloc, out);
-      var target = try String(alloc, "XML");
-      var data = try String(alloc, "");
-      try std.test.assert(
-        match writer.instruction(target, data) {
-          Result.Xml(_) => true,
-          _ => false
-        },
+      var writer = XmlWriter(alloc, out);
+      var target = String(alloc, "XML");
+      var data = String(alloc, "");
+      var exception_check_13 = false;
+      try {
+        writer.instruction(target, data);
+        exception_check_13 = false;
+      } catch (ignored_error: XmlError) {
+        exception_check_13 = true;
+      } catch {
+        exception_check_13 = false;
+      }
+      std.test.assert(
+        exception_check_13,
         "reserved PI target rejected"
       );
     }
     if (true) {
-      var writer = try XmlWriter(alloc, out);
-      var invalid = try name(alloc, "1bad");
-      try std.test.assert(
-        match writer.start_element(invalid) {
-          Result.Xml(_) => true,
-          _ => false
-        },
+      var writer = XmlWriter(alloc, out);
+      var invalid = name(alloc, "1bad");
+      var exception_check_14 = false;
+      try {
+        writer.start_element(invalid);
+        exception_check_14 = false;
+      } catch (ignored_error: XmlError) {
+        exception_check_14 = true;
+      } catch {
+        exception_check_14 = false;
+      }
+      std.test.assert(
+        exception_check_14,
         "invalid name rejected"
       );
     }
-    return XmlChecks.Ok;
+    return;
   }
 
   /** Checks error positions after decoded references without using decoded offsets. */
-  test_function reference_source_location() XmlChecks {
+  test_function reference_source_location() {
     var alloc = make_heap_allocator();
-    match parse_xml(alloc, "<r>&amp;\r\né</r>!") {
-      Result.Xml(e) => {
-        try std.test.assert_eq(e.offset(), 16);
-        try std.test.assert_eq(e.line(), 2);
-        try std.test.assert_eq(e.column(), 6);
-      },
-      _ => {
-        try std.test.assert(false, "expected an XML error");
-      }
-    };
-    return XmlChecks.Ok;
+    try {
+      parse_xml(alloc, "<r>&amp;\r\né</r>!");
+
+      std.test.assert(false, "expected an XML error");
+    } catch (e: XmlError) {
+      std.test.assert_eq(e.offset(), 16);
+      std.test.assert_eq(e.line(), 2);
+      std.test.assert_eq(e.column(), 6);
+    } catch {
+      std.test.assert(false, "expected an XML error");
+    }
+    return;
   }
 
   /** Returns a reader error after its input and reader have been destroyed. */
-  function detached_reader_error(alloc: ref HeapAllocator) Result<void> {
-    var input = try String(alloc, "<r>\r\né</r>!");
-    var reader = try XmlReader(alloc, input, try String(alloc, "metadata.gir"));
+  function detached_reader_error(alloc: ref HeapAllocator) void throws {
+    var input = String(alloc, "<r>\r\né</r>!");
+    var reader = XmlReader(alloc, input, String(alloc, "metadata.gir"));
     while (true) {
-      var event = try reader.next();
+      var event = reader.next();
     }
-    return Result.Ok;
+    return;
   }
 
   /** Checks filename ownership, unnamed input, and both named parsing overloads. */
-  test_function source_filenames() XmlChecks {
+  test_function source_filenames() {
     var alloc = make_heap_allocator();
-    match detached_reader_error(alloc) {
-      Result.Xml(error) => {
-        try std.test.assert(
-          match error.filename() {
-            Option.Some(value) => value.equals_literal("metadata.gir"),
-            Option.None => false
-          },
-          "filename survives reader destruction"
-        );
-        try std.test.assert_eq(error.offset(), 11);
-        try std.test.assert_eq(error.line(), 2);
-        try std.test.assert_eq(error.column(), 6);
-      },
-      Result.Ok => {
-        try std.test.assert(false, "trailing text must fail");
-      },
-      _ => false
-    };
-    match parse_xml(alloc, "<r>", try String(alloc, "literal.xml")) {
-      Result.Xml(error) => {
-        try std.test.assert(
-          match error.filename() {
-            Option.Some(value) => value.equals_literal("literal.xml"),
-            Option.None => false
-          },
-          "literal input has a filename"
-        );
-      },
-      Result.Ok(_) => {
-        try std.test.assert(false, "unclosed root must fail");
-      },
-      _ => false
-    };
-    match parse_xml(alloc, "<r>") {
-      Result.Xml(error) => {
-        try std.test.assert(
-          match error.filename() {
-            Option.Some(_) => false,
-            Option.None => true
-          },
-          "unnamed input has no filename"
-        );
-      },
-      Result.Ok(_) => {
-        try std.test.assert(false, "unclosed root must fail");
-      },
-      _ => false
-    };
-    var input = try String(alloc, "<r>\xc0");
-    var reader = try XmlReader(alloc, input, try String(alloc, "invalid.xml"));
-    for (var attempt: i64 = 0; attempt < 2; attempt += 1) {
-      match reader.next() {
-        Result.Xml(error) => {
-          try std.test.assert(
-            match error.filename() {
-              Option.Some(value) => value.equals_literal("invalid.xml"),
-              Option.None => false
-            },
-            "sticky UTF-8 errors retain the filename"
-          );
-          try std.test.assert_eq(error.offset(), 3);
-          try std.test.assert_eq(error.line(), 1);
-          try std.test.assert_eq(error.column(), 4);
+    try {
+      detached_reader_error(alloc);
+
+      std.test.assert(false, "trailing text must fail");
+    } catch (error: XmlError) {
+      std.test.assert(
+        match error.filename() {
+          Option.Some(value) => value.equals_literal("metadata.gir"),
+          Option.None => false
         },
-        Result.Ok(_) => {
-          try std.test.assert(false, "invalid UTF-8 must fail");
-        },
-        _ => false
-      };
+        "filename survives reader destruction"
+      );
+      std.test.assert_eq(error.offset(), 11);
+      std.test.assert_eq(error.line(), 2);
+      std.test.assert_eq(error.column(), 6);
+    } catch {
+      false;
     }
-    return XmlChecks.Ok;
+    try {
+      parse_xml(alloc, "<r>", String(alloc, "literal.xml"));
+
+      std.test.assert(false, "unclosed root must fail");
+    } catch (error: XmlError) {
+      std.test.assert(
+        match error.filename() {
+          Option.Some(value) => value.equals_literal("literal.xml"),
+          Option.None => false
+        },
+        "literal input has a filename"
+      );
+    } catch {
+      false;
+    }
+    try {
+      parse_xml(alloc, "<r>");
+
+      std.test.assert(false, "unclosed root must fail");
+    } catch (error: XmlError) {
+      std.test.assert(
+        match error.filename() {
+          Option.Some(_) => false,
+          Option.None => true
+        },
+        "unnamed input has no filename"
+      );
+    } catch {
+      false;
+    }
+    var input = String(alloc, "<r>\xc0");
+    var reader = XmlReader(alloc, input, String(alloc, "invalid.xml"));
+    for (var attempt: i64 = 0; attempt < 2; attempt += 1) {
+      try {
+        reader.next();
+
+        std.test.assert(false, "invalid UTF-8 must fail");
+      } catch (error: XmlError) {
+        std.test.assert(
+          match error.filename() {
+            Option.Some(value) => value.equals_literal("invalid.xml"),
+            Option.None => false
+          },
+          "sticky UTF-8 errors retain the filename"
+        );
+        std.test.assert_eq(error.offset(), 3);
+        std.test.assert_eq(error.line(), 1);
+        std.test.assert_eq(error.column(), 4);
+      } catch {
+        false;
+      }
+    }
+    return;
   }
 
   /** Keeps ranges in original bytes across declarations, references, and empty tags. */
-  test_function reader_source_spans() XmlChecks {
+  test_function reader_source_spans() {
     var a = make_heap_allocator();
-    var input = try String("<?xml version=\"1.0\"?>\r\n<r value=\"&amp;\"/><s/>");
-    var reader = try XmlReader(a, input);
-    match try reader.next() {
+    var input = String("<?xml version=\"1.0\"?>\r\n<r value=\"&amp;\"/><s/>");
+    var reader = XmlReader(a, input);
+    match reader.next() {
       Option.Some(_) => {},
       _ => {
-        try std.test.assert(false, "expected declaration whitespace");
+        std.test.assert(false, "expected declaration whitespace");
       }
     };
-    try std.test.assert_eq(reader.source_span().start, 21);
-    try std.test.assert_eq(reader.source_span().end, 23);
-    match try reader.next() {
+    std.test.assert_eq(reader.source_span().start, 21);
+    std.test.assert_eq(reader.source_span().end, 23);
+    match reader.next() {
       Option.Some(event) => {
         match event {
           XmlEvent.Start(element) => {
-            try std.test.assert_eq(reader.source_span().start, 23);
-            try std.test.assert_eq(reader.source_span().end, 41);
-            match try element.attribute_source_span(0) {
+            std.test.assert_eq(reader.source_span().start, 23);
+            std.test.assert_eq(reader.source_span().end, 41);
+            match element.attribute_source_span(0) {
               Option.Some(span) => {
-                try std.test.assert_eq(span.start, 26);
-                try std.test.assert_eq(span.end, 39);
+                std.test.assert_eq(span.start, 26);
+                std.test.assert_eq(span.end, 39);
               },
               Option.None => {
-                try std.test.assert(false, "missing attribute range");
+                std.test.assert(false, "missing attribute range");
               }
             };
           },
           _ => {
-            try std.test.assert(false, "expected root event");
+            std.test.assert(false, "expected root event");
           }
         };
       },
       _ => {
-        try std.test.assert(false, "expected root");
+        std.test.assert(false, "expected root");
       }
     };
-    var end = try reader.next();
-    try std.test.assert_eq(reader.source_span().start, 41);
-    try std.test.assert_eq(reader.source_span().end, 41);
-    match reader.next() {
-      Result.Xml(_) => {},
-      _ => {
-        try std.test.assert(false, "multiple roots must still fail");
-      }
-    };
-    return XmlChecks.Ok;
+    var end = reader.next();
+    std.test.assert_eq(reader.source_span().start, 41);
+    std.test.assert_eq(reader.source_span().end, 41);
+    try {
+      reader.next();
+
+      std.test.assert(false, "multiple roots must still fail");
+    } catch (ignored_error: XmlError) {} catch {
+      std.test.assert(false, "multiple roots must still fail");
+    }
+    return;
   }
 }

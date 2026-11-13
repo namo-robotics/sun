@@ -19,15 +19,15 @@ module distance {
 
   /**
    * A test is a function declared with `test_function`: no parameters, no
-   * return annotation, and propagates failed assertions with `try`.
+   * return annotation, and propagates failed assertions as exceptions.
    */
   test_function halves() {
-    try std.test.assert_eq(distance.half(10), 5);
+    std.test.assert_eq(distance.half(10), 5);
   }
 
   /** Checks finds the midpoint. */
   test_function findsTheMidpoint() {
-    try std.test.assert_eq(distance.midpoint(2, 10), 6);
+    std.test.assert_eq(distance.midpoint(2, 10), 6);
   }
 }
 
@@ -40,9 +40,9 @@ class ScratchBuffer {
   public var data: Vec<i64>;
 
   /** Initializes the fixture fields used by this example or regression test. */
-  init() AllocationResult<void> {
-    this.data = try Vec<i64>(global_allocator, 4);
-    try this.data.push(1);
+  init() throws {
+    this.data = Vec<i64>(global_allocator, 4);
+    this.data.push(1);
   }
 
   /** Records fixture teardown so the test can check cleanup behavior. */
@@ -54,16 +54,16 @@ class ScratchBuffer {
 
 /** Checks starts with one entry. */
 test_function startsWithOneEntry() {
-  var fx = try ScratchBuffer();
-  try std.test.assert_eq(fx.data.size(), 1);
+  var fx = ScratchBuffer();
+  std.test.assert_eq(fx.data.size(), 1);
 }
 
 /** Runs the example that uses functions exercised by the example tests. */
-function main() AllocationResult<i32> {
+function main() i32 throws {
   // The production binary never contains the tests above.
   var m = distance.midpoint(2, 10);
-  println(try `midpoint(2, 10) = ${m}`);
-  return AllocationResult.Ok(0);
+  println(`midpoint(2, 10) = ${m}`);
+  return 0;
 }
 
 manifest {

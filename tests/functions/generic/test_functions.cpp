@@ -279,9 +279,9 @@ TEST(Functions_Generic, throwing_generic_is_catchable) {
   auto value = executeString(R"(
 
 /** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), Boom(Boom) }
 
-class Boom {
+
+exception Boom {
   init() {}
   const method code() i32 {
     return 1;
@@ -290,16 +290,12 @@ class Boom {
     return "boom";
   }
 }
-function risky<T>(x: T) Outcome<i32> {
-  return Outcome.Boom(Boom());
+function risky<T>(x: T) i32 throws {
+  throw Boom();
 }
 function main() i32 {
-  return match risky<i32>(1) {
-    Outcome.Ok(value) => value,
-    (e: ref Boom) => {
-      return 42;
-    }
-  };
+  try { var value = risky<i32>(1);
+return value; } catch (e: Boom) { return 42; }
 }
 )");
   EXPECT_EQ(value, 42);
@@ -309,9 +305,9 @@ TEST(Functions_Generic, throwing_generic_is_catchable_from_class_method) {
   auto value = executeString(R"(
 
 /** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), Boom(Boom) }
 
-class Boom {
+
+exception Boom {
   init() {}
   const method code() i32 {
     return 1;
@@ -326,16 +322,12 @@ class Box<T> {
     this.v = v;
   }
   method get() i32 {
-    return match risky<T>(this.v) {
-      Outcome.Ok(value) => value,
-      (e: ref Boom) => {
-        return 42;
-      }
-    };
+    try { var value = risky<T>(this.v);
+return value; } catch (e: Boom) { return 42; }
   }
 }
-function risky<T>(x: T) Outcome<i32> {
-  return Outcome.Boom(Boom());
+function risky<T>(x: T) i32 throws {
+  throw Boom();
 }
 function main() i32 {
   var b = Box<i32>(1);
@@ -535,7 +527,7 @@ TEST(Functions_Generic, type_arguments_inferred_for_each_parameter) {
 TEST(Functions_Generic, type_argument_inferred_through_ref_parameter) {
   auto value = executeString(R"(
     class Point {
-        var x: i32;
+        var x: i32 = 0;
         init(x: i32) { this.x = x; }
         method get() i32 { return this.x; }
     }

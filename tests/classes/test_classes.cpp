@@ -63,10 +63,10 @@ class Point {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var p = try allocator.create<Point>();
-  return Result.Ok(0);
+  var p =  allocator.create<Point>();
+  return 0;
 }
 )");
   EXPECT_EQ(value, 0);
@@ -87,17 +87,17 @@ class B {
 class A {
   var b: raw_ptr<B>;
 
-  init(alloc: ref HeapAllocator) Result<void> {
-    this.b = try alloc.create<B>();
+  init(alloc: ref HeapAllocator)  throws {
+    this.b =  alloc.create<B>();
   }
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var a: raw_ptr<A> = try allocator.create<A>(allocator);
+  var a: raw_ptr<A> =  allocator.create<A>(allocator);
   var b: raw_ptr<B> = unsafe { a.b; };
-  return Result.Ok(unsafe { b.c; });
+  return unsafe { b.c; };
 }
 )");
   EXPECT_EQ(value, 42);
@@ -118,10 +118,10 @@ class Point {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var p = try allocator.create<Point>(10, 20);
-  return Result.Ok(unsafe { p.x; });
+  var p =  allocator.create<Point>(10, 20);
+  return unsafe { p.x; };
 }
 )");
   EXPECT_EQ(value, 10);
@@ -142,10 +142,10 @@ class Point {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var p = try allocator.create<Point>(10, 20);
-  return Result.Ok(unsafe { p.y; });
+  var p =  allocator.create<Point>(10, 20);
+  return unsafe { p.y; };
 }
 )");
   EXPECT_EQ(value, 20);
@@ -172,10 +172,10 @@ class Counter {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var c = try allocator.create<Counter>(42);
-  return Result.Ok(unsafe { c.get(); });
+  var c =  allocator.create<Counter>(42);
+  return unsafe { c.get(); };
 }
 )");
   EXPECT_EQ(value, 42);
@@ -198,10 +198,10 @@ class Calculator {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var calc = try allocator.create<Calculator>(10);
-  return Result.Ok(unsafe { calc.add(5); });
+  var calc =  allocator.create<Calculator>(10);
+  return unsafe { calc.add(5); };
 }
 )");
   EXPECT_EQ(value, 15);
@@ -224,10 +224,10 @@ class Value {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var v1 = try allocator.create<Value>(5);
-  return Result.Ok(unsafe { v1.double(); });
+  var v1 =  allocator.create<Value>(5);
+  return unsafe { v1.double(); };
 }
 )");
   EXPECT_EQ(value, 10);
@@ -254,10 +254,10 @@ class Counter {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var c = try allocator.create<Counter>();
-  return Result.Ok(unsafe { c.get(); });
+  var c =  allocator.create<Counter>();
+  return unsafe { c.get(); };
 }
 )");
   EXPECT_EQ(value, 100);
@@ -280,10 +280,10 @@ class Point3D {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var p = try allocator.create<Point3D>(1, 2, 3);
-  return Result.Ok(unsafe { p.x; } + unsafe { p.y; } + unsafe { p.z; });
+  var p =  allocator.create<Point3D>(1, 2, 3);
+  return unsafe { p.x; } + unsafe { p.y; } + unsafe { p.z; };
 }
 )");
   EXPECT_EQ(value, 6);
@@ -316,10 +316,10 @@ class Box {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var box = try allocator.create<Box>(3, 4);
-  return Result.Ok(unsafe { box.area(); });
+  var box =  allocator.create<Box>(3, 4);
+  return unsafe { box.area(); };
 }
 )");
   EXPECT_EQ(value, 12);
@@ -342,11 +342,11 @@ class Number {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var n1 = try allocator.create<Number>(10);
-  var n2 = try allocator.create<Number>(20);
-  return Result.Ok(unsafe { n1.get(); } + unsafe { n2.get(); });
+  var n1 =  allocator.create<Number>(10);
+  var n2 =  allocator.create<Number>(20);
+  return unsafe { n1.get(); } + unsafe { n2.get(); };
 }
 )");
   EXPECT_EQ(value, 30);
@@ -377,11 +377,11 @@ class Second {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var f = try allocator.create<First>(5);
-  var s = try allocator.create<Second>(7);
-  return Result.Ok(unsafe { f.a; } + unsafe { s.b; });
+  var f =  allocator.create<First>(5);
+  var s =  allocator.create<Second>(7);
+  return unsafe { f.a; } + unsafe { s.b; };
 }
 )");
   EXPECT_EQ(value, 12);
@@ -406,10 +406,10 @@ class PointF {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<f64> {
+function main() f64 throws {
   var allocator = make_heap_allocator();
-  var p = try allocator.create<PointF>(1.5, 2.5);
-  return Result.Ok(unsafe { p.x; } + unsafe { p.y; });
+  var p =  allocator.create<PointF>(1.5, 2.5);
+  return unsafe { p.x; } + unsafe { p.y; };
 }
 )");
   EXPECT_TRUE(std::holds_alternative<double>(value));
@@ -544,7 +544,7 @@ TEST(Classes, init_rejects_return_type) {
     class A { var x: i32; init() void { this.x = 1; } }
     function main() i32 { return 0; }
   )"),
-                                "'init' does not declare a return type");
+                                "Constructors do not return status values");
 }
 
 TEST(Classes, deinit_rejects_parameters) {
@@ -560,7 +560,7 @@ TEST(Classes, deinit_cannot_throw) {
     class A { var x: i32; init() { this.x = 1; } deinit() throws IError { this.x = 0; } }
     function main() i32 { return 0; }
   )"),
-                                "'throws' is no longer supported");
+                                "deinit cannot declare throws");
 }
 
 TEST(Classes, interface_cannot_declare_init) {
@@ -575,21 +575,21 @@ TEST(Classes, interface_cannot_declare_init) {
 TEST(Classes, throwing_constructor) {
   auto value = executeString(R"(
 
-    class NegativeError {
+    exception NegativeError {
       init() {}
       const method code() i32 { return 1; }
       const method message() static_ptr<u8> { return "negative"; }
     }
     class Guarded {
         var n: i32;
-        init(n: i32) _Result<void, NegativeError> {
-            if (n < 0) { return _Result.Err(NegativeError()); }
+        init(n: i32)  throws {
+            if (n < 0) { throw NegativeError(); }
             this.n = n;
         }
     }
     function main() i32 {
-        match Guarded(5) { _Result.Ok(_) => {}, _ => { return -1; } };
-        return match Guarded(-1) { _Result.Ok(_) => 0, _Result.Err(_) => 5 };
+        try { Guarded(5); } catch { return -1; }
+        try { Guarded(-1); } catch (error: NegativeError) { return 5; } return 0;
     }
   )");
   EXPECT_EQ(value, 5);
@@ -705,12 +705,12 @@ TEST(Classes, partial_class_duplicate_method_error) {
   // Partial classes cannot redefine methods from primary
   try {
     executeString(R"(
-      class Foo { 
-        var x: i32; 
+      class Foo {
+        var x: i32;
         init() { this.x = 0; }
         method get() i32 { return this.x; }
       }
-      partial class Foo { 
+      partial class Foo {
         method get() i32 { return this.x + 1; }
       }
       function main() i32 { return 0; }
@@ -731,12 +731,12 @@ TEST(Classes, partial_class_inline_simple) {
       init(v: i32) { this.value = v; }
       method get() i32 { return this.value; }
     }
-    
+
     partial class Counter {
       method increment() void { this.value = this.value + 1; }
       method add(n: i32) void { this.value = this.value + n; }
     }
-    
+
     function main() i32 {
       var c = Counter(10);
       c.increment();      // value = 11
@@ -831,15 +831,15 @@ TEST(Classes, this_nested_member_assignment) {
 
     class Container {
       var inner: Inner;
-      
+
       init() {
         this.inner = Inner();
       }
-      
+
       method setInnerValue(v: i32) void {
         this.inner.x = v;
       }
-      
+
       method getInnerValue() i32 {
         return this.inner.x;
       }
@@ -1279,21 +1279,21 @@ class Widget {
   }
 }
 
-function helper() Result<i32> {
+function helper() i32 throws {
   var alloc = make_heap_allocator();
-  var w = Unique<Widget>(try alloc.create<Widget>(1));
-  return Result.Ok(w.get().id);
+  var w = Unique<Widget>( alloc.create<Widget>(1));
+  return w.get().id;
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
-  var result = try helper();
+function main() i32 throws {
+  var result =  helper();
   // Unique<Widget>.deinit() should have been called, which frees the allocation.
   // Widget.deinit() is called on the *Unique* wrapper (stack class), not directly on Widget.
   // counter tracks Widget.deinit calls.
   // The Unique wrapper's deinit frees the raw_ptr, but doesn't call Widget.deinit.
   // So counter stays 0, but we verify Unique's scope cleanup works (no crash/leak).
-  return Result.Ok(result);
+  return result;
 }
 )");
   EXPECT_EQ(value, 1);
@@ -1316,18 +1316,18 @@ class Resource {
   }
 }
 
-function helper() Result<i32> {
+function helper() i32 throws {
   var alloc = make_heap_allocator();
-  var r1 = Unique<Resource>(try alloc.create<Resource>(10));
-  var r2 = Unique<Resource>(try alloc.create<Resource>(20));
-  return Result.Ok(r1.get().value + r2.get().value);
+  var r1 = Unique<Resource>( alloc.create<Resource>(10));
+  var r2 = Unique<Resource>( alloc.create<Resource>(20));
+  return r1.get().value + r2.get().value;
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
-  var result = try helper();
+function main() i32 throws {
+  var result =  helper();
   // counter should be 2: both Resources had deinit called before free
-  return Result.Ok(counter + result);
+  return counter + result;
 }
 )");
   // 2 (deinit calls) + 30 (values) = 32
@@ -1353,12 +1353,12 @@ class Holder {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var h = Holder(try String(alloc, "abc"));
-  var t = try String(alloc, "hello");
+  var h = Holder( String(alloc, "abc"));
+  var t =  String(alloc, "hello");
   var h2 = Holder(t);
-  return Result.Ok(_convert<i32>(h.len() + h2.len()));
+  return _convert<i32>(h.len() + h2.len());
 }
 )");
   EXPECT_EQ(value, 8);
@@ -1377,11 +1377,11 @@ class Holder {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var t = try String(alloc, "hello");
+  var t =  String(alloc, "hello");
   var h = Holder(t);
-  return Result.Ok(_convert<i32>(t.length()));
+  return _convert<i32>(t.length());
 }
 )"),
                SunError);
@@ -1414,13 +1414,13 @@ class Box {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var a = Box(Value.Text(try String(alloc, "four")));
+  var a = Box(Value.Text( String(alloc, "four")));
   var n = Value.Num(10);
   var b = Box(n);
   var c = Box(Value.Empty);
-  return Result.Ok(_convert<i32>(a.size() + b.size() + c.size()));
+  return _convert<i32>(a.size() + b.size() + c.size());
 }
 )");
   EXPECT_EQ(value, 14);
@@ -1445,12 +1445,12 @@ function items_of(h: ref Holder) ref Vec<i64> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var h = Holder(try Vec<i64>(alloc, 2));
-  try items_of(h).push(5);
-  try items_of(h).push(6);
-  return Result.Ok(_convert<i32>(items_of(h).size() + h.items.size()));
+  var h = Holder( Vec<i64>(alloc, 2));
+   items_of(h).push(5);
+   items_of(h).push(6);
+  return _convert<i32>(items_of(h).size() + h.items.size());
 }
 )");
   EXPECT_EQ(value, 4);
@@ -1762,22 +1762,22 @@ TEST(Classes_FieldInitializers,
      throwing_defaults_require_throwing_constructor) {
   const std::string preamble = R"(
 
-    class Failure {
+    exception Failure {
       init() {}
       const method code() i32 { return 1; }
       const method message() static_ptr<u8> { return "failed"; }
     }
-    function fail() _Result<i32, Failure> { return _Result.Err(Failure()); }
+    function fail() i32 throws { throw Failure(); }
   )";
   EXPECT_THROW(compileString(preamble + R"(
-    class Foo { var x: i32 = try fail(); }
+    class Foo { var x: i32 =  fail(); }
     function main() i32 { return 0; }
   )"),
                SunError);
   EXPECT_EQ(executeString(preamble + R"(
-    class Foo { var x: i32 = try fail(); init() _Result<void, Failure> {} }
+    class Foo { var x: i32 =  fail(); init()  throws {} }
     function main() i32 {
-      return match Foo() { _Result.Ok(_) => 0, _Result.Err(_) => 7 };
+      try { Foo(); } catch (error: Failure) { return 7; } return 0;
     }
   )"),
             7);
@@ -1814,19 +1814,19 @@ TEST(Classes_FieldInitializers,
       init(id: i32) { this.id = id; }
       deinit() { dropped = dropped + this.id; }
     }
-    class Failure {
+    exception Failure {
       init() {}
       const method code() i32 { return 1; }
       const method message() static_ptr<u8> { return "failed"; }
     }
-    function fail() _Result<i32, Failure> { return _Result.Err(Failure()); }
+    function fail() i32 throws { throw Failure(); }
     class Foo {
       var resource: Resource = Resource(1);
-      var status: i32 = try fail();
-      init(resource: Resource) _Result<void, Failure> {}
+      var status: i32 =  fail();
+      init(resource: Resource)  throws {}
     }
     function main() i32 {
-      return match Foo(Resource(10)) { _Result.Ok(_) => 0, _Result.Err(_) => dropped };
+      try { Foo(Resource(10)); } catch (error: Failure) { return dropped; } return 0;
     }
   )"),
             11);
@@ -1869,21 +1869,21 @@ TEST(Classes_FieldInitializers,
       init(id: i32) { this.id = id; }
       deinit() { dropped = dropped + this.id; }
     }
-    class Failure {
+    exception Failure {
       init() {}
       const method code() i32 { return 1; }
       const method message() static_ptr<u8> { return "failed"; }
     }
-    function fail() _Result<void, Failure> { return _Result.Err(Failure()); }
+    function fail() void throws { throw Failure(); }
     class Foo {
       var resource: Resource = Resource(1);
-      init() _Result<void, Failure> {
-        match fail() { _Result.Ok => {}, _Result.Err(_) => { this.resource = Resource(10 + dropped); } };
-        try fail();
+      init()  throws {
+        try { fail(); } catch (error: Failure) { this.resource = Resource(10 + dropped); }
+         fail();
       }
     }
     function main() i32 {
-      return match Foo() { _Result.Ok(_) => 0, _Result.Err(_) => dropped };
+      try { Foo(); } catch (error: Failure) { return dropped; } return 0;
     }
   )"),
             11);
@@ -1910,12 +1910,12 @@ class E {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var v = try Vec<i64>(alloc, 4);
-  try v.push(7);
+  var v =  Vec<i64>(alloc, 4);
+   v.push(7);
   var e = E(unsafe { v.get_unchecked(0); });
-  return Result.Ok(_convert<i32>(e.add(unsafe { v.get_unchecked(0); })));
+  return _convert<i32>(e.add(unsafe { v.get_unchecked(0); }));
 }
 )"),
             14);

@@ -8,6 +8,6 @@ module distance {
 
   /** Checks midpoint of equal points is that point. */
   test_function midpointOfEqualPointsIsThatPoint() {
-    try std.test.assert_eq(distance.midpoint(4, 4), 4);
+    std.test.assert_eq(distance.midpoint(4, 4), 4);
   }
 }

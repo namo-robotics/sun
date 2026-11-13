@@ -132,6 +132,18 @@ void forEachChild(const ExprAST& node, const ChildFn& fn) {
       visit(whileExpr.getBody(), fn);
       break;
     }
+    case ASTNodeType::THROW:
+      visit(static_cast<const ThrowAST&>(node).value.get(), fn);
+      break;
+    case ASTNodeType::TRY_CATCH: {
+      const auto& statement = static_cast<const TryCatchAST&>(node);
+      visit(statement.body.get(), fn);
+      for (const auto& handler : statement.handlers) {
+        visit(handler.binding.get(), fn);
+        visit(handler.body.get(), fn);
+      }
+      break;
+    }
     case ASTNodeType::RETURN:
       visit(static_cast<const ReturnExprAST&>(node).getValue(), fn);
       break;

@@ -21,21 +21,13 @@ using std;
 using tls;
 
 /** Fetches a page and reports either error category. */
-function main() i32 {
+function main() i32 throws {
     var client = HttpsClient(global_allocator);
-    var host = try String(global_allocator, "example.com");
-
-    return match client.get(host, "/") {
-        ClientResult.Ok(response) => {
-            println(response.status);
-            println(response.body);
-            0;
-        },
-        (error: const ref IError) => {
-            println(try error.message());
-            1;
-        }
-    };
+    var host = String(global_allocator, "example.com");
+    var response = client.get(host, "/");
+    println(response.status);
+    println(response.body);
+    return 0;
 }
 
 manifest {
@@ -48,18 +40,21 @@ sun client.sun              # run it
 sun --compile -o client client.sun
 ```
 
-TLS operations return `ClientResult<T>` with `Ok(T)`, `System(Error)`, or
-`Tls(TlsError)`. Use specific variants, an interface arm as above, or `_` to
-handle remaining variants. Prefix `try` extracts success and propagates failures
-into a compatible caller result. The stream examples below assume such a caller.
-The standalone HTTP response parser returns `SystemResult<void>`.
+TLS client operations return their ordinary success value and throw `TlsError`
+for TLS protocol failures or `std.Error` for transport failures. Both carry
+numeric codes and bounded inline diagnostic text. Calling `message()` explicitly
+allocates an owned diagnostic String. The stream examples assume a caller with
+`throws`. The standalone HTTP response parser returns `void throws`.
+
+Nonblocking server operations retain normal readiness values in `ServerResult`:
+`Ok`, `WantRead`, `WantWrite`, and `Closed`. Failures throw exceptions.
 
 ## Certificate verification
 
 Verification is on and cannot be switched off. A connection only succeeds if
 the peer's certificate chain validates against the trusted CA store **and**
 the certificate matches the hostname passed to `connect`. Anything else
-returns `ClientResult.Tls`, with the reason in the error message:
+throws `TlsError`, with bounded diagnostic text describing the failure:
 
 ```
 certificate verification failed: self-signed certificate
@@ -83,10 +78,10 @@ take the host as a `String` and the path as a literal; both have an overload
 taking a port, which defaults to 443.
 
 ```sun
-public method get(host: ref String, path: static_ptr<u8>) ClientResult<HttpClientResponse>
-public method get(host: ref String, port: i32, path: static_ptr<u8>) ClientResult<HttpClientResponse>
+public method get(host: ref String, path: static_ptr<u8>) HttpClientResponse throws
+public method get(host: ref String, port: i32, path: static_ptr<u8>) HttpClientResponse throws
 public method post(host: ref String, path: static_ptr<u8>, content_type: static_ptr<u8>,
-                     body: const ref String) ClientResult<HttpClientResponse>
+                     body: const ref String) HttpClientResponse throws
 ```
 
 The response carries the status, the raw header block, and the decoded body:
@@ -115,11 +110,11 @@ same shape as `TcpStream`, with the handshake done in `connect`.
 
 ```sun
 var stream = TlsStream();
-try stream.connect(host, 443);
-try stream.send_str("PING\r\n");
+ stream.connect(host, 443);
+ stream.send_str("PING\r\n");
 
-var buf = try ContiguousBuffer<u8>(alloc, 4096);
-var n = try stream.recv(buf);   // 0 once the peer closes
+var buf =  ContiguousBuffer<u8>(alloc, 4096);
+var n =  stream.recv(buf);   // 0 once the peer closes
 stream.close();
 ```
 
@@ -141,18 +136,18 @@ it does not run the handshake or wait for network traffic.
 using std.net;
 
 var context = TlsServerContext();
-var cert = try String("cert.pem");
-var key = try String("key.pem");
-try context.load(cert, key);
+var cert =  String("cert.pem");
+var key =  String("key.pem");
+ context.load(cert, key);
 
 var listener = TcpListener();
-try listener.bind_port(8443);
-try listener.listen(128);
-var stream = try context.accept(try listener.accept());
+ listener.bind_port(8443);
+ listener.listen(128);
+var stream =  context.accept( listener.accept());
 ```
 
-Setup uses `ClientResult<T>`, the bundle's existing transport/TLS error result.
-The snippet assumes a caller returning a compatible result. For an event-driven
+Setup returns ordinary values and may throw transport or TLS exceptions.
+The snippet assumes a caller declared `throws`. For an event-driven
 accept loop, also set the `TcpListener` nonblocking and handle its would-block
 errors with `is_would_block`.
 
@@ -165,7 +160,7 @@ Drive `stream.handshake()` until it returns `ServerResult.Ok(0)`, then use
 | `WantRead` | Wait for readability on `get_fd()`, then retry the operation |
 | `WantWrite` | Wait for writability on `get_fd()`, then retry the operation |
 | `Closed` | The peer sent a TLS close notification, or shutdown finished |
-| `Tls(error)` | TLS/transport, state, or argument error, with an explanation |
+
 
 Either I/O operation can require either readiness direction. After a write
 returns a readiness result, retry with the **same contents and length**; the
@@ -186,7 +181,7 @@ The optional third argument to `load` is a static, length-prefixed ALPN list,
 in server preference order:
 
 ```sun
-try context.load(cert, key, "\x02h2\x08http/1.1");
+ context.load(cert, key, "\x02h2\x08http/1.1");
 ```
 
 Each length byte must be nonzero and followed by exactly that many protocol
@@ -209,12 +204,12 @@ using std.net;
 using std;
 
 var stream = TcpStream();
-try stream.connect_host(host, 8080);          // resolve, then connect
+ stream.connect_host(host, 8080);          // resolve, then connect
 
-var ip: i32 = try resolve_host_ipv4(host);    // first A record, network order
+var ip: i32 =  resolve_host_ipv4(host);    // first A record, network order
 ```
 
-Both return `SystemResult.Error` if the name does not resolve or has no IPv4 address. IPv6 is not
+Both throw `std.Error` if the name does not resolve or has no IPv4 address. IPv6 is not
 supported yet.
 
 ## Building the bundle
