@@ -198,7 +198,9 @@ if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8 OR NOT
 endif()
 add_library(sun_exception_runtime STATIC src/runtime/exceptions.cpp src/runtime/panic.cpp)
 target_include_directories(sun_exception_runtime PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_compile_options(sun_exception_runtime PRIVATE -fno-exceptions -fno-rtti)
+# Native propagation must unwind through sun_eh_raise even without C++ exceptions.
+# Darwin Clang otherwise omits the runtime's unwind tables in optimized builds.
+target_compile_options(sun_exception_runtime PRIVATE -fno-exceptions -fno-rtti -funwind-tables)
 set_target_properties(sun_exception_runtime PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # Compiler-side JIT support is separate from the runtime linked into Sun programs.
