@@ -131,15 +131,15 @@
             "patterns": [
                 {
                     "name": "keyword.control.sun",
-                    "match": "\\b(?:if|else|for|while|break|continue|match|return|try|unsafe|using)\\b"
+                    "match": "\\b(?:if|else|for|while|break|continue|match|return|try|catch|throw|unsafe|using)\\b"
                 },
                 {
                     "name": "storage.type.sun",
-                    "match": "\\b(?:module|manifest|test_function|function|packed_class|class|interface|enum|var)\\b"
+                    "match": "\\b(?:module|manifest|test_function|function|packed_class|class|exception|interface|enum|var)\\b"
                 },
                 {
                     "name": "storage.modifier.sun",
-                    "match": "\\b(?:const|partial|declare|public|extern|implements|extends)\\b"
+                    "match": "\\b(?:const|throws|partial|declare|public|extern|implements|extends)\\b"
                 },
                 {
                     "name": "storage.type.sun",
@@ -186,7 +186,7 @@
         "declarations": {
             "patterns": [
                 {
-                    "match": "\\b(class|packed_class|interface|enum)\\s+([A-Za-z][A-Za-z0-9_]*)",
+                    "match": "\\b(class|packed_class|exception|interface|enum)\\s+([A-Za-z][A-Za-z0-9_]*)",
                     "captures": {
                         "1": {
                             "name": "storage.type.sun"

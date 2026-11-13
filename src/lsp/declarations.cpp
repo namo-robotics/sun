@@ -745,6 +745,9 @@ void forEachAnnotation(const ExprAST& node, const AnnotationFn& fn) {
       for (const auto& field : cls.getFields()) {
         fn(field.type);
       }
+      if (cls.getExceptionParent()) {
+        fn(*cls.getExceptionParent());
+      }
       for (const auto& iface : cls.getImplementedInterfaces()) {
         for (const auto& arg : iface.typeArguments) {
           fn(arg);

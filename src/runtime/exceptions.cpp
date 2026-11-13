@@ -198,7 +198,8 @@ _Unwind_Reason_Code sun_eh_personality(int version, _Unwind_Action actions,
   if (version != 1) return _URC_FATAL_PHASE1_ERROR;
   if (exceptionClass != sun::runtime::exceptionClass ||
       (actions & _UA_FORCE_UNWIND)) sun_eh_terminate();
-  auto* cursor = static_cast<const unsigned char*>(
+  // Darwin exposes the LSDA address as uintptr_t; other unwinders use void*.
+  auto* cursor = reinterpret_cast<const unsigned char*>(
       _Unwind_GetLanguageSpecificData(context));
   if (!cursor) return _URC_CONTINUE_UNWIND;
   const auto region = _Unwind_GetRegionStart(context);

@@ -279,6 +279,9 @@ std::optional<Hover> hoverClass(const ClassDefinitionAST& cls, int offset,
   }
   out += std::string(cls.classKeyword()) + " " + cls.getName() +
          renderTypeParameters(cls.getTypeParameters());
+  if (cls.getExceptionParent()) {
+    out += " extends " + annotationText(*cls.getExceptionParent(), source);
+  }
   const auto& interfaces = cls.getImplementedInterfaces();
   for (size_t i = 0; i < interfaces.size(); ++i) {
     out += i == 0 ? " implements " : ", ";

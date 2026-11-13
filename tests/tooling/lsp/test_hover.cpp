@@ -862,3 +862,16 @@ TEST(Tooling_Lsp_Hover, DependentIntrinsicHover) {
   EXPECT_NE(spawn->documentation.find("prefer std.thread.spawn"),
             std::string::npos);
 }
+
+/** Exception hover preserves the family used by catch clauses. */
+TEST(Tooling_Lsp_Hover, ExceptionFamily) {
+  const char* source = R"(
+    /** Groups related failures. */
+    exception Failure {}
+    /** Identifies a concrete failure. */
+    exception DeviceFailure extends Failure {}
+    function main() i32 { return 0; }
+  )";
+  EXPECT_EQ(hoverAt(source, "DeviceFailure"),
+            "exception DeviceFailure extends Failure");
+}

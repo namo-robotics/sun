@@ -474,3 +474,15 @@ function main() i32 {
   EXPECT_TRUE(definedAt(source, "value(2)", "value(x: i32)", 1));
   EXPECT_TRUE(definedAt(source, "value(false)", "value(x: bool)", 1));
 }
+
+/** Exception inheritance links to the declared family. */
+TEST(Tooling_Lsp_Definition, ExceptionParent) {
+  const std::string source = R"(
+    /** Groups related failures. */
+    exception Failure {}
+    /** Retains its parent as a navigable type reference. */
+    exception DeviceFailure extends Failure {}
+    function main() i32 { return 0; }
+)";
+  EXPECT_TRUE(definedAt(source, "Failure {}", "Failure {}", 0, 1));
+}

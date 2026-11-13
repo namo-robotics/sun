@@ -578,3 +578,16 @@ function main() i64 throws {
             static_cast<int>(offsetOf(source, "item: i64 in v")));
   EXPECT_EQ(item[1].range.offset, static_cast<int>(offsetOf(source, "item;")));
 }
+
+/** References include an exception family's inheritance uses. */
+TEST(Tooling_Lsp_References, ExceptionParent) {
+  const std::string source = R"(
+    /** Groups related failures. */
+    exception Failure {}
+    /** Retains its parent as a navigable type reference. */
+    exception DeviceFailure extends Failure {}
+    function main() i32 { return 0; }
+)";
+  EXPECT_TRUE(refersTo(source, "Failure {}", true,
+                      {{"Failure {}", 0}, {"Failure {}", 1}}));
+}
