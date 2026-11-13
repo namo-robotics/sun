@@ -585,10 +585,11 @@ class CodegenVisitor {
    * Emit a call to a C function whose signature needed ABI rewriting: its
    * LLVM parameters no longer line up one-to-one with the Sun arguments, so
    * the normal argument path cannot be used. Shared by plain and
-   * module-qualified call sites.
+   * module-qualified call sites. The resolved Sun signature supplies the
+   * parameter types and exception contract.
    */
   llvm::Value* emitMarshalledExternCall(const CallExprAST& expr,
-                                        const std::vector<TypePtr>& paramTypes,
+                                        const sun::types::FunctionType& signature,
                                         llvm::Function* func);
 
   /**

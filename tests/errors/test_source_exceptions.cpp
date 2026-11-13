@@ -18,6 +18,47 @@ class Errors_SourceExceptions : public testing::TestWithParam<bool> {
   }
 };
 
+/** Module calls to later definitions must unwind through the caller's catch. */
+TEST_P(Errors_SourceExceptions, forward_module_call) {
+  EXPECT_EQ(run(R"(
+    /** Carries a numeric failure. */
+    exception Failure { var code: i32; }
+    /** Handles a qualified call before its definition is emitted. */
+    function main() i32 {
+      try { later.fail(); } catch (error: Failure) { return error.code; }
+      return 0;
+    }
+    /** Supplies the forward-referenced operation. */
+    module later {
+      /** Raises a bounded failure. */
+      public function fail() void throws {
+        var error: Failure = {code: 42};
+        throw error;
+      }
+    }
+  )"), 42);
+}
+
+/** Nested lambda emission restores the enclosing semantic exception contract. */
+TEST_P(Errors_SourceExceptions, nested_lambda_exception_contract) {
+  EXPECT_EQ(run(R"(
+    /** Carries the propagated value. */
+    exception Failure { var code: i32; }
+    /** Handles a throwing lambda containing a non-throwing lambda. */
+    function main() i32 {
+      /** Propagates after generating a lambda with a different contract. */
+      var fail = () => void throws {
+        /** Supplies the failure code without throwing. */
+        var code = () => i32 { return 42; };
+        var error: Failure = {code: code()};
+        throw error;
+      };
+      try { fail(); } catch (error: Failure) { return error.code; }
+      return 0;
+    }
+  )"), 42);
+}
+
 /** A concrete throw transfers its scalar payload into a matching local catch. */
 TEST_P(Errors_SourceExceptions, scalar_payload) {
   EXPECT_EQ(run(R"(
