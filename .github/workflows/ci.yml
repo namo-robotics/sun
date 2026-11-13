@@ -973,21 +973,13 @@ jobs:
           using std.io;
           using tls;
           /** Verify HTTPS transport and certificate trust regardless of HTTP status. */
-          function main() AllocationResult<i32> {
+          function main() i32 throws {
               var alloc = make_heap_allocator();
               var client = HttpsClient(alloc);
-              var host = try String(alloc, "example.com");
-              match client.get(host, "/") {
-                  ClientResult.Ok(resp) => {
-                      println(resp.status);
-                      return AllocationResult.Ok(0);
-                  },
-                  (e: const ref IError) => {
-                      var message = try e.message();
-                      println(message);
-                      return AllocationResult.Ok(2);
-                  }
-              };
+              var host = String(alloc, "example.com");
+              var response = client.get(host, "/");
+              println(response.status);
+              return 0;
           }
           manifest {
               libraries: ["stdlib.moon", "tls.moon"]
