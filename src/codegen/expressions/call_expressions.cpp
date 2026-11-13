@@ -249,10 +249,10 @@ Value* CodegenVisitor::coerceStaticPtrToRawPtr(Value* argVal,
 // -------------------------------------------------------------------
 
 Value* CodegenVisitor::emitMarshalledExternCall(
-    const CallExprAST& expr, const std::vector<TypePtr>& paramTypes,
+    const CallExprAST& expr, const sun::types::FunctionType& signature,
     Function* func) {
   std::vector<sun::codegen::abi::PreparedArg> preparedArgs;
-  if (!emitExternArguments(expr, paramTypes, preparedArgs)) {
+  if (!emitExternArguments(expr, signature.getParamTypes(), preparedArgs)) {
     return nullptr;
   }
   return externC.emitCall(
@@ -261,7 +261,7 @@ Value* CodegenVisitor::emitMarshalledExternCall(
           llvm::ArrayRef<Value*> callArgs) {
         return errors.emitPossiblyThrowingCall(
             fnTy, callee, std::vector<Value*>(callArgs.begin(), callArgs.end()),
-            func->hasFnAttribute("sun.canthrow"), "calltmp");
+            signature.canThrow(), "calltmp");
       });
 }
 
@@ -512,22 +512,16 @@ Value* CodegenVisitor::codegenModuleFunctionCall(
   Function* func =
       functions.lookupFunctionById(memberAccess.getTargetDeclarationId());
 
-  // Build the argument list through the shared coercion path. Semantic
-  // analysis records the resolved overload's signature on the member access;
-  // without it every coercion degrades to a no-op, which is what this call
-  // path used to do unconditionally.
-  std::vector<TypePtr> paramTypes;
-  if (auto* calleeType =
-          sun::codegen::support::tryGetType<sun::types::FunctionType>(
-              memberAccess)) {
-    paramTypes = calleeType->getParamTypes();
-  }
+  const auto& signature =
+      sun::codegen::support::requireType<sun::types::FunctionType>(
+          memberAccess, "module function call");
+  const auto& paramTypes = signature.getParamTypes();
 
   // An extern "C" target whose signature needed ABI rewriting must be
   // marshalled, exactly as in codegenFunctionCall — its LLVM parameters no
   // longer line up with the Sun arguments.
   if (externC.needsMarshalling(func)) {
-    return emitMarshalledExternCall(expr, paramTypes, func);
+    return emitMarshalledExternCall(expr, signature, func);
   }
 
   std::vector<Value*> argValues;
@@ -538,7 +532,7 @@ Value* CodegenVisitor::codegenModuleFunctionCall(
 
   Value* result = errors.emitPossiblyThrowingCall(
       func->getFunctionType(), func, argValues,
-      func->hasFnAttribute("sun.canthrow"), "calltmp");
+      signature.canThrow(), "calltmp");
   return materializeStructReturn(result);
 }
 
@@ -1147,7 +1141,7 @@ Value* CodegenVisitor::codegenFunctionCall(
   // normal path: its LLVM parameters no longer line up with the Sun arguments
   // one-to-one. Hand the prepared values to the extern-C emitter instead.
   if (externC.needsMarshalling(func)) {
-    return emitMarshalledExternCall(expr, paramTypes, func);
+    return emitMarshalledExternCall(expr, funcType, func);
   }
 
   if (!emitCallArguments(expr.getArgs(), expr.getArgConversions(), paramTypes,
@@ -1155,12 +1149,8 @@ Value* CodegenVisitor::codegenFunctionCall(
     return nullptr;
   }
 
-  // A throwing callee ('T throws') is tagged with "sun.canthrow"; inside
-  // a try block it must be `invoke`d so its exception routes to the local
-  // landing pad. Exceptions now propagate natively — no error-union unwrapping.
-  bool canThrow = func->hasFnAttribute("sun.canthrow") || funcType.canThrow();
   Value* callResult = errors.emitPossiblyThrowingCall(
-      func->getFunctionType(), func, argValues, canThrow, "calltmp");
+      func->getFunctionType(), func, argValues, funcType.canThrow(), "calltmp");
 
   // Handle struct return values (classes returned by value)
   return materializeStructReturn(callResult);

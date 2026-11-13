@@ -396,7 +396,6 @@ Function* ClassGenerator::declareMethodFromAST(
 
   // Get return type (must be resolved by semantic analysis)
   llvm::Type* returnType;
-  bool canError = proto.hasReturnType() && proto.getReturnType()->canError;
   if (proto.hasResolvedReturnType()) {
     returnType = typeResolver.resolveForReturn(proto.getResolvedReturnType());
   } else if (!proto.hasReturnType()) {
@@ -416,10 +415,6 @@ Function* ClassGenerator::declareMethodFromAST(
   Function* func =
       Function::Create(funcType, Function::ExternalLinkage, symbol, module);
   functions().registerFunction(proto.getDeclarationId(), func);
-  // Tag throwing methods so call sites emit `invoke` inside a try block.
-  if (canError) {
-    func->addFnAttr("sun.canthrow");
-  }
 
   // Set parameter names
   auto argIt = func->arg_begin();
@@ -780,16 +775,14 @@ Value* ClassGenerator::codegenStackClassInstance(
   size_t argCount = expr.getArgs().size();
 
   if (ctorFunc) {
-    const auto& paramTypes = ctor ? ctor->paramTypes : std::vector<TypePtr>{};
+    const auto& paramTypes = ctor->paramTypes;
 
     std::vector<Value*> ctorArgs = generateCtorArgs(
         ctorFunc, alloca, expr.getArgs(), expr.getArgConversions(), paramTypes);
     // A throwing constructor unwinds like any other call: inside a try it
     // must be invoked so the exception reaches the landing pad.
-    bool ctorCanThrow =
-        (ctor && ctor->canThrow) || ctorFunc->hasFnAttribute("sun.canthrow");
     gen_.errorGenerator().emitPossiblyThrowingCall(
-        ctorFunc, ctorArgs, ctorCanThrow, "");
+        ctorFunc, ctorArgs, ctor->canThrow, "");
   }
 
   // Track the temporary for deinit ONLY if not moved (ownership
@@ -1168,17 +1161,15 @@ Value* ClassGenerator::codegen(const sun::ast::GenericCallAST& expr) {
     size_t argCount = expr.getArgs().size();
 
     if (ctorFunc) {
-      const auto& paramTypes = ctor ? ctor->paramTypes : std::vector<TypePtr>{};
+      const auto& paramTypes = ctor->paramTypes;
 
       std::vector<Value*> ctorArgs =
           generateCtorArgs(ctorFunc, alloca, expr.getArgs(),
                            expr.getArgConversions(), paramTypes);
       // See codegenStackClassInstance: a throwing constructor must be
       // invoked so its exception reaches the enclosing try's landing pad.
-      bool ctorCanThrow =
-          (ctor && ctor->canThrow) || ctorFunc->hasFnAttribute("sun.canthrow");
       gen_.errorGenerator().emitPossiblyThrowingCall(
-          ctorFunc, ctorArgs, ctorCanThrow, "");
+          ctorFunc, ctorArgs, ctor->canThrow, "");
     } else if (argCount > 0) {
       // Zeroed storage fully describes a class with no constructor, so an
       // argument-free miss is fine. Arguments that reach no constructor

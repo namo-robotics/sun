@@ -98,7 +98,7 @@ Value* ErrorGenerator::emitNativeCall(FunctionType* type, Value* callee,
     if (handler->type->isNullValue()) break;
   }
   const auto depth = scopes().functionBoundaryDepth();
-  const bool canEscape = function->hasFnAttribute("sun.canthrow");
+  const bool canEscape = state_.frame.canError;
   const auto callName = type->getReturnType()->isVoidTy() ? Twine("") : name;
   const auto abi = sun::abi::CallDescriptor::forCall(type, callee);
   if (handlers.empty() && !scopes().hasLiveOwners(depth) && canEscape) {

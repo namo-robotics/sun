@@ -239,10 +239,6 @@ void ModuleLinker::declareAvailableFunctions() {
       // Create external declaration with the (potentially aliased) name
       llvm::Function* decl = llvm::Function::Create(
           funcType, llvm::Function::ExternalLinkage, declaredName, &target_);
-      // Callers pick call vs invoke from this tag; keep it on the declaration
-      if (func.hasFnAttribute("sun.canthrow")) {
-        decl->addFnAttr("sun.canthrow");
-      }
       // Keeps a C extern exempt from symbol prefixing if this module is
       // itself bundled.
       if (func.hasFnAttribute("sun.cabi")) {

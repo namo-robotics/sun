@@ -600,12 +600,6 @@ FuncDeclResult FunctionGenerator::declareFuncSignature(PrototypeAST& proto) {
     logAndThrowError("Failed to create function: " + proto.getName());
   }
 
-  // Tag throwing functions so direct call sites know to emit `invoke` when
-  // inside a try block. This attribute survives CloneModule into the JIT.
-  if (canError) {
-    func->addFnAttr("sun.canthrow");
-  }
-
   return {func, fatType, nullptr, returnType, canError};
 }
 
@@ -680,16 +674,14 @@ Value* FunctionGenerator::codegenFunc(FunctionAST& funcAst) {
     argIdx++;
   }
 
-  // Generate body — may recursively create many other functions().
-  // The guard puts the enclosing function's return contract back.
-  {
-    sun::codegen::CodegenState::ReturnGuard returns(state_);
-    currentFunctionCanError = canError;
-    currentFunctionReturnsRef =
-        proto.hasReturnType() && proto.getReturnType()->isReference();
+  // Keep the semantic contract active through body emission and cleanup.
+  // Nested function generation restores this frame when it finishes.
+  sun::codegen::CodegenState::ReturnGuard returns(state_);
+  currentFunctionCanError = canError;
+  currentFunctionReturnsRef =
+      proto.hasReturnType() && proto.getReturnType()->isReference();
 
-    codegen(funcAst.getBody());
-  }
+  codegen(funcAst.getBody());
 
   // Check if the current basic block needs a terminator
   llvm::BasicBlock* currentBlock = ctx.builder->GetInsertBlock();
@@ -774,11 +766,6 @@ llvm::Value* FunctionGenerator::codegenLambda(sun::ast::LambdaAST& lambdaAst) {
     logAndThrowError("Failed to create lambda function");
   }
 
-  // Tag throwing lambdas so call sites emit `invoke` inside try blocks
-  if (canError) {
-    func->addFnAttr("sun.canthrow");
-  }
-
   Value* resultPtr = nullptr;
   if (scopes().empty()) {
     if (proto.hasClosure()) {
@@ -836,15 +823,14 @@ llvm::Value* FunctionGenerator::codegenLambda(sun::ast::LambdaAST& lambdaAst) {
     argIdx++;
   }
 
-  // Generate body; the guard puts the enclosing function's contract back
-  {
-    sun::codegen::CodegenState::ReturnGuard returns(state_);
-    currentFunctionCanError = canError;
-    currentFunctionReturnsRef =
-        proto.hasReturnType() && proto.getReturnType()->isReference();
+  // Keep the semantic contract active through body emission and cleanup.
+  // Nested function generation restores this frame when it finishes.
+  sun::codegen::CodegenState::ReturnGuard returns(state_);
+  currentFunctionCanError = canError;
+  currentFunctionReturnsRef =
+      proto.hasReturnType() && proto.getReturnType()->isReference();
 
-    codegen(lambdaAst.getBody());
-  }
+  codegen(lambdaAst.getBody());
 
   // Pop closure context if we pushed one
   if (proto.hasClosure()) {
