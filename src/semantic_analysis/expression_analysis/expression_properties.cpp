@@ -52,6 +52,14 @@ bool isBorrowableLvalue(const ExprAST& target) {
  */
 bool alwaysExits(const ExprAST& expr) {
   switch (expr.getType()) {
+    case ASTNodeType::TRY_CATCH: {
+      const auto& statement = static_cast<const sun::ast::TryCatchAST&>(expr);
+      if (!alwaysExits(*statement.body)) return false;
+      for (const auto& handler : statement.handlers)
+        if (!alwaysExits(*handler.body)) return false;
+      return true;
+    }
+    case ASTNodeType::THROW:
     case ASTNodeType::RETURN:
       return true;
     case ASTNodeType::BLOCK: {

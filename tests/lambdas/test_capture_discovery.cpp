@@ -40,14 +40,14 @@ class Holder {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var sp: raw_ptr<Holder> = try alloc.create<Holder>();
+  var sp: raw_ptr<Holder> =  alloc.create<Holder>();
   unsafe { sp.counter = 42; };
   var f = () => i64 { unsafe { return sp.counter; }; };
   var result = f();
   unsafe { _free(sp); };
-  return Result.Ok(_convert<i32>(result));
+  return _convert<i32>(result);
 }
 )");
   EXPECT_EQ(value, 42);
@@ -68,21 +68,17 @@ TEST(Lambdas_CaptureDiscovery, scalar_used_inside_catch_block) {
   auto value = executeStringWithStdlib(R"(
 using std;
 /** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), Error(Error) }
 
-function boom() Outcome<i32> {
-  return Outcome.Error(Error(1, "boom"));
+
+function boom() i32 throws {
+  throw Error(1, "boom");
 }
 
 function main() i32 {
   var n: i32 = 6;
   var f = () => i32 {
-    return match boom() {
-      Outcome.Ok(value) => value,
-      (e: ref IError) => {
-        return n;
-      }
-    };
+    try { var value = boom();
+return value; } catch (e: Error) { return n; }
   };
   return f();
 }
@@ -108,17 +104,13 @@ TEST(Lambdas_CaptureDiscovery, scalar_used_in_a_thrown_error) {
   auto value = executeStringWithStdlib(R"(
 using std;
 /** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), Error(Error) }
+
 
 function main() i32 {
   var n: i32 = 8;
-  var f = () => Outcome<i32> { return Outcome.Error(Error(n, "bad")); };
-  return match f() {
-    Outcome.Ok(value) => value,
-    (e: ref IError) => {
-      return e.code();
-    }
-  };
+  var f = () => i32 throws { throw Error(n, "bad"); };
+  try { var value = f();
+return value; } catch (e: Error) { return e.code(); }
 }
 )");
   EXPECT_EQ(value, 8);
@@ -129,13 +121,13 @@ TEST(Lambdas_CaptureDiscovery, scalar_used_in_a_string_interpolation) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var n: i32 = 3;
-  var f = () => AllocationResult<i32> {
-    var s = try `n is ${n}`;
-    return AllocationResult.Ok(_convert<i32>(s.length()));
+  var f = () => i32 throws {
+    var s =  `n is ${n}`;
+    return _convert<i32>(s.length());
   };
-  return Result.Ok(try f());
+  return  f();
 }
 )");
   EXPECT_EQ(value, 6);
@@ -164,21 +156,17 @@ TEST(Lambdas_CaptureDiscovery, catch_binding_shadows_an_outer_name) {
   auto value = executeStringWithStdlib(R"(
 using std;
 /** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), Error(Error) }
 
-function boom() Outcome<i32> {
-  return Outcome.Error(Error(9, "boom"));
+
+function boom() i32 throws {
+  throw Error(9, "boom");
 }
 
 function main() i32 {
   var e: i32 = 100;
   var f = () => i32 {
-    return match boom() {
-      Outcome.Ok(value) => value,
-      (e: ref IError) => {
-        return e.code();
-      }
-    };
+    try { var value = boom();
+return value; } catch (e: Error) { return e.code(); }
   };
   return f() + e;
 }
@@ -193,7 +181,7 @@ function main() i32 {
 TEST(Lambdas_CaptureDiscovery, lambda_cannot_use_this) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       class Counter {
-          var count: i32;
+          var count: i32 = 0;
           init() { this.count = 5; }
           method snapshot() i32 {
               var f = () => i32 { return this.count; };

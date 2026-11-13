@@ -541,10 +541,10 @@ TEST(Modules_AccessModifiers, stdlib_internals_are_private) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var v = try Vec<i32>(allocator, 4);
-  return Result.Ok(v.size_);
+  var v =  Vec<i32>(allocator, 4);
+  return v.size_;
 }
 )",
                     /*includeStdlib=*/true),

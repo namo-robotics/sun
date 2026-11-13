@@ -102,32 +102,27 @@ using std;
 
 /** Handles this global initializer’s failure at the startup boundary. */
 function initialize_g() String {
-  return match String(make_heap_allocator(), "") {
-    AllocationResult.Ok(value) => value,
-    _ => {
-      std.panic("unexpected global initialization failure");
-      initialize_g();
-    }
-  };
+  try { var value = String(make_heap_allocator(), "");
+return value; } catch { std.panic("unexpected global initialization failure");return initialize_g(); }
 }
 var g: String = initialize_g();
 
-function replace() Result<void> {
+function replace() void throws {
   var a = make_heap_allocator();
-  var rebuilt = try String(a, "new contents");
+  var rebuilt =  String(a, "new contents");
   g = rebuilt;
 
-  return Result.Ok;
+  return;
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i64> {
-  try replace();
+function main() i64 throws {
+   replace();
   if (unsafe { g.unsafe_at(0); } != 110) {
     // 'n'
-    return Result.Ok(-1);
+    return -1;
   }
-  return Result.Ok(g.length());
+  return g.length();
 }
 )");
   EXPECT_EQ(value, 12);
@@ -143,77 +138,72 @@ using std;
 
 /** Handles this global initializer’s failure at the startup boundary. */
 function initialize_g_queue() String {
-  return match String(make_heap_allocator(), "") {
-    AllocationResult.Ok(value) => value,
-    _ => {
-      std.panic("unexpected global initialization failure");
-      initialize_g_queue();
-    }
-  };
+  try { var value = String(make_heap_allocator(), "");
+return value; } catch { std.panic("unexpected global initialization failure");return initialize_g_queue(); }
 }
 var g_queue: String = initialize_g_queue();
 
-function append(q: ref String, s: ref String) Result<void> {
-  try q.append(s);
+function append(q: ref String, s: ref String) void throws {
+   q.append(s);
 
-  return Result.Ok;
+  return;
 }
 
-function queue_pop(alloc: ref HeapAllocator) Result<String> {
-  var out = try String(alloc, "");
+function queue_pop(alloc: ref HeapAllocator) String throws {
+  var out =  String(alloc, "");
   if (g_queue.length() > 0) {
     var nl: i64 = 0;
     while (nl < g_queue.length() and unsafe { g_queue.unsafe_at(nl); } != 10) {
       nl = nl + 1;
     }
     for (var i: i64 = 0; i < nl; i = i + 1) {
-      try out.append_char(unsafe { g_queue.unsafe_at(i); });
+       out.append_char(unsafe { g_queue.unsafe_at(i); });
     }
 
-    var rest = try String(alloc, "");
+    var rest =  String(alloc, "");
     for (var i: i64 = nl + 1; i < g_queue.length(); i = i + 1) {
-      try rest.append_char(unsafe { g_queue.unsafe_at(i); });
+       rest.append_char(unsafe { g_queue.unsafe_at(i); });
     }
     g_queue.clear();
-    try append(g_queue, rest);
+     append(g_queue, rest);
   }
-  return Result.Ok(out);
+  return out;
 }
 
-function fill(alloc: ref HeapAllocator) Result<void> {
-  var q = try String(alloc, "");
+function fill(alloc: ref HeapAllocator) void throws {
+  var q =  String(alloc, "");
   g_queue = q;
-  var a = try String(alloc, "alpha\n");
-  try append(g_queue, a);
-  var b = try String(alloc, "beta\n");
-  try append(g_queue, b);
+  var a =  String(alloc, "alpha\n");
+   append(g_queue, a);
+  var b =  String(alloc, "beta\n");
+   append(g_queue, b);
 
-  return Result.Ok;
+  return;
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i64> {
+function main() i64 throws {
   var alloc = make_heap_allocator();
-  try fill(alloc);
-  var p1 = try queue_pop(alloc);
+   fill(alloc);
+  var p1 =  queue_pop(alloc);
   if (p1.length() != 5 or unsafe { p1.unsafe_at(0); } != 97) {
-    return Result.Ok(1);  // "alpha"
+    return 1;  // "alpha"
   }
   if (g_queue.length() != 5 or unsafe { g_queue.unsafe_at(0); } != 98) {
-    return Result.Ok(2);  // "beta\n"
+    return 2;  // "beta\n"
   }
-  var p2 = try queue_pop(alloc);
+  var p2 =  queue_pop(alloc);
   if (p2.length() != 4 or unsafe { p2.unsafe_at(0); } != 98) {
-    return Result.Ok(3);  // "beta"
+    return 3;  // "beta"
   }
   if (g_queue.length() != 0) {
-    return Result.Ok(4);
+    return 4;
   }
-  var p3 = try queue_pop(alloc);
+  var p3 =  queue_pop(alloc);
   if (p3.length() != 0) {
-    return Result.Ok(5);
+    return 5;
   }
-  return Result.Ok(0);
+  return 0;
 }
 )");
   EXPECT_EQ(value, 0);
@@ -253,24 +243,19 @@ using std;
 var alloc: HeapAllocator = HeapAllocator();
 /** Handles this global initializer’s failure at the startup boundary. */
 function initialize_v() Vec<i64> {
-  return match Vec<i64>(alloc, 8) {
-    AllocationResult.Ok(value) => value,
-    _ => {
-      std.panic("unexpected global initialization failure");
-      initialize_v();
-    }
-  };
+  try { var value = Vec<i64>(alloc, 8);
+return value; } catch { std.panic("unexpected global initialization failure");return initialize_v(); }
 }
 var v: Vec<i64> = initialize_v();
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i64> {
+function main() i64 throws {
   if (v.capacity() != 8) {
-    return Result.Ok(-1);
+    return -1;
   }
-  try v.push(10);
-  try v.push(20);
-  return Result.Ok(v.size());
+   v.push(10);
+   v.push(20);
+  return v.size();
 }
 )");
   EXPECT_EQ(value, 2);
@@ -284,37 +269,27 @@ using std;
 var alloc: HeapAllocator = HeapAllocator();
 /** Handles this global initializer’s failure at the startup boundary. */
 function initialize_m() Map<String, i32> {
-  return match Map<String, i32>(alloc, 64) {
-    AllocationResult.Ok(value) => value,
-    _ => {
-      std.panic("unexpected global initialization failure");
-      initialize_m();
-    }
-  };
+  try { var value = Map<String, i32>(alloc, 64);
+return value; } catch { std.panic("unexpected global initialization failure");return initialize_m(); }
 }
 var m: Map<String, i32> = initialize_m();
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   if (m.capacity() != 64) {
-    return Result.Ok(-1);
+    return -1;
   }
-  var k = try String(alloc, "key");
-  try m.insert(k, 3);
+  var k =  String(alloc, "key");
+   m.insert(k, 3);
   if (m.size() != 1) {
-    return Result.Ok(-2);
+    return -2;
   }
   var found = 0;
   if (true) {
-    var k2 = try String(alloc, "key");
-    found = (match m.get(k2) {
-      std.LookupResult.Ok(value) => value,
-      std.LookupResult.NotFound(_) => {
-        return Result.Ok(-100);
-      }
-    });
+    var k2 =  String(alloc, "key");
+    found = m.get(k2);
   }
-  return Result.Ok(found);
+  return found;
 }
 )");
   EXPECT_EQ(value, 3);
@@ -328,18 +303,16 @@ TEST(MemorySafety_GlobalAssignment, global_initialized_from_factory_call) {
     using std;
     var alloc: HeapAllocator = HeapAllocator();
 
-    function make() Result<Vec<i64>> {
-      var v = try Vec<i64>(alloc, 4);
-      try v.push(7);
-      return Result.Ok( v);
+    function make() Vec<i64> throws {
+      var v =  Vec<i64>(alloc, 4);
+       v.push(7);
+      return  v;
     }
 
     /** Handles this global initializer’s failure at the startup boundary. */
 function initialize_g() Vec<i64> {
- return match make() {
- Result.Ok(value) => value,
- _ => { std.panic("unexpected global initialization failure"); initialize_g(); }
- };
+ try { var value = make();
+return value; } catch { std.panic("unexpected global initialization failure");return initialize_g(); }
 }
 var g: Vec<i64> = initialize_g();
 
@@ -359,9 +332,9 @@ using std;
 var alloc: HeapAllocator = HeapAllocator();
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i64> {
-  var s = try String(alloc, "hello");
-  return Result.Ok(s.length());
+function main() i64 throws {
+  var s =  String(alloc, "hello");
+  return s.length();
 }
 )");
   EXPECT_EQ(value, 5);

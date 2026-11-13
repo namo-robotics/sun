@@ -38,6 +38,7 @@ extensions/vscode-sun/.vscode-test/
 tmp
 *.dot
 *.ll
+!tests/errors/fixtures/*.ll
 *_debug/
 .cache/
 *.o

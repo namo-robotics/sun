@@ -79,8 +79,7 @@ class ClassGenerator {
         thisPtr(state.frame.thisPtr),
         currentClass(state.frame.currentClass),
         currentFunctionCanError(state.frame.canError),
-        currentFunctionReturnsRef(state.frame.returnsRef),
-        currentFunctionValueType(state.frame.valueType) {}
+        currentFunctionReturnsRef(state.frame.returnsRef) {}
 
   /** Binds class generation to shared compiler state and the expression
    * visitor. */
@@ -146,13 +145,7 @@ class ClassGenerator {
   llvm::Value* codegenStackClassInstance(const sun::ast::CallExprAST& expr,
                                          ClassType& classType);
 
-  /** Wraps a completed object or constructor error in the construction result.
-   */
-  llvm::Value* finishFallibleConstruction(const ExprAST& expr,
-                                          ClassType& classType,
-                                          llvm::Value* object,
-                                          llvm::Value* status,
-                                          sun::types::EnumType& statusType);
+
 
   // ---------------------------------------------------------------
   // Generic instantiation
@@ -275,7 +268,6 @@ class ClassGenerator {
   std::shared_ptr<ClassType>& currentClass;
   bool& currentFunctionCanError;
   bool& currentFunctionReturnsRef;
-  llvm::Type*& currentFunctionValueType;
 
   /**
    * What class codegen borrows from the rest of codegen.

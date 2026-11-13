@@ -1,304 +1,193 @@
 # Error Handling
 
-## Returned error values
+Sun reports recoverable failures with exceptions. A throwing function returns its
+ordinary success value and declares `throws`. Callers either propagate the
+exception with their own `throws` declaration or handle it in a `try` block.
+There are no result wrappers or prefix `try` expressions.
 
-Prefer standard-library result enums when using the standard library.
-`std.AccessResult<T>` is the precise result of checked vector, buffer, and string access operations: its
-variants are `Ok(T)` and `OutOfBounds(IndexOutOfBoundsError)`. `std.Result<T>`
-combines standard error categories for functions that call several APIs.
-Both are defined in `stdlib/std/result.sun`; the compiler does not identify them by name.
-
-`_Result<T, E>` remains builtin and needs no import. Its `Ok` payload contains
-the successful value, and its `Err` payload contains the concrete error.
-All these results follow ordinary enum ownership and cleanup rules, storing
-the active payload inline without allocating exception storage.
-
+## Declaring and handling exceptions
 
 ```sun
-/** Describes invalid port numbers. */
-enum PortError { OutOfRange(i32) }
+/** Groups failures from storage operations. */
+exception StorageFailure {}
 
-/** Validates a port without allocating. */
-function validate_port(port: i32) _Result<i32, PortError> {
-    if (port < 1 or port > 65535) {
-        return _Result.Err(PortError.OutOfRange(port));
-    }
-    return _Result.Ok(port);
+/** Carries the failing device's numeric status. */
+exception DeviceFailure extends StorageFailure {
+  var code: i32;
 }
 
-/** Propagates an invalid port to its caller. */
-function configure_port(port: i32) _Result<i32, PortError> {
-    var valid = try validate_port(port);
-    return _Result.Ok(valid);
-}
-```
-
-A plain call returns a result for storage, forwarding, or handling with `match`:
-
-```sun
-var port = match validate_port(input) {
-    _Result.Ok(value) => value,
-    _Result.Err(error) => 8080
-};
-```
-
-Builtin and standard results cannot be silently discarded, including by storing it in an unused
-local. Use `ignore_error(operation())` to explicitly discard a result; this drops
-its owned success or error payload.
-
-Prefix `try` works with any nonempty enum whose first declared variant has
-zero or one payload and whose remaining variants each have one payload. The
-first variant represents success: `try` extracts its payload, or produces
-`void` when it has none. Variant names and modules do not affect this rule.
-Declaration order is therefore part of an enum's public contract.
-
-```sun
-/** Returns a value or a bounds error. */
-enum AccessResult<T> {
-    Value(T),
-    OutOfBounds(IndexOutOfBoundsError)
-}
-```
-
-`try` evaluates its operand once. For a failure, it moves the payload into a
-compatible failure variant of the enclosing function's returned enum and cleans
-up live owners. When both enums are the same type, the original failure variant
-is preserved. Otherwise, each possible failure must have exactly one destination
-failure variant with the same payload type. The destination's first variant is
-never an error destination. Missing or ambiguous conversions are compile errors,
-even if a particular call happens to return success.
-
-For compatibility with explicit error sums such as `_Result<T, ErrorKind>`, a
-payload may also be wrapped in a unique immediate variant of the destination
-error payload enum when no direct destination matches. This does not search
-recursively through nested enums.
-
-Calls, indexing, and member access belong to the operand; binary operators do
-not: `try read_value() + 1` means `(try read_value()) + 1`. In a generic enum, a
-sole first-variant payload specialized to `void` becomes a unit success variant.
-
-`_Result<void, E>` represents success without a value, written `_Result.Ok`.
-`try operation();` propagates such an operation. A successful reference such as
-`_Result<ref T, E>` stays a borrow after propagation; its owner must remain alive.
-
-A fallible constructor can declare `init(...) AccessResult<void>`. Calling the
-class returns `AccessResult<Class>`, so `var object = try ClassName(args);`
-propagates a construction error. Any generic result enum can be used when its
-first type parameter holds the success value and its failure payload types do
-not depend on that parameter. Additional type parameters are preserved.
-
-Reaching the end of `init`, `return;`, and `return AccessResult.Ok;` all report
-success. Use `return AccessResult.OutOfBounds(error);` for failure. The first
-variant determines success; it need not be named `Ok`. Each failure variant
-must have one payload. Every successful path must initialize every field;
-failure drops initialized fields without calling `deinit` on the incomplete
-object. The unsafe `_init<T>` operation returns the constructor's original
-status type, such as `AccessResult<void>`, for explicit handling. Builtin
-`_Result<void, E>` constructors remain supported.
-
-Errors may also be borrowed explicitly, including through interface payloads:
-
-```sun
-/** Borrows errors whose storage belongs to another owner. */
-enum BorrowedResult {
-    Ok,
-    RetryableError(const ref IRetryableError),
-    OtherError(const ref IError)
-}
-```
-
-The owner must outlive every use of the borrowed result. A function cannot return
-an error view pointing into its own local storage. Custom enums support both `match` and prefix `try` when their variants satisfy
-the declaration-order rule above.
-
-See [typed match bindings](/match#typed-borrowed-bindings) for handling several
-concrete payload types through one interface pattern.
-
-## Checked integer arithmetic
-
-`std.checked_div(a, b)` and `std.checked_rem(a, b)` return
-`_Result<T, std.ArithmeticError>`, where `T` is the operands' promoted integer type.
-They evaluate each operand once and return an error for a zero divisor or
-signed minimum divided by `-1` (including remainder).
-
-```sun
-/** Returns a quotient or propagates its arithmetic error. */
-function quotient(a: i32, b: i32) _Result<i32, std.ArithmeticError> {
-    var value = try std.checked_div(a, b);
-    return _Result.Ok(value);
-}
-```
-
-## Error messages
-
-`std.IError.code()` and `std.IError.message()` are const methods. The interface
-is defined in the standard library, and `message()` returns an owned `String`
-copy that may outlive the error. Without the standard library, use concrete
-error values or declare an application-specific interface.
-
-## Error Types
-
-Errors are ordinary result payloads; propagation does not require an interface.
-For a shared borrowed view, implement the standard library interface `std.IError`:
-
-The interface belongs to its stdlib revision, including when that revision is
-embedded in a Moon bundle. Rebuild dependent bundles when migrating from the
-former compiler-built-in `IError`; their old interface references are not the
-new stdlib declaration.
-
-```sun
-interface IError {
-    const method code() i32;
-    const method message() AllocationResult<String>;
-}
-```
-
-Define your own by implementing both methods. Because an error is an ordinary
-class, it can carry whatever fields and extra methods you need:
-
-```sun
-class ParseError implements IError {
-    var line_: i32;
-    init(line: i32) { this.line_ = line; }
-    public const method code() i32 { return 1; }
-    public const method message() AllocationResult<String> { return String(global_allocator, "bad input"); }
-    method line() i32 { return this.line_; }
-}
-```
-
-The standard library (`using std;`) provides `Error(code, message)` plus a set
-of ready-made ones: `EmptyError`, `NotFoundError`, `IndexOutOfBoundsError`,
-`DivisionByZeroError`, `OverflowError`, `InvalidArgumentError`, `IOError`,
-`AllocationError` and `ConversionError`. `Error` accepts its message as a literal or as a `String`
-built at runtime, and keeps its own copy.
-
-## Standard-library results
-
-Fallible library calls return their concrete error types:
-
-| Operation | Error type |
-| --- | --- |
-| `Vec.get`, `Vec.set`, checked buffer indexing | `IndexOutOfBoundsError` |
-| `Map.get`, `Map.remove` | `NotFoundError` |
-| `LinkedList.pop_front`, `String.pop` | `EmptyError` |
-| `safe_convert` | `ConversionError` |
-| JSON readers and parsing | `JsonError` |
-| Protocol-buffer reads | `ProtoDecodeError` |
-| File, process, environment, and socket operations | `Error` |
-| Test assertions | `std.test.AssertionError` |
-
-For a function that returns `_Result<void, Error>`, standalone propagation needs
-no grouping parentheses:
-
-```sun
-try std.io.make_dir(path, 493);
-return _Result.Ok;
-```
-
-Handle an error without binding its payload with `_Result.Err(_)`. To inspect
-several concrete error payloads through one interface, use a typed borrowed arm:
-
-```sun
-using std.io;
-
-match operation() {
-    _Result.Ok(value) => use(value),
-    (error: const ref IError) => println(try error.message())
-};
-```
-
-Typed arms inspect immediate payloads. If `E` is itself an enum of error classes,
-first match `_Result.Err(error)`, then match `error` with the interface arm.
-
-## Arithmetic errors and panics
-
-`std.ArithmeticError` is an ordinary standard-library class implementing
-`std.IError`. It stores only a numeric code; construction and propagation do
-not allocate. Its `message()` method creates an owned `String` on demand.
-`std.checked_div` and `std.checked_rem` return this error on failure.
-
-```sun
-/** Divides two integers, returning recoverable arithmetic failures. */
-function divide(a: i32, b: i32) _Result<i32, std.ArithmeticError> {
-  return std.checked_div(a, b);
+/** Returns a value or propagates a bounded exception. */
+function read_value(ready: bool) i32 throws {
+  if (not ready) {
+    var error: DeviceFailure = {code: 7};
+    throw error;
+  }
+  return 42;
 }
 
-/** Handles division by zero through its concrete result payload. */
+/** Handles every exception in the storage family. */
 function main() i32 {
-  return match divide(1, 0) {
-    _Result.Ok(value) => value,
-    _Result.Err(error) => error.code()
-  };
+  try {
+    return read_value(false);
+  } catch (error: StorageFailure) {
+    return 1;
+  }
 }
 ```
 
-| Failure | `code()` | `message()` |
-|---------|----------|-------------|
-| Zero divisor | `4` | `integer division by zero` |
-| Signed minimum divided by `-1`, including remainder | `5` | `integer division overflow` |
+Catch clauses are considered in source order. A concrete catch can access that
+exception's fields. A family catch accepts every descendant, and `catch { ... }`
+accepts any Sun exception. Exception parents must be fieldless.
 
-Prefix `try` drops live owners before returning a failure to its caller.
+Inside a handler, `throw;` rethrows the active exception. `throw error;` also
+preserves its concrete type, including through a family catch. Catch bindings
+can be inspected, borrowed, and have individual fields changed. They cannot be
+moved into another variable or replaced as a whole: a family binding may refer
+to a larger concrete value.
 
-Ordinary integer division and remainder instead print `panic: ` followed by the
-failure message to stderr and abort the entire process without cleanup.
-`std.panic("explanation")` uses the same path. There is no panic catching or
-unwinding: a panic in a worker thread or test terminates the process too.
-Invalid constant operations remain compilation errors.
+## Exception storage
 
-Without stdlib, `_checked_div(a, b)` and `_checked_rem(a, b)` return
-`_Result<T, i32>`, with the same promotion rules and primitive failure codes
-listed above. `_panic` accepts a literal message without requiring stdlib.
-The type query `_promoted_integer<A, B>` computes the promoted integer type;
-when used for two generic operands, literals retain contextual coercion from
-the other operand before deduction.
+Every exception fits in a fixed inline payload of at most 128 bytes, including
+field padding. Numeric values, booleans, characters, plain enums, and fixed-size
+arrays of these types are supported. References, pointers, owning objects,
+variable-sized arrays, generic exception declarations, and exception destructors
+are rejected. Constructors, methods, and interfaces are supported; fields
+inherited from an interface must satisfy the same storage restrictions.
 
-The former builtin `ArithmeticError` and unqualified builtin checked functions
-have been removed. Import/use stdlib or use the primitive intrinsics, and rebuild
-dependent `.moon` libraries with the matching compiler and stdlib.
+The transport reserves equally sized records regardless of the concrete payload.
+Throwing copies the bounded payload into this storage without heap allocation.
+Objects in unwound scopes are destroyed. If a constructor throws, its initialized
+fields are destroyed, but the incomplete object's destructor is not called.
+Destructors may catch exceptions internally; they cannot propagate exceptions.
 
-## Cleanup during propagation
+## Standard-library errors
 
-Prefix `try` returns early on failure and drops live owners before returning.
-Code before the failing call has run; code after it has not. An owned error moves
-through `_Result.Err` without copying its payload or allocating exception storage.
-A borrowed error never transfers ownership of its referent.
+Standard-library operations return ordinary values and throw concrete exceptions.
+For example, checked indexing throws `IndexOutOfBoundsError`; allocation failure
+throws `AllocationError`. `Error` carries a numeric code and up to 96 bytes of
+inline diagnostic text. Text supplied by a literal or a `String` is copied and
+truncated without allocating. The original string can then be destroyed safely.
+TLS errors use the same bounded diagnostic strategy. XML errors reserve separate
+bounded storage for a message and filename alongside location information.
 
-## Replacing Exception Syntax
-
-The standard library, TLS APIs, generated protocol-buffer decoders, and test
-runner use returned results. `throws`, `throw`, and block-form `try`/`catch` are
-rejected with migration diagnostics. Declare a result return type, return an
-error variant, and use `try expression` for propagation or `match` for handling.
-
-Builtin `_Result<T, E>` remains available. Prefer library-defined result enums
-with concrete owned errors; borrowed interface payloads are supported when
-their referents outlive the result.
-
-## Allocation failures
-
-Allocating APIs return results instead of exposing a null pointer as successful
-storage. `AllocationResult<T>` distinguishes allocation failure, negative sizes,
-and size overflow. `Result<T>` also accepts those errors when an operation can
-fail for other reasons. The fixed `std.global_allocator` is passed explicitly:
+`IError` provides borrowed access to `code()` and `message()`. It is an interface,
+not an exception family: catch a concrete exception or a declared exception
+parent. Calling `message()` explicitly creates an owned `String` and can throw
+on allocation failure. Diagnostic allocation is separate from throwing.
 
 ```sun
-function example() Result<void> {
-    var text = try String(global_allocator, "hello");
-    try text.append(" world");
-    var label = try `message: ${text}`;
-    std.io.println(label);
-    return Result.Ok;
+using std;
+
+/** Handles an invalid index and explicitly chooses whether to copy its message. */
+function report() void throws {
+  var values = Vec<i32>(global_allocator, 1);
+  try {
+    values.get(10);
+  } catch (error: IndexOutOfBoundsError) {
+    var message = error.message();
+    std.io.eprintln(message);
+  }
 }
 ```
 
-Interpolation returns `AllocationResult<String>`. Error-message copies are also
-fallible: `IError.message()` returns `AllocationResult<String>`. Constructing an
-`AllocationError` or an error from a static message does not allocate. When printing
-an error, handle message-allocation failure with fixed text:
+Readiness and absence remain ordinary values. For example, `Option<T>` represents
+an optional value, and nonblocking I/O distinguishes completion from “would block.”
+A failed write throws `std.io.WriteError`; its `transferred()` method reports bytes
+already written, so a retry can start at the remaining suffix.
 
-```sun
-match try error.message() {
-    AllocationResult.Ok(text) => { std.io.eprintln(text); },
-    _ => { std.io.eprintln("unable to allocate error message"); }
-};
+Tests return `void` and can throw by default. Assertion failures are exceptions.
+A throwing `main` can propagate exceptions to the process boundary, which prints
+a fixed diagnostic and exits with status 1 after stack cleanup. Worker threads
+must handle their exceptions before returning from the thread body.
+
+## Migrating from returned errors
+
+- Change `Result<T>` and other error-wrapper return types to `T throws`.
+- Replace `return Result.Ok(value)` with `return value` and error variants with
+  `throw error`.
+- Replace `try operation()` with an ordinary call in a throwing function, or a
+  block-form `try` with catches.
+- Replace matches on error variants with catches around the operation itself.
+- Replace `ignore_error(operation())` with `try { operation(); } catch {}` only
+  when deliberately discarding every failure.
+- Give fallible constructors `init(...) throws`; successful construction needs
+  no returned status.
+
+`_Result`, standard-library error-wrapper enums, and prefix `try` are removed.
+Ordinary user enums and typed enum matching remain available.
+
+## Native transport and JIT registration
+
+Exception declarations and handler bodies survive Moon serialization. Bundles
+using this transport declare the `sun.exceptions.bounded` ABI rule. Concrete
+identities include declaration identity and layout; matching does not depend on
+descriptor addresses across modules. Rebuild bundles compiled with returned-error
+APIs before importing them into migrated code.
+
+The implementation uses the Itanium base unwinder with a Sun personality and
+Sun-owned bounded storage. It does not call the C++ exception allocator.
+Each thread initializes a base propagation record. Exceptional cleanup selects
+a separate record in its own stack frame for internally handled failures,
+then restores the previous throw target before resuming the original unwind.
+A termination handler prevents a nested exception from outliving that stack
+record. Native unwind headers remain at their original addresses.
+
+Build and run the exception checks from the repository root:
+
+```sh
+cmake -S . -B build
+cmake --build build --target sun sun_source_exception_tests sun_exception_tests sun_exception_allocation_probe -j$(($(nproc)/2))
+SUN_PATH=$PWD ctest --test-dir build -R '^Errors_(NativeExceptions|SourceExceptions)\.' --output-on-failure -j$(($(nproc)/2))
 ```
+
+On macOS, use half the logical CPU count reported by `sysctl -n hw.logicalcpu`
+instead of `nproc`.
+
+**AOT exception transport must not allocate**, including on its first throw
+after explicit thread initialization. The AOT probe rejects allocations and
+fails if any are attempted, even when propagation still completes.
+
+**JIT registration eagerly prepares unwind lookup indexes.** After JITLink
+relocates a module's frame descriptions, the registrar parses every frame and
+calls the platform's `_Unwind_Find_FDE` lookup before the module becomes
+callable. Preparation may allocate; it does not execute a warm-up throw.
+Missing lookup support, malformed frame data, or a failed frame lookup rejects
+materialization. Failed lookup also removes the new frame registration.
+
+The JIT probes now reject allocations during transport too. They cover first
+throws, independently loaded modules, removal and reloading, and concurrent
+throws after registration. Compiler-generated `DW.ref` personality pointer
+cells remain local to each module so unloading one does not invalidate another
+module's unwind metadata. Native frame deregistration releases indexes before
+the code is unmapped. Exception values retain fixed thread-local and stack
+storage in both execution modes.
+
+There are limits to the JIT guarantee. `_Unwind_Find_FDE` is a platform extension,
+and libgcc can silently fall back to linear lookup when preparation runs out of
+memory. Successful lookup alone cannot certify that its index allocation
+succeeded. Registration racing with an unwind in another thread is also outside
+the allocation-free probes: the platform may expose newly registered tables
+before eager indexing completes. JIT throw-time allocations remain permitted
+in these cases; the strict AOT requirement is unchanged.
+
+The compiler embeds the runtime archive for its host architecture and operating
+system. Native linking extracts a temporary copy and removes it when linking
+finishes; compiler installations need no separate Sun runtime archive.
+Cross-target Moon bundles and object files support x86-64 and AArch64 Linux and Darwin; linking an executable requires
+a matching runtime archive. Linux x86-64 has been validated locally; macOS
+Apple Silicon validation has not been run locally. Passing the probes does not replace
+auditing the selected unwinder and platform.
+
+The helpers are currently implemented in C++ and compiled without C++ exception
+handling or RTTI. The intended follow-up is to generate all Sun-owned exception
+helpers as LLVM IR, including the personality function and panic integration;
+only the platform unwinder remains external. JIT frame indexing stays in the
+compiler. Generated throws initialize the statically reserved thread record
+before first use; this selects storage without allocating it.
+
+The libraries have separate responsibilities: `sun_exception_runtime` contains
+the transport used by generated programs, while `sun_jit_support` contains
+compiler-side frame registration and indexing. The runtime library does not
+depend on LLVM or the JIT support library. Test fixtures and allocation
+instrumentation live under `tests/`; production JIT interfaces expose no
+test-only registrar or lookup injection hooks.

@@ -30,7 +30,7 @@ cannot be used as an identifier`.
 | Declarations | `var`, `const`, `function`, `test_function`, `class`, `packed_class`, `partial`, `interface`, `enum`, `implements`, `public`, `def`, `declare`, `extern` |
 | Modules | `manifest`, `module`, `using` |
 | Control flow | `if`, `else`, `match`, `for`, `while`, `break`, `continue`, `return` |
-| Errors | Result enums, `try expression`, and `match` |
+| Errors | Bounded exceptions, `throws`, and block-form `try`/`catch` |
 | Literals | `true`, `false`, `null`, `this` |
 | Operators | `and`, `or`, `not` |
 | Types | `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `f32`, `f64`, `bool`, `char`, `void`, `array`, `ref`, `ptr`, `raw_ptr`, `static_ptr` |
@@ -86,7 +86,7 @@ place. See [Constants](/memory-safety#constants).
 
 ```sun
 const MAX_RETRIES: i32 = 3;
-const greeting = try String(alloc, "hello");
+const greeting =  String(alloc, "hello");
 ```
 
 ## Comments

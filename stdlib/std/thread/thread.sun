@@ -125,17 +125,18 @@ public module std.thread {
    * starts — so a thread body can be an ordinary lambda taking what it
    * works on, rather than a closure that had to capture it.
    * `fn` may be a lambda or a named function passed as a value. A worker can
-   * return a _Result; join() hands that result to the joining thread.
+   * return an ordinary value; join() hands that value to the joining thread.
+   * Workers must handle exceptions before they escape the thread body.
    */
   public function spawn<F: _Callable>(
     fn: F,
     args...: _params_of<F>
-  ) AllocationResult<Thread<_return_type_of<F>>> {
+  ) Thread<_return_type_of<F>> throws {
     var context = unsafe { _spawn<F>(fn, args...); };
     if (context == null) {
-      return AllocationResult.Allocation(AllocationError(0));
+      throw AllocationError(0);
     }
-    return AllocationResult.Ok(Thread<_return_type_of<F>>(context));
+    return Thread<_return_type_of<F>>(context);
   }
 
   // Mutual exclusion built on an atomic compare-and-swap for the

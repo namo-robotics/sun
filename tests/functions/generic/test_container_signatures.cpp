@@ -30,12 +30,12 @@ function count<T>(v: ref Vec<T>) i64 {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var v = try Vec<i64>(allocator, 4);
-  try v.push(10);
-  try v.push(20);
-  return Result.Ok(_convert<i32>(count<i64>(v)));
+  var v =  Vec<i64>(allocator, 4);
+   v.push(10);
+   v.push(20);
+  return _convert<i32>(count<i64>(v));
 }
 )");
   EXPECT_EQ(value, 2);
@@ -45,24 +45,19 @@ TEST(Functions_Generic_ContainerSignatures, vec_return_type_and_local) {
   auto value = executeStringWithStdlib(R"(
 using std;
 
-function build<T>(allocator: ref HeapAllocator, first: T) Result<Vec<T>> {
-  var v = try Vec<T>(allocator, 2);
-  try v.push(first);
-  return Result.Ok(v);
+function build<T>(allocator: ref HeapAllocator, first: T) Vec<T> throws {
+  var v =  Vec<T>(allocator, 2);
+   v.push(first);
+  return v;
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var v = try build<i64>(allocator, 7);
-  return Result.Ok(_convert<i32>(
-    (match v.get(0) {
-      std.AccessResult.Ok(value) => value,
-      std.AccessResult.OutOfBounds(_) => {
-        return Result.Ok(-100);
-      }
-    })
-  ));
+  var v =  build<i64>(allocator, 7);
+  return _convert<i32>(
+    (v.get(0))
+  );
 }
 )");
   EXPECT_EQ(value, 7);
@@ -77,13 +72,13 @@ function count<T>(l: ref LinkedList<T>) i64 {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
   var l = LinkedList<i32>(allocator);
-  try l.push_back(3);
-  try l.push_back(4);
-  try l.push_back(5);
-  return Result.Ok(_convert<i32>(count<i32>(l)));
+   l.push_back(3);
+   l.push_back(4);
+   l.push_back(5);
+  return _convert<i32>(count<i32>(l));
 }
 )");
   EXPECT_EQ(value, 3);
@@ -98,12 +93,12 @@ function count<K, V>(m: ref Map<K, V>) i64 {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var m = try Map<i32, i32>(allocator, 8);
-  try m.insert(1, 10);
-  try m.insert(2, 20);
-  return Result.Ok(_convert<i32>(count<i32, i32>(m)));
+  var m =  Map<i32, i32>(allocator, 8);
+   m.insert(1, 10);
+   m.insert(2, 20);
+  return _convert<i32>(count<i32, i32>(m));
 }
 )");
   EXPECT_EQ(value, 2);

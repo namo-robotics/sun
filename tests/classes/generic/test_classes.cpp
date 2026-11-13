@@ -165,10 +165,10 @@ TEST(Classes_Generic, multiple_instantiations) {
     function main() i32 {
         var intHolder = Holder<i32>(100);
         var floatHolder = Holder<f64>(2.5);
-        
+
         var intVal = intHolder.get();
         var floatVal = floatHolder.get();
-        
+
         if (intVal == 100) {
           if (floatVal > 2.0) {
             return 1;
@@ -526,20 +526,20 @@ public module namo {
 
   using std;
 
-  public function make(a: ref HeapAllocator) Result<Vec<String>> {
-    var v = try Vec<String>(a, 4);
-    try v.push(try String(a, "hi"));
-    return Result.Ok(v);
+  public function make(a: ref HeapAllocator) Vec<String> throws {
+    var v =  Vec<String>(a, 4);
+     v.push( String(a, "hi"));
+    return v;
   }
 }
 
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var v = try namo.make(alloc);
-  return Result.Ok(_convert<i32>(v.size()));
+  var v =  namo.make(alloc);
+  return _convert<i32>(v.size());
 }
 )");
   EXPECT_EQ(value, 1);

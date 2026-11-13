@@ -40,17 +40,12 @@ using sun::support::SunError;
 /** Checks ownership and lifetimes so references cannot outlive their values. */
 namespace sun::borrow_checker {
 
-/** Find the source whose captured environment survives parentheses and try. */
+/** Find the source whose captured environment survives parentheses. */
 static const ExprAST* unwrapFrameSource(const ExprAST& expr) {
   const ExprAST* source = &expr;
   while (true) {
     if (source->getType() == ASTNodeType::PAREN_EXPR) {
       source = static_cast<const ParenExprAST&>(*source).getInner();
-    } else if (source->getType() == ASTNodeType::MATCH &&
-               static_cast<const sun::ast::MatchExprAST&>(*source)
-                   .isPropagation()) {
-      source =
-          static_cast<const sun::ast::MatchExprAST&>(*source).getDiscriminant();
     } else {
       return source;
     }
@@ -108,6 +103,45 @@ std::vector<BorrowError> BorrowChecker::check(const BlockExprAST& program) {
 
 void BorrowChecker::checkExpr(const ExprAST& expr) {
   switch (expr.getType()) {
+    case ASTNodeType::THROW: {
+      const auto& statement = static_cast<const sun::ast::ThrowAST&>(expr);
+      if (statement.value) {
+        checkExpr(*statement.value);
+        transferringException_ = true;
+        consumeOwnedValue(*statement.value);
+        transferringException_ = false;
+      } else if (!exceptionBindings_.empty() && exceptionBindings_.back()) {
+        const auto& binding = *exceptionBindings_.back();
+        sun::ast::VariableReferenceAST value(binding.getName());
+        value.setLocation(expr.getLocation());
+        value.setResolvedType(binding.getResolvedType());
+        value.setTargetDeclarationId(binding.getDeclarationId());
+        checkVariableReference(value);
+        transferringException_ = true;
+        consumeOwnedValue(value);
+        transferringException_ = false;
+      }
+      break;
+    }
+    case ASTNodeType::TRY_CATCH: {
+      const auto& statement = static_cast<const sun::ast::TryCatchAST&>(expr);
+      checkExpr(*statement.body);
+      auto beforeHandlers = movedVariables_;
+      auto afterHandlers = movedVariables_;
+      for (const auto& handler : statement.handlers) {
+        movedVariables_ = beforeHandlers;
+        enterScope();
+        auto* binding = handler.binding ? static_cast<const sun::ast::VariableCreationAST*>(handler.binding.get()) : nullptr;
+        if (binding) checkVariableCreation(*binding);
+        exceptionBindings_.push_back(binding);
+        checkExpr(*handler.body);
+        exceptionBindings_.pop_back();
+        exitScope();
+        if (!exprDiverges(*handler.body)) afterHandlers.insert(movedVariables_.begin(), movedVariables_.end());
+      }
+      movedVariables_ = std::move(afterHandlers);
+      break;
+    }
     case ASTNodeType::VARIABLE_CREATION:
       checkVariableCreation(
           static_cast<const sun::ast::VariableCreationAST&>(expr));
@@ -387,12 +421,6 @@ void BorrowChecker::checkVariableCreation(
     while (true) {
       if (init->getType() == ASTNodeType::PAREN_EXPR) {
         init = static_cast<const ParenExprAST&>(*init).getInner();
-      } else if (init->getType() == ASTNodeType::MATCH &&
-                 static_cast<const sun::ast::MatchExprAST&>(*init)
-                     .isPropagation()) {
-        // Propagation retains the successful reference's original owner.
-        init =
-            static_cast<const sun::ast::MatchExprAST&>(*init).getDiscriminant();
       } else if (init->getType() == ASTNodeType::UNSAFE_BLOCK) {
         const auto& body =
             static_cast<const UnsafeBlockAST&>(*init).getBody().getBody();
@@ -586,11 +614,6 @@ void BorrowChecker::borrowRefCallInputs(const std::string& refName,
     while (!base) {
       if (source->getType() == ASTNodeType::PAREN_EXPR) {
         source = static_cast<const ParenExprAST&>(*source).getInner();
-      } else if (source->getType() == ASTNodeType::MATCH &&
-                 static_cast<const sun::ast::MatchExprAST&>(*source)
-                     .isPropagation()) {
-        source = static_cast<const sun::ast::MatchExprAST&>(*source)
-                     .getDiscriminant();
       } else if (source->getType() == ASTNodeType::CALL &&
                  classStoresRefs(source->getResolvedType())) {
         const auto* callee =
@@ -1886,6 +1909,14 @@ bool BorrowChecker::holderPointsIntoFrame(const ExprAST& value) const {
 // live borrows reading the zeroed husk the move leaves behind, so it is
 // rejected; a loan on the base variable covers its fields too.
 void BorrowChecker::recordMove(const std::string& place, const Position& pos) {
+  if (!transferringException_) {
+    for (const auto* binding : exceptionBindings_) {
+      if (binding && binding->getName() == place) {
+        reportError("A catch binding can only be moved by throw; borrow it to inspect its payload", pos);
+        return;
+      }
+    }
+  }
   std::string base = place.substr(0, place.find('.'));
   if (discoveringMatchMoves_) {
     auto payload = matchPayloadSources_.find(base);
@@ -2165,6 +2196,8 @@ void BorrowChecker::checkFunctionDef(const sun::ast::FunctionAST& func) {
   }
 
   // Enter function scope
+  auto savedExceptionBindings = std::move(exceptionBindings_);
+  exceptionBindings_.clear();
   enterFunctionScope(funcName);
   currentFunctionReturnsRef_ = returnsRef;
 
@@ -2213,6 +2246,7 @@ void BorrowChecker::checkFunctionDef(const sun::ast::FunctionAST& func) {
 
   // Exit function scope - clears all borrows
   exitFunctionScope();
+  exceptionBindings_ = std::move(savedExceptionBindings);
 }
 
 // True when the expression is (or holds) a lambda with [ref x] captures -
@@ -3264,6 +3298,8 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   auto savedFunction = currentFunction_;
 
   // Enter function scope (anonymous)
+  auto savedExceptionBindings = std::move(exceptionBindings_);
+  exceptionBindings_.clear();
   enterFunctionScope("<lambda>");
   currentFunctionReturnsRef_ = returnsRef;
 
@@ -3322,6 +3358,7 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
 
   // Exit function scope - clears the lambda's borrows
   exitFunctionScope();
+  exceptionBindings_ = std::move(savedExceptionBindings);
 
   // Restore the enclosing function's state
   matchPayloadSources_ = std::move(savedMatchPayloadSources);
@@ -3801,9 +3838,6 @@ Lifetime BorrowChecker::inferExprLifetime(const ExprAST& expr) const {
     auto found = matchResultLifetimes_.find(&match);
     if (found != matchResultLifetimes_.end()) {
       return found->second;
-    }
-    if (match.isPropagation()) {
-      return inferExprLifetime(*match.getDiscriminant());
     }
   }
   switch (expr.getType()) {

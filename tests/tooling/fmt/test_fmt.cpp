@@ -16,6 +16,13 @@ static std::string fmt(const std::string& src) {
   return sun::parsing::formatSource(src);
 }
 
+/** Formatting preserves a lambda's exception effect on repeated passes. */
+TEST(Tooling_Fmt, ThrowingLambda) {
+  const auto formatted = fmt("var work = () => void throws { fail(); };\n");
+  EXPECT_NE(formatted.find("=> void throws"), std::string::npos);
+  EXPECT_EQ(fmt(formatted), formatted);
+}
+
 // ------------------------------------------------------------------
 // Core layout
 // ------------------------------------------------------------------
@@ -207,7 +214,7 @@ TEST(Tooling_Fmt, TypeFidelity) {
 TEST(Tooling_Fmt, LifecycleMethods) {
   EXPECT_EQ(fmt("class A {\n"
                 "  var x: i32;\n"
-                "  init(v: i32) Result<void> {\n"
+                "  init(v: i32) throws {\n"
                 "    this.x = v;\n"
                 "  }\n"
                 "\n"
@@ -218,7 +225,7 @@ TEST(Tooling_Fmt, LifecycleMethods) {
             "class A {\n"
             "  var x: i32;\n"
             "\n"
-            "  init(v: i32) Result<void> {\n"
+            "  init(v: i32) throws {\n"
             "    this.x = v;\n"
             "  }\n"
             "\n"
@@ -583,9 +590,9 @@ TEST(Tooling_Fmt, MatchExpression) {
 
 TEST(Tooling_Fmt, TryCatchThrow) {
   EXPECT_EQ(
-      fmt("function f(x:i32) Result<i32>{return Result.Ok(try div(10,x));}"),
-      "function f(x: i32) Result<i32> {\n"
-      "  return Result.Ok(try div(10, x));\n"
+      fmt("function f(x:i32) i32 throws{return div(10,x);}"),
+      "function f(x: i32) i32 throws {\n"
+      "  return div(10, x);\n"
       "}\n");
 }
 

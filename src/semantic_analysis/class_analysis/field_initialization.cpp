@@ -633,6 +633,13 @@ void BodyWalk::walk(const ExprAST& expr) {
       }
       return;
     }
+    case ASTNodeType::TRY_CATCH: {
+      const auto& statement = static_cast<const sun::ast::TryCatchAST&>(expr);
+      std::vector<const ExprAST*> branches{statement.body.get()};
+      for (const auto& handler : statement.handlers) branches.push_back(handler.body.get());
+      walkBranches(branches);
+      return;
+    }
     case ASTNodeType::IF: {
       const auto& ifExpr = static_cast<const sun::ast::IfExprAST&>(expr);
       if (ifExpr.getCond()) {

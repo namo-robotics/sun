@@ -49,11 +49,11 @@ TEST(Tooling_Diagnostics_TypeNames, lambda_capture_of_moon_class) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var v = try Vec<u8>(alloc, 16);
-  var t = try spawn(() => i64 { return v.length(); });
-  return Result.Ok(0);
+  var v =  Vec<u8>(alloc, 16);
+  var t =  spawn(() => i64 { return v.length(); });
+  return 0;
 }
 )");
   expectNames(message, "compound type 'std.Vec<u8>'");
@@ -64,11 +64,11 @@ TEST(Tooling_Diagnostics_TypeNames, assignment_mismatch) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var v = try Vec<u8>(alloc, 16);
+  var v =  Vec<u8>(alloc, 16);
   var x: i32 = v;
-  return Result.Ok(0);
+  return 0;
 }
 )");
   expectNames(message, "value of type 'std.Vec<u8>'");
@@ -79,11 +79,11 @@ TEST(Tooling_Diagnostics_TypeNames, unknown_member_on_moon_class) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var v = try Vec<u8>(alloc, 16);
+  var v =  Vec<u8>(alloc, 16);
   v.no_such_method();
-  return Result.Ok(0);
+  return 0;
 }
 )");
   expectNames(message, "on class 'std.Vec<u8>'");
@@ -94,10 +94,10 @@ TEST(Tooling_Diagnostics_TypeNames, constructor_argument_list) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var v = try Vec<u8>(alloc, "not a size");
-  return Result.Ok(0);
+  var v =  Vec<u8>(alloc, "not a size");
+  return 0;
 }
 )");
   expectNames(message, "No matching constructor for 'std.Vec<u8>'");
@@ -105,12 +105,11 @@ function main() Result<i32> {
   expectNames(message, "static_ptr<u8>");
 }
 
-TEST(Tooling_Diagnostics_TypeNames, catch_type_must_implement_ierror) {
+TEST(Tooling_Diagnostics_TypeNames, catch_type_must_be_exception) {
   std::string message = errorFor(R"(
     using std;
     function main() i32 {
-      var result: AccessResult<i32> = AccessResult.Ok(1);
-      match result { (e: ref Vec<u8>) => { return 1; }, _ => {} };
+      try {} catch (e: Vec<u8>) { return 1; }
       return 0;
     }
   )");
@@ -122,12 +121,12 @@ TEST(Tooling_Diagnostics_TypeNames, ternary_branch_mismatch) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var v = try Vec<u8>(alloc, 16);
-  var s = try String("hi");
+  var v =  Vec<u8>(alloc, 16);
+  var s =  String("hi");
   var r = true ? v : s;
-  return Result.Ok(0);
+  return 0;
 }
 )");
   expectNames(message, "'std.Vec<u8>' vs 'String'");

@@ -36,16 +36,16 @@ using std.thread;
 class Worker {
   var t: Thread<i32>;
 
-  init() Result<void> {
+  init()  throws {
     var x = 3;
-    this.t = try spawn([ref x]() => i32 { return x; });
+    this.t =  spawn([ref x]() => i32 { return x; });
   }
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
-  var w = try Worker();
-  return Result.Ok(0);
+function main() i32 throws {
+  var w =  Worker();
+  return 0;
 }
 )"),
                                 "Borrow check failed");
@@ -63,16 +63,16 @@ using std.thread;
 class Worker {
   var t: Thread<i32>;
 
-  init() Result<void> {
+  init()  throws {
     var x = 3;
-    this.t = try spawn([x]() => i32 { return x; });
+    this.t =  spawn([x]() => i32 { return x; });
   }
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
-  var w = try Worker();
-  return Result.Ok(0);
+function main() i32 throws {
+  var w =  Worker();
+  return 0;
 }
 )"),
                                 "Borrow check failed");
@@ -85,15 +85,15 @@ using std;
 
 using std.thread;
 
-function makeThread() Result<Thread<i32>> {
+function makeThread() Thread<i32> throws {
   var x = 3;
-  return Result.Ok(try spawn([ref x]() => i32 { return x; }));
+  return  spawn([ref x]() => i32 { return x; });
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
-  var t = try makeThread();
-  return Result.Ok(t.join());
+function main() i32 throws {
+  var t =  makeThread();
+  return t.join();
 }
 )"),
                                 "Borrow check failed");
@@ -108,16 +108,16 @@ using std;
 
 using std.thread;
 
-function makeThread() Result<Thread<i32>> {
+function makeThread() Thread<i32> throws {
   var x = 3;
-  var t = try spawn([ref x]() => i32 { return x; });
-  return Result.Ok(t);
+  var t =  spawn([ref x]() => i32 { return x; });
+  return t;
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
-  var t = try makeThread();
-  return Result.Ok(t.join());
+function main() i32 throws {
+  var t =  makeThread();
+  return t.join();
 }
 )"),
                                 "Borrow check failed");
@@ -143,15 +143,15 @@ class Counter {
   }
 }
 
-function makeThread() Result<Thread<i32>> {
+function makeThread() Thread<i32> throws {
   var c = Counter();
-  return Result.Ok(try spawn(c.get));
+  return  spawn(c.get);
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
-  var t = try makeThread();
-  return Result.Ok(t.join());
+function main() i32 throws {
+  var t =  makeThread();
+  return t.join();
 }
 )"),
                                 "Borrow check failed");
@@ -170,26 +170,26 @@ TEST(Lambdas_FrameBoundHandles,
 using std;
 using std.thread;
 
-function makeThreads(alloc: const ref HeapAllocator) Result<Vec<Thread<i32>>> {
+function makeThreads(alloc: const ref HeapAllocator) Vec<Thread<i32>> throws {
   var x = 3;
-  var v = try Vec<Thread<i32>>(alloc, 4);
-  try v.push(try spawn([ref x]() => i32 { return x; }));
-  return Result.Ok(v);
+  var v =  Vec<Thread<i32>>(alloc, 4);
+   v.push( spawn([ref x]() => i32 { return x; }));
+  return v;
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var v = try makeThreads(alloc);
+  var v =  makeThreads(alloc);
   match (v.pop()) {
     Option.Some(t) => {
-      return Result.Ok(t.join());
+      return t.join();
     },
     Option.None => {
-      return Result.Ok(-1);
+      return -1;
     }
   };
-  return Result.Ok(0);
+  return 0;
 }
 )"),
                                 "Borrow check failed");
@@ -209,10 +209,10 @@ function consume(t: Thread<i32>) i32 {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var x = 3;
-  var t = try spawn([ref x]() => i32 { return x; });
-  return Result.Ok(consume(t));
+  var t =  spawn([ref x]() => i32 { return x; });
+  return consume(t);
 }
 )"),
                                 "Borrow check failed");
@@ -235,11 +235,11 @@ class Box {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var x = 3;
-  var t = try spawn([ref x]() => i32 { return x; });
+  var t =  spawn([ref x]() => i32 { return x; });
   var b = Box(t);
-  return Result.Ok(0);
+  return 0;
 }
 )"),
                                 "Borrow check failed");
@@ -254,11 +254,11 @@ using std;
 using std.thread;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var x = 3;
-  var t = try spawn([ref x]() => i32 { return x; });
+  var t =  spawn([ref x]() => i32 { return x; });
   var o = Option.Some(t);
-  return Result.Ok(0);
+  return 0;
 }
 )"),
                                 "Borrow check failed");
@@ -272,11 +272,11 @@ using std;
 using std.thread;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var x = 3;
   var sink = (t: Thread<i32>) => i32 { return t.join(); };
-  var t = try spawn([ref x]() => i32 { return x; });
-  return Result.Ok(sink(t));
+  var t =  spawn([ref x]() => i32 { return x; });
+  return sink(t);
 }
 )"),
                                 "Borrow check failed");
@@ -291,11 +291,11 @@ using std;
 using std.thread;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var x = 3;
-  var arr = [try spawn(() => i32 { return 0; })];
-  arr[0] = try spawn([ref x]() => i32 { return x; });
-  return Result.Ok(0);
+  var arr = [ spawn(() => i32 { return 0; })];
+  arr[0] =  spawn([ref x]() => i32 { return x; });
+  return 0;
 }
 )"),
                                 "Borrow check failed");
@@ -310,16 +310,13 @@ using std;
 
     using std.thread;
     /** Rejects returning an array whose thread captures a local variable. */
-function make() array<Thread<i32>, 1> {
+function make() array<Thread<i32>, 1> throws {
   var x = 3;
-  var thread = match spawn([ref x]() => i32 { return x; }) {
-    AllocationResult.Ok(value) => value,
-    _ => { std.panic("unexpected thread setup failure"); return make(); }
-  };
+  var thread = spawn([ref x]() => i32 { return x; });
   var a = [thread];
   return a;
 }
-    function main() i32 {
+    function main() i32 throws {
       return 0;
     }
   )"),
@@ -337,25 +334,20 @@ using std.thread;
 
 /** Handles this global initializer’s failure at the startup boundary. */
 function initialize_gt() Thread<i32> {
-  return match spawn(() => i32 { return 0; }) {
-    AllocationResult.Ok(value) => value,
-    _ => {
-      std.panic("unexpected global initialization failure");
-      initialize_gt();
-    }
-  };
+  try { var value = spawn(() => i32 { return 0; });
+return value; } catch { std.panic("unexpected global initialization failure");return initialize_gt(); }
 }
 var gt: Thread<i32> = initialize_gt();
-function park() Result<void> {
+function park() void throws {
   var x = 3;
-  gt = try spawn([ref x]() => i32 { return x; });
-  return Result.Ok;
+  gt =  spawn([ref x]() => i32 { return x; });
+  return;
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
-  try park();
-  return Result.Ok(0);
+function main() i32 throws {
+   park();
+  return 0;
 }
 )"),
                                 "Borrow check failed");
@@ -367,17 +359,17 @@ TEST(Lambdas_FrameBoundHandles, match_arm_cannot_escape_captured_local_scope) {
 using std;
 using std.thread;
 /** Attempt to store a match result beyond its captured local's scope. */
-function check() Result<void> {
-  var worker = try spawn(() => i32 { return 0; });
+function check() void throws {
+  var worker =  spawn(() => i32 { return 0; });
   if (true) {
     var local: i32 = 42;
     worker = match true {
-      true => { try spawn([ref local]() => i32 { return local; }); },
-      false => { try spawn(() => i32 { return 0; }); }
+      true => {  spawn([ref local]() => i32 { return local; }); },
+      false => {  spawn(() => i32 { return 0; }); }
     };
   }
   worker.join();
-  return Result.Ok;
+  return;
 }
 /** Supply an entry point without running the invalid function. */
 function main() i32 { return 0; }

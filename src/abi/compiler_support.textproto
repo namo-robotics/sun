@@ -2,6 +2,8 @@
 schema: 1
 rules { name: "moon.interface" version: "1" binding: "moon_interface_v1" }
 rules { name: "moon.metadata" version: "1" binding: "moon_metadata_v1" }
+rules { name: "sun.exceptions.bounded" version: "1" binding: "sun_bounded_exceptions_v1" }
+emission_defaults { name: "sun.exceptions.bounded" version: "1" }
 # Bitcode support is established by decoding and verifying each payload.
 rules { name: "llvm.bitcode" version: "reader-contract" binding: "llvm_bitcode_reader" }
 rules { name: "sun.experimental.semantics" version: "experimental" binding: "sun_semantics_experimental" }

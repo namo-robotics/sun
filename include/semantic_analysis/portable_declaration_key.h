@@ -57,8 +57,6 @@ class PortableTypeKey {
       const std::vector<PortableTypeKey>& parameters, bool canThrow,
       bool isLambda = false, bool hasRefEnvironment = false,
       bool requiresUnsafe = false);
-  /** Identify a value paired with an error alternative. */
-  static PortableTypeKey errorUnion(const PortableTypeKey& value);
   /** Return the canonical structural encoding. */
   const std::string& encoding() const { return encoded_; }
   /** Compares the stored values for equality. */

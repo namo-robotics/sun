@@ -342,9 +342,9 @@ TEST(MemorySafety_Drops_Enums, owning_enum_dropped_on_unwind) {
   auto value = executeString(withPreamble(R"(
 
 /** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
 
-class TestError {
+
+exception TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -354,32 +354,30 @@ class TestError {
   }
 }
 
-function thrower() Outcome<void> {
-  return Outcome.TestError(TestError());
+function thrower() void throws {
+  throw TestError();
 
-  return Outcome.Ok;
+  return;
 }
 
-function middle() Outcome<void> {
+function middle() void throws {
   var h = Holder.Hold(Owner(1));
-  try thrower();
+   thrower();
 
-  return Outcome.Ok;
+  return;
 }
 
 function main() i32 {
   /** Executes a fallible operation. */
-  var attempt_0 = () => Outcome<void> {
-    try middle();
+  var attempt_0 = () => void throws {
+     middle();
 
-    return Outcome.Ok;
+    return;
   };
-  match attempt_0() {
-    Outcome.Ok => {},
-    (e: ref TestError) => {
+  try { attempt_0();
+ } catch (e: TestError) {
       return counter;
-    }
-  };
+     }
   return -1;
 }
 )"));
@@ -466,16 +464,16 @@ TEST(MemorySafety_Drops_Enums, option_of_string_via_stdlib) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var maybe = Option.Some(try String(alloc, "hello"));
+  var maybe = Option.Some( String(alloc, "hello"));
   var len: i64 = match maybe {
     Option.Some(s) => s.length(),
     Option.None => -1
   };
   var maybe2 = maybe;
   var none: Option<String> = Option.None;
-  return Result.Ok(_convert<i32>(len));
+  return _convert<i32>(len);
 }
 )");
   // Option<String> compiles, matches, moves, and drops without crashing
@@ -486,19 +484,19 @@ TEST(MemorySafety_Drops_Enums, vec_of_option_of_owner_drops_elements) {
   auto value = sun::driver::executeStringWithStdlib(withPreamble(R"(
 using std;
 
-function helper() Result<i32> {
+function helper() i32 throws {
   var alloc = make_heap_allocator();
-  var v = try Vec<Holder>(alloc, 4);
-  try v.push(Holder.Hold(Owner(1)));
-  try v.push(Holder.Nothing);
-  try v.push(Holder.Hold(Owner(2)));
-  return Result.Ok(0);
+  var v =  Vec<Holder>(alloc, 4);
+   v.push(Holder.Hold(Owner(1)));
+   v.push(Holder.Nothing);
+   v.push(Holder.Hold(Owner(2)));
+  return 0;
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
-  try helper();
-  return Result.Ok(counter);
+function main() i32 throws {
+   helper();
+  return counter;
 }
 )"));
   EXPECT_EQ(value, 2);
@@ -547,7 +545,7 @@ TEST(MemorySafety_Drops_Enums, cross_moon_owning_enum_drops_once) {
       public module droplib {
           public class Res {
               public var cell: raw_ptr<i32>;
-              public var id: i32;
+              public var id: i32 = 0;
               init(cell: raw_ptr<i32>, id: i32) {
                   this.cell = cell;
                   this.id = id;

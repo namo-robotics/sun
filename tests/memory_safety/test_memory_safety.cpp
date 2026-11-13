@@ -21,11 +21,11 @@ TEST(MemorySafety, use_after_move_simple) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i64> {
+function main() i64 throws {
   var allocator = make_heap_allocator();
-  var s = try String(allocator, "Hello");
+  var s =  String(allocator, "Hello");
   var s2 = s;  // s is moved here
-  return Result.Ok(s.length());  // ERROR: use of moved variable
+  return s.length();  // ERROR: use of moved variable
 }
 )"),
                                 "Borrow check failed");
@@ -37,11 +37,11 @@ TEST(MemorySafety, use_after_move_field_access) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i64> {
+function main() i64 throws {
   var allocator = make_heap_allocator();
-  var s = try String(allocator, "Test");
+  var s =  String(allocator, "Test");
   var s2 = s;
-  return Result.Ok(s.length());  // ERROR: accessing member of moved variable
+  return s.length();  // ERROR: accessing member of moved variable
 }
 )"),
                                 "Borrow check failed");
@@ -61,11 +61,11 @@ function get_len(s: ref String) i64 {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i64> {
+function main() i64 throws {
   var allocator = make_heap_allocator();
-  var s = try String(allocator, "Hello");
+  var s =  String(allocator, "Hello");
   var len = get_len(s);  // Borrow, not move
-  return Result.Ok(s.length());  // OK: s still valid
+  return s.length();  // OK: s still valid
 }
 )");
   EXPECT_EQ(value, 5);
@@ -163,12 +163,12 @@ TEST(MemorySafety, double_move) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i64> {
+function main() i64 throws {
   var allocator = make_heap_allocator();
-  var s = try String(allocator, "Hello");
+  var s =  String(allocator, "Hello");
   var s2 = s;  // First move
   var s3 = s;  // ERROR: s already moved
-  return Result.Ok(0);
+  return 0;
 }
 )"),
                                 "Borrow check failed");
@@ -184,11 +184,11 @@ TEST(MemorySafety, use_moved_to_variable) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i64> {
+function main() i64 throws {
   var allocator = make_heap_allocator();
-  var s = try String(allocator, "Hello");
+  var s =  String(allocator, "Hello");
   var s2 = s;
-  return Result.Ok(s2.length());  // OK: s2 owns the data now
+  return s2.length();  // OK: s2 owns the data now
 }
 )");
   EXPECT_EQ(value, 5);
@@ -235,12 +235,12 @@ using std;
 using std.linalg;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i64> {
+function main() i64 throws {
   var allocator = make_heap_allocator();
   var shape: array<i64, 1> = [10];
-  var m = try Matrix<i64>(allocator, shape);
+  var m =  Matrix<i64>(allocator, shape);
   var m2 = m;  // Move
-  return Result.Ok(m.size());  // ERROR: m was moved
+  return m.size();  // ERROR: m was moved
 }
 )"),
                                 "Borrow check failed");
@@ -257,12 +257,12 @@ function get_size(m: ref Matrix<i64>) i64 {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i64> {
+function main() i64 throws {
   var allocator = make_heap_allocator();
   var shape: array<i64, 1> = [10];
-  var m = try Matrix<i64>(allocator, shape);
+  var m =  Matrix<i64>(allocator, shape);
   var sz = get_size(m);  // Borrow
-  return Result.Ok(m.size());  // OK: m still valid
+  return m.size();  // OK: m still valid
 }
 )");
   EXPECT_EQ(value, 10);
@@ -275,11 +275,11 @@ using std;
 using std.linalg;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i64> {
+function main() i64 throws {
   var allocator = make_heap_allocator();
   var shape: array<i64, 1> = [10];
-  var m = try Matrix<i32>(allocator, shape);
-  return Result.Ok(m.size());  // OK: m still valid
+  var m =  Matrix<i32>(allocator, shape);
+  return m.size();  // OK: m still valid
 }
 )");
   EXPECT_EQ(value, 10);
@@ -295,11 +295,11 @@ TEST(MemorySafety, allocator_use_after_move) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i64> {
+function main() i64 throws {
   var a = make_heap_allocator();
   var a2 = a;  // Move
-  var s = try String(a, "Hello");  // ERROR: a was moved
-  return Result.Ok(s.length());
+  var s =  String(a, "Hello");  // ERROR: a was moved
+  return s.length();
 }
 )"),
                                 "Borrow check failed");
@@ -311,12 +311,12 @@ TEST(MemorySafety, allocator_copy_valid) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i64> {
+function main() i64 throws {
   var a = make_heap_allocator();
   var a2 = a.copy();  // Get a copy, a still valid
-  var s1 = try String(a, "Hello");
-  var s2 = try String(a2, "World");
-  return Result.Ok(s1.length() + s2.length());
+  var s1 =  String(a, "Hello");
+  var s2 =  String(a2, "World");
+  return s1.length() + s2.length();
 }
 )");
   EXPECT_EQ(value, 10);
@@ -354,7 +354,7 @@ TEST(MemorySafety, ref_to_temporary_rejected) {
       function make_value() i32 {
           return 42;
       }
-      
+
       function main() i32 {
           ref r = make_value();  // ERROR: reference must be bound to a variable
           return r;
@@ -373,7 +373,7 @@ TEST(MemorySafety, cannot_return_reference_type) {
       function get_ref(x: ref i32) ref i32 {
           return x;  // ERROR: functions cannot return reference types
       }
-      
+
       function main() i32 {
           var x: i32 = 42;
           ref r = get_ref(x);
@@ -434,15 +434,15 @@ TEST(MemorySafety, raw_ptr_null_check_pattern) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var p: raw_ptr<i32> = try alloc.alloc<i32>(1);
+  var p: raw_ptr<i32> =  alloc.alloc<i32>(1);
   // In real code you'd check if p is null before use
   // This test just verifies the allocation works
   unsafe { _store<i32>(p, 0, 42); };
   var loaded: i32 = unsafe { _load<i32>(p, 0); };
   alloc.dealloc<i32>(p, 1);
-  return Result.Ok(loaded);
+  return loaded;
 }
 )");
   EXPECT_EQ(value, 42);
@@ -458,7 +458,7 @@ TEST(MemorySafety, sequential_borrows_valid) {
     function use_ref(r: ref i32) i32 {
         return r;
     }
-    
+
     function main() i32 {
         var x: i32 = 10;
         var a: i32 = use_ref(x);  // First borrow ends after call
@@ -480,7 +480,7 @@ TEST(MemorySafety, nested_borrow_sequential) {
         r = r + 1;
         return r;
     }
-    
+
     function main() i32 {
         var x: i32 = 0;
         increment(x);  // Borrow 1
@@ -502,10 +502,10 @@ TEST(MemorySafety, owned_value_local_use) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i64> {
+function main() i64 throws {
   var alloc = make_heap_allocator();
-  var s = try String(alloc, "Hello");
-  return Result.Ok(s.length());
+  var s =  String(alloc, "Hello");
+  return s.length();
 }
 )");
   EXPECT_EQ(value, 5);
@@ -524,7 +524,7 @@ TEST(MemorySafety_LifetimeInference, ref_return_from_param_ok) {
         p = p + v;
         return p;
     }
-    
+
     function main() i32 {
         var x: i32 = 40;
         // Call directly - ref return gets dereferenced automatically
@@ -560,7 +560,7 @@ TEST(MemorySafety_LifetimeInference, ref_return_member_of_param_ok) {
             return this.x;
         }
     }
-    
+
     function main() i32 {
         var p = Point(10, 20);
         // Use method that returns ref directly
@@ -575,17 +575,17 @@ TEST(MemorySafety_LifetimeInference, ref_return_from_this_ok) {
   auto value = executeString(R"(
     class Container {
         var value: i32;
-        
+
         init(v: i32) {
             this.value = v;
         }
-        
+
         method get_and_inc() ref i32 {
             this.value = this.value + 1;
             return this.value;
         }
     }
-    
+
     function main() i32 {
         var c = Container(98);
         // Call directly - ref return gets dereferenced
@@ -620,7 +620,7 @@ TEST(MemorySafety_LifetimeInference, ref_return_multiple_params_ok) {
         };
         return b;
     }
-    
+
     function main() i32 {
         var x: i32 = 100;
         var y: i32 = 200;
@@ -638,7 +638,7 @@ TEST(MemorySafety_LifetimeInference, ref_return_array_element_ok) {
         arr[i] = v;
         return arr[i];
     }
-    
+
     function main() i32 {
         var data: array<i32, 3> = [10, 0, 30];
         // Use ref return directly

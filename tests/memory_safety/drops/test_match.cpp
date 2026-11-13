@@ -167,23 +167,23 @@ TEST(MemorySafety_Drops_Match, string_buffer_survives_match_and_return) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
 using std;
 
-function make(alloc: const ref HeapAllocator, flag: bool) Result<String> {
-  return Result.Ok(
+function make(alloc: const ref HeapAllocator, flag: bool) String throws {
+  return
     match flag {
-      true => try String(alloc, "hello"),
-      _ => try String(alloc, "world")
+      true =>  String(alloc, "hello"),
+      _ =>  String(alloc, "world")
     }
-  );
+  ;
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var s = try make(alloc, true);
+  var s =  make(alloc, true);
   if (s.equals_literal("hello")) {
-    return Result.Ok(1);
+    return 1;
   }
-  return Result.Ok(0);
+  return 0;
 }
 )"),
             1);
@@ -227,9 +227,9 @@ TEST(MemorySafety_Drops_Match, unwind_cleans_owned_payloads) {
   EXPECT_EQ(executeString(program(R"(
 
 /** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), Error(Error) }
 
-class Error {
+
+exception Error {
   init() {}
   const method code() i32 {
     return 1;
@@ -238,37 +238,35 @@ class Error {
     return "error";
   }
 }
-function fail() Outcome<void> {
-  return Outcome.Error(Error());
-  return Outcome.Ok;
+function fail() void throws {
+  throw Error();
+  return;
 }
 function sink(r: Res) void {}
-function run(t: Triple) Outcome<void> {
+function run(t: Triple) void throws {
   match t {
     Triple.Left(a, b, c) => {
       sink(a);
-      try fail();
+       fail();
     },
     Triple.Right(a, b, c) => {
       sink(a);
-      try fail();
+       fail();
     }
   };
 
-  return Outcome.Ok;
+  return;
 }
 function main() i32 {
   /** Executes a fallible operation. */
-  var attempt_0 = () => Outcome<void> {
-    try run(Triple.Left(Res(1), Res(2), Res(3)));
-    return Outcome.Ok;
+  var attempt_0 = () => void throws {
+     run(Triple.Left(Res(1), Res(2), Res(3)));
+    return;
   };
-  match attempt_0() {
-    Outcome.Ok => {},
-    (e: ref Error) => {
+  try { attempt_0();
+ } catch (e: Error) {
       return drops;
-    }
-  };
+     }
   return -1;
 }
 )")),
@@ -425,15 +423,12 @@ TEST(MemorySafety_Drops_Match, thrown_payload_survives_unwind) {
   EXPECT_EQ(executeString(program(R"(
 
 /** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), Error(Error) }
 
-class Error {
-  var id: i32;
+
+exception Error {
+  var id: i32 = 0;
   init() {
     this.id = 7;
-  }
-  deinit() {
-    this.id = 0;
   }
   const method code() i32 {
     return this.id;
@@ -443,31 +438,26 @@ class Error {
   }
 }
 enum Errors { One(Error, Res) }
-function run() Outcome<i32> {
+function run() i32 throws {
   /** Executes a fallible operation. */
-  var attempt_0 = () => Outcome<void> {
+  var attempt_0 = () => void throws {
     var errors = Errors.One(Error(), Res(1));
     match errors {
       Errors.One(e, _) => {
-        return Outcome.Error(e);
+        throw e;
       }
     };
 
-    return Outcome.Ok;
+    return;
   };
-  match attempt_0() {
-    Outcome.Ok => {},
-    (e: ref Error) => {
-      return Outcome.Ok(e.code());
-    }
-  };
-  return Outcome.Ok(-1);
+  try { attempt_0();
+ } catch (e: Error) {
+      return e.code();
+     }
+  return -1;
 }
-function main() i32 {
-  if (match run() {
-    Outcome.Ok(value) => value,
-    _ => -1
-  } != 7) {
+function main() i32 throws {
+  if (run() != 7) {
     return 100;
   }
   return drops;

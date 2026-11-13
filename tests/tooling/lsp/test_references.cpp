@@ -432,33 +432,28 @@ function main() i32 {
 
 TEST(Tooling_Lsp_References, CatchBinding) {
   std::string source = R"(
-class Oops {
+exception Oops {
     init() {}
     const method code() i32 { return 1; }
     const method message() static_ptr<u8> { return "oops"; }
 }
-function risky(x: i32) _Result<i32, Oops> {
-    if (x < 0) { return _Result.Err(Oops()); }
-    return _Result.Ok(x);
+function risky(x: i32) i32 throws {
+    if (x < 0) { throw Oops(); }
+    return x;
 }
 function main() i32 {
-    return match risky(1) {
-      _Result.Ok(value) => value,
-      _Result.Err(err) => {
-        return err.code() + err.code();
-      }
-    };
+    try { return risky(1); } catch (err: Oops) { return err.code() + err.code(); }
 }
 )";
   EXPECT_TRUE(
       refersTo(source, "err.code() +", true,
-               {{"err) =>"}, {"err.code() +"}, {"err.code();"}}));
+               {{"err: Oops"}, {"err.code() +"}, {"err.code();"}}));
   // The cursor on the binding's own declaration
   EXPECT_TRUE(
-      refersTo(source, "err) =>", true,
-               {{"err) =>"}, {"err.code() +"}, {"err.code();"}}));
-  EXPECT_TRUE(refersTo(source, "Oops());", true,
-               {{"Oops {"}, {"Oops>"}, {"Oops());"}}));
+      refersTo(source, "err: Oops", true,
+               {{"err: Oops"}, {"err.code() +"}, {"err.code();"}}));
+  EXPECT_TRUE(refersTo(source, "Oops();", true,
+               {{"Oops {"}, {"Oops)"}, {"Oops();"}}));
 }
 
 TEST(Tooling_Lsp_References, MergedFiles) {
@@ -521,16 +516,16 @@ TEST(Tooling_Lsp_References, StdlibReferences) {
   }
   std::string source = R"(
 using std;
-function main() AllocationResult<i64> {
+function main() i64 throws {
     var allocator = make_heap_allocator();
-    var v = try Vec<i64>(allocator, 8);
-    try v.push(1);
-    try v.push(2);
+    var v =  Vec<i64>(allocator, 8);
+     v.push(1);
+     v.push(2);
     var sum: i64 = 0;
     for (var item: i64 in v) {
         sum = sum + item;
     }
-    return AllocationResult.Ok(sum);
+    return sum;
 }
 )";
   // Reuse the analyzed document for every reference query.
@@ -582,4 +577,17 @@ function main() AllocationResult<i64> {
   EXPECT_EQ(item[0].range.offset,
             static_cast<int>(offsetOf(source, "item: i64 in v")));
   EXPECT_EQ(item[1].range.offset, static_cast<int>(offsetOf(source, "item;")));
+}
+
+/** References include an exception family's inheritance uses. */
+TEST(Tooling_Lsp_References, ExceptionParent) {
+  const std::string source = R"(
+    /** Groups related failures. */
+    exception Failure {}
+    /** Retains its parent as a navigable type reference. */
+    exception DeviceFailure extends Failure {}
+    function main() i32 { return 0; }
+)";
+  EXPECT_TRUE(refersTo(source, "Failure {}", true,
+                      {{"Failure {}", 0}, {"Failure {}", 1}}));
 }

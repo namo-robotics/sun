@@ -24,12 +24,12 @@ TEST(EndToEnd_Testing, all_passing_tests_exit_zero) {
         }
 
         test_function addsOne() {
-            try std.test.assert_eq(geometry.addOne(1), 2);
+             std.test.assert_eq(geometry.addOne(1), 2);
         }
     }
 
     test_function rootAssertHolds() {
-        try std.test.assert(true);
+         std.test.assert(true);
     }
   )";
   EXPECT_EQ(executeTestsWithStdlib(program), 0);
@@ -45,11 +45,11 @@ TEST(EndToEnd_Testing, a_failing_test_exits_one) {
     using std;
 
     test_function passes() {
-        try std.test.assert(true);
+         std.test.assert(true);
     }
 
     test_function fails() {
-        try std.test.assert_eq(1, 2);
+         std.test.assert_eq(1, 2);
     }
   )";
   EXPECT_EQ(executeTestsWithStdlib(program), 1);
@@ -73,7 +73,7 @@ TEST(EndToEnd_Testing, tests_reach_module_private_helpers) {
         }
 
         test_function bumps() {
-            try std.test.assert_eq(counter.bump(), counter.count);
+             std.test.assert_eq(counter.bump(), counter.count);
         }
     }
   )"),
@@ -102,11 +102,11 @@ TEST(EndToEnd_Testing, fixture_teardown_runs_on_failure) {
         // Tests live in the module so they reach its private Fixture.
         test_function failsButCleansUp() {
             var f = fx.Fixture();
-            try std.test.fail("intentional");
+             std.test.fail("intentional");
         }
 
         test_function teardownRan() {
-            try std.test.assert_eq(fx.teardowns, 1);
+             std.test.assert_eq(fx.teardowns, 1);
         }
     }
   )",
@@ -116,16 +116,16 @@ TEST(EndToEnd_Testing, fixture_teardown_runs_on_failure) {
 
 // An uncaught error from a test is a failure like any other, and a thrown
 // error's message reaches the report path without crashing the runner.
-TEST(EndToEnd_Testing, a_returned_error_fails_the_test) {
+TEST(EndToEnd_Testing, an_uncaught_exception_fails_the_test) {
   EXPECT_EQ(executeTestsWithStdlib(R"(
     using std;
 
-    test_function returnsAnError() _Result<void, Error> {
-        return _Result.Err(Error(9, "kaboom"));
+    test_function returnsAnError() void throws {
+        throw Error(9, "kaboom");
     }
 
     test_function stillRuns() {
-        try std.test.assert(true);
+         std.test.assert(true);
     }
   )"),
             1);
@@ -159,7 +159,7 @@ TEST(EndToEnd_Testing, user_main_is_replaced_and_optional) {
     }
 
     test_function runs() {
-        try std.test.assert(true);
+         std.test.assert(true);
     }
   )"),
             0);
@@ -168,7 +168,7 @@ TEST(EndToEnd_Testing, user_main_is_replaced_and_optional) {
     using std;
 
     test_function noMainNeeded() {
-        try std.test.assert(true);
+         std.test.assert(true);
     }
   )"),
             0);
@@ -180,7 +180,7 @@ TEST(EndToEnd_Testing, production_compile_ignores_tests) {
     using std;
 
     test_function ignored() {
-        try std.test.assert(true);
+         std.test.assert(true);
     }
 
     function main() i32 { return 0; }
@@ -195,17 +195,17 @@ static const char* kFilterProgram = R"(
 
     module geometry {
         test_function passes() {
-            try std.test.assert(true);
+             std.test.assert(true);
         }
 
         test_function alsoPasses() {
-            try std.test.assert(true);
+             std.test.assert(true);
         }
     }
 
     module physics {
         test_function fails() {
-            try std.test.assert(false);
+             std.test.assert(false);
         }
     }
 )";
@@ -281,81 +281,71 @@ TEST(EndToEnd_Testing, example_program_compiles_in_production) {
           .string()));
 }
 
-/** _Result-returning tests report failures and release fixtures in both runner
- * modes. */
-TEST(EndToEnd_Testing, returned_errors_fail_tests) {
+/** Uncaught concrete exceptions fail tests in both runner modes. */
+TEST(EndToEnd_Testing, uncaught_exceptions_fail_both_runner_modes) {
   const std::string program = R"(
     using std;
     /** Provides a concrete alternate failure. */
-    class Failure implements IError {
+    exception Failure implements IError {
       /** Constructs the marker. */
       init() {}
       /** Identifies the failure. */
       public const method code() i32 { return 42; }
       /** Returns an owned diagnostic message. */
-      public const method message() AllocationResult<String> { return String("returned failure"); }
+      public const method message() String throws { return String("returned failure"); }
     }
-    /** Collects the errors this test can return. */
-    enum TestError { Assertion(std.test.AssertionError), Other(Failure) }
     /** Succeeds through its implicit unit result. */
-    test_function passes() _Result<void, std.test.AssertionError> {}
+    test_function passes() void throws {}
     /** Succeeds through an early bare return. */
-    test_function early() _Result<void, std.test.AssertionError> { return; }
+    test_function early() void throws { return; }
     /** Reports a concrete error through the runner's common interface. */
-    test_function fails() _Result<void, TestError> { return _Result.Err(TestError.Other(Failure())); }
+    test_function fails() void throws { throw Failure(); }
   )";
   EXPECT_EQ(executeTestsWithStdlib(program), 1);
   const char* argv[] = {"program", "--test-sequential", nullptr};
   EXPECT_EQ(executeTestsWithStdlib(program, 2, const_cast<char**>(argv)), 1);
 }
 
-/** Custom result tests use declaration-order success and report concrete
- * errors. */
-TEST(EndToEnd_Testing, custom_result_tests) {
+/** Tests pass with implicit or explicit void returns in both runner modes. */
+TEST(EndToEnd_Testing, void_tests_support_implicit_and_explicit_return) {
   const std::string program = R"(
     using std;
-    /** Combines assertions with failures from system calls. */
-    enum Outcome { Passed, Assertion(std.test.AssertionError), System(Error), Failure0(AllocationError), Failure1(InvalidArgumentError), Failure2(OverflowError), Failure3(IndexOutOfBoundsError), Failure4(NotFoundError), Failure5(EmptyError), Failure6(IOError), Failure7(ConversionError), Failure8(DivisionByZeroError), Failure9(ArithmeticError), Failure10(std.json.JsonError), Failure11(std.xml.XmlError), Failure12(ProtoDecodeError) }
     /** Returns success implicitly. */
-    test_function implicit_success() Outcome {
-      try std.test.assert_eq(2 + 2, 4);
+    test_function implicit_success() {
+       std.test.assert_eq(2 + 2, 4);
     }
     /** Returns success through a bare return. */
-    test_function early_success() Outcome { return; }
+    test_function early_success() { return; }
     /** Accepts a result enum supplied by the standard library. */
-    test_function library_success() SystemResult<void> { return; }
+    test_function library_success() void throws { return; }
     /** Coexists with the default builtin result convention. */
-    test_function legacy_success() { try std.test.assert(true); }
+    test_function legacy_success() {  std.test.assert(true); }
   )";
   EXPECT_EQ(executeTestsWithStdlib(program), 0);
   const char* argv[] = {"program", "--test-sequential", nullptr};
   EXPECT_EQ(executeTestsWithStdlib(program, 2, const_cast<char**>(argv)), 0);
 }
 
-/** A concrete failure in a custom test result fails the test run. */
-TEST(EndToEnd_Testing, custom_result_failure_exits_one) {
+/** An assertion exception fails the test run. */
+TEST(EndToEnd_Testing, assertion_exception_exits_one) {
   const std::string program = R"(
     using std;
-    /** Reports assertion failures directly in a test-owned enum. */
-    enum Outcome { Passed, Assertion(std.test.AssertionError), Failure0(AllocationError), Failure1(InvalidArgumentError), Failure2(OverflowError), Failure3(IndexOutOfBoundsError), Failure4(NotFoundError), Failure5(EmptyError), Failure6(IOError), Failure7(ConversionError), Failure8(DivisionByZeroError), Failure9(ArithmeticError), Failure10(std.json.JsonError), Failure11(std.xml.XmlError), Failure12(ProtoDecodeError), Failure13(Error) }
     /** Propagates an assertion failure through a custom result. */
-    test_function fails() Outcome { try std.test.assert(false, "custom failure"); }
+    test_function fails() {  std.test.assert(false, "custom failure"); }
   )";
   EXPECT_EQ(executeTestsWithStdlib(program), 1);
   const char* argv[] = {"program", "--test-sequential", nullptr};
   EXPECT_EQ(executeTestsWithStdlib(program, 2, const_cast<char**>(argv)), 1);
 }
 
-/** Custom results report builtin arithmetic failures in both runner modes. */
-TEST(EndToEnd_Testing, custom_result_arithmetic_failure_exits_one) {
+/** Checked arithmetic exceptions fail tests in both runner modes. */
+TEST(EndToEnd_Testing, arithmetic_exception_exits_one) {
   const std::string program = R"(
     using std;
-    /** Combines ordinary assertions with checked arithmetic failures. */
-    enum Outcome { Passed, Assertion(std.test.AssertionError), Arithmetic(ArithmeticError), Failure0(AllocationError), Failure1(InvalidArgumentError), Failure2(OverflowError), Failure3(IndexOutOfBoundsError), Failure4(NotFoundError), Failure5(EmptyError), Failure6(IOError), Failure7(ConversionError), Failure8(DivisionByZeroError), Failure10(std.json.JsonError), Failure11(std.xml.XmlError), Failure12(ProtoDecodeError), Failure13(Error) }
     /** Accepts the standard result's arithmetic variant on a successful test. */
-    test_function succeeds() Result<void> { return; }
+    test_function succeeds() void throws { return; }
     /** Reports checked division failure through a custom result. */
-    test_function fails() Outcome { var value = try std.checked_div(10, 0); }
+    test_function fails() { var value =  std.checked_div(10, 0); }
   )";
   EXPECT_EQ(executeTestsWithStdlib(program), 1);
   const char* argv[] = {"program", "--test-sequential", nullptr};
@@ -363,7 +353,7 @@ TEST(EndToEnd_Testing, custom_result_arithmetic_failure_exits_one) {
 }
 
 /** Failure payloads cannot silently evade the test runner's error matching. */
-TEST(EndToEnd_Testing, rejects_non_error_test_payload) {
+TEST(EndToEnd_Testing, rejects_non_void_test_return) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       executeTestsWithStdlib(R"(
     /** An integer is not a reportable test failure. */
@@ -371,20 +361,20 @@ TEST(EndToEnd_Testing, rejects_non_error_test_payload) {
     /** Attempts to return an unsupported error payload. */
     test_function invalid() Outcome { return Outcome.Failure(1); }
   )"),
-      "Test failure variants must own a concrete std.IError payload");
+      "test functions return void");
 }
 
-/** Tests without annotations return the standard assertion enum. */
-TEST(EndToEnd_Testing, default_assertion_result) {
+/** Tests without annotations use void returns and allow exceptions. */
+TEST(EndToEnd_Testing, default_void_test_contract) {
   EXPECT_EQ(executeTestsWithStdlib(R"(
     /** Returns the default library success explicitly. */
-    test_function success() { return std.test.AssertionResult.Ok; }
+    test_function success() { return; }
   )"),
             0);
   EXPECT_EQ(executeTestsWithStdlib(R"(
     /** Returns the default library failure explicitly. */
     test_function failure() {
-      return std.test.AssertionResult.Error(std.test.AssertionError("explicit failure"));
+      throw std.test.AssertionError("explicit failure");
     }
   )"),
             1);
@@ -405,33 +395,25 @@ TEST(EndToEnd_Testing, public_errno_and_nonblocking_helpers) {
         /** Check flag changes, restoration, and error reporting across modules. */
         test_function descriptor_helpers() {
             var listener = TcpListener();
-            try std.test.expect_system_success(listener.bind_loopback(0));
+             listener.bind_loopback(0);
             var fd: i32 = listener.get_fd();
             var original: i32 = unsafe { fcntl(fd, 3); };
-            try std.test.assert(original >= 0);
-            try std.test.expect_system_success(std.net.set_fd_nonblocking(fd, true));
+             std.test.assert(original >= 0);
+             std.net.set_fd_nonblocking(fd, true);
             var enabled: i32 = unsafe { fcntl(fd, 3); };
-            try std.test.assert(enabled != original);
-            try std.test.expect_system_success(std.net.set_fd_nonblocking(fd, false));
-            try std.test.assert_eq(unsafe { fcntl(fd, 3); }, original);
+             std.test.assert(enabled != original);
+             std.net.set_fd_nonblocking(fd, false);
+             std.test.assert_eq(unsafe { fcntl(fd, 3); }, original);
 
             var failed: i32 = unsafe { fcntl(-1, 3); };
             var code: i32 = std.errno();
-            try std.test.assert_eq(failed, -1);
-            try std.test.assert(code > 0);
-            try std.test.assert(not std.net.is_would_block(code));
+             std.test.assert_eq(failed, -1);
+             std.test.assert(code > 0);
+             std.test.assert(not std.net.is_would_block(code));
             var reported: i32 = 0;
-            match std.net.set_fd_nonblocking(-1, true) {
-                SystemResult.Ok => {},
-                SystemResult.Error(e) => { reported = e.code(); }
-            ,
-SystemResult.Allocation(e) => { reported = e.code(); }
-            ,
-SystemResult.InvalidArgument(e) => { reported = e.code(); }
-            ,
-SystemResult.Overflow(e) => { reported = e.code(); }
-            };
-            try std.test.assert_eq(reported, code);
+            try { std.net.set_fd_nonblocking(-1, true);
+ } catch (e: Error) {  reported = e.code();  } catch (e: AllocationError) {  reported = e.code();  } catch (e: InvalidArgumentError) {  reported = e.code();  } catch (e: OverflowError) {  reported = e.code();  }
+             std.test.assert_eq(reported, code);
         }
     }
   )"),
@@ -442,9 +424,9 @@ SystemResult.Overflow(e) => { reported = e.code(); }
 TEST(EndToEnd_Testing, concrete_arithmetic_errors_fail_tests) {
   EXPECT_EQ(executeTestsWithStdlib(R"(
     /** Propagates the standard-library failure from checked division. */
-    test_function checked_failure() _Result<void, std.ArithmeticError> {
-      var value = try std.checked_div(10, 0);
-      return _Result.Ok;
+    test_function checked_failure() void throws {
+      var value =  std.checked_div(10, 0);
+      return;
     }
   )"), 1);
 }

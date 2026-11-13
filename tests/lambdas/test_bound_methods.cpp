@@ -245,29 +245,25 @@ TEST(Lambdas_BoundMethods, throwing_method_into_throwing_param) {
   auto value = executeStringWithStdlib(R"(
 using std;
 /** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), Error(Error) }
+
 
 class Parser {
-  var errors: i32;
+  var errors: i32 = 0;
   init() {
     this.errors = 0;
   }
-  method parse(x: i32) Outcome<i32> {
+  method parse(x: i32) i32 throws {
     if (x < 0) {
       this.errors = this.errors + 1;
-      return Outcome.Error(Error(1, "negative"));
+      throw Error(1, "negative");
     }
-    return Outcome.Ok(x * 2);
+    return x * 2;
   }
 }
 
-function run_guarded(f: <'_>(i32) => Outcome<i32>, x: i32) i32 {
-  return match f(x) {
-    Outcome.Ok(value) => value,
-    (e: ref IError) => {
-      return -1;
-    }
-  };
+function run_guarded(f: <'_>(i32) => i32 throws, x: i32) i32 {
+  try { var value = f(x);
+return value; } catch (e: Error) { return -1; }
 }
 
 function main() i32 {
@@ -284,22 +280,18 @@ TEST(Lambdas_BoundMethods, nonthrowing_method_into_throwing_param) {
   auto value = executeStringWithStdlib(R"(
 using std;
 /** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), Error(Error) }
+
 
 class Doubler {
   init() {}
-  method twice(x: i32) Outcome<i32> {
-    return Outcome.Ok(x * 2);
+  method twice(x: i32) i32 throws {
+    return x * 2;
   }
 }
 
-function run_guarded(f: <'_>(i32) => Outcome<i32>, x: i32) i32 {
-  return match f(x) {
-    Outcome.Ok(value) => value,
-    (e: ref IError) => {
-      return -1;
-    }
-  };
+function run_guarded(f: <'_>(i32) => i32 throws, x: i32) i32 {
+  try { var value = f(x);
+return value; } catch (e: Error) { return -1; }
 }
 
 function main() i32 {
@@ -316,9 +308,9 @@ TEST(Lambdas_BoundMethods, stored_throwing_method_uncaught_rejected) {
 
     class Parser {
         init() {}
-        method parse(x: i32) SystemResult<i32> {
-            if (x < 0) { return SystemResult.Error(Error(1, "negative")); }
-            return SystemResult.Ok(x);
+        method parse(x: i32) i32 throws {
+            if (x < 0) { throw Error(1, "negative"); }
+            return x;
         }
     }
 
@@ -334,7 +326,7 @@ TEST(Lambdas_BoundMethods, stored_throwing_method_uncaught_rejected) {
 TEST(Lambdas_BoundMethods, bound_method_call_in_loop) {
   auto value = executeString(R"(
     class Counter {
-        var count: i32;
+        var count: i32 = 0;
         init() { this.count = 0; }
         method add(amount: i32) i32 {
             this.count = this.count + amount;
@@ -360,21 +352,19 @@ TEST(Lambdas_BoundMethods, stdlib_class_method_as_value) {
   auto value = executeStringWithStdlib(R"(
 using std;
 
-function apply(f: <'_>(i32) => AllocationResult<void>) AllocationResult<void> {
+function apply(f: <'_>(i32) => void throws) void throws {
   return f(42);
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var v = try Vec<i32>(allocator, 8);
-  match apply(v.push) {
-    AllocationResult.Ok => {},
-    _ => {
-      return Result.Ok(-1);
-    }
-  };
-  return Result.Ok(unsafe { v.get_unchecked(0); });
+  var v =  Vec<i32>(allocator, 8);
+  try { apply(v.push);
+ } catch {
+      return -1;
+     }
+  return unsafe { v.get_unchecked(0); };
 }
 )");
   EXPECT_EQ(value, 42);
@@ -387,11 +377,11 @@ using std;
 class Tracker {
   var alloc: HeapAllocator;
   var data: raw_ptr<u8>;
-  var hits: i32;
+  var hits: i32 = 0;
 
-  init(allocator: ref HeapAllocator) Result<void> {
+  init(allocator: ref HeapAllocator)  throws {
     this.alloc = allocator.copy();
-    this.data = try this.alloc.alloc_raw(4);
+    this.data =  this.alloc.alloc_raw(4);
     this.hits = 0;
   }
 
@@ -410,12 +400,12 @@ function apply(f: <'_>(i32) => i32, x: i32) i32 {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = HeapAllocator();
-  var t = try Tracker(alloc);
+  var t =  Tracker(alloc);
   apply(t.hit, 3);
   apply(t.hit, 4);
-  return Result.Ok(t.hits);
+  return t.hits;
 }
 )");
   EXPECT_EQ(value, 7);

@@ -143,22 +143,22 @@ using std;
 class Bag {
   var items: Vec<i32>;
 
-  init(alloc: ref HeapAllocator) Result<void> {
-    this.items = try Vec<i32>(alloc, 4);
+  init(alloc: ref HeapAllocator)  throws {
+    this.items =  Vec<i32>(alloc, 4);
   }
 
-  const method add(x: i32) Result<void> {
-    try this.items.push(x);
-    return Result.Ok;
+  const method add(x: i32) void throws {
+     this.items.push(x);
+    return;
   }
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var b = try Bag(allocator);
-  try b.add(1);
-  return Result.Ok(_convert<i32>(b.items.size()));
+  var b =  Bag(allocator);
+   b.add(1);
+  return _convert<i32>(b.items.size());
 }
 )"),
       "Cannot call non-const method 'push' on 'this' inside a const method");
@@ -449,17 +449,17 @@ function total(v: const ref Vec<i32>) i32 {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var v = try Vec<i32>(allocator, 4);
-  try v.push(1);
-  try v.push(2);
-  try v.push(3);
+  var v =  Vec<i32>(allocator, 4);
+   v.push(1);
+   v.push(2);
+   v.push(3);
   const ref cv = v;
   if (cv.is_empty()) {
-    return Result.Ok(-1);
+    return -1;
   }
-  return Result.Ok(_convert<i32>(total(v) + _convert<i32>(cv.size())));
+  return _convert<i32>(total(v) + _convert<i32>(cv.size()));
 }
 )");
   EXPECT_EQ(value, 12 + 3);
@@ -471,12 +471,12 @@ TEST(Classes_ConstMethods, const_vec_cannot_push_or_set) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var v = try Vec<i32>(allocator, 4);
+  var v =  Vec<i32>(allocator, 4);
   const ref cv = v;
   cv.push(1);
-  return Result.Ok(0);
+  return 0;
 }
 )"),
       "Cannot call non-const method 'push' on const reference 'cv'");
@@ -486,13 +486,13 @@ function main() Result<i32> {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var v = try Vec<i32>(allocator, 4);
-  try v.push(1);
+  var v =  Vec<i32>(allocator, 4);
+   v.push(1);
   const ref cv = v;
   cv[0] = 2;
-  return Result.Ok(0);
+  return 0;
 }
 )"),
       "Cannot assign to an element of const reference 'cv'");
@@ -505,15 +505,15 @@ TEST(Classes_ConstMethods, peek_accessors_are_const_views) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var v = try Vec<i32>(allocator, 4);
-  try v.push(5);
-  try v.push(7);
-  var m = try Map<i64, i32>(allocator, 8);
-  try m.insert(1, 30);
+  var v =  Vec<i32>(allocator, 4);
+   v.push(5);
+   v.push(7);
+  var m =  Map<i64, i32>(allocator, 8);
+   m.insert(1, 30);
   var l = LinkedList<i32>(allocator);
-  try l.push_back(100);
+   l.push_back(100);
   const ref cv = v;
   const ref cm = m;
   const ref cl = l;
@@ -533,7 +533,7 @@ function main() Result<i32> {
     Option.Some(x) => x,
     Option.None => -1000
   };
-  return Result.Ok(a + b + c + d);
+  return a + b + c + d;
 }
 )");
   EXPECT_EQ(value, 5 + 7 + 30 + 100);
@@ -543,10 +543,10 @@ function main() Result<i32> {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var v = try Vec<i32>(allocator, 4);
-  try v.push(5);
+  var v =  Vec<i32>(allocator, 4);
+   v.push(5);
   const ref cv = v;
   match cv.last() {
     Option.Some(x) => {
@@ -554,7 +554,7 @@ function main() Result<i32> {
     },
     Option.None => {}
   };
-  return Result.Ok(0);
+  return 0;
 }
 )"),
                                 "Cannot assign through const reference 'x'");
@@ -564,24 +564,19 @@ function main() Result<i32> {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var v = try Vec<i32>(allocator, 4);
-  try v.push(5);
+  var v =  Vec<i32>(allocator, 4);
+   v.push(5);
   match v.last() {
     Option.Some(x) => {
       x = 42;
     },
     Option.None => {}
   };
-  return Result.Ok(_convert<i32>(
-    (match v.get(0) {
-      std.AccessResult.Ok(value) => value,
-      std.AccessResult.OutOfBounds(_) => {
-        return Result.Ok(-100);
-      }
-    })
-  ));
+  return _convert<i32>(
+    (v.get(0))
+  );
 }
 )");
   EXPECT_EQ(written, 42);
@@ -625,29 +620,19 @@ TEST(Classes_ConstMethods, const_map_reads) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var m = try Map<i64, i32>(allocator, 8);
-  try m.insert(1, 10);
-  try m.insert(2, 20);
+  var m =  Map<i64, i32>(allocator, 8);
+   m.insert(1, 10);
+   m.insert(2, 20);
   const ref cm = m;
   if (not cm.contains(2)) {
-    return Result.Ok(-1);
+    return -1;
   }
-  return Result.Ok(_convert<i32>(
-    (match cm.get(1) {
-      std.LookupResult.Ok(value) => value,
-      std.LookupResult.NotFound(_) => {
-        return Result.Ok(-100);
-      }
-    }) +
-      (match cm.get(2) {
-        std.LookupResult.Ok(value) => value,
-        std.LookupResult.NotFound(_) => {
-          return Result.Ok(-100);
-        }
-      }) + _convert<i32>(cm.size())
-  ));
+  return _convert<i32>(
+    (cm.get(1)) +
+      (cm.get(2)) + _convert<i32>(cm.size())
+  );
 }
 )");
   EXPECT_EQ(value, 32);

@@ -22,25 +22,15 @@ TEST(Classes_Generic_Specializations, vec_new_primitive_specialization) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var v = try Vec<u32>(allocator, 4);
-  try v.push(100);
-  try v.push(200);
-  return Result.Ok(_convert<i32>(
-    (match v.get(0) {
-      std.AccessResult.Ok(value) => value,
-      std.AccessResult.OutOfBounds(_) => {
-        return Result.Ok(-100);
-      }
-    }) +
-      (match v.get(1) {
-        std.AccessResult.Ok(value) => value,
-        std.AccessResult.OutOfBounds(_) => {
-          return Result.Ok(-100);
-        }
-      })
-  ));
+  var v =  Vec<u32>(allocator, 4);
+   v.push(100);
+   v.push(200);
+  return _convert<i32>(
+    (v.get(0)) +
+      (v.get(1))
+  );
 }
 )");
   EXPECT_EQ(value, 300);
@@ -68,11 +58,11 @@ class Point {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
   // Just instantiate Vec<Point> to test specialization is created
-  var v = try Vec<Point>(allocator, 4);
-  return Result.Ok(_convert<i32>(v.capacity()));
+  var v =  Vec<Point>(allocator, 4);
+  return _convert<i32>(v.capacity());
 }
 )");
   EXPECT_EQ(value, 4);
@@ -100,10 +90,10 @@ class Counter {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var counter_ptr = try allocator.create<Counter>(42);
-  return Result.Ok(unsafe { counter_ptr.get(); });
+  var counter_ptr =  allocator.create<Counter>(42);
+  return unsafe { counter_ptr.get(); };
 }
 )");
   EXPECT_EQ(value, 42);
@@ -120,13 +110,13 @@ TEST(Classes_Generic_Specializations, map_new_key_value_specialization) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var m = try Map<i32, i32>(allocator, 16);
-  try m.insert(1, 100);
-  try m.insert(2, 200);
+  var m =  Map<i32, i32>(allocator, 16);
+   m.insert(1, 100);
+   m.insert(2, 200);
   // Verify size works with new key/value types
-  return Result.Ok(_convert<i32>(m.size()));
+  return _convert<i32>(m.size());
 }
 )");
   EXPECT_EQ(value, 2);

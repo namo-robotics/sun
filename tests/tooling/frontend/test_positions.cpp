@@ -277,16 +277,16 @@ TEST(Tooling_Frontend_TypeSpans, GenericsAndArrays) {
   EXPECT_EQ(spanText(src, mapArgs[1]->span), "i32");
 }
 
-TEST(Tooling_Frontend_TypeSpans, ErrorUnionReturnType) {
+TEST(Tooling_Frontend_TypeSpans, ThrowingReturnType) {
   std::string src =
-      "function divide(a: i32, b: i32) Result<i32> { return Result.Error(1); }";
+      "function divide(a: i32, b: i32) i32 throws { return a / b; }";
   auto block = parseSource(src);
   auto* fn = static_cast<FunctionAST*>(block->getBody()[0].get());
   const auto& ret = fn->getProto().getReturnType();
   ASSERT_TRUE(ret.has_value());
-  EXPECT_FALSE(ret->canError);
-  EXPECT_EQ(ret->baseName, "Result");
-  EXPECT_EQ(spanText(src, ret->span), "Result<i32>");
+  EXPECT_TRUE(ret->canError);
+  EXPECT_EQ(ret->baseName, "i32");
+  EXPECT_EQ(spanText(src, ret->span), "i32");
 }
 
 TEST(Tooling_Frontend_TypeSpans, PlainReturnType) {

@@ -42,19 +42,19 @@ TEST(MemorySafety_Drops_Containers, vec_deinit_drops_all_elements) {
   auto value = executeStringWithStdlib(withPreamble(R"(
 using std;
 
-function helper() Result<i32> {
+function helper() i32 throws {
   var alloc = make_heap_allocator();
-  var v = try Vec<Owner>(alloc, 4);
-  try v.push(Owner(1));
-  try v.push(Owner(2));
-  try v.push(Owner(3));
-  return Result.Ok(0);
+  var v =  Vec<Owner>(alloc, 4);
+   v.push(Owner(1));
+   v.push(Owner(2));
+   v.push(Owner(3));
+  return 0;
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
-  try helper();
-  return Result.Ok(counter);
+function main() i32 throws {
+   helper();
+  return counter;
 }
 )"));
   EXPECT_EQ(value, 3);
@@ -65,13 +65,13 @@ TEST(MemorySafety_Drops_Containers, vec_clear_drops_elements) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var v = try Vec<Owner>(alloc, 4);
-  try v.push(Owner(1));
-  try v.push(Owner(2));
+  var v =  Vec<Owner>(alloc, 4);
+   v.push(Owner(1));
+   v.push(Owner(2));
   v.clear();
-  return Result.Ok(counter);
+  return counter;
 }
 )"));
   EXPECT_EQ(value, 2);
@@ -82,23 +82,21 @@ TEST(MemorySafety_Drops_Containers, vec_set_drops_overwritten_element_only) {
 using std;
 
     /** Checks container ownership and propagates operation failures. */
-    function check() Result<i32> {
+    function check() i32 throws {
       var alloc = make_heap_allocator();
-      var v = try Vec<Owner>(alloc, 4);
-      try v.push(Owner(1));
-      try v.push(Owner(2));
+      var v =  Vec<Owner>(alloc, 4);
+       v.push(Owner(1));
+       v.push(Owner(2));
       if (true) {
-        try v.set(0, Owner(9));
+         v.set(0, Owner(9));
       }
-      return Result.Ok(counter);
+      return counter;
     }
 
     /** Reports any unexpected operation failure to the test harness. */
     function main() i32 {
-      return match check() {
-        Result.Ok(value) => value,
-        _ => -100
-      };
+      try { var value = check();
+return value; } catch { return -100; }
     }
   )"));
   // Only the overwritten element (id 1) dropped so far
@@ -109,29 +107,29 @@ TEST(MemorySafety_Drops_Containers, vec_pop_moves_ownership_no_double_drop) {
   auto value = executeStringWithStdlib(withPreamble(R"(
 using std;
 
-function helper() Result<i32> {
+function helper() i32 throws {
   var alloc = make_heap_allocator();
-  var v = try Vec<Owner>(alloc, 4);
-  try v.push(Owner(1));
-  try v.push(Owner(2));
+  var v =  Vec<Owner>(alloc, 4);
+   v.push(Owner(1));
+   v.push(Owner(2));
   var popped = v.pop();
   // popped (Option.Some(id 2)) is dropped at helper exit through the
   // enum drop glue; v deinit drops id 1
-  return Result.Ok(_convert<i32>(
+  return _convert<i32>(
     match popped {
       Option.Some(o) => o.get_id(),
       Option.None => -1
     }
-  ));
+  );
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
-  var id: i32 = try helper();
+function main() i32 throws {
+  var id: i32 =  helper();
   if (id != 2) {
-    return Result.Ok(-2);
+    return -2;
   }
-  return Result.Ok(counter);
+  return counter;
 }
 )"));
   // Exactly two drops total: one for the popped value, one for the element
@@ -145,35 +143,33 @@ TEST(MemorySafety_Drops_Containers,
 using std;
 
     /** Checks container ownership and propagates operation failures. */
-    function helper() Result<i32> {
+    function helper() i32 throws {
       var alloc = make_heap_allocator();
-      var v = try Vec<Owner>(alloc, 4);
-      try v.push(Owner(1));
-      try v.push(Owner(2));
-      var taken = try v.remove(0);
+      var v =  Vec<Owner>(alloc, 4);
+       v.push(Owner(1));
+       v.push(Owner(2));
+      var taken =  v.remove(0);
       // taken (id 1) drops at helper exit; removal shrinks the vector;
       // v deinit drops id 2
-      return Result.Ok(taken.get_id());
+      return taken.get_id();
     }
 
     /** Checks container ownership and propagates operation failures. */
-    function check() Result<i32> {
+    function check() i32 throws {
       var id: i32 = 0;
       if (true) {
-        id = try helper();
+        id =  helper();
       }
       if (id != 1) {
-        return Result.Ok(-2);
+        return -2;
       }
-      return Result.Ok(counter);
+      return counter;
     }
 
     /** Reports any unexpected operation failure to the test harness. */
     function main() i32 {
-      return match check() {
-        Result.Ok(value) => value,
-        _ => -100
-      };
+      try { var value = check();
+return value; } catch { return -100; }
     }
   )"));
   EXPECT_EQ(value, 2);
@@ -184,19 +180,19 @@ TEST(MemorySafety_Drops_Containers, vec_of_vec_drops_recursively) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
   if (true) {
-    var outer = try Vec<Vec<Owner>>(alloc, 2);
-    var inner1 = try Vec<Owner>(alloc, 2);
-    try inner1.push(Owner(1));
-    try inner1.push(Owner(2));
-    var inner2 = try Vec<Owner>(alloc, 2);
-    try inner2.push(Owner(3));
-    try outer.push(inner1);
-    try outer.push(inner2);
+    var outer =  Vec<Vec<Owner>>(alloc, 2);
+    var inner1 =  Vec<Owner>(alloc, 2);
+     inner1.push(Owner(1));
+     inner1.push(Owner(2));
+    var inner2 =  Vec<Owner>(alloc, 2);
+     inner2.push(Owner(3));
+     outer.push(inner1);
+     outer.push(inner2);
   }
-  return Result.Ok(counter);
+  return counter;
 }
 )"));
   // outer's deinit drops each inner Vec, which drops its Owners
@@ -208,26 +204,24 @@ TEST(MemorySafety_Drops_Containers, map_deinit_drops_entries) {
 using std;
 
     /** Checks container ownership and propagates operation failures. */
-    function helper() Result<i32> {
+    function helper() i32 throws {
       var alloc = make_heap_allocator();
-      var m = try Map<i64, Owner>(alloc, 8);
-      try m.insert(1, Owner(10));
-      try m.insert(2, Owner(20));
-      return Result.Ok(0);
+      var m =  Map<i64, Owner>(alloc, 8);
+       m.insert(1, Owner(10));
+       m.insert(2, Owner(20));
+      return 0;
     }
 
     /** Checks container ownership and propagates operation failures. */
-    function check() Result<i32> {
-      try helper();
-      return Result.Ok(counter);
+    function check() i32 throws {
+       helper();
+      return counter;
     }
 
     /** Reports any unexpected operation failure to the test harness. */
     function main() i32 {
-      return match check() {
-        Result.Ok(value) => value,
-        _ => -100
-      };
+      try { var value = check();
+return value; } catch { return -100; }
     }
   )"));
   EXPECT_EQ(value, 2);
@@ -238,20 +232,18 @@ TEST(MemorySafety_Drops_Containers, map_insert_overwrite_drops_old_value) {
 using std;
 
     /** Checks container ownership and propagates operation failures. */
-    function check() Result<i32> {
+    function check() i32 throws {
       var alloc = make_heap_allocator();
-      var m = try Map<i64, Owner>(alloc, 8);
-      try m.insert(1, Owner(10));
-      try m.insert(1, Owner(11));
-      return Result.Ok(counter);
+      var m =  Map<i64, Owner>(alloc, 8);
+       m.insert(1, Owner(10));
+       m.insert(1, Owner(11));
+      return counter;
     }
 
     /** Reports any unexpected operation failure to the test harness. */
     function main() i32 {
-      return match check() {
-        Result.Ok(value) => value,
-        _ => -100
-      };
+      try { var value = check();
+return value; } catch { return -100; }
     }
   )"));
   // The overwritten value (id 10) dropped; the map still owns id 11
@@ -263,32 +255,30 @@ TEST(MemorySafety_Drops_Containers, map_remove_moves_value_out) {
 using std;
 
     /** Checks container ownership and propagates operation failures. */
-    function helper() Result<i32> {
+    function helper() i32 throws {
       var alloc = make_heap_allocator();
-      var m = try Map<i64, Owner>(alloc, 8);
-      try m.insert(1, Owner(10));
-      var removed = try m.remove(1);
-      return Result.Ok(removed.get_id());
+      var m =  Map<i64, Owner>(alloc, 8);
+       m.insert(1, Owner(10));
+      var removed =  m.remove(1);
+      return removed.get_id();
     }
 
     /** Checks container ownership and propagates operation failures. */
-    function check() Result<i32> {
+    function check() i32 throws {
       var id: i32 = 0;
       if (true) {
-        id = try helper();
+        id =  helper();
       }
       if (id != 10) {
-        return Result.Ok(-2);
+        return -2;
       }
-      return Result.Ok(counter);
+      return counter;
     }
 
     /** Reports any unexpected operation failure to the test harness. */
     function main() i32 {
-      return match check() {
-        Result.Ok(value) => value,
-        _ => -100
-      };
+      try { var value = check();
+return value; } catch { return -100; }
     }
   )"));
   // Exactly one drop: the removed value at helper exit (i64 keys drop as
@@ -301,21 +291,19 @@ TEST(MemorySafety_Drops_Containers, map_clear_drops_entries) {
 using std;
 
     /** Checks container ownership and propagates operation failures. */
-    function check() Result<i32> {
+    function check() i32 throws {
       var alloc = make_heap_allocator();
-      var m = try Map<i64, Owner>(alloc, 8);
-      try m.insert(1, Owner(10));
-      try m.insert(2, Owner(20));
+      var m =  Map<i64, Owner>(alloc, 8);
+       m.insert(1, Owner(10));
+       m.insert(2, Owner(20));
       m.clear();
-      return Result.Ok(counter);
+      return counter;
     }
 
     /** Reports any unexpected operation failure to the test harness. */
     function main() i32 {
-      return match check() {
-        Result.Ok(value) => value,
-        _ => -100
-      };
+      try { var value = check();
+return value; } catch { return -100; }
     }
   )"));
   EXPECT_EQ(value, 2);
@@ -326,13 +314,13 @@ TEST(MemorySafety_Drops_Containers, linked_list_clear_drops_payloads) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
   var list = LinkedList<Owner>(alloc);
-  try list.push_back(Owner(1));
-  try list.push_back(Owner(2));
+   list.push_back(Owner(1));
+   list.push_back(Owner(2));
   list.clear();
-  return Result.Ok(counter);
+  return counter;
 }
 )"));
   EXPECT_EQ(value, 2);
@@ -342,19 +330,19 @@ TEST(MemorySafety_Drops_Containers, linked_list_deinit_drops_payloads) {
   auto value = executeStringWithStdlib(withPreamble(R"(
 using std;
 
-function helper() Result<i32> {
+function helper() i32 throws {
   var alloc = make_heap_allocator();
   var list = LinkedList<Owner>(alloc);
-  try list.push_back(Owner(1));
-  try list.push_back(Owner(2));
-  try list.push_front(Owner(3));
-  return Result.Ok(0);
+   list.push_back(Owner(1));
+   list.push_back(Owner(2));
+   list.push_front(Owner(3));
+  return 0;
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
-  try helper();
-  return Result.Ok(counter);
+function main() i32 throws {
+   helper();
+  return counter;
 }
 )"));
   EXPECT_EQ(value, 3);
@@ -365,22 +353,20 @@ TEST(MemorySafety_Drops_Containers, linked_list_set_drops_old_payload) {
 using std;
 
     /** Checks container ownership and propagates operation failures. */
-    function check() Result<i32> {
+    function check() i32 throws {
       var alloc = make_heap_allocator();
       var list = LinkedList<Owner>(alloc);
-      try list.push_back(Owner(1));
+       list.push_back(Owner(1));
       if (true) {
-        try list.set(0, Owner(9));
+         list.set(0, Owner(9));
       }
-      return Result.Ok(counter);
+      return counter;
     }
 
     /** Reports any unexpected operation failure to the test harness. */
     function main() i32 {
-      return match check() {
-        Result.Ok(value) => value,
-        _ => -100
-      };
+      try { var value = check();
+return value; } catch { return -100; }
     }
   )"));
   EXPECT_EQ(value, 1);
@@ -391,33 +377,31 @@ TEST(MemorySafety_Drops_Containers, linked_list_pop_moves_ownership) {
 using std;
 
     /** Checks container ownership and propagates operation failures. */
-    function helper() Result<i32> {
+    function helper() i32 throws {
       var alloc = make_heap_allocator();
       var list = LinkedList<Owner>(alloc);
-      try list.push_back(Owner(1));
-      try list.push_back(Owner(2));
-      var popped = try list.pop_back();
-      return Result.Ok(popped.get_id());
+       list.push_back(Owner(1));
+       list.push_back(Owner(2));
+      var popped =  list.pop_back();
+      return popped.get_id();
     }
 
     /** Checks container ownership and propagates operation failures. */
-    function check() Result<i32> {
+    function check() i32 throws {
       var id: i32 = 0;
       if (true) {
-        id = try helper();
+        id =  helper();
       }
       if (id != 2) {
-        return Result.Ok(-2);
+        return -2;
       }
-      return Result.Ok(counter);
+      return counter;
     }
 
     /** Reports any unexpected operation failure to the test harness. */
     function main() i32 {
-      return match check() {
-        Result.Ok(value) => value,
-        _ => -100
-      };
+      try { var value = check();
+return value; } catch { return -100; }
     }
   )"));
   // popped dropped at helper exit + remaining element dropped by list deinit
@@ -429,14 +413,14 @@ TEST(MemorySafety_Drops_Containers, vec_of_string_no_crash) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var v = try Vec<String>(alloc, 4);
-  try v.push(try String(alloc, "hello"));
-  try v.push(try String(alloc, "world"));
+  var v =  Vec<String>(alloc, 4);
+   v.push( String(alloc, "hello"));
+   v.push( String(alloc, "world"));
   v.clear();
-  try v.push(try String(alloc, "again"));
-  return Result.Ok(_convert<i32>(v.size()));
+   v.push( String(alloc, "again"));
+  return _convert<i32>(v.size());
 }
 )");
   // Vec<String> drops element strings without crashing (heap buffers freed
@@ -458,25 +442,23 @@ TEST(MemorySafety_Drops_Containers, vec_get_borrows_owning_element) {
 using std;
 
 /** Checks container ownership and propagates operation failures. */
-function check() Result<i32> {
+function check() i32 throws {
   var alloc = make_heap_allocator();
-  var v = try Vec<String>(alloc, 4);
-  try v.push(try String(alloc, "hello"));
-  try v.push(try String(alloc, "world"));
+  var v =  Vec<String>(alloc, 4);
+   v.push( String(alloc, "hello"));
+   v.push( String(alloc, "world"));
   var n: i64 = 0;
   if (true) {
-    var s = try v.get(0);
+    var s =  v.get(0);
     n = s.length();
   }
-  return Result.Ok(_convert<i32>(n));
+  return _convert<i32>(n);
 }
 
 /** Reports any unexpected operation failure to the test harness. */
 function main() i32 {
-  return match check() {
-    Result.Ok(value) => value,
-    _ => -100
-  };
+  try { var value = check();
+return value; } catch { return -100; }
 }
 )");
   // Borrowed, so the Vec still drops both strings exactly once at scope exit
@@ -489,11 +471,11 @@ TEST(MemorySafety_Drops_Containers,
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var v = try Vec<String>(alloc, 4);
-  try v.push(try String(alloc, "aa"));
-  try v.push(try String(alloc, "bbb"));
+  var v =  Vec<String>(alloc, 4);
+   v.push( String(alloc, "aa"));
+   v.push( String(alloc, "bbb"));
   var total: i64 = v[0].length() + v[1].length();
   total = total +
     match v.first() {
@@ -508,7 +490,7 @@ function main() Result<i32> {
   for (var s: String in v) {
     total = total + s.length();
   }
-  return Result.Ok(_convert<i32>(total));
+  return _convert<i32>(total);
 }
 )");
   // 5 (index) + 2 (first) + 3 (last) + 5 (iteration)
@@ -520,13 +502,13 @@ TEST(MemorySafety_Drops_Containers, map_and_list_peeks_borrow_owning_values) {
 using std;
 
 /** Checks container ownership and propagates operation failures. */
-function check() Result<i32> {
+function check() i32 throws {
   var alloc = make_heap_allocator();
-  var m = try Map<i64, String>(alloc, 16);
-  try m.insert(1, try String(alloc, "alpha"));
+  var m =  Map<i64, String>(alloc, 16);
+   m.insert(1,  String(alloc, "alpha"));
   var total: i64 = 0;
   if (true) {
-    total = total + (try m.get(1)).length();
+    total = total + ( m.get(1)).length();
   }
   total = total +
     match m.find(1) {
@@ -535,24 +517,22 @@ function check() Result<i32> {
     };
 
   var ll = LinkedList<String>(alloc);
-  try ll.push_back(try String(alloc, "beta"));
+   ll.push_back( String(alloc, "beta"));
   if (true) {
-    total = total + (try ll.get(0)).length();
+    total = total + ( ll.get(0)).length();
   }
   total = total +
     match ll.first() {
       Option.Some(s) => s.length(),
       Option.None => 0
     };
-  return Result.Ok(_convert<i32>(total));
+  return _convert<i32>(total);
 }
 
 /** Reports any unexpected operation failure to the test harness. */
 function main() i32 {
-  return match check() {
-    Result.Ok(value) => value,
-    _ => -100
-  };
+  try { var value = check();
+return value; } catch { return -100; }
 }
 )");
   // 5 + 5 (map get/find) + 4 + 4 (list get/first)
@@ -567,27 +547,25 @@ TEST(MemorySafety_Drops_Containers,
     using std;
 
     /** Checks container ownership and propagates operation failures. */
-    function check() Result<i32> {
+    function check() i32 throws {
       var alloc = make_heap_allocator();
-      var v = try Vec<i32>(alloc, 4);
-      try v.push(10);
-      try v.push(20);
+      var v =  Vec<i32>(alloc, 4);
+       v.push(10);
+       v.push(20);
       if (true) {
-        var r = try v.get(1);
+        var r =  v.get(1);
         r = 99;
       }
-      return Result.Ok(_convert<i32>(match v.last() {
+      return _convert<i32>(match v.last() {
         Option.Some(x) => x,
         Option.None => 0
-      }));
+      });
     }
 
     /** Reports any unexpected operation failure to the test harness. */
     function main() i32 {
-      return match check() {
-        Result.Ok(value) => value,
-        _ => -100
-      };
+      try { var value = check();
+return value; } catch { return -100; }
     }
   )");
   EXPECT_EQ(value, 99);
@@ -599,25 +577,23 @@ TEST(MemorySafety_Drops_Containers, remove_moves_the_element_out) {
 using std;
 
 /** Checks container ownership and propagates operation failures. */
-function check() Result<i32> {
+function check() i32 throws {
   var alloc = make_heap_allocator();
-  var v = try Vec<String>(alloc, 4);
-  try v.push(try String(alloc, "hello"));
-  try v.push(try String(alloc, "hi"));
+  var v =  Vec<String>(alloc, 4);
+   v.push( String(alloc, "hello"));
+   v.push( String(alloc, "hi"));
   var n: i64 = 0;
   if (true) {
-    var owned = try v.remove(0);
+    var owned =  v.remove(0);
     n = owned.length();
   }
-  return Result.Ok(_convert<i32>(n + v.size()));
+  return _convert<i32>(n + v.size());
 }
 
 /** Reports any unexpected operation failure to the test harness. */
 function main() i32 {
-  return match check() {
-    Result.Ok(value) => value,
-    _ => -100
-  };
+  try { var value = check();
+return value; } catch { return -100; }
 }
 )");
   // owned dropped at scope exit, the Vec drops what is left — each buffer once
@@ -639,12 +615,12 @@ TEST(MemorySafety_Drops_Containers,
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var v = try Vec<String>(alloc, 4);
-  try v.push(try String(alloc, "hello"));
+  var v =  Vec<String>(alloc, 4);
+   v.push( String(alloc, "hello"));
   var s: String = unsafe { v.get_unchecked(0); };
-  return Result.Ok(_convert<i32>(s.length()));
+  return _convert<i32>(s.length());
 }
 )"),
                std::exception);
@@ -660,11 +636,11 @@ function by_value(s: String) i64 {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var v = try Vec<String>(alloc, 4);
-  try v.push(try String(alloc, "hello"));
-  return Result.Ok(by_value(unsafe { v.get_unchecked(0); }));
+  var v =  Vec<String>(alloc, 4);
+   v.push( String(alloc, "hello"));
+  return by_value(unsafe { v.get_unchecked(0); });
 }
 )"),
                std::exception);
@@ -699,7 +675,7 @@ TEST(MemorySafety_Drops_Containers, borrowed_element_is_not_stored_in_a_field) {
     using std;
     class Holder {
       var s: String;
-      init(alloc: ref HeapAllocator) Result<void> { this.s = try String(alloc, ""); }
+      init(alloc: ref HeapAllocator)  throws { this.s =  String(alloc, ""); }
       public method set_from(v: ref Vec<String>) void {
         this.s = unsafe { v.get_unchecked(0); };
       }
@@ -719,12 +695,12 @@ function by_value(n: i32) i32 {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var v = try Vec<i32>(alloc, 4);
-  try v.push(41);
+  var v =  Vec<i32>(alloc, 4);
+   v.push(41);
   var copied: i32 = unsafe { v.get_unchecked(0); };
-  return Result.Ok(by_value(copied) - 1);
+  return by_value(copied) - 1;
 }
 )");
   EXPECT_EQ(value, 41);
@@ -770,13 +746,13 @@ using std;
 class Bag implements IIterable<String, Bag> {
   var items: Vec<String>;
 
-  init(alloc: ref HeapAllocator) Result<void> {
-    this.items = try Vec<String>(alloc, 4);
+  init(alloc: ref HeapAllocator)  throws {
+    this.items =  Vec<String>(alloc, 4);
   }
 
-  public method add(s: String) Result<void> {
-    try this.items.push(s);
-    return Result.Ok;
+  public method add(s: String) void throws {
+     this.items.push(s);
+    return;
   }
 
   public method count() i64 {
@@ -806,15 +782,15 @@ class BagIter implements IIterator<String, Bag> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var b = try Bag(alloc);
-  try b.add(try String(alloc, "hello"));
+  var b =  Bag(alloc);
+   b.add( String(alloc, "hello"));
   var total: i64 = 0;
   for (var s: String in b) {
     total = total + s.length();
   }
-  return Result.Ok(_convert<i32>(total));
+  return _convert<i32>(total);
 }
 )"),
                std::exception);
@@ -827,16 +803,16 @@ TEST(MemorySafety_Drops_Containers,
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var v = try Vec<String>(alloc, 4);
-  try v.push(try String(alloc, "hello"));
+  var v =  Vec<String>(alloc, 4);
+   v.push( String(alloc, "hello"));
   var n: i64 = 0;
   for (var s: String in v) {
     var owned: String = s;
     n = n + owned.length();
   }
-  return Result.Ok(_convert<i32>(n));
+  return _convert<i32>(n);
 }
 )"),
                std::exception);
@@ -849,17 +825,17 @@ TEST(MemorySafety_Drops_Containers, for_in_over_owning_vec_binds_a_borrow) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var v = try Vec<String>(alloc, 4);
-  try v.push(try String(alloc, "hello"));
-  try v.push(try String(alloc, "hi"));
+  var v =  Vec<String>(alloc, 4);
+   v.push( String(alloc, "hello"));
+   v.push( String(alloc, "hi"));
   var n: i64 = 0;
   for (var s: String in v) {
     var also = s;
     n = n + also.length();
   }
-  return Result.Ok(_convert<i32>(n));
+  return _convert<i32>(n);
 }
 )");
   // Each element is dropped once, by the Vec
@@ -882,11 +858,11 @@ class Draining implements IIterator<String, Vec<String>> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var v = try Vec<String>(alloc, 4);
-  try v.push(try String(alloc, "hello"));
-  try v.push(try String(alloc, "hi"));
+  var v =  Vec<String>(alloc, 4);
+   v.push( String(alloc, "hello"));
+   v.push( String(alloc, "hi"));
   var it = Draining();
   var total: i64 = 0;
   var more: bool = true;
@@ -900,7 +876,7 @@ function main() Result<i32> {
       }
     };
   }
-  return Result.Ok(_convert<i32>(total + v.size()));
+  return _convert<i32>(total + v.size());
 }
 )");
   // 5 + 2 drained, Vec left empty

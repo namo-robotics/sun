@@ -201,11 +201,8 @@ Value* IntrinsicsGenerator::codegenInitIntrinsic(
                               /*firstArg=*/1)) {
     return nullptr;
   }
-  auto* status = ctx.builder->CreateCall(ctorFunc, ctorArgs);
-  if (ctor->returnType->isEnum()) {
-    return scopes().trackCallTemporary(gen_.materializeStructReturn(status),
-                                       ctor->returnType);
-  }
+  gen_.errorGenerator().emitPossiblyThrowingCall(
+      ctorFunc->getFunctionType(), ctorFunc, ctorArgs, ctor->canThrow, "");
 
   return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
 }

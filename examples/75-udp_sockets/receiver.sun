@@ -4,39 +4,31 @@ using std.io;
 // Receiver: binds a UDP port and prints one datagram and its sender
 using std;
 
-/** Performs the operation and propagates returned failures. */
-function run() Result<void> {
-  var buf = try ContiguousBuffer<u8>(global_allocator, 256);
+/** Performs the operation and propagates exceptions. */
+function run() void throws {
+  var buf = ContiguousBuffer<u8>(global_allocator, 256);
 
   var socket = UdpSocket();
-  try socket.bind(ipv4_loopback(), 9090);
+  socket.bind(ipv4_loopback(), 9090);
   println("Waiting on 127.0.0.1:9090...");
 
-  var datagram = try socket.recv_from(buf);
-  var text = try String(global_allocator, buf, datagram.length());
+  var datagram = socket.recv_from(buf);
+  var text = String(global_allocator, buf, datagram.length());
   println(text);
 
   var from = datagram.addr();
   println("From address:");
-  println(try from.to_string(global_allocator));
+  println(from.to_string(global_allocator));
 
   socket.close();
 
-  return Result.Ok;
+  return;
 }
 
-/** Reports errors and sets the process exit code. */
-function main() i32 {
-  return match run() {
-    (e: const ref IError) => {
-      match e.message() {
-        AllocationResult.Ok(message) => println(message),
-        _ => println("unable to allocate error message")
-      };
-      1;
-    },
-    _ => 0
-  };
+/** Runs the example; an uncaught exception produces a failing exit code. */
+function main() i32 throws {
+  run();
+  return 0;
 }
 
 manifest {

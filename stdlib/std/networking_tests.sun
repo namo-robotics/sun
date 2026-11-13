@@ -12,261 +12,256 @@ public module std.net {
   test_function nonblocking_connect_completes() {
     var alloc = make_heap_allocator();
     var listener = TcpListener();
-    try std.test.expect_system_success(listener.bind_loopback(0));
-    try std.test.expect_system_success(listener.listen(4));
+    listener.bind_loopback(0);
+    listener.listen(4);
     var stream = TcpStream();
-    var port = try std.test.expect_system(listener.local_port());
-    match stream.start_connect(ipv4_loopback(), port) {
-      ConnectResult.Connected => {},
-      ConnectResult.Pending => {
-        var poller = try std.io.Poller(alloc);
-        try poller.add_write(stream.get_fd());
-        var ready = try std.test.expect_system(poller.wait(1000));
-        try std.test.assert(ready > 0, "dial becomes ready");
-        match stream.finish_connect() {
-          ConnectResult.Connected => {},
-          _ => {
-            try std.test.assert(false, "dial succeeds");
-          }
-        };
-      },
-      ConnectResult.Error(_) => {
-        try std.test.assert(false, "dial starts");
-      },
-      ConnectResult.Allocation(_) => {
-        try std.test.assert(false, "dial starts");
-      },
-      ConnectResult.InvalidArgument(_) => {
-        try std.test.assert(false, "dial starts");
-      },
-      ConnectResult.Overflow(_) => {
-        try std.test.assert(false, "dial starts");
-      }
-    };
-    var accepted = try std.test.expect_system(listener.accept());
+    var port = listener.local_port();
+    try {
+      match stream.start_connect(ipv4_loopback(), port) {
+        ConnectResult.Connected => {},
+        ConnectResult.Pending => {
+          var poller = std.io.Poller(alloc);
+          poller.add_write(stream.get_fd());
+          var ready = poller.wait(1000);
+          std.test.assert(ready > 0, "dial becomes ready");
+          match stream.finish_connect() {
+            ConnectResult.Connected => {},
+            _ => {
+              std.test.assert(false, "dial succeeds");
+            }
+          };
+        }
+      };
+    } catch (ignored_error: Error) {
+      std.test.assert(false, "dial starts");
+    } catch (ignored_error: AllocationError) {
+      std.test.assert(false, "dial starts");
+    } catch (ignored_error: InvalidArgumentError) {
+      std.test.assert(false, "dial starts");
+    } catch (ignored_error: OverflowError) {
+      std.test.assert(false, "dial starts");
+    }
+    var accepted = listener.accept();
     stream.close();
-    try std.test.assert(not stream.is_open(), "close releases the dial");
+    std.test.assert(not stream.is_open(), "close releases the dial");
   }
 
   /** A refused asynchronous connection reports failure and releases its descriptor. */
   test_function nonblocking_connect_refused() {
     var alloc = make_heap_allocator();
     var listener = TcpListener();
-    try std.test.expect_system_success(listener.bind_loopback(0));
-    var port = try std.test.expect_system(listener.local_port());
+    listener.bind_loopback(0);
+    var port = listener.local_port();
     // macOS drops connection attempts to a bound, non-listening socket.
     // Release it so this test targets a closed port and receives a refusal.
     listener.close();
     var stream = TcpStream();
-    match stream.start_connect(ipv4_loopback(), port) {
-      ConnectResult.Error(_) => {},
-      ConnectResult.Pending => {
-        var poller = try std.io.Poller(alloc);
-        try poller.add_write(stream.get_fd());
-        var ready = try std.test.expect_system(poller.wait(1000));
-        try std.test.assert(ready > 0, "refusal becomes ready");
-        match stream.finish_connect() {
-          ConnectResult.Error(_) => {},
-          _ => {
-            try std.test.assert(false, "refusal is an error");
-          }
-        };
-      },
-      _ => {
-        try std.test.assert(false, "closed port cannot connect");
-      }
-    };
-    try std.test.assert(not stream.is_open(), "failed dial closes");
+    try {
+      match stream.start_connect(ipv4_loopback(), port) {
+        ConnectResult.Pending => {
+          var poller = std.io.Poller(alloc);
+          poller.add_write(stream.get_fd());
+          var ready = poller.wait(1000);
+          std.test.assert(ready > 0, "refusal becomes ready");
+          try {
+            match stream.finish_connect() {
+              _ => {
+                std.test.assert(false, "refusal is an error");
+              }
+            };
+          } catch (ignored_error: Error) {}
+        },
+        _ => {
+          std.test.assert(false, "closed port cannot connect");
+        }
+      };
+    } catch (ignored_error: Error) {}
+    std.test.assert(not stream.is_open(), "failed dial closes");
   }
 
   /** Select an explicit outgoing multicast interface on a bound socket. */
   test_function multicast_select_interface() {
     var socket = UdpSocket();
-    try std.test.expect_system_success(socket.bind(ipv4_any(), 0));
-    try std.test.expect_system_success(socket.set_multicast_interface(ipv4_loopback()));
+    socket.bind(ipv4_any(), 0);
+    socket.set_multicast_interface(ipv4_loopback());
   }
 
   /** Check socket ownership with stdin closed in an isolated process. */
   test_function sockets_can_own_descriptor_zero() {
-    var pid: i32 = try std.test.expect_system(std.process.fork());
+    var pid: i32 = std.process.fork();
     if (pid == 0) {
-      match check_tcp_descriptor_zero() {
-        std.test.AssertionResult.Ok => {},
-        _ => {
-          std.process.exit_now(1);
-        }
-      };
+      try {
+        check_tcp_descriptor_zero();
+      } catch {
+        std.process.exit_now(1);
+      }
       std.process.exit_now(0);
     }
-    var status: i32 = try std.test.expect_system(std.process.wait_pid(pid, 0));
-    try std.test.assert(std.process.exited(status), "the socket child exited normally");
-    try std.test.assert_eq(std.process.exit_status(status), 0);
+    var status: i32 = std.process.wait_pid(pid, 0);
+    std.test.assert(std.process.exited(status), "the socket child exited normally");
+    std.test.assert_eq(std.process.exit_status(status), 0);
   }
 
   /** Exercise every socket acquisition path with descriptor zero available. */
-  function check_tcp_descriptor_zero() std.test.AssertionResult<void> {
+  function check_tcp_descriptor_zero() void throws {
     unsafe { c_close(0); };
     for (var mode: i32 = 0; mode < 3; mode = mode + 1) {
       var listener = TcpListener();
       if (mode == 0) {
-        try std.test.expect_system_success(listener.bind_port(0));
+        listener.bind_port(0);
       } else if (mode == 1) {
-        try std.test.expect_system_success(listener.bind_loopback(0));
+        listener.bind_loopback(0);
       } else {
-        try std.test.expect_system_success(listener.bind_addr(ipv4_loopback(), 0));
+        listener.bind_addr(ipv4_loopback(), 0);
       }
-      try std.test.assert_eq(listener.get_fd(), 0);
-      try std.test.assert(listener.is_open(), "a listener can own descriptor zero");
-      try std.test.expect_system_success(listener.listen(1));
+      std.test.assert_eq(listener.get_fd(), 0);
+      std.test.assert(listener.is_open(), "a listener can own descriptor zero");
+      listener.listen(1);
       listener.close();
       listener.close();
-      try std.test.assert(not listener.is_open(), "the listener is closed");
-      try std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, -1);
+      std.test.assert(not listener.is_open(), "the listener is closed");
+      std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, -1);
     }
 
     // Occupy zero while opening the server, then release it for each client.
     var reserve = UdpSocket();
-    try std.test.expect_system_success(reserve.bind(ipv4_loopback(), 0));
+    reserve.bind(ipv4_loopback(), 0);
     var listener = TcpListener();
-    try std.test.expect_system_success(listener.bind_loopback(0));
-    try std.test.expect_system_success(listener.listen(1));
+    listener.bind_loopback(0);
+    listener.listen(1);
     reserve.close();
     for (var mode: i32 = 0; mode < 2; mode = mode + 1) {
       var stream = TcpStream();
       if (mode == 0) {
-        try std.test.expect_system_success(
-          stream.connect_local(try std.test.expect_system(listener.local_port()))
-        );
+        stream.connect_local(listener.local_port());
       } else {
-        try std.test.expect_system_success(
-          stream.connect_ip(INADDR_LOOPBACK, try std.test.expect_system(listener.local_port()))
-        );
+        stream.connect_ip(INADDR_LOOPBACK, listener.local_port());
       }
-      try std.test.assert_eq(stream.get_fd(), 0);
-      try std.test.assert(stream.is_open(), "a connected stream can own descriptor zero");
-      var peer = try std.test.expect_system(listener.accept());
-      try std.test.assert_eq(try std.test.expect_system(stream.send_str("ping")), 4);
+      std.test.assert_eq(stream.get_fd(), 0);
+      std.test.assert(stream.is_open(), "a connected stream can own descriptor zero");
+      var peer = listener.accept();
+      std.test.assert_eq(stream.send_str("ping"), 4);
       stream.close();
       stream.close();
-      try std.test.assert(not stream.is_open(), "the stream is closed");
-      try std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, -1);
+      std.test.assert(not stream.is_open(), "the stream is closed");
+      std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, -1);
     }
 
-    try std.test.expect_system_success(reserve.bind(ipv4_loopback(), 0));
+    reserve.bind(ipv4_loopback(), 0);
     var client = TcpStream();
-    try std.test.expect_system_success(
-      client.connect_local(try std.test.expect_system(listener.local_port()))
-    );
+
+    client.connect_local(listener.local_port());
+
     reserve.close();
     if (true) {
-      var accepted = try std.test.expect_system(listener.accept());
-      try std.test.assert_eq(accepted.get_fd(), 0);
-      try std.test.assert(accepted.is_open(), "an accepted stream can own descriptor zero");
-      try std.test.assert_eq(try std.test.expect_system(accepted.send_str("ping")), 4);
+      var accepted = listener.accept();
+      std.test.assert_eq(accepted.get_fd(), 0);
+      std.test.assert(accepted.is_open(), "an accepted stream can own descriptor zero");
+      std.test.assert_eq(accepted.send_str("ping"), 4);
     }
-    try std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, -1);
+    std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, -1);
 
     if (true) {
       var socket = UdpSocket();
-      try std.test.expect_system_success(socket.bind(ipv4_loopback(), 0));
-      try std.test.assert_eq(socket.get_fd(), 0);
-      try std.test.assert(socket.is_open(), "a UDP socket can own descriptor zero");
-      try std.test.assert(
-        (try std.test.expect_system(socket.local_port())) > 0,
+      socket.bind(ipv4_loopback(), 0);
+      std.test.assert_eq(socket.get_fd(), 0);
+      std.test.assert(socket.is_open(), "a UDP socket can own descriptor zero");
+      std.test.assert(
+        (socket.local_port()) > 0,
         "the UDP socket is bound"
       );
       socket.close();
       socket.close();
-      try std.test.assert(not socket.is_open(), "the UDP socket is closed");
-      try std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, -1);
-      try std.test.expect_system_success(socket.bind(ipv4_loopback(), 0));
-      try std.test.assert_eq(socket.get_fd(), 0);
+      std.test.assert(not socket.is_open(), "the UDP socket is closed");
+      std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, -1);
+      socket.bind(ipv4_loopback(), 0);
+      std.test.assert_eq(socket.get_fd(), 0);
     }
-    try std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, -1);
-    return std.test.AssertionResult.Ok;
+    std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, -1);
+    return;
   }
 
   /** Check that removing and dropping a TcpStream preserves stdin. */
   test_function removed_stream_preserves_stdin() {
     var alloc = make_heap_allocator();
     var stdin_flags: i32 = unsafe { c_fcntl(0, F_GETFL); };
-    try std.test.assert(stdin_flags >= 0, "stdin is open before the test");
+    std.test.assert(stdin_flags >= 0, "stdin is open before the test");
     if (true) {
-      var sockets = try Vec<TcpStream>(alloc, 1);
+      var sockets = Vec<TcpStream>(alloc, 1);
       var listener = TcpListener();
-      try std.test.expect_system_success(listener.bind_loopback(0));
-      try std.test.expect_system_success(listener.listen(1));
+      listener.bind_loopback(0);
+      listener.listen(1);
       var socket = TcpStream();
-      try std.test.expect_system_success(
-        socket.connect_local(try std.test.expect_system(listener.local_port()))
-      );
-      var peer = try std.test.expect_system(listener.accept());
-      try sockets.push(socket);
-      var taken = try std.test.expect_access(sockets.remove(0));
-      try std.test.assert_eq(sockets.size(), 0);
+
+      socket.connect_local(listener.local_port());
+
+      var peer = listener.accept();
+      sockets.push(socket);
+      var taken = sockets.remove(0);
+      std.test.assert_eq(sockets.size(), 0);
       sockets.clear();
-      try std.test.assert(taken.is_open(), "the taken stream is open");
-      try std.test.assert_eq(try std.test.expect_system(taken.send_str("ping")), 4);
-      var buf = try ContiguousBuffer<u8>(alloc, 4);
-      try std.test.assert(
-        (try std.test.expect_system(peer.recv(buf))) > 0,
+      std.test.assert(taken.is_open(), "the taken stream is open");
+      std.test.assert_eq(taken.send_str("ping"), 4);
+      var buf = ContiguousBuffer<u8>(alloc, 4);
+      std.test.assert(
+        (peer.recv(buf)) > 0,
         "the taken stream can send data"
       );
       taken.close();
       taken.close();
-      try std.test.assert(not taken.is_open(), "the socket is closed");
+      std.test.assert(not taken.is_open(), "the socket is closed");
     }
-    try std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, stdin_flags);
+    std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, stdin_flags);
   }
 
   /** Check that removing and dropping a TcpListener preserves stdin. */
   test_function removed_listener_preserves_stdin() {
     var alloc = make_heap_allocator();
     var stdin_flags: i32 = unsafe { c_fcntl(0, F_GETFL); };
-    try std.test.assert(stdin_flags >= 0, "stdin is open before the test");
+    std.test.assert(stdin_flags >= 0, "stdin is open before the test");
     if (true) {
-      var sockets = try Vec<TcpListener>(alloc, 1);
+      var sockets = Vec<TcpListener>(alloc, 1);
       var socket = TcpListener();
-      try std.test.expect_system_success(socket.bind_loopback(0));
-      try sockets.push(socket);
-      var taken = try std.test.expect_access(sockets.remove(0));
-      try std.test.assert_eq(sockets.size(), 0);
+      socket.bind_loopback(0);
+      sockets.push(socket);
+      var taken = sockets.remove(0);
+      std.test.assert_eq(sockets.size(), 0);
       sockets.clear();
-      try std.test.assert(taken.is_open(), "the taken socket is open");
-      try std.test.assert(
-        (try std.test.expect_system(taken.local_port())) > 0,
+      std.test.assert(taken.is_open(), "the taken socket is open");
+      std.test.assert(
+        (taken.local_port()) > 0,
         "the taken socket remains bound"
       );
       taken.close();
       taken.close();
-      try std.test.assert(not taken.is_open(), "the socket is closed");
+      std.test.assert(not taken.is_open(), "the socket is closed");
     }
-    try std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, stdin_flags);
+    std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, stdin_flags);
   }
 
   /** Check that removing and dropping a UdpSocket preserves stdin. */
   test_function removed_udp_socket_preserves_stdin() {
     var alloc = make_heap_allocator();
     var stdin_flags: i32 = unsafe { c_fcntl(0, F_GETFL); };
-    try std.test.assert(stdin_flags >= 0, "stdin is open before the test");
+    std.test.assert(stdin_flags >= 0, "stdin is open before the test");
     if (true) {
-      var sockets = try Vec<UdpSocket>(alloc, 1);
+      var sockets = Vec<UdpSocket>(alloc, 1);
       var socket = UdpSocket();
-      try std.test.expect_system_success(socket.bind(ipv4_loopback(), 0));
-      try sockets.push(socket);
-      var taken = try std.test.expect_access(sockets.remove(0));
-      try std.test.assert_eq(sockets.size(), 0);
+      socket.bind(ipv4_loopback(), 0);
+      sockets.push(socket);
+      var taken = sockets.remove(0);
+      std.test.assert_eq(sockets.size(), 0);
       sockets.clear();
-      try std.test.assert(taken.is_open(), "the taken socket is open");
-      try std.test.assert(
-        (try std.test.expect_system(taken.local_port())) > 0,
+      std.test.assert(taken.is_open(), "the taken socket is open");
+      std.test.assert(
+        (taken.local_port()) > 0,
         "the taken socket remains bound"
       );
       taken.close();
       taken.close();
-      try std.test.assert(not taken.is_open(), "the socket is closed");
+      std.test.assert(not taken.is_open(), "the socket is closed");
     }
-    try std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, stdin_flags);
+    std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, stdin_flags);
   }
 
   /**
@@ -276,32 +271,28 @@ public module std.net {
   test_function nonblocking_recv_reports_would_block() {
     var alloc = make_heap_allocator();
     var listener = TcpListener();
-    try std.test.expect_system_success(listener.bind_loopback(0));
-    try std.test.expect_system_success(listener.listen(1));
+    listener.bind_loopback(0);
+    listener.listen(1);
     var stream = TcpStream();
-    try std.test.expect_system_success(
-      stream.connect_local(try std.test.expect_system(listener.local_port()))
-    );
-    try std.test.expect_system_success(stream.set_nonblocking(true));
-    var buf = try ContiguousBuffer<u8>(alloc, 16);
+
+    stream.connect_local(listener.local_port());
+
+    stream.set_nonblocking(true);
+    var buf = ContiguousBuffer<u8>(alloc, 16);
     var would_block: bool = false;
-    match stream.recv(buf) {
-      SystemResult.Ok(_) => {},
-      SystemResult.Error(e) => {
-        would_block = is_would_block(e.code());
-      },
-      SystemResult.Allocation(e) => {
-        would_block = is_would_block(e.code());
-      },
-      SystemResult.InvalidArgument(e) => {
-        would_block = is_would_block(e.code());
-      },
-      SystemResult.Overflow(e) => {
-        would_block = is_would_block(e.code());
-      }
-    };
-    try std.test.assert(would_block, "recv on an idle non-blocking stream reports would-block");
-    try std.test.expect_system_success(stream.set_nonblocking(false));
+    try {
+      stream.recv(buf);
+    } catch (e: Error) {
+      would_block = is_would_block(e.code());
+    } catch (e: AllocationError) {
+      would_block = is_would_block(e.code());
+    } catch (e: InvalidArgumentError) {
+      would_block = is_would_block(e.code());
+    } catch (e: OverflowError) {
+      would_block = is_would_block(e.code());
+    }
+    std.test.assert(would_block, "recv on an idle non-blocking stream reports would-block");
+    stream.set_nonblocking(false);
     stream.close();
     listener.close();
   }
@@ -314,73 +305,61 @@ public module std.net {
   test_function unopened_sockets_report_ebadf() {
     var alloc = make_heap_allocator();
     var stream = TcpStream();
-    var buf = try ContiguousBuffer<u8>(alloc, 1);
+    var buf = ContiguousBuffer<u8>(alloc, 1);
     var recv_code: i32 = 0;
-    match stream.recv(buf) {
-      SystemResult.Ok(_) => {},
-      SystemResult.Error(e) => {
-        recv_code = e.code();
-      },
-      SystemResult.Allocation(e) => {
-        recv_code = e.code();
-      },
-      SystemResult.InvalidArgument(e) => {
-        recv_code = e.code();
-      },
-      SystemResult.Overflow(e) => {
-        recv_code = e.code();
-      }
-    };
-    try std.test.assert_eq(recv_code, 9);
-    try std.test.assert(not is_would_block(recv_code), "EBADF is not a would-block code");
+    try {
+      stream.recv(buf);
+    } catch (e: Error) {
+      recv_code = e.code();
+    } catch (e: AllocationError) {
+      recv_code = e.code();
+    } catch (e: InvalidArgumentError) {
+      recv_code = e.code();
+    } catch (e: OverflowError) {
+      recv_code = e.code();
+    }
+    std.test.assert_eq(recv_code, 9);
+    std.test.assert(not is_would_block(recv_code), "EBADF is not a would-block code");
 
     var listener = TcpListener();
     var listener_code: i32 = 0;
-    match listener.set_nonblocking(true) {
-      SystemResult.Ok => {},
-      SystemResult.Error(e) => {
-        listener_code = e.code();
-      },
-      SystemResult.Allocation(e) => {
-        listener_code = e.code();
-      },
-      SystemResult.InvalidArgument(e) => {
-        listener_code = e.code();
-      },
-      SystemResult.Overflow(e) => {
-        listener_code = e.code();
-      }
-    };
-    try std.test.assert_eq(listener_code, 9);
+    try {
+      listener.set_nonblocking(true);
+    } catch (e: Error) {
+      listener_code = e.code();
+    } catch (e: AllocationError) {
+      listener_code = e.code();
+    } catch (e: InvalidArgumentError) {
+      listener_code = e.code();
+    } catch (e: OverflowError) {
+      listener_code = e.code();
+    }
+    std.test.assert_eq(listener_code, 9);
   }
 
   /** Checks resolves localhost to loopback. */
   test_function resolves_localhost_to_loopback() {
     var alloc = make_heap_allocator();
-    var host = try String(alloc, "localhost");
-    try std.test.assert_eq(try std.test.expect_system(resolve_host_ipv4(host)), INADDR_LOOPBACK);
+    var host = String(alloc, "localhost");
+    std.test.assert_eq(resolve_host_ipv4(host), INADDR_LOOPBACK);
   }
 
   /** Checks unresolvable host throws. */
   test_function unresolvable_host_throws() {
     var alloc = make_heap_allocator();
-    var host = try String(alloc, "no-such-host.invalid");
+    var host = String(alloc, "no-such-host.invalid");
     var threw: bool = false;
-    match resolve_host_ipv4(host) {
-      SystemResult.Ok(_) => {},
-      SystemResult.Error(e) => {
-        threw = true;
-      },
-      SystemResult.Allocation(e) => {
-        threw = true;
-      },
-      SystemResult.InvalidArgument(e) => {
-        threw = true;
-      },
-      SystemResult.Overflow(e) => {
-        threw = true;
-      }
-    };
-    try std.test.assert(threw, "a name under .invalid never resolves");
+    try {
+      resolve_host_ipv4(host);
+    } catch (e: Error) {
+      threw = true;
+    } catch (e: AllocationError) {
+      threw = true;
+    } catch (e: InvalidArgumentError) {
+      threw = true;
+    } catch (e: OverflowError) {
+      threw = true;
+    }
+    std.test.assert(threw, "a name under .invalid never resolves");
   }
 }

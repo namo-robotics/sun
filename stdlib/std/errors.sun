@@ -1,72 +1,23 @@
-// stdlib/std/errors.sun - Standard error types implementing IError
-//
-// All error types implement the IError interface with:
-//   - code() -> i32: numeric error code
-//   - message() -> AllocationResult<String>: an owned clone of the error description
-//
-// message() hands back a clone, so the text stays usable for as long as the
-// caller keeps it — independent of the error object and of whatever scope the
-// message was composed in.
-//
-// Error takes its message either as a literal or as a String built at runtime:
-//   return SystemResult.Error(Error(errno(), "failed to open file"));
-//   return SystemResult.Error(try Error(-1, path));   // path: a String built at runtime
-//
-// Usage:
-//   import "stdlib/std/errors.sun";
-//   using std;
-//
-//   method pop_front() PopResult<T> {
-//       if (this.is_empty()) {
-//           return PopResult.Empty(EmptyError());
-//       }
-//       // ...
-//   }
-
+/**
+ * Standard exceptions carry numeric codes and bounded inline diagnostics.
+ * Constructing or throwing an exception does not allocate. Text exceeding
+ * the exception's inline capacity is truncated. Calling message() explicitly
+ * creates an owned String and may itself throw on allocation failure.
+ */
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
 
-  /** Provides a common borrowed view of errors with owned diagnostic text. */
+  /** Provides borrowed access to exception codes and explicit diagnostic copies. */
   public interface IError {
     /** Identifies the error within its originating subsystem. */
     public const method code() i32;
 
     /** Returns diagnostic text owned by the caller. */
-    public const method message() AllocationResult<String>;
-  }
-
-  /** Retains static diagnostics without allocation and owns dynamic diagnostics. */
-  class ErrorMessage {
-    var literal: static_ptr<u8>;
-    var owned: Option<String>;
-
-    /** Retain a static diagnostic without allocating memory. */
-    init(literal: static_ptr<u8>) {
-      this.literal = literal;
-      this.owned = Option.None;
-    }
-
-    /** Clone a dynamic diagnostic, reporting allocation failure. */
-    init(text: const ref String) AllocationResult<void> {
-      this.literal = "";
-      this.owned = Option.Some(try text.clone(global_allocator));
-    }
-
-    /** Create a diagnostic copy owned by the caller. */
-    const method message() AllocationResult<String> {
-      match this.owned {
-        Option.Some(text) => {
-          return text.clone(global_allocator);
-        },
-        Option.None => {
-          return String(this.literal);
-        }
-      };
-    }
+    public const method message() String throws;
   }
 
   /** Reports checked integer division or remainder without allocating storage. */
-  public class ArithmeticError implements IError {
+  public exception ArithmeticError implements IError {
     var code_: i32;
 
     /** Retains the failure code returned by checked arithmetic. */
@@ -80,7 +31,7 @@ public module std {
     }
 
     /** Creates diagnostic text owned by the caller. */
-    public const method message() AllocationResult<String> {
+    public const method message() String throws {
       if (this.code_ == 4) {
         return String("integer division by zero");
       }
@@ -97,40 +48,141 @@ public module std {
   // Generic Error - base error with custom message
   // ============================================================================
 
-  /** An error carrying a caller-supplied code and owned message. */
-  public class Error implements IError {
+  /** An exception carrying a caller-supplied code and bounded inline message. */
+  public exception Error implements IError {
     var code_: i32;
-    var message_: ErrorMessage;
+    var text_: array<u8, 96> = [
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8
+    ];
+    var text_length_: i32 = 0;
 
-    /**
-     * Build an error from a code and a literal message.
-     */
+    /** Copies and truncates the supplied diagnostic without allocating. */
     init(code: i32, message: static_ptr<u8>) {
       this.code_ = code;
-      this.message_ = ErrorMessage(message);
+      this.text_length_ = 0;
+      for (var i: i64 = 0; i < message.length() and i < 96; i += 1) {
+        this.text_[i] = unsafe { _load<u8>(message.raw(), i); };
+        this.text_length_ += 1;
+      }
     }
 
-    /**
-     * The error keeps its own copy, so the String the caller built can go out
-     * of scope before the error is handled.
-     */
-    init(code: i32, message: const ref String) AllocationResult<void> {
+    /** Copies and truncates the supplied diagnostic without allocating. */
+    init(code: i32, message: const ref String) {
       this.code_ = code;
-      this.message_ = try ErrorMessage(message);
+      this.text_length_ = 0;
+      for (var i: i64 = 0; i < message.length() and i < 96; i += 1) {
+        this.text_[i] = unsafe { message.unsafe_at(i); };
+        this.text_length_ += 1;
+      }
     }
 
-    /**
-     * The numeric code this error was built with.
-     */
+    /** Returns the numeric failure code. */
     public const method code() i32 {
       return this.code_;
     }
 
-    /**
-     * A fresh copy of the message text, owned by the caller.
-     */
-    public const method message() AllocationResult<String> {
-      return this.message_.message();
+    /** Copies the bounded diagnostic into an explicitly requested owned string. */
+    public const method message() String throws {
+      var text = String("");
+      for (var i: i64 = 0; i < _convert<i64>(this.text_length_); i += 1) {
+        text.append_char(this.text_[i]);
+      }
+      return text;
     }
   }
 
@@ -139,7 +191,7 @@ public module std {
   // ============================================================================
 
   /** Reports an operation that requires an element from an empty container. */
-  public class EmptyError implements IError {
+  public exception EmptyError implements IError {
     /**
      * Build the error reporting that a container held nothing.
      */
@@ -155,7 +207,7 @@ public module std {
     /**
      * Fixed text: the container is empty.
      */
-    public const method message() AllocationResult<String> {
+    public const method message() String throws {
       return String("container is empty");
     }
   }
@@ -165,7 +217,7 @@ public module std {
   // ============================================================================
 
   /** Reports that a lookup could not find the requested item. */
-  public class NotFoundError implements IError {
+  public exception NotFoundError implements IError {
     /**
      * Build the error reporting that a lookup found nothing.
      */
@@ -181,7 +233,7 @@ public module std {
     /**
      * Fixed text: the element was not found.
      */
-    public const method message() AllocationResult<String> {
+    public const method message() String throws {
       return String("element not found");
     }
   }
@@ -191,7 +243,7 @@ public module std {
   // ============================================================================
 
   /** Reports an invalid index and retains the index supplied by the caller. */
-  public class IndexOutOfBoundsError implements IError {
+  public exception IndexOutOfBoundsError implements IError {
     var index_: i64;
 
     /**
@@ -211,7 +263,7 @@ public module std {
     /**
      * Fixed text: the index was out of bounds.
      */
-    public const method message() AllocationResult<String> {
+    public const method message() String throws {
       return String("index out of bounds");
     }
 
@@ -228,7 +280,7 @@ public module std {
   // ============================================================================
 
   /** Reports arithmetic division with a zero divisor. */
-  public class DivisionByZeroError implements IError {
+  public exception DivisionByZeroError implements IError {
     /**
      * Build the error reporting a divide by zero.
      */
@@ -244,7 +296,7 @@ public module std {
     /**
      * Fixed text: division by zero.
      */
-    public const method message() AllocationResult<String> {
+    public const method message() String throws {
       return String("division by zero");
     }
   }
@@ -254,7 +306,7 @@ public module std {
   // ============================================================================
 
   /** Reports arithmetic whose result cannot fit in the destination type. */
-  public class OverflowError implements IError {
+  public exception OverflowError implements IError {
     /**
      * Build the error reporting that arithmetic went out of range.
      */
@@ -270,7 +322,7 @@ public module std {
     /**
      * Fixed text: arithmetic overflow.
      */
-    public const method message() AllocationResult<String> {
+    public const method message() String throws {
       return String("arithmetic overflow");
     }
   }
@@ -280,36 +332,137 @@ public module std {
   // ============================================================================
 
   /** Reports an unacceptable argument with an explanatory message. */
-  public class InvalidArgumentError implements IError {
-    var message_: ErrorMessage;
+  public exception InvalidArgumentError implements IError {
+    var text_: array<u8, 96> = [
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8,
+      0u8
+    ];
+    var text_length_: i32 = 0;
 
-    /**
-     * Build the error from a literal explaining what was wrong.
-     */
+    /** Copies and truncates the supplied diagnostic without allocating. */
     init(message: static_ptr<u8>) {
-      this.message_ = ErrorMessage(message);
+      this.text_length_ = 0;
+      for (var i: i64 = 0; i < message.length() and i < 96; i += 1) {
+        this.text_[i] = unsafe { _load<u8>(message.raw(), i); };
+        this.text_length_ += 1;
+      }
     }
 
-    /**
-     * Build the error from a message put together at runtime. The text is
-     * copied, so the caller's String can go out of scope.
-     */
-    init(message: const ref String) AllocationResult<void> {
-      this.message_ = try ErrorMessage(message);
+    /** Copies and truncates the supplied diagnostic without allocating. */
+    init(message: const ref String) {
+      this.text_length_ = 0;
+      for (var i: i64 = 0; i < message.length() and i < 96; i += 1) {
+        this.text_[i] = unsafe { message.unsafe_at(i); };
+        this.text_length_ += 1;
+      }
     }
 
-    /**
-     * Returns the code identifying this error category.
-     */
+    /** Returns the numeric failure code. */
     public const method code() i32 {
       return 6;
     }
 
-    /**
-     * A fresh copy of the explanation, owned by the caller.
-     */
-    public const method message() AllocationResult<String> {
-      return this.message_.message();
+    /** Copies the bounded diagnostic into an explicitly requested owned string. */
+    public const method message() String throws {
+      var text = String("");
+      for (var i: i64 = 0; i < _convert<i64>(this.text_length_); i += 1) {
+        text.append_char(this.text_[i]);
+      }
+      return text;
     }
   }
 
@@ -318,7 +471,7 @@ public module std {
   // ============================================================================
 
   /** Reports an input or output failure and retains the operating-system error code. */
-  public class IOError implements IError {
+  public exception IOError implements IError {
     var errno_: i32;
 
     /**
@@ -338,7 +491,7 @@ public module std {
     /**
      * Fixed text: an I/O call failed.
      */
-    public const method message() AllocationResult<String> {
+    public const method message() String throws {
       return String("I/O error");
     }
 
@@ -355,7 +508,7 @@ public module std {
   // ============================================================================
 
   /** Reports a failed memory allocation and the requested size. */
-  public class AllocationError implements IError {
+  public exception AllocationError implements IError {
     var size_: i64;
 
     /**
@@ -375,7 +528,7 @@ public module std {
     /**
      * Fixed text: the allocator could not satisfy the request.
      */
-    public const method message() AllocationResult<String> {
+    public const method message() String throws {
       return String("memory allocation failed");
     }
 
@@ -392,7 +545,7 @@ public module std {
   // ============================================================================
 
   /** Reports a value that cannot be represented by the requested destination type. */
-  public class ConversionError implements IError {
+  public exception ConversionError implements IError {
     /**
      * Build the error reporting that a value did not fit its new type.
      */
@@ -408,7 +561,7 @@ public module std {
     /**
      * Fixed text: the value was out of range for the target type.
      */
-    public const method message() AllocationResult<String> {
+    public const method message() String throws {
       return String("value out of range for the target type");
     }
   }

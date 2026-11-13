@@ -71,11 +71,10 @@ TEST(Enums_Generic, ResultWithTwoParams) {
   auto value = executeString(R"(
     enum Result<T, E> { Ok(T), Err(E) }
 
+    /** Exercises an ordinary enum with two independent type parameters. */
     function divide(a: i32, b: i32) Result<i32, i32> {
-        return match _checked_div(a, b) {
-            _Result.Ok(v) => Result.Ok(v),
-            _Result.Err(error) => Result.Err(-1)
-        };
+      if (b == 0) { return Result.Err(-1); }
+      return Result.Ok(a / b);
     }
 
     function get(r: ref Result<i32, i32>) i32 {

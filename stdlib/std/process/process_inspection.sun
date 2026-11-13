@@ -21,21 +21,21 @@ public module std.process {
     }
   }
 
-  /** Owned observations; individual unavailable fields retain their native error. */
+  /** Owned observations collected successfully for one process identity. */
   public class ProcessSnapshot {
     public var identity: ProcessIdentity;
-    public var cpu_time_ns: SystemResult<u64>;
-    public var rss_bytes: SystemResult<u64>;
-    public var executable: SystemResult<String>;
-    public var arguments: SystemResult<Vec<String>>;
+    public var cpu_time_ns: u64;
+    public var rss_bytes: u64;
+    public var executable: String;
+    public var arguments: Vec<String>;
 
     /** Move observations into a snapshot. CPU time excludes waited-for children. */
     init(
       identity: ProcessIdentity,
-      cpu_time_ns: SystemResult<u64>,
-      rss_bytes: SystemResult<u64>,
-      executable: SystemResult<String>,
-      arguments: SystemResult<Vec<String>>
+      cpu_time_ns: u64,
+      rss_bytes: u64,
+      executable: String,
+      arguments: Vec<String>
     ) {
       this.identity = identity;
       this.cpu_time_ns = cpu_time_ns;
@@ -52,7 +52,7 @@ public module std.process {
   }
 
   /** Return the caller-visible PIDs; entries may exit before they are inspected. */
-  public function process_ids(alloc: const ref HeapAllocator) SystemResult<Vec<i32>> {
+  public function process_ids(alloc: const ref HeapAllocator) Vec<i32> throws {
     return native_process_ids(alloc);
   }
 
@@ -60,9 +60,9 @@ public module std.process {
   public function process_identity(
     alloc: const ref HeapAllocator,
     target: i32
-  ) SystemResult<ProcessIdentity> {
+  ) ProcessIdentity throws {
     if (target <= 0) {
-      return SystemResult.Error(Error(22, "process id must be positive"));
+      throw Error(22, "process id must be positive");
     }
     return native_process_identity(alloc, target);
   }
@@ -71,29 +71,29 @@ public module std.process {
   public function inspect_process(
     alloc: const ref HeapAllocator,
     target: i32
-  ) SystemResult<ProcessSnapshot> {
+  ) ProcessSnapshot throws {
     if (target <= 0) {
-      return SystemResult.Error(Error(22, "process id must be positive"));
+      throw Error(22, "process id must be positive");
     }
-    var snapshot = try native_process_snapshot(alloc, target);
-    var after = try process_identity(alloc, target);
+    var snapshot = native_process_snapshot(alloc, target);
+    var after = process_identity(alloc, target);
     if (not snapshot.identity.equals(after)) {
-      return SystemResult.Error(Error(3, "process identity changed during inspection"));
+      throw Error(3, "process identity changed during inspection");
     }
-    return SystemResult.Ok(snapshot);
+    return snapshot;
   }
 
   /** Return the system's memory page size in bytes, or an error if unavailable. */
-  public function page_size_bytes() SystemResult<u64> {
+  public function page_size_bytes() u64 throws {
     var size = unsafe { c_getpagesize(); };
     if (size <= 0) {
-      return SystemResult.Error(Error(22, "page size unavailable"));
+      throw Error(22, "page size unavailable");
     }
-    return SystemResult.Ok(_convert<u64>(size));
+    return _convert<u64>(size);
   }
 
   /** Return installed physical memory in bytes, not a container's memory limit. */
-  public function physical_memory_bytes() SystemResult<u64> {
+  public function physical_memory_bytes() u64 throws {
     return native_physical_memory_bytes();
   }
 
@@ -115,14 +115,14 @@ public module std.process {
     }
 
     /** Open an observed identity; failure leaves this handle closed. */
-    public method open(identity: const ref ProcessIdentity) SystemResult<void> {
+    public method open(identity: const ref ProcessIdentity) void throws {
       this.close();
       if (identity.pid <= 0) {
-        return SystemResult.Error(Error(22, "process id must be positive"));
+        throw Error(22, "process id must be positive");
       }
-      this.token = try native_process_open(this.alloc, identity);
+      this.token = native_process_open(this.alloc, identity);
       this.identity_ = ProcessIdentity(identity.pid, identity.start_marker);
-      return SystemResult.Ok;
+      return;
     }
 
     /** Report the platform's signaling guarantee. */
@@ -131,19 +131,19 @@ public module std.process {
     }
 
     /** Send SIGTERM to the bound process, preserving native permission errors. */
-    public method terminate() SystemResult<void> {
+    public method terminate() void throws {
       return this.send(SIGTERM);
     }
 
     /** Send SIGKILL to the bound process. */
-    public method kill() SystemResult<void> {
+    public method kill() void throws {
       return this.send(SIGKILL);
     }
 
     /** Reject closed handles before dispatching to the platform backend. */
-    method send(signal: i32) SystemResult<void> {
+    method send(signal: i32) void throws {
       if (this.token == 0) {
-        return SystemResult.Error(Error(9, "process handle is closed"));
+        throw Error(9, "process handle is closed");
       }
       return native_process_signal(this.alloc, this.identity_, this.token, signal);
     }
@@ -164,10 +164,12 @@ public module std.process {
 
   /** Return a checked byte, using NUL when a parser reaches the end. */
   function process_byte(text: const ref String, index: i64) u8 {
-    return match text.at(index) {
-      AccessResult.Ok(byte) => byte,
-      AccessResult.OutOfBounds(error) => 0
-    };
+    try {
+      var byte = text.at(index);
+      return byte;
+    } catch (error: IndexOutOfBoundsError) {
+      return 0;
+    }
   }
 
   /** Copy a bounded native byte range into allocator-owned text. */
@@ -176,33 +178,33 @@ public module std.process {
     data: ref ContiguousBuffer<u8>,
     start: i64,
     end: i64
-  ) AllocationResult<String> {
-    var text = try String(alloc, "");
+  ) String throws {
+    var text = String(alloc, "");
     for (var i = start; i < end; i = i + 1) {
-      try text.append_char(data[i]);
+      text.append_char(data[i]);
     }
-    return AllocationResult.Ok(text);
+    return text;
   }
 
   /** Decode NUL-terminated argument bytes, preserving empty arguments. */
   function process_arguments(
     alloc: const ref HeapAllocator,
     text: const ref String
-  ) SystemResult<Vec<String>> {
-    var args = try Vec<String>(alloc, 8);
-    var argument = try String(alloc, "");
+  ) Vec<String> throws {
+    var args = Vec<String>(alloc, 8);
+    var argument = String(alloc, "");
     for (var i: i64 = 0; i < text.length(); i = i + 1) {
       var byte = process_byte(text, i);
       if (byte == 0) {
-        try args.push(argument);
-        argument = try String(alloc, "");
+        args.push(argument);
+        argument = String(alloc, "");
       } else {
-        try argument.append_char(byte);
+        argument.append_char(byte);
       }
     }
     if (not argument.is_empty()) {
-      return SystemResult.Error(Error(22, "truncated process arguments"));
+      throw Error(22, "truncated process arguments");
     }
-    return SystemResult.Ok(args);
+    return args;
   }
 }

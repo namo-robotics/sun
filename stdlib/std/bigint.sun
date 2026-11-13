@@ -8,9 +8,9 @@
 // Usage:
 //   using std;
 //
-//   var n = try BigUint(global_allocator, 1);
+//   var n = BigUint(global_allocator, 1);
 //   for (var i: u64 = 2; i <= 30; i = i + 1) { n.mul_small(i); }   // 30!
-//   var text = try String(global_allocator, "");
+//   var text = String(global_allocator, "");
 //   n.append_decimal(text);            // 265252859812191058636308480000000
 
 /** Provides the standard-library declarations implemented in this source file. */
@@ -24,32 +24,32 @@ public module std {
     /**
      * Zero
      */
-    init(allocator: const ref HeapAllocator) AllocationResult<void> {
+    init(allocator: const ref HeapAllocator) throws {
       this.alloc = allocator.copy();
-      this.limbs = try Vec<u64>(allocator, 4);
+      this.limbs = Vec<u64>(allocator, 4);
     }
 
     /**
      * From a machine word
      */
-    init(allocator: const ref HeapAllocator, value: u64) AllocationResult<void> {
+    init(allocator: const ref HeapAllocator, value: u64) throws {
       this.alloc = allocator.copy();
-      this.limbs = try Vec<u64>(allocator, 4);
+      this.limbs = Vec<u64>(allocator, 4);
       if (value != 0) {
-        try this.limbs.push(value);
+        this.limbs.push(value);
       }
     }
 
     /**
      * Independent copy
      */
-    public const method clone() AllocationResult<BigUint> {
-      var out = try BigUint(this.alloc);
-      try out.limbs.reserve(this.limbs.size());
+    public const method clone() BigUint throws {
+      var out = BigUint(this.alloc);
+      out.limbs.reserve(this.limbs.size());
       for (var i: i64 = 0; i < this.limbs.size(); i = i + 1) {
-        try out.limbs.push(unsafe { this.limbs.get_unchecked(i); });
+        out.limbs.push(unsafe { this.limbs.get_unchecked(i); });
       }
-      return AllocationResult.Ok(out);
+      return out;
     }
 
     /**
@@ -115,29 +115,29 @@ public module std {
     /**
      * Set from a machine word
      */
-    public method set_u64(value: u64) AllocationResult<void> {
+    public method set_u64(value: u64) void throws {
       if (value != 0) {
-        try this.limbs.reserve(1);
+        this.limbs.reserve(1);
       }
       this.limbs.clear();
       if (value != 0) {
-        try this.limbs.push(value);
+        this.limbs.push(value);
       }
 
-      return AllocationResult.Ok;
+      return;
     }
 
     /**
      * Copy the value of another number
      */
-    public method assign(other: const ref BigUint) AllocationResult<void> {
-      try this.limbs.reserve(other.limbs.size());
+    public method assign(other: const ref BigUint) void throws {
+      this.limbs.reserve(other.limbs.size());
       this.limbs.clear();
       for (var i: i64 = 0; i < other.limbs.size(); i = i + 1) {
-        try this.limbs.push(unsafe { other.limbs.get_unchecked(i); });
+        this.limbs.push(unsafe { other.limbs.get_unchecked(i); });
       }
 
-      return AllocationResult.Ok;
+      return;
     }
 
     /**
@@ -214,14 +214,14 @@ public module std {
     // ------------------------------------------------------------------------
 
     /** Adds a machine-sized unsigned value to this integer, growing its storage as needed. */
-    public method add_small(value: u64) AllocationResult<void> {
-      try this.limbs.reserve(this.limbs.size() + 1);
+    public method add_small(value: u64) void throws {
+      this.limbs.reserve(this.limbs.size() + 1);
       var carry: u64 = value;
       var i: i64 = 0;
       while (carry != 0) {
         if (i >= this.limbs.size()) {
-          try this.limbs.push(carry);
-          return AllocationResult.Ok;
+          this.limbs.push(carry);
+          return;
         }
         var a: u64 = unsafe { this.limbs.get_unchecked(i); };
         var sum: u64 = a + carry;
@@ -234,18 +234,18 @@ public module std {
         i = i + 1;
       }
 
-      return AllocationResult.Ok;
+      return;
     }
 
     /**
      * Add another big integer into this one, in place.
      */
-    public method add(other: const ref BigUint) AllocationResult<void> {
+    public method add(other: const ref BigUint) void throws {
       var maximum = this.limbs.size() > other.limbs.size() ? this.limbs.size() : other.limbs.size();
-      try this.limbs.reserve(maximum + 1);
+      this.limbs.reserve(maximum + 1);
       var n: i64 = other.limbs.size();
       while (this.limbs.size() < n) {
-        try this.limbs.push(0);
+        this.limbs.push(0);
       }
       var carry: u64 = 0;
       for (var i: i64 = 0; i < this.limbs.size(); i = i + 1) {
@@ -263,22 +263,22 @@ public module std {
         unsafe { this.limbs.set_unchecked(i, total); };
         carry = c;
         if (i >= n - 1 and carry == 0) {
-          return AllocationResult.Ok;
+          return;
         }
       }
       if (carry != 0) {
-        try this.limbs.push(carry);
+        this.limbs.push(carry);
       }
 
-      return AllocationResult.Ok;
+      return;
     }
 
     /**
      * this = this - other; returns OverflowError if other is larger
      */
-    public method sub(other: const ref BigUint) ArithmeticResult<void> {
+    public method sub(other: const ref BigUint) void throws {
       if (this.compare(other) < 0) {
-        return ArithmeticResult.Overflow(OverflowError());
+        throw OverflowError();
       }
       var borrow: u64 = 0;
       for (var i: i64 = 0; i < this.limbs.size(); i = i + 1) {
@@ -297,7 +297,7 @@ public module std {
         borrow = next;
       }
       this.trim();
-      return ArithmeticResult.Ok;
+      return;
     }
 
     // ------------------------------------------------------------------------
@@ -305,11 +305,11 @@ public module std {
     // ------------------------------------------------------------------------
 
     /** Multiplies this integer by a machine-sized unsigned value in place. */
-    public method mul_small(value: u64) AllocationResult<void> {
-      try this.limbs.reserve(this.limbs.size() + 1);
+    public method mul_small(value: u64) void throws {
+      this.limbs.reserve(this.limbs.size() + 1);
       if (value == 0) {
         this.limbs.clear();
-        return AllocationResult.Ok;
+        return;
       }
       var carry: u64 = 0;
       for (var i: i64 = 0; i < this.limbs.size(); i = i + 1) {
@@ -324,25 +324,25 @@ public module std {
         carry = hi;
       }
       if (carry != 0) {
-        try this.limbs.push(carry);
+        this.limbs.push(carry);
       }
 
-      return AllocationResult.Ok;
+      return;
     }
 
     /**
      * this = this * other
      */
-    public method mul(other: const ref BigUint) AllocationResult<void> {
+    public method mul(other: const ref BigUint) void throws {
       if (this.is_zero() or other.is_zero()) {
         this.limbs.clear();
-        return AllocationResult.Ok;
+        return;
       }
       var n: i64 = this.limbs.size();
       var m: i64 = other.limbs.size();
-      var result = try Vec<u64>(this.alloc, n + m);
+      var result = Vec<u64>(this.alloc, n + m);
       for (var i: i64 = 0; i < n + m; i = i + 1) {
-        try result.push(0);
+        result.push(0);
       }
       for (var i: i64 = 0; i < n; i = i + 1) {
         var a: u64 = unsafe { this.limbs.get_unchecked(i); };
@@ -382,16 +382,16 @@ public module std {
       this.limbs = result;
       this.trim();
 
-      return AllocationResult.Ok;
+      return;
     }
 
     /**
      * Multiply by 10^n
      */
-    public method mul_pow10(n: i64) AllocationResult<void> {
+    public method mul_pow10(n: i64) void throws {
       var remaining: i64 = n;
       while (remaining >= 18) {
-        try this.mul_small(1000000000000000000);
+        this.mul_small(1000000000000000000);
         remaining = remaining - 18;
       }
       var factor: u64 = 1;
@@ -400,75 +400,75 @@ public module std {
         remaining = remaining - 1;
       }
       if (factor != 1) {
-        try this.mul_small(factor);
+        this.mul_small(factor);
       }
 
-      return AllocationResult.Ok;
+      return;
     }
 
     /**
      * this = this << bits
      */
-    public method shl(bits: i64) AllocationResult<void> {
+    public method shl(bits: i64) void throws {
       if (this.is_zero() or bits <= 0) {
-        return AllocationResult.Ok;
+        return;
       }
       var limb_shift: i64 = bits / 64;
       var bit_shift: u64 = _convert<u64>(bits - limb_shift * 64);
       var n: i64 = this.limbs.size();
-      var result = try Vec<u64>(this.alloc, n + limb_shift + 1);
+      var result = Vec<u64>(this.alloc, n + limb_shift + 1);
       for (var i: i64 = 0; i < limb_shift; i = i + 1) {
-        try result.push(0);
+        result.push(0);
       }
       var carry: u64 = 0;
       for (var i: i64 = 0; i < n; i = i + 1) {
         var a: u64 = unsafe { this.limbs.get_unchecked(i); };
         if (bit_shift == 0) {
-          try result.push(a);
+          result.push(a);
         } else {
-          try result.push((a << bit_shift) | carry);
+          result.push((a << bit_shift) | carry);
           carry = a >> (64 - bit_shift);
         }
       }
       if (carry != 0) {
-        try result.push(carry);
+        result.push(carry);
       }
       this.limbs = result;
 
-      return AllocationResult.Ok;
+      return;
     }
 
     /**
      * this = this >> bits
      */
-    public method shr(bits: i64) AllocationResult<void> {
+    public method shr(bits: i64) void throws {
       if (this.is_zero() or bits <= 0) {
-        return AllocationResult.Ok;
+        return;
       }
       var limb_shift: i64 = bits / 64;
       var bit_shift: u64 = _convert<u64>(bits - limb_shift * 64);
       var n: i64 = this.limbs.size();
       if (limb_shift >= n) {
         this.limbs.clear();
-        return AllocationResult.Ok;
+        return;
       }
-      var result = try Vec<u64>(this.alloc, n - limb_shift);
+      var result = Vec<u64>(this.alloc, n - limb_shift);
       for (var i: i64 = limb_shift; i < n; i = i + 1) {
         var a: u64 = unsafe { this.limbs.get_unchecked(i); };
         if (bit_shift == 0) {
-          try result.push(a);
+          result.push(a);
         } else {
           var high: u64 = 0;
           if (i + 1 < n) {
             high = unsafe { this.limbs.get_unchecked(i + 1); } << (64 - bit_shift);
           }
-          try result.push((a >> bit_shift) | high);
+          result.push((a >> bit_shift) | high);
         }
       }
       this.limbs = result;
       this.trim();
 
-      return AllocationResult.Ok;
+      return;
     }
 
     // ------------------------------------------------------------------------
@@ -479,9 +479,9 @@ public module std {
      * this = this / divisor, returns the remainder. The divisor must fit in
      * 32 bits (enough for decimal digit extraction: 10, 10^9, ...).
      */
-    public method divmod_small(divisor: u32) ArithmeticResult<u32> {
+    public method divmod_small(divisor: u32) u32 throws {
       if (divisor == 0) {
-        return ArithmeticResult.DivisionByZero(DivisionByZeroError());
+        throw DivisionByZeroError();
       }
       var d: u64 = _convert<u64>(divisor);
       var rem: u64 = 0;
@@ -499,7 +499,7 @@ public module std {
         i = i - 1;
       }
       this.trim();
-      return ArithmeticResult.Ok(_convert<u32>(rem));
+      return _convert<u32>(rem);
     }
 
     // ------------------------------------------------------------------------
@@ -509,60 +509,61 @@ public module std {
     /**
      * Append the decimal digits of the value
      */
-    public const method append_decimal(out: ref String) AllocationResult<void> {
+    public const method append_decimal(out: ref String) void throws {
       if (this.is_zero()) {
-        try out.append_char(b'0');
-        return AllocationResult.Ok;
+        out.append_char(b'0');
+        return;
       }
       // Peel off 9 digits at a time (10^9 fits a u32 divisor)
-      var work = try this.clone();
-      var chunks = try Vec<u32>(this.alloc, this.limbs.size() * 3 + 1);
+      var work = this.clone();
+      var chunks = Vec<u32>(this.alloc, this.limbs.size() * 3 + 1);
       while (work.is_zero() == false) {
-        var chunk: u32 = match work.divmod_small(1000000000) {
-          ArithmeticResult.Ok(value) => value,
-          _ => {
-            return AllocationResult.Ok;
-          }
-        };
-        try chunks.push(chunk);
+        var chunk: u32 = 0;
+        try {
+          var value = work.divmod_small(1000000000);
+          chunk = value;
+        } catch {
+          return;
+        }
+        chunks.push(chunk);
       }
       var i: i64 = chunks.size() - 1;
-      try out.append_u64(unsafe { chunks.get_unchecked(i); });
+      out.append_u64(unsafe { chunks.get_unchecked(i); });
       i = i - 1;
       while (i >= 0) {
         var chunk: u64 = unsafe { chunks.get_unchecked(i); };
         // Zero-pad inner chunks to 9 digits
         var scale: u64 = 100000000;
         while (scale > 1 and chunk < scale) {
-          try out.append_char(b'0');
+          out.append_char(b'0');
           scale = scale / 10;
         }
-        try out.append_u64(chunk);
+        out.append_u64(chunk);
         i = i - 1;
       }
 
-      return AllocationResult.Ok;
+      return;
     }
 
     /**
      * Set from decimal digits; false (and the value left as zero) if the text
      * is empty or has a non-digit
      */
-    public method set_decimal(text: const ref String) AllocationResult<bool> {
+    public method set_decimal(text: const ref String) bool throws {
       this.limbs.clear();
       if (text.length() == 0) {
-        return AllocationResult.Ok(false);
+        return false;
       }
       for (var i: i64 = 0; i < text.length(); i = i + 1) {
         var ch: u8 = unsafe { text.unsafe_at(i); };
         if (ch < b'0' or ch > b'9') {
           this.limbs.clear();
-          return AllocationResult.Ok(false);
+          return false;
         }
-        try this.mul_small(10);
-        try this.add_small(_convert<u64>(ch - b'0'));
+        this.mul_small(10);
+        this.add_small(_convert<u64>(ch - b'0'));
       }
-      return AllocationResult.Ok(true);
+      return true;
     }
   }
 

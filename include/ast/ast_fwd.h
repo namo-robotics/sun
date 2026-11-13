@@ -43,6 +43,8 @@ class ForExprAST;
 class ForInExprAST;
 class WhileExprAST;
 class UnsafeBlockAST;
+class ThrowAST;
+class TryCatchAST;
 class BreakAST;
 class ContinueAST;
 class ReturnExprAST;

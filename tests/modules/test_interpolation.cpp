@@ -32,8 +32,6 @@ TEST(Modules_Interpolation, allowed_when_sources_declare_sun_string) {
   auto value = sun::driver::executeString(R"(
     /** Provides interpolation support from sources instead of a bundle. */
     public module std {
-      /** Carries the fixture's successful interpolation. */
-      public enum AllocationResult<T> { Ok(T) }
       /** Counts the bytes appended by generated interpolation operations. */
       public class String {
         public var len: i64 = 0;
@@ -50,17 +48,17 @@ TEST(Modules_Interpolation, allowed_when_sources_declare_sun_string) {
         /** Counts the single-digit fixture value. */
         public method append(value: i64) void { this.text.len += 1; }
         /** Returns the completed fixture string. */
-        public method finish() AllocationResult<String> {
+        public method finish() String throws {
           var text = String();
           text.len = this.text.len;
-          return AllocationResult.Ok(text);
+          return text;
         }
       }
     }
 
-    function main() i64 {
+    function main() i64 throws {
         var x: i64 = 7;
-        var s = match `n=${x}` { std.AllocationResult.Ok(text) => text };
+        var s = `n=${x}`;
         return s.length() - 3;
     }
   )");
@@ -72,9 +70,9 @@ TEST(Modules_Interpolation, works_without_using_sun) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i64> {
-  var s = try `Hello`;
-  return Result.Ok(s.length());
+function main() i64 throws {
+  var s =  `Hello`;
+  return s.length();
 }
 )");
   EXPECT_EQ(value, 5);
@@ -85,93 +83,28 @@ TEST(Modules_Interpolation, hex_escapes_preserve_bytes_around_expressions) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i64> {
+function main() i64 throws {
   var protocol = "http/1.1";
-  var s = try `\x08${protocol}\x00\x7f\x80\xfF\x41F\\x08`;
+  var s =  `\x08${protocol}\x00\x7f\x80\xfF\x41F\\x08`;
   if (s.length() != 19 or
-    (match s.at(0) {
-      std.AccessResult.Ok(value) => value,
-      std.AccessResult.OutOfBounds(_) => {
-        return Result.Ok(-100);
-      }
-    }) != 8) {
-    return Result.Ok(1);
+    (s.at(0)) != 8) {
+    return 1;
   }
-  if ((match s.at(1) {
-    std.AccessResult.Ok(value) => value,
-    std.AccessResult.OutOfBounds(_) => {
-      return Result.Ok(-100);
-    }
-  }) != b'h' or
-    (match s.at(8) {
-      std.AccessResult.Ok(value) => value,
-      std.AccessResult.OutOfBounds(_) => {
-        return Result.Ok(-100);
-      }
-    }) != b'1' or
-    (match s.at(9) {
-      std.AccessResult.Ok(value) => value,
-      std.AccessResult.OutOfBounds(_) => {
-        return Result.Ok(-100);
-      }
-    }) != 0 or
-    (match s.at(10) {
-      std.AccessResult.Ok(value) => value,
-      std.AccessResult.OutOfBounds(_) => {
-        return Result.Ok(-100);
-      }
-    }) != 127 or
-    (match s.at(11) {
-      std.AccessResult.Ok(value) => value,
-      std.AccessResult.OutOfBounds(_) => {
-        return Result.Ok(-100);
-      }
-    }) != 128 or
-    (match s.at(12) {
-      std.AccessResult.Ok(value) => value,
-      std.AccessResult.OutOfBounds(_) => {
-        return Result.Ok(-100);
-      }
-    }) != 255 or
-    (match s.at(13) {
-      std.AccessResult.Ok(value) => value,
-      std.AccessResult.OutOfBounds(_) => {
-        return Result.Ok(-100);
-      }
-    }) != b'A' or
-    (match s.at(14) {
-      std.AccessResult.Ok(value) => value,
-      std.AccessResult.OutOfBounds(_) => {
-        return Result.Ok(-100);
-      }
-    }) != b'F' or
-    (match s.at(15) {
-      std.AccessResult.Ok(value) => value,
-      std.AccessResult.OutOfBounds(_) => {
-        return Result.Ok(-100);
-      }
-    }) != b'\\' or
-    (match s.at(16) {
-      std.AccessResult.Ok(value) => value,
-      std.AccessResult.OutOfBounds(_) => {
-        return Result.Ok(-100);
-      }
-    }) != b'x' or
-    (match s.at(17) {
-      std.AccessResult.Ok(value) => value,
-      std.AccessResult.OutOfBounds(_) => {
-        return Result.Ok(-100);
-      }
-    }) != b'0' or
-    (match s.at(18) {
-      std.AccessResult.Ok(value) => value,
-      std.AccessResult.OutOfBounds(_) => {
-        return Result.Ok(-100);
-      }
-    }) != b'8') {
-    return Result.Ok(2);
+  if ((s.at(1)) != b'h' or
+    (s.at(8)) != b'1' or
+    (s.at(9)) != 0 or
+    (s.at(10)) != 127 or
+    (s.at(11)) != 128 or
+    (s.at(12)) != 255 or
+    (s.at(13)) != b'A' or
+    (s.at(14)) != b'F' or
+    (s.at(15)) != b'\\' or
+    (s.at(16)) != b'x' or
+    (s.at(17)) != b'0' or
+    (s.at(18)) != b'8') {
+    return 2;
   }
-  return Result.Ok(0);
+  return 0;
 }
 )"),
             0);
@@ -192,7 +125,7 @@ TEST(Modules_Interpolation, unused_generic_body_accepts_unbound_value) {
   EXPECT_EQ(executeStringWithStdlib(R"(
 using std;
 
-    function label<T>(value: T) Result<std.String> { return Result.Ok( try `v=${value}`); }
+    function label<T>(value: T) std.String throws { return   `v=${value}`; }
     function main() i32 { return 0; }
   )"),
             0);
@@ -207,14 +140,14 @@ class Unprintable {
   init() {}
 }
 
-function label<T>(value: T) Result<std.String> {
-  return Result.Ok(try `v=${value}`);
+function label<T>(value: T) std.String throws {
+  return  `v=${value}`;
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
-  var text = try label(Unprintable());
-  return Result.Ok(0);
+function main() i32 throws {
+  var text =  label(Unprintable());
+  return 0;
 }
 )"),
       "Type mismatch in argument 1 of call to 'append'");

@@ -28,10 +28,9 @@ class Point {
 - **Constructor**: `init(args) { }` runs during instantiation. It is written
   bare — no `public`, no `method`, no return type — and so is the destructor
   `deinit() { }`; both are always public, and no method may take their names.
-  A constructor that returns errors is written `init(args) Result<void> { }`;
-  calling the class then returns `Result<Class>`. Library-defined result enums
-  use their first type parameter for the constructed value. Use `try Class(args)` to
-  propagate failure. See [returned errors](/errors#returned-error-values).
+  A constructor that can fail is written `init(args) throws { }`;
+  calling the class returns the constructed value on success and throws on failure.
+  Catch failures or declare the caller `throws`. See [exceptions](/errors).
 - **Methods**: Declared with the `method` keyword inside the class body; a
   method can access `this`
 - **Member access**: Use `.` to access fields and call methods
@@ -65,8 +64,8 @@ do not introduce implicit copies.
 When every field has a default and there is no constructor, Sun supplies
 `init()`. If only some fields have defaults, write a constructor that initializes
 the rest, including fields inherited from interfaces. A default that propagates
-an error uses `try` and requires an explicit constructor returning a compatible
-result enum; the supplied constructor is infallible.
+an exception requires an explicit constructor declared `throws`; the supplied
+constructor is infallible.
 
 Field initializers also work in packed classes. Fields still require explicit
 types. Struct literals must name every field and do not run these defaults.
@@ -223,7 +222,7 @@ interface Runnable {
 
 class Task implements Named, Runnable {
     // 'name' field comes from Named interface
-    
+
     init(n: i32) {
         this.name = n;
     }
@@ -316,7 +315,7 @@ class Buffer {
     }
 
     method fill(alloc: ref HeapAllocator) void {
-        this.data = try Vec<u8>(alloc, 16);
+        this.data =  Vec<u8>(alloc, 16);
         this.length = 0;
     }
 }
@@ -395,15 +394,15 @@ For heap-allocated objects, use an allocator from the standard library:
 ```sun
 
 function main() i32 {
-    
+
     // Create a Point on the heap
     var p: raw_ptr<Point> = global_allocator.create<Point>(3, 4);
-    
+
     var result = unsafe { _to_ref<Point>(p).magnitude_squared(); };  // 25
 
     // A raw allocation needs both destruction and deallocation.
     unsafe { _deinit<Point>(p); _free(p); };
-    
+
     return result;
 }
 ```
@@ -416,7 +415,7 @@ For automatic memory management, wrap the raw pointer in `Unique<T>`:
 
 function main() i32 {
     var p = Unique<Point>(global_allocator.create<Point>(3, 4));
-    
+
     return p.get().magnitude_squared();  // 25
 }  // p.deinit() called automatically, memory freed
 ```
@@ -581,11 +580,11 @@ function main() i32 {
     c1.increment();
     c1.increment();
     var result1 = c1.get();  // 12
-    
+
     var c2 = Counter(0);
     c2.increment();
     var result2 = c2.get();  // 1
-    
+
     return result1 + result2;  // 13
 }
 ```
@@ -611,10 +610,9 @@ class Number {
 }
 ```
 
-Hooks may return owning values, references, or result enums. Result-returning
-operators require explicit handling, such as `try (a * b)` inside a compatible
-result-returning function. There is no automatic result unwrapping, reflected
-right-hand dispatch, or compound-assignment hook. Other arithmetic operators
+Hooks may return owning values or references and may declare `throws`.
+Calls to throwing operators require a `try` block or a caller declared `throws`.
+There is no reflected right-hand dispatch or compound-assignment hook. Other arithmetic operators
 are not overloadable yet.
 
 ## Explicit alignment

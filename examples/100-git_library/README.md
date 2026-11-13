@@ -3,9 +3,13 @@
 Fetches a pinned revision of [sun_serve](https://github.com/namo-robotics/sun_serve),
 builds `src/sun_serve.sun` with the consumer's compiler settings, and links a program
 that checks HTTP status helpers and polling results, then prints the library
-version and `OK`. The pinned revision uses `ServerResult<T>`: the consumer
-propagates setup and polling failures with prefix `try`, handles an expected
-invalid-descriptor error with `match`, and reports unexpected errors from `main`.
+version and `OK`. The consumer propagates setup and polling exceptions,
+catches the expected invalid-descriptor failure, and reports unexpected
+exceptions from `main`.
+
+The pinned external revision still uses the removed result-based error API.
+This example requires a migrated `sun_serve` revision before it can build with
+the current compiler; update the dependency pin once that revision is available.
 
 Requires x86_64 Linux, Git, Sun with `stdlib.moon`, and musl archives
 `libz.a`, `libssl.a`, and `libcrypto.a`. Run `scripts/fetch-openssl.sh` to

@@ -13,7 +13,7 @@ namespace {
 const char* kOwnerPreamble = R"(
 
 /** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), TestError(TestError) }
+
 
 var counter: i32 = 0;
 
@@ -24,7 +24,7 @@ class Owner {
   }
 }
 
-class TestError {
+exception TestError {
   init() {}
   const method code() i32 {
     return 1;
@@ -34,10 +34,10 @@ class TestError {
   }
 }
 
-function thrower() Outcome<void> {
-  return Outcome.TestError(TestError());
+function thrower() void throws {
+  throw TestError();
 
-  return Outcome.Ok;
+  return;
 }
 )";
 
@@ -50,26 +50,24 @@ std::string withPreamble(const std::string& body) {
 
 TEST(MemorySafety_Drops_UnwindCleanup, callee_throw_drops_callers_frame_owner) {
   auto value = executeString(withPreamble(R"(
-function middle() Outcome<void> {
+function middle() void throws {
   var o = Owner();
-  try thrower();
+   thrower();
 
-  return Outcome.Ok;
+  return;
 }
 
 function main() i32 {
   /** Executes a fallible operation. */
-  var attempt_0 = () => Outcome<void> {
-    try middle();
+  var attempt_0 = () => void throws {
+     middle();
 
-    return Outcome.Ok;
+    return;
   };
-  match attempt_0() {
-    Outcome.Ok => {},
-    (e: ref TestError) => {
+  try { attempt_0();
+ } catch (e: TestError) {
       return counter;
-    }
-  };
+     }
   return -1;
 }
 )"));
@@ -79,33 +77,31 @@ function main() i32 {
 
 TEST(MemorySafety_Drops_UnwindCleanup, unwind_through_two_frames_drops_both) {
   auto value = executeString(withPreamble(R"(
-function inner() Outcome<void> {
+function inner() void throws {
   var a = Owner();
-  try thrower();
+   thrower();
 
-  return Outcome.Ok;
+  return;
 }
 
-function outer() Outcome<void> {
+function outer() void throws {
   var b = Owner();
-  try inner();
+   inner();
 
-  return Outcome.Ok;
+  return;
 }
 
 function main() i32 {
   /** Executes a fallible operation. */
-  var attempt_0 = () => Outcome<void> {
-    try outer();
+  var attempt_0 = () => void throws {
+     outer();
 
-    return Outcome.Ok;
+    return;
   };
-  match attempt_0() {
-    Outcome.Ok => {},
-    (e: ref TestError) => {
+  try { attempt_0();
+ } catch (e: TestError) {
       return counter;
-    }
-  };
+     }
   return -1;
 }
 )"));
@@ -116,34 +112,28 @@ TEST(MemorySafety_Drops_UnwindCleanup,
      local_throw_drops_try_scoped_owner_exactly_once) {
   auto value = executeString(withPreamble(R"(
 
-function helper() Outcome<i32> {
+function helper() i32 throws {
   /** Executes a fallible operation. */
-  var attempt_0 = () => Outcome<void> {
+  var attempt_0 = () => void throws {
     var o = Owner();
-    return Outcome.TestError(TestError());
+    throw TestError();
 
-    return Outcome.Ok;
+    return;
   };
-  match attempt_0() {
-    Outcome.Ok => {},
-    (e: ref TestError) => {
-      return Outcome.Ok(counter);
-    }
-  };
-  return Outcome.Ok(-1);
+  try { attempt_0();
+ } catch (e: TestError) {
+      return counter;
+     }
+  return -1;
 }
 
 function main() i32 {
   /** Executes a fallible operation. */
-  var attempt_1 = () => Outcome<i32> {
-    return Outcome.Ok(try helper());
+  var attempt_1 = () => i32 throws {
+    return  helper();
   };
-  return match attempt_1() {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -2;
-    }
-  };
+  try { var value = attempt_1();
+return value; } catch (e: TestError) { return -2; }
   return -3;
 }
 )"));
@@ -156,37 +146,31 @@ TEST(MemorySafety_Drops_UnwindCleanup,
      local_throw_from_nested_block_drops_all_left_scopes) {
   auto value = executeString(withPreamble(R"(
 
-function helper() Outcome<i32> {
+function helper() i32 throws {
   /** Executes a fallible operation. */
-  var attempt_0 = () => Outcome<void> {
+  var attempt_0 = () => void throws {
     var a = Owner();
     if (true) {
       var b = Owner();
-      return Outcome.TestError(TestError());
+      throw TestError();
     }
 
-    return Outcome.Ok;
+    return;
   };
-  match attempt_0() {
-    Outcome.Ok => {},
-    (e: ref TestError) => {
-      return Outcome.Ok(counter);
-    }
-  };
-  return Outcome.Ok(-1);
+  try { attempt_0();
+ } catch (e: TestError) {
+      return counter;
+     }
+  return -1;
 }
 
 function main() i32 {
   /** Executes a fallible operation. */
-  var attempt_1 = () => Outcome<i32> {
-    return Outcome.Ok(try helper());
+  var attempt_1 = () => i32 throws {
+    return  helper();
   };
-  return match attempt_1() {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -2;
-    }
-  };
+  try { var value = attempt_1();
+return value; } catch (e: TestError) { return -2; }
   return -3;
 }
 )"));
@@ -197,27 +181,25 @@ function main() i32 {
 TEST(MemorySafety_Drops_UnwindCleanup,
      moved_owner_not_dropped_twice_on_unwind) {
   auto value = executeString(withPreamble(R"(
-function middle() Outcome<void> {
+function middle() void throws {
   var a = Owner();
   var b = a;
-  try thrower();
+   thrower();
 
-  return Outcome.Ok;
+  return;
 }
 
 function main() i32 {
   /** Executes a fallible operation. */
-  var attempt_0 = () => Outcome<void> {
-    try middle();
+  var attempt_0 = () => void throws {
+     middle();
 
-    return Outcome.Ok;
+    return;
   };
-  match attempt_0() {
-    Outcome.Ok => {},
-    (e: ref TestError) => {
+  try { attempt_0();
+ } catch (e: TestError) {
       return counter;
-    }
-  };
+     }
   return -1;
 }
 )"));
@@ -228,27 +210,25 @@ function main() i32 {
 TEST(MemorySafety_Drops_UnwindCleanup,
      owner_declared_after_throwing_call_not_dropped) {
   auto value = executeString(withPreamble(R"(
-function middle() Outcome<void> {
+function middle() void throws {
   var a = Owner();
-  try thrower();
+   thrower();
   var b = Owner();
 
-  return Outcome.Ok;
+  return;
 }
 
 function main() i32 {
   /** Executes a fallible operation. */
-  var attempt_0 = () => Outcome<void> {
-    try middle();
+  var attempt_0 = () => void throws {
+     middle();
 
-    return Outcome.Ok;
+    return;
   };
-  match attempt_0() {
-    Outcome.Ok => {},
-    (e: ref TestError) => {
+  try { attempt_0();
+ } catch (e: TestError) {
       return counter;
-    }
-  };
+     }
   return -1;
 }
 )"));
@@ -261,35 +241,29 @@ TEST(MemorySafety_Drops_UnwindCleanup,
      caught_locally_then_normal_exit_no_extra_drops) {
   auto value = executeString(withPreamble(R"(
 
-function helper() Outcome<i32> {
+function helper() i32 throws {
   var outside = Owner();
   /** Executes a fallible operation. */
-  var attempt_0 = () => Outcome<void> {
+  var attempt_0 = () => void throws {
     var inside = Owner();
-    try thrower();
+     thrower();
 
-    return Outcome.Ok;
+    return;
   };
-  match attempt_0() {
-    Outcome.Ok => {},
-    (e: ref TestError) => {
+  try { attempt_0();
+ } catch (e: TestError) {
       // inside dropped by the unwind edge; outside still live
-    }
-  };
-  return Outcome.Ok(counter);
+     }
+  return counter;
 }
 
 function main() i32 {
   /** Executes a fallible operation. */
-  var attempt_1 = () => Outcome<i32> {
-    return Outcome.Ok(try helper());
+  var attempt_1 = () => i32 throws {
+    return  helper();
   };
-  return match attempt_1() {
-    Outcome.Ok(value) => value,
-    (e: ref TestError) => {
-      return -2;
-    }
-  };
+  try { var value = attempt_1();
+return value; } catch (e: TestError) { return -2; }
   return -3;
 }
 )"));
@@ -300,25 +274,23 @@ function main() i32 {
 
 TEST(MemorySafety_Drops_UnwindCleanup, no_owners_unwind_still_works) {
   auto value = executeString(withPreamble(R"(
-function middle() Outcome<void> {
-  try thrower();
+function middle() void throws {
+   thrower();
 
-  return Outcome.Ok;
+  return;
 }
 
 function main() i32 {
   /** Executes a fallible operation. */
-  var attempt_0 = () => Outcome<void> {
-    try middle();
+  var attempt_0 = () => void throws {
+     middle();
 
-    return Outcome.Ok;
+    return;
   };
-  match attempt_0() {
-    Outcome.Ok => {},
-    (e: ref TestError) => {
+  try { attempt_0();
+ } catch (e: TestError) {
       return 42;
-    }
-  };
+     }
   return -1;
 }
 )"));
@@ -330,17 +302,14 @@ TEST(MemorySafety_Drops_UnwindCleanup,
   auto value = executeString(R"(
 
 /** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), Payload(Payload) }
+
 
 var counter: i32 = 0;
 
-class Payload {
-  var errCode: i32;
+exception Payload {
+  var errCode: i32 = 0;
   init(errCode: i32) {
     this.errCode = errCode;
-  }
-  deinit() {
-    counter = counter + 1;
   }
   const method code() i32 {
     return this.errCode;
@@ -350,29 +319,24 @@ class Payload {
   }
 }
 
-function thrower() Outcome<void> {
+function thrower() void throws {
   var p = Payload(7);
-  return Outcome.Payload(p);
+  throw p;
 
-  return Outcome.Ok;
+  return;
 }
 
 function main() i32 {
   /** Executes a fallible operation. */
-  var attempt_0 = () => Outcome<void> {
-    try thrower();
+  var attempt_0 = () => void throws {
+     thrower();
 
-    return Outcome.Ok;
+    return;
   };
-  match attempt_0() {
-    Outcome.Ok => {},
-    (e: ref Payload) => {
+  try { attempt_0();
+ } catch (e: Payload) {
       return e.code();
-    },
-    (e: ref Payload) => {
-      return -2;
-    }
-  };
+     }
   return -1;
 }
 )");

@@ -58,10 +58,6 @@ bool sameTypeIdentity(const TypePtr& left, const TypePtr& right) {
       const auto& b = static_cast<const LambdaType&>(*right);
       return a.hasRefCaptures() == b.hasRefCaptures() && callable(a, b);
     }
-    case Type::Kind::ErrorUnion:
-      return sameTypeIdentity(
-          static_cast<const ErrorUnionType&>(*left).getValueType(),
-          static_cast<const ErrorUnionType&>(*right).getValueType());
     default:
       return left->equals(*right);
   }

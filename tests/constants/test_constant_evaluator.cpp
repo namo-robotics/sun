@@ -561,9 +561,13 @@ TEST(Constants_Evaluator, functions_that_are_not_pure_wait_for_startup) {
   )",
                              "V", "");
   expectInitializedAtStartup(R"(
-    /** Returns an arithmetic error as an ordinary value. */
-    function divide(a: i64, b: i64) _Result<i64, i32> { return _checked_div(a, b); }
-    const V = divide(1, 0);
+    /** Declares an exception effect even when this invocation succeeds. */
+    function divide(a: i64, b: i64) i64 throws { return a / b; }
+    /** Handles the exception effect before initializing a global. */
+    function initialize() i64 {
+      try { return divide(4, 2); } catch { return 0; }
+    }
+    const V = initialize();
   )",
                              "V", "");
 }

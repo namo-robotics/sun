@@ -106,15 +106,12 @@ public module std.simd {
     }
 
     /** Stores four lanes after checking the destination range, without allocation. */
-    public const method store(
-      buffer: ref std.ContiguousBuffer<f32>,
-      offset: i64
-    ) std.AccessResult<void> {
+    public const method store(buffer: ref std.ContiguousBuffer<f32>, offset: i64) void throws {
       if (offset < 0 or buffer.size() < 4 or offset > buffer.size() - 4) {
-        return std.AccessResult.OutOfBounds(std.IndexOutOfBoundsError(offset));
+        throw std.IndexOutOfBoundsError(offset);
       }
       unsafe { this.store_unchecked(buffer.raw_data(), offset); };
-      return std.AccessResult.Ok;
+      return;
     }
 
     /** Loads four initialized floats from caller-validated storage at a float offset.
@@ -257,15 +254,12 @@ public module std.simd {
     }
 
     /** Stores eight lanes after checking bounds; failure leaves the buffer unchanged. */
-    public const method store(
-      buffer: ref std.ContiguousBuffer<f32>,
-      offset: i64
-    ) std.AccessResult<void> {
+    public const method store(buffer: ref std.ContiguousBuffer<f32>, offset: i64) void throws {
       if (offset < 0 or buffer.size() < 8 or offset > buffer.size() - 8) {
-        return std.AccessResult.OutOfBounds(std.IndexOutOfBoundsError(offset));
+        throw std.IndexOutOfBoundsError(offset);
       }
       unsafe { this.store_unchecked(buffer.raw_data(), offset); };
-      return std.AccessResult.Ok;
+      return;
     }
 
     /** Loads eight initialized floats at a validated element offset, with f32 alignment. */
@@ -290,16 +284,13 @@ public module std.simd {
   }
 
   /** Loads eight initialized lanes after checking the buffer range. */
-  public function load8(
-    buffer: const ref std.ContiguousBuffer<f32>,
-    offset: i64
-  ) std.AccessResult<F32x8> {
+  public function load8(buffer: const ref std.ContiguousBuffer<f32>, offset: i64) F32x8 throws {
     if (offset < 0 or buffer.size() < 8 or offset > buffer.size() - 8) {
-      return std.AccessResult.OutOfBounds(std.IndexOutOfBoundsError(offset));
+      throw std.IndexOutOfBoundsError(offset);
     }
     var result = F32x8();
     unsafe { result.load_unchecked(buffer.raw_data(), offset); };
-    return std.AccessResult.Ok(result);
+    return result;
   }
 
   /** Broadcasts one scalar into all four lanes without allocation. */
@@ -311,15 +302,12 @@ public module std.simd {
 
   /** Loads four initialized floats after checking the buffer range.
    * Only ordinary f32 alignment is required, including at nonzero offsets. */
-  public function load(
-    buffer: const ref std.ContiguousBuffer<f32>,
-    offset: i64
-  ) std.AccessResult<F32x4> {
+  public function load(buffer: const ref std.ContiguousBuffer<f32>, offset: i64) F32x4 throws {
     if (offset < 0 or buffer.size() < 4 or offset > buffer.size() - 4) {
-      return std.AccessResult.OutOfBounds(std.IndexOutOfBoundsError(offset));
+      throw std.IndexOutOfBoundsError(offset);
     }
     var result = F32x4();
     unsafe { result.load_unchecked(buffer.raw_data(), offset); };
-    return std.AccessResult.Ok(result);
+    return result;
   }
 }

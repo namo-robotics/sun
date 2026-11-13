@@ -41,7 +41,7 @@ public module std.io {
    * Private stat boundary for supported 64-bit Linux and macOS ABIs.
    * Aligned storage covers all native fields; only kind, size and mtime escape.
    */
-  function descriptor_metadata(fd: i32) SystemResult<FileMetadata> {
+  function descriptor_metadata(fd: i32) FileMetadata throws {
     var record: array<u64, 18> = [
       0u64,
       0u64,
@@ -65,7 +65,7 @@ public module std.io {
     var data = unsafe { _bitcast<raw_ptr<u8>>(_address_of<u64>(record[0])); };
     var result = native_file_stat(fd, data);
     if (result < 0) {
-      return SystemResult.Error(Error(errno(), "failed to inspect open file"));
+      throw Error(errno(), "failed to inspect open file");
     }
     var mode: u32 = 0;
     var size_index: i64 = 6;
@@ -81,6 +81,6 @@ public module std.io {
     var size = unsafe { _load<i64>(data, size_index); };
     var seconds = unsafe { _load<i64>(data, time_index); };
     var nanos = unsafe { _load<i64>(data, time_index + 1); };
-    return SystemResult.Ok(FileMetadata(metadata_kind(mode), size, FileTime(seconds, nanos)));
+    return FileMetadata(metadata_kind(mode), size, FileTime(seconds, nanos));
   }
 }

@@ -407,7 +407,7 @@ Function* ClassGenerator::declareMethodFromAST(
     return nullptr;
   }
 
-  // With native exceptions a throwing method ('T throws IError') returns plain
+  // With native exceptions a throwing method ('T throws') returns plain
   // T; the marker only means it may unwind.
 
   // Create the function declaration
@@ -475,19 +475,13 @@ void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc) {
 
   // Get return type
   llvm::Type* returnType = func->getReturnType();
-  if (proto.getName() == "init" && proto.getResolvedReturnType() &&
-      proto.getResolvedReturnType()->isEnum()) {
-    func->addFnAttr("sun.fallible_init");
-  }
-
-  // Check if this method can return errors (declared with 'throws IError')
+  // Check whether this method declares an exception effect.
   bool canError = proto.hasReturnType() && proto.getReturnType()->canError;
 
   // Save and set error handling context. With native exceptions a throwing
   // method returns plain T, so the value type is just the return type.
   sun::codegen::CodegenState::ReturnGuard returns(state_);
   currentFunctionCanError = canError;
-  currentFunctionValueType = canError ? returnType : nullptr;
   currentFunctionReturnsRef =
       proto.hasReturnType() && proto.getReturnType()->isReference();
 
@@ -542,7 +536,7 @@ void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc) {
     ++argIt;
   }
 
-  if (func->hasFnAttribute("sun.fallible_init")) {
+  if (proto.getName() == "init" && canError) {
     for (const auto& field : currentClass->getFields()) {
       if (!sun::types::typeNeedsDrop(field.type)) {
         continue;
@@ -567,7 +561,7 @@ void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc) {
       const auto* field =
           currentClass->getField(assignment.getTargetDeclarationId());
       if (field && sun::types::typeNeedsDrop(field->type) &&
-          !func->hasFnAttribute("sun.fallible_init")) {
+          !canError) {
         auto* address = sun::codegen::support::fieldPtr(
             *ctx.builder, currentClass.get(), thisPtr, *field,
             field->name + ".initialized");
@@ -794,13 +788,8 @@ Value* ClassGenerator::codegenStackClassInstance(
     // must be invoked so the exception reaches the landing pad.
     bool ctorCanThrow =
         (ctor && ctor->canThrow) || ctorFunc->hasFnAttribute("sun.canthrow");
-    auto* status = gen_.errorGenerator().emitPossiblyThrowingCall(
+    gen_.errorGenerator().emitPossiblyThrowingCall(
         ctorFunc, ctorArgs, ctorCanThrow, "");
-    if (ctor->returnType->isEnum()) {
-      return finishFallibleConstruction(
-          expr, classType, alloca, status,
-          *static_cast<sun::types::EnumType*>(ctor->returnType.get()));
-    }
   }
 
   // Track the temporary for deinit ONLY if not moved (ownership
@@ -814,83 +803,6 @@ Value* ClassGenerator::codegenStackClassInstance(
   }
 
   return alloca;
-}
-
-/** Builds the result tag and transfers the selected payload without allocating.
- */
-Value* ClassGenerator::finishFallibleConstruction(
-    const ExprAST& expr, ClassType& classType, Value* object, Value* status,
-    sun::types::EnumType& statusType) {
-  auto& resultType =
-      static_cast<sun::types::EnumType&>(*expr.getResolvedType());
-  auto* function = ctx.builder->GetInsertBlock()->getParent();
-  auto* resultStorageType = typeResolver.getEnumStorageType(resultType);
-  auto* result = createEntryBlockAlloca(function, "construction.result",
-                                        resultStorageType);
-  auto* statusStorage = createEntryBlockAlloca(function, "construction.status",
-                                               status->getType());
-  ctx.builder->CreateStore(status, statusStorage);
-  auto* tag = ctx.builder->CreateExtractValue(status, 0);
-  ctx.builder->CreateStore(
-      tag, ctx.builder->CreateStructGEP(resultStorageType, result, 0));
-  auto* success =
-      BasicBlock::Create(ctx.getContext(), "construction.ok", function);
-  auto* failure =
-      BasicBlock::Create(ctx.getContext(), "construction.err", function);
-  auto* done =
-      BasicBlock::Create(ctx.getContext(), "construction.done", function);
-  ctx.builder->CreateCondBr(
-      ctx.builder->CreateICmpEQ(
-          tag, ctx.builder->getInt32(statusType.getVariants().front().value)),
-      success, failure);
-  ctx.builder->SetInsertPoint(success);
-  auto* successType = typeResolver.getEnumVariantStruct(
-      resultType, resultType.getVariants().front().name);
-  auto* destination = ctx.builder->CreateStructGEP(
-      successType, result,
-      typeResolver.enumPayloadFieldIndex(
-          resultType, resultType.getVariants().front().name, 0));
-  ctx.builder->CreateStore(
-      ctx.builder->CreateLoad(classType.getStructType(ctx.getContext()),
-                              object),
-      destination);
-  ctx.builder->CreateBr(done);
-  ctx.builder->SetInsertPoint(failure);
-  auto* invalid =
-      BasicBlock::Create(ctx.getContext(), "construction.invalid", function);
-  auto* dispatch = ctx.builder->CreateSwitch(
-      tag, invalid, statusType.getVariants().size() - 1);
-  for (size_t i = 1; i < statusType.getVariants().size(); ++i) {
-    const auto& variant = statusType.getVariants()[i];
-    auto* arm =
-        BasicBlock::Create(ctx.getContext(), "construction.failure", function);
-    dispatch->addCase(ctx.builder->getInt32(variant.value), arm);
-    ctx.builder->SetInsertPoint(arm);
-    auto* sourceType =
-        typeResolver.getEnumVariantStruct(statusType, variant.name);
-    auto sourceIndex =
-        typeResolver.enumPayloadFieldIndex(statusType, variant.name, 0);
-    auto* source =
-        ctx.builder->CreateStructGEP(sourceType, statusStorage, sourceIndex);
-    auto* failureType =
-        typeResolver.getEnumVariantStruct(resultType, variant.name);
-    destination = ctx.builder->CreateStructGEP(
-        failureType, result,
-        typeResolver.enumPayloadFieldIndex(resultType, variant.name, 0));
-    ctx.builder->CreateStore(
-        ctx.builder->CreateLoad(sourceType->getElementType(sourceIndex),
-                                source),
-        destination);
-    ctx.builder->CreateBr(done);
-  }
-  ctx.builder->SetInsertPoint(invalid);
-  ctx.builder->CreateUnreachable();
-  ctx.builder->SetInsertPoint(done);
-  if (!expr.isMoved()) {
-    scopes().trackClassAllocation(result, "construction.result",
-                                  expr.getResolvedType());
-  }
-  return result;
 }
 
 // -------------------------------------------------------------------
@@ -1265,13 +1177,8 @@ Value* ClassGenerator::codegen(const sun::ast::GenericCallAST& expr) {
       // invoked so its exception reaches the enclosing try's landing pad.
       bool ctorCanThrow =
           (ctor && ctor->canThrow) || ctorFunc->hasFnAttribute("sun.canthrow");
-      auto* status = gen_.errorGenerator().emitPossiblyThrowingCall(
+      gen_.errorGenerator().emitPossiblyThrowingCall(
           ctorFunc, ctorArgs, ctorCanThrow, "");
-      if (ctor->returnType->isEnum()) {
-        return finishFallibleConstruction(
-            expr, *classType, alloca, status,
-            *static_cast<sun::types::EnumType*>(ctor->returnType.get()));
-      }
     } else if (argCount > 0) {
       // Zeroed storage fully describes a class with no constructor, so an
       // argument-free miss is fine. Arguments that reach no constructor

@@ -66,7 +66,7 @@ struct TypeAnnotation {
   // For array types: array<T, 5>, array<T, 3, 2> or array<T, N>
   std::vector<ArrayDimension> arrayDimensions;
 
-  // For error union types: indicates this type can also be an error
+  // Marks a function return annotation or callable type as throwing.
   bool canError = false;
   bool requiresUnsafe = false;  // Calling this value needs an unsafe block.
 
@@ -191,8 +191,6 @@ struct TypeAnnotation {
   bool isCallable() const { return isFunction() || isLambda(); }
   /** Reports whether this declaration still has unbound type parameters. */
   bool isGeneric() const { return !typeArguments.empty(); }
-  /** Reports whether this syntax node represents a value-or-error type. */
-  bool isErrorUnion() const { return canError; }
   /**
    * Reports whether this is a `<'_>` lambda type whose frame has no name:
    * written `<'_>` or with no lifetime at all. Such a type cannot be
@@ -242,7 +240,7 @@ struct TypeAnnotation {
       }
       result += ">";
       if (canError) {
-        result += " throws IError";
+        result += " throws";
       }
       return result;
     }
@@ -273,7 +271,7 @@ struct TypeAnnotation {
         result = "unsafe " + result;
       }
       if (canError) {
-        result += " throws IError";
+        result += " throws";
       }
       return result;
     }
@@ -293,7 +291,7 @@ struct TypeAnnotation {
         result = "unsafe " + result;
       }
       if (canError) {
-        result += " throws IError";
+        result += " throws";
       }
       return result;
     }
@@ -317,13 +315,13 @@ struct TypeAnnotation {
       }
       result += ">";
       if (canError) {
-        result += " throws IError";
+        result += " throws";
       }
       return result;
     }
     std::string result = baseName;
     if (canError) {
-      result += " throws IError";
+      result += " throws";
     }
     return result;
   }

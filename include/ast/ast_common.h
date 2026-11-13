@@ -17,6 +17,8 @@ namespace sun::ast {
 
 /** Identifies the syntax-node shapes handled by compiler visitors. */
 enum class ASTNodeType {
+  THROW,
+  TRY_CATCH,
   NUMBER,
   STRING_LITERAL,
   CHAR_LITERAL,  // 'a' (a char) or b'a' (a u8)

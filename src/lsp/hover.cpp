@@ -54,7 +54,7 @@ std::string renderCallable(const std::string& prefix,
   out += fatArrow ? ") => " : ") ";
   out += returnType ? renderType(*returnType, bindings) : "void";
   if (canThrow) {
-    out += " throws IError";
+    out += " throws";
   }
   return out;
 }
@@ -170,7 +170,7 @@ std::string renderPrototype(const sun::ast::PrototypeAST& proto,
                             bool isPublic, const std::string& source,
                             const Bindings& bindings) {
   // Constructors and destructors are spelled bare: no 'public', no
-  // 'method'; only fallible constructors show their result type.
+  // 'method', or return type. Throwing constructors still show 'throws'.
   bool isLifecycle = name == "init" || name == "deinit";
   std::string out;
   if (isPublic && !isLifecycle) {
@@ -226,6 +226,7 @@ std::string renderPrototype(const sun::ast::PrototypeAST& proto,
           ? !proto.getResolvedReturnType()->isVoid()
           : proto.hasReturnType() && proto.getReturnType()->baseName != "void";
   if (isLifecycle && !hasResult) {
+    if (proto.canThrow()) out += " throws";
     return out;
   }
   if (proto.hasResolvedReturnType()) {
@@ -233,6 +234,7 @@ std::string renderPrototype(const sun::ast::PrototypeAST& proto,
   } else if (proto.hasReturnType()) {
     out += " " + annotationText(*proto.getReturnType(), source);
   }
+  if (proto.canThrow()) out += " throws";
   return out;
 }
 
@@ -277,6 +279,9 @@ std::optional<Hover> hoverClass(const ClassDefinitionAST& cls, int offset,
   }
   out += std::string(cls.classKeyword()) + " " + cls.getName() +
          renderTypeParameters(cls.getTypeParameters());
+  if (cls.getExceptionParent()) {
+    out += " extends " + annotationText(*cls.getExceptionParent(), source);
+  }
   const auto& interfaces = cls.getImplementedInterfaces();
   for (size_t i = 0; i < interfaces.size(); ++i) {
     out += i == 0 ? " implements " : ", ";
@@ -501,9 +506,6 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
 
     case ASTNodeType::MATCH: {
       const auto& match = static_cast<const sun::ast::MatchExprAST&>(node);
-      if (match.isPropagation()) {
-        return std::nullopt;
-      }
       for (const auto& arm : match.getArms()) {
         for (const auto& binding : arm.bindings) {
           if (binding.isWildcard || !binding.resolvedType) {

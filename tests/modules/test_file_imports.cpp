@@ -264,9 +264,9 @@ public module lib {
 using lib;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
-  var text = try `${answer()}`;
-  return Result.Ok(_convert<i32>(text.length()));
+function main() i32 throws {
+  var text =  `${answer()}`;
+  return _convert<i32>(text.length());
 }
 )"),
             2);

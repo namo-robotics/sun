@@ -54,30 +54,14 @@ TEST(Builtins_Signals, restores_complete_native_dispositions) {
     extern "C" function native_raise(sig: i32) i32 as "raise";
     /** Exercise automatic restoration from a compiled-library import. */
     function main() i32 {
-      match std.signal.SignalSubscription() {
-        SystemResult.Ok(subscription) => {
+      try { var subscription = std.signal.SignalSubscription();
+
           unsafe { native_raise(std.process.SIGINT); native_raise(std.process.SIGTERM); };
-          match subscription.take_pending() {
-            SystemResult.Ok(events) => {
+          try { var events = subscription.take_pending();
+
               if (not events.interrupted() or not events.terminated()) { return 2; }
-            },
-            SystemResult.Error(error) => { return 3; }
-          ,
-SystemResult.Allocation(error) => { return 3; }
-          ,
-SystemResult.InvalidArgument(error) => { return 3; }
-          ,
-SystemResult.Overflow(error) => { return 3; }
-          };
-        },
-        SystemResult.Error(error) => { return 1; }
-      ,
-SystemResult.Allocation(error) => { return 1; }
-      ,
-SystemResult.InvalidArgument(error) => { return 1; }
-      ,
-SystemResult.Overflow(error) => { return 1; }
-      };
+             } catch (error: Error) {  return 3;  } catch (error: AllocationError) {  return 3;  } catch (error: InvalidArgumentError) {  return 3;  } catch (error: OverflowError) {  return 3;  }
+         } catch (error: Error) {  return 1;  } catch (error: AllocationError) {  return 1;  } catch (error: InvalidArgumentError) {  return 1;  } catch (error: OverflowError) {  return 1;  }
       return 0;
     }
   )"),
@@ -125,44 +109,20 @@ TEST(Builtins_Signals, concurrent_delivery_during_restoration) {
     /** Repeatedly retire and reuse the subscription's pipe descriptors. */
     function exercise_subscriptions() i32 {
       for (var i: i32 = 0; i < 100; i = i + 1) {
-        match std.signal.SignalSubscription() {
-          SystemResult.Ok(subscription) => {
+        try { var subscription = std.signal.SignalSubscription();
+
             std.time.sleep(std.time.create_duration_millis(1));
-            match subscription.take_pending() {
-              SystemResult.Ok(events) => {},
-              SystemResult.Error(error) => { return 2; }
-            ,
-SystemResult.Allocation(error) => { return 2; }
-            ,
-SystemResult.InvalidArgument(error) => { return 2; }
-            ,
-SystemResult.Overflow(error) => { return 2; }
-            };
-            match subscription.restore() {
-              SystemResult.Ok => {},
-              SystemResult.Error(error) => { return 3; }
-            ,
-SystemResult.Allocation(error) => { return 3; }
-            ,
-SystemResult.InvalidArgument(error) => { return 3; }
-            ,
-SystemResult.Overflow(error) => { return 3; }
-            };
-          },
-          SystemResult.Error(error) => { return 1; }
-        ,
-SystemResult.Allocation(error) => { return 1; }
-        ,
-SystemResult.InvalidArgument(error) => { return 1; }
-        ,
-SystemResult.Overflow(error) => { return 1; }
-        };
+            try { var events = subscription.take_pending();
+ } catch (error: Error) {  return 2;  } catch (error: AllocationError) {  return 2;  } catch (error: InvalidArgumentError) {  return 2;  } catch (error: OverflowError) {  return 2;  }
+            try { subscription.restore();
+ } catch (error: Error) {  return 3;  } catch (error: AllocationError) {  return 3;  } catch (error: InvalidArgumentError) {  return 3;  } catch (error: OverflowError) {  return 3;  }
+           } catch (error: Error) {  return 1;  } catch (error: AllocationError) {  return 1;  } catch (error: InvalidArgumentError) {  return 1;  } catch (error: OverflowError) {  return 1;  }
       }
       return 0;
     }
     /** Join all possible handler executions before the JIT unloads their code. */
-    function main() i32 {
-      var sender = match std.thread.spawn(send_signals) { AllocationResult.Ok(thread) => thread, _ => { return -1; } };
+    function main() i32 throws {
+      var sender = std.thread.spawn(send_signals);
       var result = exercise_subscriptions();
       stopped.store(true);
       sender.join();

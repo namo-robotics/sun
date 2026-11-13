@@ -6,21 +6,21 @@ public module std.process {
     alloc: const ref HeapAllocator,
     target: i32,
     leaf: static_ptr<u8>
-  ) AllocationResult<String> {
-    var path = try String(alloc, "/proc/");
-    try path.append_i64(_convert<i64>(target));
-    try path.append(leaf);
-    return AllocationResult.Ok(path);
+  ) String throws {
+    var path = String(alloc, "/proc/");
+    path.append_i64(_convert<i64>(target));
+    path.append(leaf);
+    return path;
   }
 
   /** Parse the selected unsigned stat field after the final parenthesis. */
-  function process_stat_field(text: const ref String, field: i32) SystemResult<u64> {
+  function process_stat_field(text: const ref String, field: i32) u64 throws {
     var end: i64 = text.length() - 1;
     while (end >= 0 and process_byte(text, end) != b')') {
       end = end - 1;
     }
     if (end < 0 or field < 4) {
-      return SystemResult.Error(Error(22, "malformed process stat record"));
+      throw Error(22, "malformed process stat record");
     }
     var at = end + 2;
     var current: i32 = 3;
@@ -39,7 +39,7 @@ public module std.process {
       process_byte(text, at) <= b'9') {
       var digit = _convert<u64>(process_byte(text, at) - b'0');
       if (value > (U64_MAX - digit) / 10) {
-        return SystemResult.Error(Error(22, "process stat value overflows"));
+        throw Error(22, "process stat value overflows");
       }
       value = value * 10 + digit;
       digits = digits + 1;
@@ -47,98 +47,98 @@ public module std.process {
     }
     if (digits == 0 or
       (at < text.length() and process_byte(text, at) != b' ' and process_byte(text, at) != b'\n')) {
-      return SystemResult.Error(Error(22, "missing process stat value"));
+      throw Error(22, "missing process stat value");
     }
-    return SystemResult.Ok(value);
+    return value;
   }
 
   /** Read the process's opaque start tick count from procfs. */
   function native_process_identity(
     alloc: const ref HeapAllocator,
     target: i32
-  ) SystemResult<ProcessIdentity> {
-    var path = try process_path(alloc, target, "/stat");
-    var text = try std.io.read_to_string(alloc, path);
-    return SystemResult.Ok(ProcessIdentity(target, (try process_stat_field(text, 22))));
+  ) ProcessIdentity throws {
+    var path = process_path(alloc, target, "/stat");
+    var text = std.io.read_to_string(alloc, path);
+    return ProcessIdentity(target, (process_stat_field(text, 22)));
   }
 
   /** Enumerate numeric procfs entries; no per-process privileges are requested. */
-  function native_process_ids(alloc: const ref HeapAllocator) SystemResult<Vec<i32>> {
-    var entries = try std.io.read_dir(alloc, "/proc");
-    var ids = try Vec<i32>(alloc, entries.size());
+  function native_process_ids(alloc: const ref HeapAllocator) Vec<i32> throws {
+    var entries = std.io.read_dir(alloc, "/proc");
+    var ids = Vec<i32>(alloc, entries.size());
     for (var i: i64 = 0; i < entries.size(); i = i + 1) {
       match entries[i].name().parse_i64() {
         Option.Some(value) => {
           if (value > 0 and value <= 2147483647) {
-            try ids.push(_convert<i32>(value));
+            ids.push(_convert<i32>(value));
           }
         },
         Option.None => {}
       };
     }
-    return SystemResult.Ok(ids);
+    return ids;
   }
 
   /** Convert cumulative user and system ticks to nanoseconds without early overflow. */
-  function process_cpu_ns(text: const ref String) SystemResult<u64> {
+  function process_cpu_ns(text: const ref String) u64 throws {
     var hz = unsafe { c_sysconf(2); };
     if (hz <= 0) {
-      return SystemResult.Error(Error(22, "CPU clock tick rate unavailable"));
+      throw Error(22, "CPU clock tick rate unavailable");
     }
-    var user = try process_stat_field(text, 14);
-    var system = try process_stat_field(text, 15);
+    var user = process_stat_field(text, 14);
+    var system = process_stat_field(text, 15);
     var rate = _convert<u64>(hz);
     if (user > U64_MAX - system) {
-      return SystemResult.Error(Error(22, "CPU time overflows"));
+      throw Error(22, "CPU time overflows");
     }
     var ticks = user + system;
     var seconds = ticks / rate;
     if (seconds > (U64_MAX / 1000000000) or rate > (U64_MAX / 1000000000)) {
-      return SystemResult.Error(Error(22, "CPU time overflows"));
+      throw Error(22, "CPU time overflows");
     }
     var fraction = (ticks % rate) * 1000000000 / rate;
     var whole = seconds * 1000000000;
     if (whole > U64_MAX - fraction) {
-      return SystemResult.Error(Error(22, "CPU time overflows"));
+      throw Error(22, "CPU time overflows");
     }
-    return SystemResult.Ok(whole + fraction);
+    return whole + fraction;
   }
 
   /** Convert resident page counts to bytes, rejecting invalid kernel data. */
-  function process_rss_bytes(text: const ref String) SystemResult<u64> {
-    var pages = try process_stat_field(text, 24);
-    var size = try page_size_bytes();
+  function process_rss_bytes(text: const ref String) u64 throws {
+    var pages = process_stat_field(text, 24);
+    var size = page_size_bytes();
     if (pages > U64_MAX / size) {
-      return SystemResult.Error(Error(22, "resident size overflows"));
+      throw Error(22, "resident size overflows");
     }
-    return SystemResult.Ok(pages * size);
+    return pages * size;
   }
 
   /** Grow readlink storage until the complete path fits, without silent truncation. */
-  function process_executable(alloc: const ref HeapAllocator, target: i32) SystemResult<String> {
-    var path = try process_path(alloc, target, "/exe");
+  function process_executable(alloc: const ref HeapAllocator, target: i32) String throws {
+    var path = process_path(alloc, target, "/exe");
     var capacity: i64 = 256;
     while (capacity <= 1048576) {
-      var data = try ContiguousBuffer<u8>(alloc, capacity);
-      var size = unsafe { c_readlink(try path.c_str(), data.raw_data(), capacity); };
+      var data = ContiguousBuffer<u8>(alloc, capacity);
+      var size = unsafe { c_readlink(path.c_str(), data.raw_data(), capacity); };
       if (size < 0) {
-        return SystemResult.Error(Error(errno(), "process executable unavailable"));
+        throw Error(errno(), "process executable unavailable");
       }
       if (size < capacity) {
-        return SystemResult.Ok(try process_text(alloc, data, 0, size));
+        return process_text(alloc, data, 0, size);
       }
       capacity = capacity * 2;
     }
-    return SystemResult.Error(Error(36, "process executable path is too long"));
+    throw Error(36, "process executable path is too long");
   }
 
   /** Read argv bytes independently so access failures remain field-specific. */
   function native_process_arguments(
     alloc: const ref HeapAllocator,
     target: i32
-  ) SystemResult<Vec<String>> {
-    var path = try process_path(alloc, target, "/cmdline");
-    var text = try std.io.read_to_string(alloc, path);
+  ) Vec<String> throws {
+    var path = process_path(alloc, target, "/cmdline");
+    var text = std.io.read_to_string(alloc, path);
     return process_arguments(alloc, text);
   }
 
@@ -146,33 +146,31 @@ public module std.process {
   function native_process_snapshot(
     alloc: const ref HeapAllocator,
     target: i32
-  ) SystemResult<ProcessSnapshot> {
-    var path = try process_path(alloc, target, "/stat");
-    var text = try std.io.read_to_string(alloc, path);
-    var identity = ProcessIdentity(target, (try process_stat_field(text, 22)));
-    return SystemResult.Ok(
-      ProcessSnapshot(
-        identity,
-        process_cpu_ns(text),
-        process_rss_bytes(text),
-        process_executable(alloc, target),
-        native_process_arguments(alloc, target)
-      )
+  ) ProcessSnapshot throws {
+    var path = process_path(alloc, target, "/stat");
+    var text = std.io.read_to_string(alloc, path);
+    var identity = ProcessIdentity(target, (process_stat_field(text, 22)));
+    return ProcessSnapshot(
+      identity,
+      process_cpu_ns(text),
+      process_rss_bytes(text),
+      process_executable(alloc, target),
+      native_process_arguments(alloc, target)
     );
   }
 
   /** Query physical pages and convert to bytes with overflow checking. */
-  function native_physical_memory_bytes() SystemResult<u64> {
+  function native_physical_memory_bytes() u64 throws {
     var pages = unsafe { c_sysconf(85); };
     if (pages <= 0) {
-      return SystemResult.Error(Error(22, "physical memory unavailable"));
+      throw Error(22, "physical memory unavailable");
     }
-    var size = try page_size_bytes();
+    var size = page_size_bytes();
     var count = _convert<u64>(pages);
     if (count > U64_MAX / size) {
-      return SystemResult.Error(Error(22, "physical memory size overflows"));
+      throw Error(22, "physical memory size overflows");
     }
-    return SystemResult.Ok(count * size);
+    return count * size;
   }
 
   /** Report the kernel-backed guarantee, with no POSIX kill fallback. */
@@ -184,58 +182,25 @@ public module std.process {
   function native_process_open(
     alloc: const ref HeapAllocator,
     identity: const ref ProcessIdentity
-  ) SystemResult<i64> {
+  ) i64 throws {
     // pidfd syscall numbers agree on the supported Linux x86_64 and aarch64 ABIs.
     var fd = unsafe { c_syscall(434, _convert<i64>(identity.pid), _convert<i64>(0)); };
     if (fd < 0) {
-      return SystemResult.Error(Error(errno(), "pidfd_open failed; no fallback is used"));
+      throw Error(errno(), "pidfd_open failed; no fallback is used");
     }
     var token = fd + 1;
-    match process_identity(alloc, identity.pid) {
-      SystemResult.Ok(observed) => {
-        if (not identity.equals(observed)) {
-          native_process_close(token);
-          return SystemResult.Error(Error(3, "process identity changed"));
-        }
-      },
-      SystemResult.Error(error) => {
-        native_process_close(token);
-        return SystemResult.Error(error);
-      },
-      SystemResult.Allocation(error) => {
-        native_process_close(token);
-        return SystemResult.Allocation(error);
-      },
-      SystemResult.InvalidArgument(error) => {
-        native_process_close(token);
-        return SystemResult.InvalidArgument(error);
-      },
-      SystemResult.Overflow(error) => {
-        native_process_close(token);
-        return SystemResult.Overflow(error);
+    try {
+      var observed = process_identity(alloc, identity.pid);
+      if (not identity.equals(observed)) {
+        throw Error(3, "process identity changed");
       }
-    };
-    // A dead pidfd must not validate a newly reused PID read from procfs.
-    match native_process_signal(alloc, identity, token, 0) {
-      SystemResult.Ok => {},
-      SystemResult.Error(error) => {
-        native_process_close(token);
-        return SystemResult.Error(error);
-      },
-      SystemResult.Allocation(error) => {
-        native_process_close(token);
-        return SystemResult.Allocation(error);
-      },
-      SystemResult.InvalidArgument(error) => {
-        native_process_close(token);
-        return SystemResult.InvalidArgument(error);
-      },
-      SystemResult.Overflow(error) => {
-        native_process_close(token);
-        return SystemResult.Overflow(error);
-      }
-    };
-    return SystemResult.Ok(token);
+      // A dead pidfd must not validate a newly reused PID read from procfs.
+      native_process_signal(alloc, identity, token, 0);
+    } catch {
+      native_process_close(token);
+      throw;
+    }
+    return token;
   }
 
   /** Signal only through the owned pidfd; errno includes EPERM, ESRCH and ENOSYS. */
@@ -244,13 +209,13 @@ public module std.process {
     identity: const ref ProcessIdentity,
     token: i64,
     signal: i32
-  ) SystemResult<void> {
+  ) void throws {
     if (unsafe {
       c_syscall(424, token - 1, _convert<i64>(signal), _convert<i64>(0), _convert<i64>(0));
     } < 0) {
-      return SystemResult.Error(Error(errno(), "pidfd_send_signal failed"));
+      throw Error(errno(), "pidfd_send_signal failed");
     }
-    return SystemResult.Ok;
+    return;
   }
 
   /** Close once; retrying close could accidentally close a reused descriptor. */

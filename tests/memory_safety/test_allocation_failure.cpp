@@ -111,10 +111,8 @@ TEST(MemorySafety_AllocationFailure, raw_allocation_reports_failure) {
     /** Request storage after exhausting the test allocation budget. */
     function main() i32 {
       unsafe { allocation_fail_after(0); };
-      return match global_allocator.alloc_raw(64) {
-        AllocationResult.Allocation(error) => _convert<i32>(error.requested_size()),
-        _ => -1
-      };
+      try { global_allocator.alloc_raw(64);
+return -1; } catch (error: AllocationError) { return _convert<i32>(error.requested_size()); } catch { return -1; }
     }
   )"), 64);
 }
@@ -125,14 +123,10 @@ TEST(MemorySafety_AllocationFailure, invalid_sizes_are_rejected) {
     /** Check distinct invalid-argument and overflow outcomes. */
     function main() i32 {
       unsafe { allocation_fail_after(0); };
-      var negative = match global_allocator.alloc_raw(-1) {
-        AllocationResult.InvalidArgument(_) => 1,
-        _ => 0
-      };
-      var overflow = match global_allocator.alloc<i64>(std.I64_MAX) {
-        AllocationResult.Overflow(_) => 2,
-        _ => 0
-      };
+      var negative: i32 = 0;
+      try { global_allocator.alloc_raw(-1); } catch (error: InvalidArgumentError) { negative = 1; }
+      var overflow: i32 = 0;
+      try { global_allocator.alloc<i64>(std.I64_MAX); } catch (error: OverflowError) { overflow = 2; }
       return negative + overflow;
     }
   )"), 3);
@@ -143,14 +137,9 @@ TEST(MemorySafety_AllocationFailure, zero_size_has_freeable_storage) {
   EXPECT_EQ(executeWithAllocationFailures(R"(
     /** Allocate and release zero logical bytes through the global allocator. */
     function main() i32 {
-      return match global_allocator.alloc_raw(0) {
-        AllocationResult.Ok(pointer) => {
-          var valid = pointer != null;
-          global_allocator.dealloc_raw(pointer, 0);
-          valid ? 1 : 0;
-        },
-        _ => 0
-      };
+      try { var pointer = global_allocator.alloc_raw(0);
+var valid = pointer != null;
+          global_allocator.dealloc_raw(pointer, 0);return valid ? 1 : 0; } catch { return 0; }
     }
   )"), 1);
 }
@@ -167,10 +156,8 @@ TEST(MemorySafety_AllocationFailure, allocation_failure_skips_constructor) {
     /** Verify failure happens before initialization. */
     function main() i32 {
       unsafe { allocation_fail_after(0); };
-      var failed = match global_allocator.create<Value>() {
-        Result.Allocation(_) => 1,
-        _ => 0
-      };
+      var failed: i32 = 0;
+      try { global_allocator.create<Value>(); } catch (error: AllocationError) { failed = 1; }
       return failed - constructions;
     }
   )"), 1);
@@ -180,18 +167,17 @@ TEST(MemorySafety_AllocationFailure, allocation_failure_skips_constructor) {
 TEST(MemorySafety_AllocationFailure, vector_growth_preserves_contents) {
   EXPECT_EQ(executeWithAllocationFailures(R"(
     /** Fill a vector, then fail its next growth. */
-    function check() Result<i32> {
-      var values = try Vec<i32>(global_allocator, 1);
-      try values.push(42);
+    function check() i32 throws {
+      var values =  Vec<i32>(global_allocator, 1);
+       values.push(42);
       unsafe { allocation_fail_after(0); };
-      var failed = match values.push(99) {
-        AllocationResult.Allocation(_) => 1,
-        _ => 0
-      };
-      return Result.Ok(_convert<i32>(failed == 1 and values.size() == 1 and values.capacity() == 1 and values[0] == 42 ? 1 : 0));
+      var failed: i32 = 0;
+      try { values.push(99); } catch (error: AllocationError) { failed = 1; }
+      return _convert<i32>(failed == 1 and values.size() == 1 and values.capacity() == 1 and values[0] == 42 ? 1 : 0);
     }
     /** Translate the checked scenario into a test exit value. */
-    function main() i32 { return match check() { Result.Ok(value) => value, _ => -1 }; }
+    function main() i32 { try { var value = check();
+return value; } catch { return -1; } }
   )"), 1);
 }
 
@@ -206,10 +192,8 @@ TEST(MemorySafety_AllocationFailure, aligned_allocation_reports_failure) {
     /** Fail aligned storage allocation deterministically. */
     function main() i32 {
       unsafe { allocation_fail_after(0); };
-      return match global_allocator.alloc<Aligned>(1) {
-        AllocationResult.Allocation(_) => 1,
-        _ => 0
-      };
+      try { global_allocator.alloc<Aligned>(1);
+return 0; } catch (ignored_error: AllocationError) { return 1; } catch { return 0; }
     }
   )"), 1);
 }
@@ -228,19 +212,17 @@ TEST(MemorySafety_AllocationFailure, failed_constructor_releases_storage) {
     class Value {
       var field: Field;
       /** Initialize a field, then report a supported constructor error. */
-      init() AccessResult<void> {
+      init()  throws {
         this.field = Field();
-        return AccessResult.OutOfBounds(IndexOutOfBoundsError(7));
+        throw IndexOutOfBoundsError(7);
       }
       /** Count only fully initialized object destruction. */
       deinit() { object_drops += 1; }
     }
     /** Observe the propagated error and partial-object cleanup. */
     function main() i32 {
-      var failed = match global_allocator.create_unique<Value>() {
-        Result.OutOfBounds(_) => 1,
-        _ => 0
-      };
+      var failed: i32 = 0;
+      try { global_allocator.create_unique<Value>(); } catch (error: IndexOutOfBoundsError) { failed = 1; }
       return failed == 1 and field_drops == 1 and object_drops == 0 ? 1 : 0;
     }
   )"), 1);
@@ -250,19 +232,18 @@ TEST(MemorySafety_AllocationFailure, failed_constructor_releases_storage) {
 TEST(MemorySafety_AllocationFailure, map_growth_preserves_contents) {
   EXPECT_EQ(executeWithAllocationFailures(R"(
     /** Fail the second replacement allocation during rehashing. */
-    function check() Result<i32> {
-      var values = try Map<i64, i32>(global_allocator, 2);
-      try values.insert(1, 42);
+    function check() i32 throws {
+      var values =  Map<i64, i32>(global_allocator, 2);
+       values.insert(1, 42);
       unsafe { allocation_fail_after(1); };
-      var failed = match values.insert(2, 99) {
-        AllocationResult.Allocation(_) => 1,
-        _ => 0
-      };
-      var value = try values.get(1);
-      return Result.Ok(_convert<i32>(failed == 1 and values.size() == 1 and values.capacity() == 2 and value == 42 ? 1 : 0));
+      var failed: i32 = 0;
+      try { values.insert(2, 99); } catch (error: AllocationError) { failed = 1; }
+      var value =  values.get(1);
+      return _convert<i32>(failed == 1 and values.size() == 1 and values.capacity() == 2 and value == 42 ? 1 : 0);
     }
     /** Translate the checked scenario into a test exit value. */
-    function main() i32 { return match check() { Result.Ok(value) => value, _ => -1 }; }
+    function main() i32 { try { var value = check();
+return value; } catch { return -1; } }
   )"), 1);
 }
 
@@ -272,10 +253,8 @@ TEST(MemorySafety_AllocationFailure, interpolation_propagates_failure) {
     /** Deny the allocation needed by a long interpolation. */
     function main() i32 {
       unsafe { allocation_fail_after(0); };
-      return match `this string is longer than inline storage: ${42}` {
-        AllocationResult.Allocation(_) => 1,
-        _ => 0
-      };
+      try { `this string is longer than inline storage: ${42}`;
+return 0; } catch (ignored_error: AllocationError) { return 1; } catch { return 0; }
     }
   )"), 1);
 }
@@ -287,10 +266,8 @@ TEST(MemorySafety_AllocationFailure, diagnostic_allocation_is_fallible) {
     function main() i32 {
       unsafe { allocation_fail_after(0); };
       var error = AllocationError(42);
-      return match error.message() {
-        AllocationResult.Allocation(_) => 1,
-        _ => 0
-      };
+      try { error.message();
+return 0; } catch (ignored_error: AllocationError) { return 1; } catch { return 0; }
     }
   )"), 1);
 }
@@ -312,10 +289,8 @@ TEST(MemorySafety_AllocationFailure, thread_setup_releases_partial_storage) {
       var failures: i32 = 0;
       for (var budget: i64 = 0; budget < 3; budget += 1) {
         unsafe { allocation_fail_after(budget); };
-        match std.thread.spawn(work, Owner()) {
-          AllocationResult.Allocation(_) => { failures += 1; },
-          _ => {}
-        };
+        try { std.thread.spawn(work, Owner());
+ } catch (ignored_error: AllocationError) {  failures += 1;  } catch {  }
       }
       return failures == 3 and drops == 3 ? 1 : 0;
     }
@@ -328,66 +303,62 @@ TEST(MemorySafety_AllocationFailure, global_allocator_across_modules) {
     /** Provides allocation operations across a module boundary. */
     module client {
       /** Allocate typed storage through a const allocator reference. */
-      public function allocate(allocator: const ref HeapAllocator) AllocationResult<i32> {
-        var pointer = try allocator.alloc<i32>(1);
+      public function allocate(allocator: const ref HeapAllocator) i32 throws {
+        var pointer =  allocator.alloc<i32>(1);
         unsafe { _store<i32>(pointer, 0, 42); };
         var value = unsafe { _load<i32>(pointer, 0); };
         allocator.dealloc(pointer, 1);
-        var values = try Vec<i32>(allocator, 1);
-        try values.push(value);
-        return AllocationResult.Ok(values.size() == 1 ? value : 0);
+        var values =  Vec<i32>(allocator, 1);
+         values.push(value);
+        return values.size() == 1 ? value : 0;
       }
     }
     /** Pass the immutable standard allocator into another module. */
     function main() i32 {
-      return match client.allocate(global_allocator) {
-        AllocationResult.Ok(value) => value,
-        _ => -1
-      };
+      try { var value = client.allocate(global_allocator);
+return value; } catch { return -1; }
     }
   )"), 42);
 }
 
 /** Constructor errors must fit the factory result instead of being silently lost. */
-TEST(MemorySafety_AllocationFailure, unsupported_constructor_error_is_diagnosed) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::compileStringWithStdlib(R"(
-    using std;
-    /** Represents a constructor-specific failure outside the standard result. */
-    class CustomError implements IError {
-      /** Identify this fixture error. */
-      public const method code() i32 { return 100; }
-      /** Produce a fallible description for the error interface. */
-      public const method message() AllocationResult<String> {
-        return String(global_allocator, "custom constructor error");
-      }
-    }
-    /** Reports construction failure without a standard error category. */
-    enum Constructed<T> { Ok(T), Error(CustomError) }
-    /** Always fails construction with the custom error. */
+TEST(MemorySafety_AllocationFailure, custom_constructor_exception_releases_storage) {
+  EXPECT_EQ(executeWithAllocationFailures(R"(
+    /** Carries a constructor-specific code outside standard error categories. */
+    exception CustomError { public var code: i32 = 100; }
+    /** Always fails after raw storage has been allocated. */
     class Object {
-      /** Reject construction before any object exists. */
-      init() Constructed<void> { return Constructed.Error(CustomError()); }
+      /** Reports the custom failure. */
+      init() throws { throw CustomError(); }
     }
-    /** Force instantiation of the allocating constructor adapter. */
-    function main() void { ignore_error(global_allocator.create<Object>()); }
-  )"), "Cannot propagate error variant");
+    /** Checks propagation while the native fixture checks for leaked storage. */
+    function main() i32 {
+      try { global_allocator.create<Object>(); }
+      catch (error: CustomError) { return error.code; }
+      return -1;
+    }
+  )"), 100);
 }
 
 /** Error reporting uses fixed text when allocating a diagnostic also fails. */
 TEST(MemorySafety_AllocationFailure, diagnostic_reporting_uses_fixed_fallback) {
-  testing::internal::CaptureStdout();
   const auto status = executeWithAllocationFailures(R"(
-    /** Report a failed diagnostic without trying to allocate another message. */
+    /** Raises a diagnostic that needs allocated storage when copied to String. */
+    function fail_test() void throws {
+      throw std.test.AssertionError("this diagnostic exceeds inline String storage and needs an allocation to copy");
+    }
+    /** Reports a failed diagnostic without trying to allocate another message. */
     function main() i32 {
       unsafe { allocation_fail_after(0); };
-      var error = AllocationError(42);
-      var result = std.test.TestResult("allocation", false, error.message());
-      return std.test.report(result) ? 0 : 1;
+      var result = std.test.run_one("allocation", fail_test);
+      if (result.passed) { return 0; }
+      return match result.message {
+        Option.Some(_) => 0,
+        Option.None => 1
+      };
     }
   )");
-  const auto output = testing::internal::GetCapturedStdout();
   EXPECT_EQ(status, 1);
-  EXPECT_NE(output.find("unable to allocate error message"), std::string::npos);
 }
 
 /** Zero logical elements retain alignment and ordinary deallocation semantics. */
@@ -397,14 +368,9 @@ TEST(MemorySafety_AllocationFailure, zero_size_aligned_storage) {
     class Aligned { alignment: 256 var value: i64 = 0; }
     /** Release aligned storage without constructing an element. */
     function main() i32 {
-      return match global_allocator.alloc<Aligned>(0) {
-        AllocationResult.Ok(pointer) => {
-          var valid = pointer != null;
-          global_allocator.dealloc<Aligned>(pointer, 0);
-          valid ? 1 : 0;
-        },
-        _ => 0
-      };
+      try { var pointer = global_allocator.alloc<Aligned>(0);
+var valid = pointer != null;
+          global_allocator.dealloc<Aligned>(pointer, 0);return valid ? 1 : 0; } catch { return 0; }
     }
   )"), 1);
 }
@@ -415,10 +381,8 @@ TEST(MemorySafety_AllocationFailure, negative_typed_count) {
     /** Distinguish invalid input from an exhausted allocation budget. */
     function main() i32 {
       unsafe { allocation_fail_after(0); };
-      return match global_allocator.alloc<i64>(-1) {
-        AllocationResult.InvalidArgument(_) => 1,
-        _ => 0
-      };
+      try { global_allocator.alloc<i64>(-1);
+return 0; } catch (ignored_error: InvalidArgumentError) { return 1; } catch { return 0; }
     }
   )"), 1);
 }
@@ -427,17 +391,29 @@ TEST(MemorySafety_AllocationFailure, negative_typed_count) {
 TEST(MemorySafety_AllocationFailure, interpolation_releases_partial_string) {
   EXPECT_EQ(executeWithAllocationFailures(R"(
     /** Permit the first expansion and fail the next expansion. */
-    function check() AllocationResult<i32> {
-      var part = try String(global_allocator, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefgh");
+    function check() i32 throws {
+      var part =  String(global_allocator, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefgh");
       unsafe { allocation_fail_after(1); };
-      return AllocationResult.Ok(match `${part}${part}` {
-        AllocationResult.Allocation(_) => 1,
-        _ => 0
-      });
+      try { `${part}${part}`;
+return 0; } catch (ignored_error: AllocationError) { return 1; } catch { return 0; }
     }
     /** Return the checked scenario's result to the harness. */
     function main() i32 {
-      return match check() { AllocationResult.Ok(value) => value, _ => -1 };
+      try { var value = check();
+return value; } catch { return -1; }
     }
   )"), 1);
+}
+
+/** Copying a bounded diagnostic and throwing it still works with allocation disabled. */
+TEST(MemorySafety_AllocationFailure, bounded_diagnostic_throw_does_not_allocate) {
+  EXPECT_EQ(executeWithAllocationFailures(R"(
+    /** Throws inline text after exhausting all generated-code allocation. */
+    function main() i32 {
+      unsafe { allocation_fail_after(0); };
+      try {
+        throw Error(42, "this diagnostic is copied into the bounded exception payload without allocating");
+      } catch (error: Error) { return error.code(); }
+    }
+  )"), 42);
 }

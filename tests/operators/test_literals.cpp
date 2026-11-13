@@ -529,75 +529,25 @@ TEST(Operators_Literals, string_hex_escapes_preserve_bytes) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i64> {
+function main() i64 throws {
   var alloc = HeapAllocator();
-  var s = try String(alloc, "\x00\x7f\x80\xfF\x41F\\x08");
+  var s =  String(alloc, "\x00\x7f\x80\xfF\x41F\\x08");
   if (s.length() != 10) {
-    return Result.Ok(1);
+    return 1;
   }
-  if ((match s.at(0) {
-    AccessResult.Ok(value) => value,
-    AccessResult.OutOfBounds(_) => {
-      return Result.Ok(-100);
-    }
-  }) != 0 or
-    (match s.at(1) {
-      AccessResult.Ok(value) => value,
-      AccessResult.OutOfBounds(_) => {
-        return Result.Ok(-100);
-      }
-    }) != 127 or
-    (match s.at(2) {
-      AccessResult.Ok(value) => value,
-      AccessResult.OutOfBounds(_) => {
-        return Result.Ok(-100);
-      }
-    }) != 128 or
-    (match s.at(3) {
-      AccessResult.Ok(value) => value,
-      AccessResult.OutOfBounds(_) => {
-        return Result.Ok(-100);
-      }
-    }) != 255 or
-    (match s.at(4) {
-      AccessResult.Ok(value) => value,
-      AccessResult.OutOfBounds(_) => {
-        return Result.Ok(-100);
-      }
-    }) != b'A' or
-    (match s.at(5) {
-      AccessResult.Ok(value) => value,
-      AccessResult.OutOfBounds(_) => {
-        return Result.Ok(-100);
-      }
-    }) != b'F' or
-    (match s.at(6) {
-      AccessResult.Ok(value) => value,
-      AccessResult.OutOfBounds(_) => {
-        return Result.Ok(-100);
-      }
-    }) != b'\\' or
-    (match s.at(7) {
-      AccessResult.Ok(value) => value,
-      AccessResult.OutOfBounds(_) => {
-        return Result.Ok(-100);
-      }
-    }) != b'x' or
-    (match s.at(8) {
-      AccessResult.Ok(value) => value,
-      AccessResult.OutOfBounds(_) => {
-        return Result.Ok(-100);
-      }
-    }) != b'0' or
-    (match s.at(9) {
-      AccessResult.Ok(value) => value,
-      AccessResult.OutOfBounds(_) => {
-        return Result.Ok(-100);
-      }
-    }) != b'8') {
-    return Result.Ok(2);
+  if ((s.at(0)) != 0 or
+    (s.at(1)) != 127 or
+    (s.at(2)) != 128 or
+    (s.at(3)) != 255 or
+    (s.at(4)) != b'A' or
+    (s.at(5)) != b'F' or
+    (s.at(6)) != b'\\' or
+    (s.at(7)) != b'x' or
+    (s.at(8)) != b'0' or
+    (s.at(9)) != b'8') {
+    return 2;
   }
-  return Result.Ok(0);
+  return 0;
 }
 )"),
             0);

@@ -15,8 +15,8 @@ public module outer {
       var v: Vec<i32>;
 
       /** Initializes the fixture fields used by this example or regression test. */
-      init(alloc: const ref HeapAllocator) AllocationResult<void> {
-        this.v = try Vec<i32>(alloc, 4);
+      init(alloc: const ref HeapAllocator) throws {
+        this.v = Vec<i32>(alloc, 4);
       }
 
       /** Returns the number of elements in the fixture's vector. */
@@ -26,14 +26,14 @@ public module outer {
     }
 
     /** Builds a vector containing successive integers for the module-import test. */
-    function fill(alloc: const ref HeapAllocator, n: i32) AllocationResult<Vec<i32>> {
-      var v = try Vec<i32>(alloc, 4);
+    function fill(alloc: const ref HeapAllocator, n: i32) Vec<i32> throws {
+      var v = Vec<i32>(alloc, 4);
       var i = 0;
       while (i < n) {
-        try v.push(i);
+        v.push(i);
         i = i + 1;
       }
-      return AllocationResult.Ok(v);
+      return v;
     }
 
     /** Returns the fixture vector's element count through an imported type annotation. */
@@ -42,23 +42,25 @@ public module outer {
     }
 
     /** Exercises names imported through enclosing modules and returns the resulting test value. */
-    public function run() AllocationResult<i64> {
-      var h = try Holder(global_allocator);
-      var filled = try fill(global_allocator, 3);
-      return AllocationResult.Ok(h.count() + total(filled));
+    public function run() i64 throws {
+      var h = Holder(global_allocator);
+      var filled = fill(global_allocator, 3);
+      return h.count() + total(filled);
     }
   }
 
   /** Exercises names imported through enclosing modules and returns the resulting test value. */
-  public function run() AllocationResult<i64> {
+  public function run() i64 throws {
     return inner.run();
   }
 }
 
 /** Runs the regression scenario and returns its observable result to the test harness. */
 function main() i32 {
-  return match outer.run() {
-    AllocationResult.Ok(value) => _convert<i32>(value),
-    _ => -1
-  };
+  try {
+    var value = outer.run();
+    return _convert<i32>(value);
+  } catch {
+    return -1;
+  }
 }

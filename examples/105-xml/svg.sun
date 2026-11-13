@@ -4,45 +4,45 @@ using std.io;
 using std;
 
 /** Produces a small SVG with namespace declarations and escaped text. */
-function draw(alloc: const ref HeapAllocator, output: ref String) Result<void> {
-  var writer = try XmlWriter(alloc, output);
-  try writer.declaration();
+function draw(alloc: const ref HeapAllocator, output: ref String) void throws {
+  var writer = XmlWriter(alloc, output);
+  writer.declaration();
   var svg = XmlName(
-    try String(alloc, "http://www.w3.org/2000/svg"),
-    try String(alloc, "svg"),
-    try String(alloc, "")
+    String(alloc, "http://www.w3.org/2000/svg"),
+    String(alloc, "svg"),
+    String(alloc, "")
   );
-  try writer.start_element(svg);
+  writer.start_element(svg);
   var view_box = XmlName(
-    try String(alloc, ""),
-    try String(alloc, "viewBox"),
-    try String(alloc, "")
+    String(alloc, ""),
+    String(alloc, "viewBox"),
+    String(alloc, "")
   );
-  var bounds = try String(alloc, "0 0 300 60");
-  try writer.attribute(view_box, bounds);
+  var bounds = String(alloc, "0 0 300 60");
+  writer.attribute(view_box, bounds);
   var text = XmlName(
-    try String(alloc, "http://www.w3.org/2000/svg"),
-    try String(alloc, "text"),
-    try String(alloc, "")
+    String(alloc, "http://www.w3.org/2000/svg"),
+    String(alloc, "text"),
+    String(alloc, "")
   );
-  try writer.start_element(text);
-  var y = XmlName(try String(alloc, ""), try String(alloc, "y"), try String(alloc, ""));
-  var baseline = try String(alloc, "30");
-  try writer.attribute(y, baseline);
-  var label = try String(alloc, "Sun <XML> & SVG");
-  try writer.text(label);
-  try writer.end_element();
-  try writer.end_element();
-  try writer.finish();
-  return Result.Ok;
+  writer.start_element(text);
+  var y = XmlName(String(alloc, ""), String(alloc, "y"), String(alloc, ""));
+  var baseline = String(alloc, "30");
+  writer.attribute(y, baseline);
+  var label = String(alloc, "Sun <XML> & SVG");
+  writer.text(label);
+  writer.end_element();
+  writer.end_element();
+  writer.finish();
+  return;
 }
 
 /** Prints a complete SVG document that can be redirected to a file. */
-function run_main() Result<i32> {
-  var output = try String(global_allocator, "");
-  try draw(global_allocator, output);
+function run_main() i32 throws {
+  var output = String(global_allocator, "");
+  draw(global_allocator, output);
   println(output);
-  return Result.Ok(0);
+  return 0;
 }
 
 /** Uses only the standard library. */
@@ -52,16 +52,7 @@ manifest {
   ]
 }
 
-/** Reports entrypoint failures without requiring diagnostic allocation to succeed. */
-function main() i32 {
-  return match run_main() {
-    Result.Ok(code) => code,
-    (error: const ref std.IError) => {
-      match error.message() {
-        std.AllocationResult.Ok(message) => std.io.eprintln(message),
-        _ => std.io.eprintln("unable to allocate error message")
-      };
-      1;
-    }
-  };
+/** Runs the example; an uncaught exception produces a failing exit code. */
+function main() i32 throws {
+  return run_main();
 }

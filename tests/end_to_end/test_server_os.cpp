@@ -53,20 +53,11 @@ void expectMetadata(int fd, const std::string& kind) {
   const auto source = std::string(R"(
     using std;
     /** Check that metadata describes the adopted object and preserves its offset. */
-    function main() i32 {
+    function main() i32 throws {
       var file = std.io.File();
       file.adopt()") + std::to_string(owned) +
                       R"();
-      var info = match file.metadata() {
-        SystemResult.Ok(value) => value,
-        SystemResult.Error(error) => { return 1; }
-      ,
-SystemResult.Allocation(error) => { return 1; }
-      ,
-SystemResult.InvalidArgument(error) => { return 1; }
-      ,
-SystemResult.Overflow(error) => { return 1; }
-      };
+      var info = file.metadata();
       if (info.kind != std.io.FileKind.)" +
                       kind + R"() { return 2; }
       if (info.size != )" +
@@ -119,12 +110,9 @@ TEST(EndToEnd_ServerOs, NativeOnlineCpuCount) {
   const auto source = std::string(R"(
     using std;
     /** Compare the portable query with the native count supplied by this test. */
-    function main() i32 {
-      return match std.thread.online_cpu_count() {
-        SystemResult.Ok(count) => count == )") +
-                      std::to_string(count) + R"( ? 0 : 1,
-        _ => 2
-      };
+    function main() i32 throws {
+      try { return std.thread.online_cpu_count() == )") +
+                      std::to_string(count) + R"( ? 0 : 1; } catch { return 2; }
     }
   )";
   EXPECT_EQ(sun::driver::executeStringWithStdlib(source), 0);
@@ -140,17 +128,9 @@ TEST(EndToEnd_ServerOs, NativeBrokenPipePolicy) {
       const auto result = sun::driver::executeStringWithStdlib(R"(
         using std;
         /** Select the server's process-wide broken-pipe policy explicitly. */
-        function main() i32 {
-          return match std.signal.ignore_broken_pipe() {
-            SystemResult.Ok => 0,
-            SystemResult.Error(error) => 1
-          ,
-SystemResult.Allocation(error) => 1
-          ,
-SystemResult.InvalidArgument(error) => 1
-          ,
-SystemResult.Overflow(error) => 1
-          };
+        function main() i32 throws {
+          try { std.signal.ignore_broken_pipe();
+return 0; } catch (error: Error) { return 1; } catch (error: AllocationError) { return 1; } catch (error: InvalidArgumentError) { return 1; } catch (error: OverflowError) { return 1; }
         }
       )");
       if (std::get<int32_t>(result) != 0) {
@@ -219,37 +199,28 @@ TEST(EndToEnd_ServerOs, ConfigurationFailureClosesDescriptors) {
         using std;
         using std.net;
         /** Exercise both fallible constructors repeatedly and compare descriptor counts. */
-        function verify() Result<i32> {
+        function verify() i32 throws {
           var alloc = make_heap_allocator();
           var listener = TcpListener();
-          try listener.bind(ipv4_loopback(), 0, true, false);
-          try listener.listen(8);
-          var port = try listener.local_port();
-          var before = try std.io.read_dir(alloc, "/proc/self/fd");
+           listener.bind(ipv4_loopback(), 0, true, false);
+           listener.listen(8);
+          var port =  listener.local_port();
+          var before =  std.io.read_dir(alloc, "/proc/self/fd");
           for (var i: i32 = 0; i < 8; i = i + 1) {
-            match std.io.Wakeup(alloc) {
-              SystemResult.Ok(wake) => { return Result.Ok(1); },
-              SystemResult.Error(error) => { if (error.code() != 13) { return Result.Ok(2); } }
-            ,
-SystemResult.Allocation(error) => { if (error.code() != 13) { return Result.Ok(2); } }
-            ,
-SystemResult.InvalidArgument(error) => { if (error.code() != 13) { return Result.Ok(2); } }
-            ,
-SystemResult.Overflow(error) => { if (error.code() != 13) { return Result.Ok(2); } }
-            };
+            try { var wake = std.io.Wakeup(alloc);
+ return 1;  } catch (error: Error) {  if (error.code() != 13) { return 2; }  } catch (error: AllocationError) {  if (error.code() != 13) { return 2; }  } catch (error: InvalidArgumentError) {  if (error.code() != 13) { return 2; }  } catch (error: OverflowError) {  if (error.code() != 13) { return 2; }  }
             var client = TcpStream();
-            try client.connect_local(port);
-            match listener.try_accept() {
-              AcceptResult.Error(error) => { if (error.code() != 13) { return Result.Ok(3); } },
-              _ => { return Result.Ok(4); }
-            };
+             client.connect_local(port);
+            try { listener.try_accept(); return 4; }
+            catch (error: Error) { if (error.code() != 13) { return 3; } }
           }
-          var after = try std.io.read_dir(alloc, "/proc/self/fd");
-          return Result.Ok(_convert<i32>(before.size() == after.size() ? 0 : 5));
+          var after =  std.io.read_dir(alloc, "/proc/self/fd");
+          return _convert<i32>(before.size() == after.size() ? 0 : 5);
         }
         /** Convert unexpected native setup failures to a distinct process status. */
-        function main() i32 {
-          return match verify() { Result.Ok(code) => code, _ => 6 };
+        function main() i32 throws {
+          try { var code = verify();
+return code; } catch { return 6; }
         }
       )");
       _exit(std::get<int32_t>(result));

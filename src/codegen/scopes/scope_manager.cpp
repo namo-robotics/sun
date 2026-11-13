@@ -398,9 +398,8 @@ void ScopeManager::emitDeinitCall(const ClassType* classType, Value* receiver) {
   }
   Function* deinitFunc =
       gen_.functionRegistry().lookupFunctionById(classType->deinitializer);
-  ctx.builder->CreateCall(
-      deinitFunc,
-      {gen_.materializeMethodClosure(deinitFunc, receiver, "deinit.closure")});
+  gen_.errorGenerator().emitDestructorCall(deinitFunc,
+      gen_.materializeMethodClosure(deinitFunc, receiver, "deinit.closure"));
 }
 
 void ScopeManager::emitFieldDeinit(Value* objectPtr, const ClassType* classType,

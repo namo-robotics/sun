@@ -62,31 +62,31 @@ public module std.signal {
     var saved_term: SignalAction = SignalAction();
 
     /** Install both dispositions, or roll back resources acquired before failure. */
-    init() SystemResult<void> {
+    init() throws {
       var shared = state();
       if (unsafe { _atomic_cmpxchg_i32(_address_of<i32>(shared.owned), 0, 1); } != 0) {
-        return SystemResult.Error(Error(16, "a signal subscription is already active"));
+        throw Error(16, "a signal subscription is already active");
       }
       this.owns = true;
       var descriptors: array<i32, 2> = [0, 0];
       if (unsafe { c_pipe(_address_of<i32>(descriptors[0])); } < 0) {
-        return SystemResult.Error(this.fail(errno()));
+        throw this.fail(errno());
       }
       this.reader = descriptors[0];
       this.writer = descriptors[1];
       // Both ends are nonblocking and close-on-exec before any handler is installed.
       for (var i: i64 = 0; i < 2; i = i + 1) {
         if (unsafe { c_fcntl(descriptors[i], 4, O_NONBLOCK); } < 0) {
-          return SystemResult.Error(this.fail(errno()));
+          throw this.fail(errno());
         }
         if (unsafe { c_fcntl(descriptors[i], 2, 1); } < 0) {
-          return SystemResult.Error(this.fail(errno()));
+          throw this.fail(errno());
         }
       }
       var action = SignalAction();
       action.handler = unsafe { _signal_handler(); };
       if (unsafe { c_sigemptyset(action.mask_pointer()); } < 0) {
-        return SystemResult.Error(this.fail(errno()));
+        throw this.fail(errno());
       }
       shared.writer = this.writer;
       unsafe { _atomic_store_i32(_address_of<i32>(shared.pending), 0); };
@@ -100,7 +100,7 @@ public module std.signal {
           _bitcast<raw_ptr<u8>>(_address_of<SignalAction>(this.saved_int))
         );
       } < 0) {
-        return SystemResult.Error(this.fail(errno()));
+        throw this.fail(errno());
       }
       this.int_installed = true;
       if (unsafe {
@@ -110,14 +110,16 @@ public module std.signal {
           _bitcast<raw_ptr<u8>>(_address_of<SignalAction>(this.saved_term))
         );
       } < 0) {
-        return SystemResult.Error(this.fail(errno()));
+        throw this.fail(errno());
       }
       this.term_installed = true;
     }
 
     /** Roll back a failed installation while retaining the original error code. */
     method fail(code: i32) Error {
-      ignore_error(this.restore());
+      try {
+        this.restore();
+      } catch {}
       return Error(code, "failed to install signal subscription");
     }
 
@@ -127,9 +129,9 @@ public module std.signal {
     }
 
     /** Drain wakeups and atomically take both pending bits without allocating. */
-    public method take_pending() SystemResult<SignalEvents> {
+    public method take_pending() SignalEvents throws {
       if (not this.owns) {
-        return SystemResult.Error(Error(9, "signal subscription is not active"));
+        throw Error(9, "signal subscription is not active");
       }
       var bytes: array<u8, 16> = [
         0u8,
@@ -160,14 +162,14 @@ public module std.signal {
         if (count < 0 and errno() == WOULD_BLOCK_ERRNO) {
           break;
         }
-        return SystemResult.Error(Error(errno(), "failed to drain signal pipe"));
+        throw Error(errno(), "failed to drain signal pipe");
       }
       var shared = state();
       var bits = unsafe { _atomic_load_i32(_address_of<i32>(shared.pending)); };
       while (unsafe { _atomic_cmpxchg_i32(_address_of<i32>(shared.pending), bits, 0); } != bits) {
         bits = unsafe { _atomic_load_i32(_address_of<i32>(shared.pending)); };
       }
-      return SystemResult.Ok(SignalEvents(bits));
+      return SignalEvents(bits);
     }
 
     /**
@@ -175,9 +177,9 @@ public module std.signal {
      * Idempotent. If sigaction fails, retain resources so the operation can be retried.
      * A signal delivered during restoration may use either the saved or new action.
      */
-    public method restore() SystemResult<void> {
+    public method restore() void throws {
       if (not this.owns) {
-        return SystemResult.Ok;
+        return;
       }
       if (this.int_installed) {
         if (unsafe {
@@ -187,7 +189,7 @@ public module std.signal {
             null
           );
         } < 0) {
-          return SystemResult.Error(Error(errno(), "failed to restore SIGINT"));
+          throw Error(errno(), "failed to restore SIGINT");
         }
         this.int_installed = false;
       }
@@ -199,7 +201,7 @@ public module std.signal {
             null
           );
         } < 0) {
-          return SystemResult.Error(Error(errno(), "failed to restore SIGTERM"));
+          throw Error(errno(), "failed to restore SIGTERM");
         }
         this.term_installed = false;
       }
@@ -217,13 +219,15 @@ public module std.signal {
       }
       this.owns = false;
       unsafe { _atomic_store_i32(_address_of<i32>(shared.owned), 0); };
-      return SystemResult.Ok;
+      return;
     }
 
     /** Best-effort restoration; on failure keep the handler's resources alive. */
     deinit() {
       if (this.owns) {
-        ignore_error(this.restore());
+        try {
+          this.restore();
+        } catch {}
       }
     }
   }
@@ -234,23 +238,23 @@ public module std.signal {
 
   /**
    * Permanently ignore SIGPIPE process-wide so native writes, including TLS,
-   * return errors instead of terminating the process. Call during startup before
+   * throw exceptions instead of terminating the process. Call during startup before
    * creating threads; this replaces any previous SIGPIPE handler and persists
    * across exec. No automatic restoration is attempted. SIGINT/SIGTERM subscriptions
    * are unaffected. Applications remain responsible for checking write errors.
    */
-  public function ignore_broken_pipe() SystemResult<void> {
+  public function ignore_broken_pipe() void throws {
     var action = SignalAction();
     // SIG_IGN is the native sentinel in the first, pointer-sized action field.
     unsafe { _store<u64>(_bitcast<raw_ptr<u8>>(_address_of<SignalAction>(action)), 0, 1u64); };
     if (unsafe { c_sigemptyset(action.mask_pointer()); } < 0) {
-      return SystemResult.Error(Error(errno(), "failed to initialize SIGPIPE mask"));
+      throw Error(errno(), "failed to initialize SIGPIPE mask");
     }
     if (unsafe {
       c_sigaction(13, _bitcast<raw_ptr<u8>>(_address_of<SignalAction>(action)), null);
     } < 0) {
-      return SystemResult.Error(Error(errno(), "failed to ignore SIGPIPE"));
+      throw Error(errno(), "failed to ignore SIGPIPE");
     }
-    return SystemResult.Ok;
+    return;
   }
 }

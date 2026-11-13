@@ -7,11 +7,11 @@
 // Usage:
 //   import "stdlib/std/vec.sun";
 //   using std;
-//   
-//   var v = try Vec<i32>(global_allocator, 4);
-//   try v.push(10);
-//   try v.push(20);
-//   try v.push(30);
+//
+//   var v = Vec<i32>(global_allocator, 4);
+//   v.push(10);
+//   v.push(20);
+//   v.push(30);
 //   var val = v.get(0);      // borrows element 0 (10)
 //   v.set(1, 25);            // Update index 1 to 25
 //   var last = v.pop();      // Option.Some(30), size decreases
@@ -37,8 +37,8 @@ public module std {
     /**
      * Constructor with allocator and capacity
      */
-    init(allocator: const ref HeapAllocator, capacity: i64) AllocationResult<void> {
-      this.data = try ContiguousBuffer<T>(allocator, capacity);
+    init(allocator: const ref HeapAllocator, capacity: i64) throws {
+      this.data = ContiguousBuffer<T>(allocator, capacity);
       this.capacity_ = capacity;
     }
 
@@ -68,14 +68,14 @@ public module std {
      * Append an element, allocating replacement storage before changing the vector.
      * Failure preserves contents and capacity; the by-value argument remains consumed.
      */
-    public method push(value: T) AllocationResult<void> {
+    public method push(value: T) void throws {
       if (this.size_ >= this.capacity_) {
-        try this.grow();
+        this.grow();
       }
       unsafe { this.data.set_unchecked(this.size_, value); };
       this.size_ = this.size_ + 1;
 
-      return AllocationResult.Ok;
+      return;
     }
 
     /**
@@ -96,14 +96,14 @@ public module std {
      * heap memory would be released twice. Use remove()/swap_remove()/pop()
      * to move one out and shrink the Vec.
      */
-    public const method get(index: i64) AccessResult<ref T> {
+    public const method get(index: i64) ref T throws {
       if (index < 0) {
-        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
+        throw IndexOutOfBoundsError(index);
       }
       if (index >= this.size_) {
-        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
+        throw IndexOutOfBoundsError(index);
       }
-      return AccessResult.Ok(unsafe { this.data.get_unchecked(index); });
+      return unsafe { this.data.get_unchecked(index); };
     }
 
     /** Borrow an element. The caller must provide an initialized index below size(). */
@@ -115,16 +115,16 @@ public module std {
      * Set element at index (bounds-checked against size).
      * The previous element is dropped before being overwritten.
      */
-    public method set(index: i64, value: T) AccessResult<void> {
+    public method set(index: i64, value: T) void throws {
       if (index < 0) {
-        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
+        throw IndexOutOfBoundsError(index);
       }
       if (index >= this.size_) {
-        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
+        throw IndexOutOfBoundsError(index);
       }
       this.drop_range(index, index + 1);
       unsafe { this.data.set_unchecked(index, value); };
-      return AccessResult.Ok;
+      return;
     }
 
     /** Store an element. The caller must provide a nonnegative index below size(). */
@@ -156,16 +156,16 @@ public module std {
     /**
      * Reserve capacity for at least n elements (doesn't change size)
      */
-    public method reserve(n: i64) AllocationResult<void> {
+    public method reserve(n: i64) void throws {
       if (n < 0) {
-        return AllocationResult.InvalidArgument(InvalidArgumentError("negative size"));
+        throw InvalidArgumentError("negative size");
       }
       if (n > this.capacity_) {
-        try this.data.resize_to(n);
+        this.data.resize_to(n);
         this.capacity_ = n;
       }
 
-      return AllocationResult.Ok;
+      return;
     }
 
     /**
@@ -181,13 +181,13 @@ public module std {
      * Throws IndexOutOfBoundsError for an invalid index. Moves the tail down
      * and shrinks the Vec without allocating or changing its capacity.
      */
-    public method remove(index: i64) AccessResult<T> {
-      var value = try this.extract_for_removal(index);
+    public method remove(index: i64) T throws {
+      var value = this.extract_for_removal(index);
       for (var i: i64 = index; i < this.size_ - 1; i = i + 1) {
         unsafe { this.data.set_unchecked(i, unsafe { this.data.take_unchecked(i + 1); }); };
       }
       this.size_ = this.size_ - 1;
-      return AccessResult.Ok(value);
+      return value;
     }
 
     /**
@@ -195,33 +195,33 @@ public module std {
      * Throws IndexOutOfBoundsError for an invalid index. Shrinks the Vec in
      * constant time without allocating; the remaining order may change.
      */
-    public method swap_remove(index: i64) AccessResult<T> {
-      var value = try this.extract_for_removal(index);
+    public method swap_remove(index: i64) T throws {
+      var value = this.extract_for_removal(index);
       this.size_ = this.size_ - 1;
       if (index < this.size_) {
         unsafe {
           this.data.set_unchecked(index, unsafe { this.data.take_unchecked(this.size_); });
         };
       }
-      return AccessResult.Ok(value);
+      return value;
     }
 
     /** Replace an element and return its previous value without changing size. */
-    public method replace(index: i64, value: T) AccessResult<T> {
-      var previous = try this.extract_for_removal(index);
+    public method replace(index: i64, value: T) T throws {
+      var previous = this.extract_for_removal(index);
       unsafe { this.data.set_unchecked(index, value); };
-      return AccessResult.Ok(previous);
+      return previous;
     }
 
     /** Extract a slot that the caller must immediately replace or remove. */
-    method extract_for_removal(index: i64) AccessResult<T> {
+    method extract_for_removal(index: i64) T throws {
       if (index < 0) {
-        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
+        throw IndexOutOfBoundsError(index);
       }
       if (index >= this.size_) {
-        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
+        throw IndexOutOfBoundsError(index);
       }
-      return AccessResult.Ok(unsafe { this.data.take_unchecked(index); });
+      return unsafe { this.data.take_unchecked(index); };
     }
 
     /**
@@ -258,18 +258,18 @@ public module std {
     /**
      * Double capacity and copy elements
      */
-    method grow() AllocationResult<void> {
+    method grow() void throws {
       if (this.capacity_ > std.I64_MAX / 2) {
-        return AllocationResult.Overflow(OverflowError());
+        throw OverflowError();
       }
       var new_capacity: i64 = this.capacity_ * 2;
       if (new_capacity == 0) {
         new_capacity = 1;
       }
-      try this.data.resize_to(new_capacity);
+      this.data.resize_to(new_capacity);
       this.capacity_ = new_capacity;
 
-      return AllocationResult.Ok;
+      return;
     }
 
     // ========================================================================

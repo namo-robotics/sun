@@ -3,7 +3,7 @@
 Tests are declared with `test_function` and live either next to the code they
 exercise — where module-scoped privacy lets them call private helpers — or in
 test-only files listed under `test_files:` in the manifest. Assertions come
-from `std.test`; `try` propagates failed assertions and drops local fixtures,
+from `std.test`; failed assertions throw exceptions and drop local fixtures,
 so their `deinit` teardown still runs when a test fails.
 
 Compiling with `-c` produces two binaries: `main`, with every test stripped,

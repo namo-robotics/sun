@@ -55,6 +55,9 @@ sun::support::SunError buildBorrowCheckError(
  * - STRICT_MUTATION_CHECKING: If true, disallow mutating borrowed variables
  */
 class BorrowChecker {
+  std::vector<const sun::ast::VariableCreationAST*> exceptionBindings_;
+  bool transferringException_ = false;
+
  public:
   /** Initializes ownership checking with an empty scope and loan state. */
   BorrowChecker();

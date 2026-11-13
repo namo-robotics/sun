@@ -82,8 +82,8 @@ module spike {
   public class Path {
     var path: String;
 
-    init(alloc: const ref HeapAllocator) Result<void> {
-      this.path = try String(alloc, "/");
+    init(alloc: const ref HeapAllocator)  throws {
+      this.path =  String(alloc, "/");
     }
 
     /* Returns the stored path length. */
@@ -95,10 +95,10 @@ module spike {
 
 /* Checks that the module class uses the imported string type. */
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var path = try spike.Path(alloc);
-  return Result.Ok(_convert<i32>(path.length()));
+  var path =  spike.Path(alloc);
+  return _convert<i32>(path.length());
 }
 )");
   EXPECT_EQ(value, 1);
@@ -250,7 +250,7 @@ TEST(Modules, nested_modules_nested_classes_method_chain) {
   auto value = executeString(R"(
     public module mod_x {
       public module mod_y {
-    
+
         public class ClassB {
           public var val: i32;
           init(v: i32) {
@@ -409,7 +409,7 @@ TEST(Modules, extend_existing_module) {
         return 1;
       }
     }
-    
+
     public module std {
       public function bar() i32 {
         return 2;
@@ -955,10 +955,7 @@ TEST(Modules, moon_free_function_throw_is_caught_by_importer) {
   auto moonPath = writeMoonLib("throwlib", R"(
 public module throwlib {
 
-  /** Owns successes and concrete errors across a library boundary. */
-  public enum Outcome<T> { Ok(T), Boom(Boom) }
-
-  public class Boom {
+  public exception Boom {
     init() {}
 
     public const method code() i32 {
@@ -970,15 +967,15 @@ public module throwlib {
     }
   }
 
-  public function fail(x: i32) Outcome<i32> {
+  public function fail(x: i32) i32 throws {
     if (x > 0) {
-      return Outcome.Boom(Boom());
+      throw Boom();
     }
-    return Outcome.Ok(1);
+    return 1;
   }
 
-  public function nested(x: i32) Outcome<i32> {
-    return Outcome.Ok(try fail(x));
+  public function nested(x: i32) i32 throws {
+    return  fail(x);
   }
 }
 )");
@@ -990,9 +987,12 @@ public module throwlib {
 
     function main() i32 {
         var r: i32 = 0;
-        match fail(1) { Outcome.Ok(value) => { r += value; }, (e: ref Boom) => { r += e.code(); } };
-        match nested(1) { Outcome.Ok(value) => { r += value; }, (e: ref Boom) => { r += 1000; } };
-        match fail(0) { Outcome.Ok(value) => { r += value; }, (e: ref Boom) => { r += 5000; } };
+        try { var value = fail(1);
+ r += value;  } catch (e: Boom) {  r += e.code();  }
+        try { var value = nested(1);
+ r += value;  } catch (e: Boom) {  r += 1000;  }
+        try { var value = fail(0);
+ r += value;  } catch (e: Boom) {  r += 5000;  }
         return r;
     }
   )");
@@ -1061,7 +1061,7 @@ TEST(Modules, moon_and_program_global_initializers_both_run) {
   auto moonPath = writeMoonLib("globlib", R"(
     public module globlib {
         public class LibCounter {
-            var total: i32;
+            var total: i32 = 0;
             init(start: i32) { this.total = start; }
             public method bump() i32 { this.total = this.total + 1; return this.total; }
         }
@@ -1076,7 +1076,7 @@ TEST(Modules, moon_and_program_global_initializers_both_run) {
     using globlib;
 
     class AppCounter {
-        var total: i32;
+        var total: i32 = 0;
         init(start: i32) { this.total = start; }
         public method bump() i32 { this.total = this.total + 1; return this.total; }
     }
@@ -1307,7 +1307,7 @@ TEST(Modules, moon_keeps_const_declarations) {
     public module constlib {
         public const LIMIT: i32 = 40;
         public class Counter {
-            var n: i32;
+            var n: i32 = 0;
             init(n: i32) { this.n = n; }
             public const method get() i32 { return this.n; }
             public method bump() void { this.n = this.n + 1; }
@@ -1413,7 +1413,7 @@ TEST(Modules, nested_module_variable_is_assignable) {
 TEST(Modules, class_typed_module_variable_is_assignable) {
   auto value = executeString(R"(
     class Counter {
-      var n: i32;
+      var n: i32 = 0;
       init(n: i32) { this.n = n; }
       public method get() i32 { return this.n; }
     }
@@ -1496,7 +1496,7 @@ TEST(Modules, moon_sibling_signatures_are_source_order_independent) {
 
     public module ztypes {
       public class Token {
-        var value: i32;
+        var value: i32 = 0;
         init(value: i32) { this.value = value; }
         public const method get() i32 { return this.value; }
       }
@@ -1545,7 +1545,7 @@ TEST(Modules, moon_interface_param_links) {
     using handlers;
 
     class Echo implements IHandler {
-        var pad: i32;
+        var pad: i32 = 0;
         init() { this.pad = 0; }
         public method handle(x: i32) i32 { return x + 1; }
     }
@@ -1596,7 +1596,7 @@ TEST(Modules, moon_generic_over_own_type_by_value_links) {
         }
 
         public class Config {
-            public var n: i32;
+            public var n: i32 = 0;
             init(n: i32) { this.n = n; }
         }
         public function config_value(box: Box<Config>) i32 {
@@ -1630,7 +1630,7 @@ TEST(Modules, moon_symbols_use_versioned_portable_identities) {
     public module hashed {
         public interface IShape { method area() i32; }
         public class Square implements IShape {
-            var side: i32;
+            var side: i32 = 0;
             init(side: i32) { this.side = side; }
             public method area() i32 { return this.side * this.side; }
         }
@@ -1837,7 +1837,7 @@ TEST(Modules, global_can_be_used_before_its_declaration) {
     const DOUBLE: i64 = BASE * 2;
     const BASE: i64 = 10;
     var counter: i64 = 1;
-    class Point { var x: i32; init(x: i32) { this.x = x; } }
+    class Point { var x: i32 = 0; init(x: i32) { this.x = x; } }
     var origin = Point(7);
     var add_one = (x: i32) => i32 { return x + 1; };
   )"),
@@ -2339,7 +2339,7 @@ TEST(Modules, error_interfaces_keep_bundle_revision_identity) {
       public module std {
         /** Owns the diagnostic value for this revision. */
         public class String {
-          public var value: i32;
+          public var value: i32 = 0;
           /** Initializes the diagnostic. */
           init(value: i32) { this.value = value; }
         }

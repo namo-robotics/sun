@@ -39,7 +39,7 @@ struct ClassMethod {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;  // Excludes implicit 'this' parameter
   bool isConstructor;               // true if this is the 'init' method
-  bool canThrow = false;  // declared with 'throws IError' — may unwind
+  bool canThrow = false;  // declared with 'throws' — may unwind
   bool isUnsafe = false;  // Calls require an unsafe block.
   bool isConst = false;   // `const function`: does not change `this`
   sun::semantic_analysis::Visibility visibility =
@@ -84,6 +84,8 @@ class ClassType : public NominalType {
   std::vector<DeclarationId>
       staticOnlyInterfaces;  // Implemented, but not convertible to (see below)
   uint64_t alignment_ = 0;   // Zero means natural alignment.
+  bool isException_ = false;
+  std::shared_ptr<ClassType> exceptionParent_;
   bool isPacked_ = false;    // "packed class": lay fields out with no padding
   // Lifetime names the class DECLARES ('class Bus<'a>'). Declarations only,
   // never bindings, so sharing one ClassType per class stays sound; the
@@ -93,6 +95,18 @@ class ClassType : public NominalType {
   mutable llvm::StructType* cachedLLVMType = nullptr;
 
  public:
+  /** Marks a nominal type as eligible for bounded exception transport. */
+  void setException(bool value) { isException_ = value; }
+  /** Reports whether this is a declared exception type. */
+  bool isException() const { return isException_; }
+  /** Records the parent used for family matching. */
+  void setExceptionParent(std::shared_ptr<ClassType> parent) {
+    exceptionParent_ = std::move(parent);
+  }
+  /** Returns the parent used for family matching. */
+  const std::shared_ptr<ClassType>& getExceptionParent() const {
+    return exceptionParent_;
+  }
   sun::semantic_analysis::Visibility visibility =
       sun::semantic_analysis::Visibility::Private;
 

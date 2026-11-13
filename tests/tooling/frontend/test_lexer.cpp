@@ -104,7 +104,7 @@ TEST(Tooling_Frontend_Lexer, EveryKeywordLexesAsItself) {
     // A keyword token carries its spelling as text.
     EXPECT_EQ(lexAll(std::string(*word))[0].text, *word);
   }
-  EXPECT_EQ(count, 56);
+  EXPECT_EQ(count, 57);
 }
 
 // "test_function" is reserved; longer words that merely start with it are

@@ -11,173 +11,204 @@ manifest {
 using std;
 using cuda;
 
-/** Combines assertion and GPU failures for integration checks. */
-enum CheckResult<T> {
-  Ok(T),
-  Allocation(AllocationError),
-  InvalidArgument(InvalidArgumentError),
-  Overflow(OverflowError),
-  Assertion(std.test.AssertionError),
-  System(Error),
-  OutOfBounds(IndexOutOfBoundsError),
-  NotFound(NotFoundError),
-  Empty(EmptyError),
-  Io(IOError),
-  Conversion(ConversionError),
-  DivisionByZero(DivisionByZeroError),
-  Arithmetic(ArithmeticError),
-  Json(std.json.JsonError),
-  Xml(std.xml.XmlError),
-  Decode(ProtoDecodeError),
-  Gpu(GpuError)
-}
-
 /** Compares floating-point results without requiring identical reduction order. */
-function near(actual: f64, expected: f64) CheckResult<void> {
-  try std.test.assert(actual >= expected - 0.00001 and actual <= expected + 0.00001);
-  return CheckResult.Ok;
+function near(actual: f64, expected: f64) void throws {
+  std.test.assert(actual >= expected - 0.00001 and actual <= expected + 0.00001);
+  return;
 }
 
 /** Checks each operation and allocation reuse for one supported precision. */
-function check_precision<T: _Float>(device: const ref Device) CheckResult<void> {
-  var host_a = try Matrix<T>(global_allocator, [2, 3]);
-  var host_b = try Matrix<T>(global_allocator, [3, 2]);
+function check_precision<T: _Float>(device: const ref Device) void throws {
+  var host_a = Matrix<T>(global_allocator, [2, 3]);
+  var host_b = Matrix<T>(global_allocator, [3, 2]);
   for (var i: i64 = 0; i < 2; i = i + 1) {
     for (var j: i64 = 0; j < 3; j = j + 1) {
       host_a[i, j] = _convert<T>(i * 3 + j + 1);
       host_b[j, i] = _convert<T>(j * 2 + i + 1);
     }
   }
-  var a = try device.upload(host_a);
-  var b = try device.allocate<T>([3i64, 2i64]);
-  try a.copy_from_host(host_a);
-  try b.copy_from_host(host_b);
-  var c = try a.matmul(b);
-  var operator_c = try (a * b);
-  var result = try Matrix<T>(global_allocator, [2, 2]);
-  try c.copy_to_host(result);
-  try near(_convert<f64>(result[0, 0]), 22.0);
-  try near(_convert<f64>(result[0, 1]), 28.0);
-  try near(_convert<f64>(result[1, 0]), 49.0);
-  try near(_convert<f64>(result[1, 1]), 64.0);
-  try a.matmul_into(b, operator_c);
-  var sum = try (c + operator_c);
-  try sum.copy_to_host(result);
-  try near(_convert<f64>(result[1, 1]), 128.0);
-  try c.add_into(operator_c, sum);
-  var scaled = try (c * _convert<T>(2));
-  try c.scale_into(_convert<T>(3), scaled);
-  try scaled.scale_in_place(_convert<T>(2));
-  try scaled.copy_to_host(result);
-  try near(_convert<f64>(result[1, 1]), 384.0);
-  try c.copy_to_host(result);
-  try near(_convert<f64>(result[1, 1]), 64.0);
-  var vector_host = try Matrix<T>(global_allocator, [3]);
+  var a = device.upload(host_a);
+  var b = device.allocate<T>([3i64, 2i64]);
+  a.copy_from_host(host_a);
+  b.copy_from_host(host_b);
+  var c = a.matmul(b);
+  var operator_c = (a * b);
+  var result = Matrix<T>(global_allocator, [2, 2]);
+  c.copy_to_host(result);
+  near(_convert<f64>(result[0, 0]), 22.0);
+  near(_convert<f64>(result[0, 1]), 28.0);
+  near(_convert<f64>(result[1, 0]), 49.0);
+  near(_convert<f64>(result[1, 1]), 64.0);
+  a.matmul_into(b, operator_c);
+  var sum = (c + operator_c);
+  sum.copy_to_host(result);
+  near(_convert<f64>(result[1, 1]), 128.0);
+  c.add_into(operator_c, sum);
+  var scaled = (c * _convert<T>(2));
+  c.scale_into(_convert<T>(3), scaled);
+  scaled.scale_in_place(_convert<T>(2));
+  scaled.copy_to_host(result);
+  near(_convert<f64>(result[1, 1]), 384.0);
+  c.copy_to_host(result);
+  near(_convert<f64>(result[1, 1]), 64.0);
+  var vector_host = Matrix<T>(global_allocator, [3]);
   vector_host[0] = _convert<T>(1);
   vector_host[1] = _convert<T>(2);
   vector_host[2] = _convert<T>(3);
-  var vector = try device.allocate<T>([3i64]);
-  try vector.copy_from_host(vector_host);
-  try near(_convert<f64>(try vector.dot(vector)), 14.0);
-  var product = try a.matvec(vector);
-  try a.matvec_into(vector, product);
-  var product_host = try Matrix<T>(global_allocator, [2]);
-  try product.copy_to_host(product_host);
-  try near(_convert<f64>(product_host[0]), 14.0);
-  try near(_convert<f64>(product_host[1]), 32.0);
-  var zero = try device.allocate<T>([2i64]);
-  try zero.copy_to_host(product_host);
-  try near(_convert<f64>(product_host[0]), 0.0);
-  try near(_convert<f64>(product_host[1]), 0.0);
+  var vector = device.allocate<T>([3i64]);
+  vector.copy_from_host(vector_host);
+  near(_convert<f64>(vector.dot(vector)), 14.0);
+  var product = a.matvec(vector);
+  a.matvec_into(vector, product);
+  var product_host = Matrix<T>(global_allocator, [2]);
+  product.copy_to_host(product_host);
+  near(_convert<f64>(product_host[0]), 14.0);
+  near(_convert<f64>(product_host[1]), 32.0);
+  var zero = device.allocate<T>([2i64]);
+  zero.copy_to_host(product_host);
+  near(_convert<f64>(product_host[0]), 0.0);
+  near(_convert<f64>(product_host[1]), 0.0);
   var moved = zero;
-  try moved.copy_to_host(product_host);
-  return CheckResult.Ok;
+  moved.copy_to_host(product_host);
+  return;
 }
 
 /** Returns an allocation whose public device owner has already been dropped. */
-function retained_matrix() GpuResult<DeviceMatrix<f32>> {
-  var device = try open_device(0);
+function retained_matrix() DeviceMatrix<f32> throws {
+  var device = open_device(0);
   return device.allocate<f32>([1i64]);
 }
 
-/** Requires a specific validation error and drops any unexpected successful owner. */
-function expect_error<T>(result: GpuResult<T>, code: i32) CheckResult<void> {
-  match result {
-    GpuResult.Error(error) => {
-      try std.test.assert_eq(code, error.code());
-    },
-    _ => {
-      try std.test.assert(false, "expected a GPU validation error");
-    }
-  };
-  return CheckResult.Ok;
-}
-
 /** Checks rejected shapes, transfers, and independent device contexts. */
-function check_errors(device: const ref Device) CheckResult<void> {
-  try expect_error<DeviceMatrix<f32>>(device.allocate<f32>([0i64]), -1);
-  try expect_error<DeviceMatrix<f32>>(device.allocate<f32>([2i64, 2i64, 2i64]), -1);
-  try expect_error<DeviceMatrix<f32>>(device.allocate<f32>([2147483648i64]), -2);
-  var a = try device.allocate<f32>([2i64, 3i64]);
-  var b = try device.allocate<f32>([2i64, 2i64]);
-  try expect_error<DeviceMatrix<f32>>(a.matmul(b), -1);
-  try expect_error<DeviceMatrix<f32>>(a.add(b), -1);
-  try expect_error<f32>(a.dot(b), -1);
-  var second = try open_device(0);
-  var other = try second.allocate<f32>([2i64, 3i64]);
-  try expect_error<DeviceMatrix<f32>>(a.add(other), -3);
-  var wrong_shape = try Matrix<f32>(global_allocator, [2, 2]);
-  try expect_error<void>(a.copy_to_host(wrong_shape), -1);
-  try expect_error<void>(a.copy_from_host(wrong_shape), -1);
-  var scalar_host = try Matrix<f32>(global_allocator, [1, 1]);
+function check_errors(device: const ref Device) void throws {
+  var caught_1 = false;
+  try {
+    device.allocate<f32>([0i64]);
+  } catch (error: GpuError) {
+    std.test.assert_eq(error.code(), -1);
+    caught_1 = true;
+  }
+  std.test.assert(caught_1, "expected GPU validation failure");
+  var caught_2 = false;
+  try {
+    device.allocate<f32>([2i64, 2i64, 2i64]);
+  } catch (error: GpuError) {
+    std.test.assert_eq(error.code(), -1);
+    caught_2 = true;
+  }
+  std.test.assert(caught_2, "expected GPU validation failure");
+  var caught_3 = false;
+  try {
+    device.allocate<f32>([2147483648i64]);
+  } catch (error: GpuError) {
+    std.test.assert_eq(error.code(), -2);
+    caught_3 = true;
+  }
+  std.test.assert(caught_3, "expected GPU validation failure");
+  var a = device.allocate<f32>([2i64, 3i64]);
+  var b = device.allocate<f32>([2i64, 2i64]);
+  var caught_4 = false;
+  try {
+    a.matmul(b);
+  } catch (error: GpuError) {
+    std.test.assert_eq(error.code(), -1);
+    caught_4 = true;
+  }
+  std.test.assert(caught_4, "expected GPU validation failure");
+  var caught_5 = false;
+  try {
+    a.add(b);
+  } catch (error: GpuError) {
+    std.test.assert_eq(error.code(), -1);
+    caught_5 = true;
+  }
+  std.test.assert(caught_5, "expected GPU validation failure");
+  var caught_6 = false;
+  try {
+    a.dot(b);
+  } catch (error: GpuError) {
+    std.test.assert_eq(error.code(), -1);
+    caught_6 = true;
+  }
+  std.test.assert(caught_6, "expected GPU validation failure");
+  var second = open_device(0);
+  var other = second.allocate<f32>([2i64, 3i64]);
+  var caught_7 = false;
+  try {
+    a.add(other);
+  } catch (error: GpuError) {
+    std.test.assert_eq(error.code(), -3);
+    caught_7 = true;
+  }
+  std.test.assert(caught_7, "expected GPU validation failure");
+  var wrong_shape = Matrix<f32>(global_allocator, [2, 2]);
+  var caught_8 = false;
+  try {
+    a.copy_to_host(wrong_shape);
+  } catch (error: GpuError) {
+    std.test.assert_eq(error.code(), -1);
+    caught_8 = true;
+  }
+  std.test.assert(caught_8, "expected GPU validation failure");
+  var caught_9 = false;
+  try {
+    a.copy_from_host(wrong_shape);
+  } catch (error: GpuError) {
+    std.test.assert_eq(error.code(), -1);
+    caught_9 = true;
+  }
+  std.test.assert(caught_9, "expected GPU validation failure");
+  var scalar_host = Matrix<f32>(global_allocator, [1, 1]);
   scalar_host[0, 0] = 3.0f32;
-  var scalar = try device.upload(scalar_host);
-  var squared = try scalar.matmul(scalar);
-  try squared.copy_to_host(scalar_host);
-  try near(_convert<f64>(scalar_host[0, 0]), 9.0);
-  return CheckResult.Ok;
+  var scalar = device.upload(scalar_host);
+  var squared = scalar.matmul(scalar);
+  squared.copy_to_host(scalar_host);
+  near(_convert<f64>(scalar_host[0, 0]), 9.0);
+  return;
 }
 
 /** Uses an owning GPU matrix transferred to a worker thread. */
 function scale_on_worker(matrix: DeviceMatrix<f32>) bool {
-  return match matrix.scale_in_place(2.0f32) {
-    GpuResult.Ok => true,
-    _ => false
-  };
+  try {
+    matrix.scale_in_place(2.0f32);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Runs both precisions and checks retained ownership. */
-function run_checks(device: const ref Device) CheckResult<void> {
-  try check_errors(device);
-  try check_precision<f32>(device);
-  try check_precision<f64>(device);
-  var matrix = try retained_matrix();
-  try matrix.scale_in_place(2.0f32);
-  var worker = try std.thread.spawn(scale_on_worker, matrix);
-  try std.test.assert(worker.join());
-  return CheckResult.Ok;
+function run_checks(device: const ref Device) void throws {
+  check_errors(device);
+  check_precision<f32>(device);
+  check_precision<f64>(device);
+  var matrix = retained_matrix();
+  matrix.scale_in_place(2.0f32);
+  var worker = std.thread.spawn(scale_on_worker, matrix);
+  std.test.assert(worker.join());
+  return;
+}
+
+/** Reports failures after a device has been opened without treating them as a skip. */
+function run_available(device: const ref Device) i32 {
+  try {
+    run_checks(device);
+    return 0;
+  } catch {
+    println("GPU checks failed");
+    return 1;
+  }
 }
 
 /** Returns a distinct skip status only when no CUDA device can be opened. */
 function main() i32 {
-  return match open_device(0) {
-    GpuResult.Error(error) => {
-      match error.message() {
-        AllocationResult.Ok(text) => println(text),
-        _ => println("unable to allocate error message")
-      };
-      77;
-    },
-    GpuResult.Ok(device) => match run_checks(device) {
-      (error: const ref IError) => {
-        match error.message() {
-          AllocationResult.Ok(text) => println(text),
-          _ => println("unable to allocate error message")
-        };
-        1;
-      },
-      _ => 0
-    },
-    _ => 1
-  };
+  try {
+    var device = open_device(0);
+    return run_available(device);
+  } catch (error: GpuError) {
+    println("No usable CUDA device");
+    return 77;
+  } catch {
+    return 1;
+  }
 }

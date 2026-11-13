@@ -68,11 +68,11 @@ class Point {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var rawPtr = try alloc.create<Point>(3, 4);
+  var rawPtr =  alloc.create<Point>(3, 4);
   var p = Unique<Point>(rawPtr);
-  return Result.Ok(p.get().sum());
+  return p.get().sum();
 }
 )");
   EXPECT_EQ(value, 7);
@@ -95,11 +95,11 @@ class Box<T> {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var rawPtr = try alloc.create<Box<i32>>(42);
+  var rawPtr =  alloc.create<Box<i32>>(42);
   var p = Unique<Box<i32>>(rawPtr);
-  return Result.Ok(p.get().get());
+  return p.get().get();
 }
 )");
   EXPECT_EQ(value, 42);
@@ -121,13 +121,13 @@ class Point {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var rawPtr = try alloc.create<Point>(3, 4);
+  var rawPtr =  alloc.create<Point>(3, 4);
   var p = Unique<Point>(rawPtr);
   var result = p.get().x + p.get().y;
   // p.deinit() is automatically called at scope exit
-  return Result.Ok(result);
+  return result;
 }
 )");
   EXPECT_EQ(value, 7);
@@ -150,12 +150,12 @@ class Counter {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var c1 = Unique<Counter>(try alloc.create<Counter>(10));
-  var c2 = Unique<Counter>(try alloc.create<Counter>(20));
-  var c3 = Unique<Counter>(try alloc.create<Counter>(30));
-  return Result.Ok(c1.get().value + c2.get().value + c3.get().value);
+  var c1 = Unique<Counter>( alloc.create<Counter>(10));
+  var c2 = Unique<Counter>( alloc.create<Counter>(20));
+  var c3 = Unique<Counter>( alloc.create<Counter>(30));
+  return c1.get().value + c2.get().value + c3.get().value;
 }
 )");
   EXPECT_EQ(value, 60);
@@ -179,15 +179,15 @@ class Point {
   }
 }
 
-function create_point(alloc: ref HeapAllocator, x: i32, y: i32) Result<raw_ptr<Point>> {
-  return Result.Ok(try alloc.create<Point>(x, y));
+function create_point(alloc: ref HeapAllocator, x: i32, y: i32) raw_ptr<Point> throws {
+  return  alloc.create<Point>(x, y);
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var p = Unique<Point>(try create_point(alloc, 5, 7));
-  return Result.Ok(p.get().x + p.get().y);
+  var p = Unique<Point>( create_point(alloc, 5, 7));
+  return p.get().x + p.get().y;
 }
 )");
   EXPECT_EQ(value, 12);
@@ -225,7 +225,7 @@ TEST(MemorySafety_Allocator, sizeof_intrinsic_class) {
             this.y = 0;
         }
     }
-    
+
     function main() i64 {
         return _sizeof<Point>();
     }
@@ -253,10 +253,10 @@ class Point {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var p = try alloc.create<Point>(10, 20);
-  return Result.Ok(unsafe { p.sum(); });
+  var p =  alloc.create<Point>(10, 20);
+  return unsafe { p.sum(); };
 }
 )");
   EXPECT_EQ(value, 30);  // 10 + 20
@@ -288,11 +288,11 @@ class Point {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var a = Unique<Point>(try alloc.create<Point>(7));  // init(i32) -> 14
-  var b = Unique<Point>(try alloc.create<Point>(3, 4));  // init(i32,i32) -> 7
-  return Result.Ok(a.get().x + a.get().y + b.get().x + b.get().y);
+  var a = Unique<Point>( alloc.create<Point>(7));  // init(i32) -> 14
+  var b = Unique<Point>( alloc.create<Point>(3, 4));  // init(i32,i32) -> 7
+  return a.get().x + a.get().y + b.get().x + b.get().y;
 }
 )");
   EXPECT_EQ(value, 21);  // 14 + 7
@@ -318,10 +318,10 @@ class Point {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var p = Unique<Point>(try alloc.create<Point>(9));
-  return Result.Ok(p.get().x + p.get().y);  // 9 + 9
+  var p = Unique<Point>( alloc.create<Point>(9));
+  return p.get().x + p.get().y;  // 9 + 9
 }
 )");
   EXPECT_EQ(value, 18);
@@ -343,10 +343,10 @@ class Point {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var p = Unique<Point>(try alloc.create<Point>(1, 2, 3));
-  return Result.Ok(0);
+  var p = Unique<Point>( alloc.create<Point>(1, 2, 3));
+  return 0;
 }
 )"),
                sun::support::SunError);
@@ -375,10 +375,10 @@ class Point {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var p = try alloc.create_unique<Point>(3, 4);
-  return Result.Ok(p.get().sum());
+  var p =  alloc.create_unique<Point>(3, 4);
+  return p.get().sum();
 }
 )");
   EXPECT_EQ(value, 7);
@@ -404,11 +404,11 @@ class Point {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var a = try alloc.create_unique<Point>(7);
-  var b = try alloc.create_unique<Point>(3, 4);
-  return Result.Ok(a.get().x + a.get().y + b.get().x + b.get().y);
+  var a =  alloc.create_unique<Point>(7);
+  var b =  alloc.create_unique<Point>(3, 4);
+  return a.get().x + a.get().y + b.get().x + b.get().y;
 }
 )");
   EXPECT_EQ(value, 21);
@@ -434,17 +434,17 @@ class Resource {
   }
 }
 
-function helper() Result<i32> {
+function helper() i32 throws {
   var alloc = make_heap_allocator();
-  var r1 = try alloc.create_unique<Resource>(10);
-  var r2 = try alloc.create_unique<Resource>(20);
-  return Result.Ok(r1.get().value + r2.get().value);
+  var r1 =  alloc.create_unique<Resource>(10);
+  var r2 =  alloc.create_unique<Resource>(20);
+  return r1.get().value + r2.get().value;
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
-  var result = try helper();
-  return Result.Ok(counter * 100 + result);
+function main() i32 throws {
+  var result =  helper();
+  return counter * 100 + result;
 }
 )");
   // 2 deinits, values sum to 30
@@ -469,25 +469,25 @@ class Resource {
   }
 }
 
-function make(alloc: ref HeapAllocator, v: i32) Result<Unique<Resource>> {
-  return Result.Ok(try alloc.create_unique<Resource>(v));
+function make(alloc: ref HeapAllocator, v: i32) Unique<Resource> throws {
+  return  alloc.create_unique<Resource>(v);
 }
 
 var before: i32 = 0;
 
-function use(alloc: ref HeapAllocator) Result<i32> {
-  var r = try make(alloc, 5);
+function use(alloc: ref HeapAllocator) i32 throws {
+  var r =  make(alloc, 5);
   var v: i32 = r.get().value;
   before = counter;  // no deinit yet while r is alive
-  return Result.Ok(v);
+  return v;
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var v = try use(alloc);
+  var v =  use(alloc);
   // deinit ran exactly once, and only after use() returned
-  return Result.Ok(before * 100 + counter * 10 + v);
+  return before * 100 + counter * 10 + v;
 }
 )");
   EXPECT_EQ(value, 15);
@@ -629,9 +629,9 @@ TEST(MemorySafety_Allocator, heap_allocator_creates_primitive_values) {
 using std;
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var alloc = make_heap_allocator();
-  var p = try alloc.create<i32>(42);
+  var p =  alloc.create<i32>(42);
   var result: i32 = 0;
   unsafe {
     if (_load<i32>(p, 0) != 42) {
@@ -639,10 +639,10 @@ function main() Result<i32> {
     }
   };
   alloc.dealloc<i32>(p, 1);
-  var zero = try alloc.create_unique<i32>(0);
-  var negative = try alloc.create_unique<i64>(-42);
-  var floating = try alloc.create_unique<f64>(3.5);
-  var boolean = try alloc.create_unique<bool>(true);
+  var zero =  alloc.create_unique<i32>(0);
+  var negative =  alloc.create_unique<i64>(-42);
+  var floating =  alloc.create_unique<f64>(3.5);
+  var boolean =  alloc.create_unique<bool>(true);
   if (zero.get() != 0) {
     result = 2;
   }
@@ -655,7 +655,7 @@ function main() Result<i32> {
   if (boolean.get() == false) {
     result = 5;
   }
-  return Result.Ok(result);
+  return result;
 }
 )"),
             0);

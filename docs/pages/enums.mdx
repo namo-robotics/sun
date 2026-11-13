@@ -89,7 +89,7 @@ using std;
 
 var mode = std.io.FileMode.Write;   // through the module path
 var file = std.io.File();
-try file.open("notes.txt", mode);
+ file.open("notes.txt", mode);
 ```
 
 The `try` call belongs inside a function returning a compatible result type.
@@ -270,10 +270,10 @@ rule throughout:
   Scalar payloads are read by value.
 
 ```sun
-var maybe = Option.Some(try String(alloc, "hello"));
+var maybe = Option.Some( String(alloc, "hello"));
 var text = match maybe {
     Option.Some(s) => s,
-    Option.None => try String(alloc, "fallback")
+    Option.None =>  String(alloc, "fallback")
 };
 // text now owns the string; maybe has been consumed.
 ```
@@ -296,7 +296,7 @@ results expressible:
 
 ```sun
 enum Option<T> { Some(T), None }
-// _Result<T, E> is builtin; It is independent of the standard library.
+// Recoverable failures use exceptions; Option represents absence.
 
 function find(x: i32) Option<i32> {
     if (x > 0) { return Option.Some(x * 2); }  // T inferred from the argument

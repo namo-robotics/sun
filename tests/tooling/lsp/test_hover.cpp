@@ -131,7 +131,7 @@ function add(a: i32, b: i32) i32 {
 
 function read(p: const ref Point) i32 { return p.x; }
 
-function mayFail(v: i32) _Result<i32, i32> { return _Result.Ok(v); }
+function mayFail(v: i32) i32 throws { return v; }
 
 function main() i32 {
     var p = Point(1, 2);
@@ -197,7 +197,7 @@ TEST(Tooling_Lsp_Hover, FunctionSignatureOnName) {
 
 TEST(Tooling_Lsp_Hover, ThrowingFunction) {
   EXPECT_EQ(hoverAt(kProgram, "function mayFail"),
-            "function mayFail(v: i32) _Result<i32, i32>");
+            "function mayFail(v: i32) i32 throws");
 }
 
 TEST(Tooling_Lsp_Hover, ConstMethod) {
@@ -214,14 +214,14 @@ TEST(Tooling_Lsp_Hover, FunctionCallee) {
 
 TEST(Tooling_Lsp_Hover, FunctionPointerVariableUsesFunctionSyntax) {
   const char* source = R"(
-function fail(x: i32) _Result<i32, i32> { return _Result.Ok(x); }
+function fail(x: i32) i32 throws { return x; }
 function main() i32 {
-    var callback: function (i32) _Result<i32, i32> = fail;
+    var callback: function (i32) i32 throws = fail;
     return 0;
 }
 )";
   EXPECT_EQ(hoverAt(source, "var callback"),
-            "var callback: function (i32) _Result<i32, i32>");
+            "var callback: function (i32) i32 throws");
 }
 
 // Lambda types retain arrow syntax, and a lambda that carries captures keeps
@@ -234,7 +234,7 @@ class Holder {
     public method set(cb: <'this>() => i32) void { this.callback = cb; }
 }
 
-function apply(f: (i32) => _Result<i32, i32>) _Result<i32, i32> {
+function apply(f: (i32) => i32 throws) i32 throws {
     return f(1);
 }
 
@@ -245,7 +245,7 @@ function main() i32 {
 )";
   EXPECT_EQ(hoverAt(source, "callback: <'_>"), "var callback: <'_>() => i32");
   EXPECT_EQ(hoverAt(source, "cb;"), "cb: <'this>() => i32");
-  EXPECT_EQ(hoverAt(source, "f(1)"), "f: (i32) => _Result<i32, i32>");
+  EXPECT_EQ(hoverAt(source, "f(1)"), "f: (i32) => i32 throws");
 }
 
 TEST(Tooling_Lsp_Hover, ClassHeaderAndField) {
@@ -616,15 +616,15 @@ TEST(Tooling_Lsp_Hover, StdlibVecAndLoopVariable) {
   }
   std::string source = R"(
 using std;
-function main() AllocationResult<i64> {
+function main() i64 throws {
     var allocator = make_heap_allocator();
-    var v = try Vec<i64>(allocator, 8);
-    try v.push(1);
+    var v =  Vec<i64>(allocator, 8);
+     v.push(1);
     var sum: i64 = 0;
     for (var item: i64 in v) {
         sum = sum + item;
     }
-    return AllocationResult.Ok(sum);
+    return sum;
 }
 )";
   // Reuse the analyzed document for every hover location.
@@ -733,18 +733,18 @@ TEST(Tooling_Lsp_Hover, MergedModuleKeepsOriginDocumentation) {
   }
 }
 
-/** Constructor hover shows the status result callers must handle. */
-TEST(Tooling_Lsp_Hover, FallibleConstructorResult) {
+/** Constructor hover shows its exception propagation contract. */
+TEST(Tooling_Lsp_Hover, ThrowingConstructor) {
   const char* source = R"(
     /** Declares a constructor with a recoverable failure. */
     class Item {
       /** Completes construction successfully. */
-      init() _Result<void, i32> {}
+      init()  throws {}
     }
     /** Supplies an entry point. */
     function main() i32 { return 0; }
   )";
-  EXPECT_EQ(hoverAt(source, "init()"), "init() _Result<void, i32>");
+  EXPECT_EQ(hoverAt(source, "init()"), "init() throws");
 }
 
 /** Fixed intrinsic hover includes its declared types and source documentation.
@@ -861,4 +861,17 @@ TEST(Tooling_Lsp_Hover, DependentIntrinsicHover) {
   EXPECT_NE(spawn->code.find("args...: _params_of<F>"), std::string::npos);
   EXPECT_NE(spawn->documentation.find("prefer std.thread.spawn"),
             std::string::npos);
+}
+
+/** Exception hover preserves the family used by catch clauses. */
+TEST(Tooling_Lsp_Hover, ExceptionFamily) {
+  const char* source = R"(
+    /** Groups related failures. */
+    exception Failure {}
+    /** Identifies a concrete failure. */
+    exception DeviceFailure extends Failure {}
+    function main() i32 { return 0; }
+  )";
+  EXPECT_EQ(hoverAt(source, "DeviceFailure"),
+            "exception DeviceFailure extends Failure");
 }

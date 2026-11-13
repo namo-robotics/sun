@@ -192,6 +192,23 @@ message(STATUS "Proto headers: ${PROTO_HDRS}")
 # ------------------------------------------------------------------
 # Create the core library (recommended)
 # ------------------------------------------------------------------
+if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8 OR NOT
+   (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR APPLE))
+    message(FATAL_ERROR "Sun exception transport requires a 64-bit Linux or macOS host")
+endif()
+add_library(sun_exception_runtime STATIC src/runtime/exceptions.cpp src/runtime/panic.cpp)
+target_include_directories(sun_exception_runtime PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+# Native propagation must unwind through sun_eh_raise even without C++ exceptions.
+# Darwin Clang otherwise omits the runtime's unwind tables in optimized builds.
+target_compile_options(sun_exception_runtime PRIVATE -fno-exceptions -fno-rtti -funwind-tables)
+set_target_properties(sun_exception_runtime PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+# Compiler-side JIT support is separate from the runtime linked into Sun programs.
+add_library(sun_jit_support STATIC src/driver/jit/unwind_registration.cpp)
+target_include_directories(sun_jit_support PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(sun_jit_support PUBLIC LLVM PRIVATE ${CMAKE_DL_LIBS})
+set_target_properties(sun_jit_support PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 add_library(sun_lib
     # Generated protobuf sources
     ${PROTO_SRCS}
@@ -332,6 +349,8 @@ add_library(sun_lib
     src/codegen/loops/loops.cpp
     src/codegen/errors/error_generator.cpp
     src/codegen/errors/error_handling.cpp
+    src/codegen/errors/native_exceptions.cpp
+    src/semantic_analysis/body_analysis/exceptions.cpp
     src/codegen/abi/aapcs64/aapcs64.cpp
     src/codegen/abi/c_abi.cpp
     src/codegen/abi/extern_c.cpp
@@ -433,7 +452,17 @@ target_include_directories(sun_lib
 )
 
 target_include_directories(sun_lib SYSTEM PRIVATE ${SUN_LIBCLANG_INCLUDE_DIR})
-target_link_libraries(sun_lib PUBLIC ${SUN_LIBCLANG_LIBRARY})
+target_link_libraries(sun_lib PUBLIC ${SUN_LIBCLANG_LIBRARY} sun_jit_support)
+target_link_libraries(sun_lib PUBLIC sun_exception_runtime)
+set(EXCEPTION_ARCHIVE_SOURCE ${CMAKE_CURRENT_BINARY_DIR}/embedded_exception_runtime.cpp)
+add_custom_command(OUTPUT ${EXCEPTION_ARCHIVE_SOURCE}
+    COMMAND ${CMAKE_COMMAND}
+        -DINPUT_FILE=$<TARGET_FILE:sun_exception_runtime>
+        -DOUTPUT_FILE=${EXCEPTION_ARCHIVE_SOURCE}
+        -P ${CMAKE_SOURCE_DIR}/cmake/EmbedArchive.cmake
+    DEPENDS sun_exception_runtime ${CMAKE_SOURCE_DIR}/cmake/EmbedArchive.cmake
+    COMMENT "Embedding the native exception runtime archive" VERBATIM)
+target_sources(sun_lib PRIVATE ${EXCEPTION_ARCHIVE_SOURCE})
 
 # Link LLVM the modern way (target-based)
 # libprotoc provides google::protobuf::compiler::Importer, used to parse .proto

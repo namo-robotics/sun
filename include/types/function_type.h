@@ -16,7 +16,7 @@ class FunctionType : public Type {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;
   bool requiresUnsafe_ = false;
-  bool canThrow_ = false;  // declared with 'throws IError' — may unwind
+  bool canThrow_ = false;  // declared with 'throws' — may unwind
 
  public:
   /** Creates a function type from its result, parameters, and calling
@@ -60,7 +60,7 @@ class FunctionType : public Type {
       result = "unsafe " + result;
     }
     if (canThrow_) {
-      result += " throws IError";
+      result += " throws";
     }
     return result;
   }
@@ -79,7 +79,7 @@ class FunctionType : public Type {
       result = "unsafe " + result;
     }
     if (canThrow_) {
-      result += " throws IError";
+      result += " throws";
     }
     return result;
   }

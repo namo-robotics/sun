@@ -3,20 +3,17 @@ using std.io;
 // An HTTPS GET with the tls bundle's HttpsClient.
 //
 // The certificate is verified against the system CA store and checked
-// against the hostname; a bad certificate returns an error.
+// against the hostname; a bad certificate throws an exception.
 
 using std;
 using tls;
 
-/** Carries request, system, or response access failures. */
-enum RequestResult { Ok, Allocation(AllocationError), InvalidArgument(InvalidArgumentError), Overflow(OverflowError), Tls(tls.TlsError), System(Error), Bounds(IndexOutOfBoundsError), NotFound(NotFoundError), Empty(EmptyError), Io(IOError), Conversion(ConversionError), DivisionByZero(DivisionByZeroError), Arithmetic(ArithmeticError), Json(std.json.JsonError), Xml(std.xml.XmlError), Decode(ProtoDecodeError) }
-
-/** Performs the operation and propagates returned failures. */
-function run() RequestResult {
+/** Performs the operation and propagates exceptions. */
+function run() void throws {
   var client = HttpsClient(global_allocator);
-  var host = try String(global_allocator, "example.com");
+  var host = String(global_allocator, "example.com");
 
-  var response = try client.get(host, "/");
+  var response = client.get(host, "/");
 
   print("status: ");
   println(response.status);
@@ -25,27 +22,19 @@ function run() RequestResult {
 
   // Print the first line of the body
   var end: i64 = 0;
-  while (end < response.body.length() and (try response.body.at(end)) != b'\n') {
+  while (end < response.body.length() and (response.body.at(end)) != b'\n') {
     end = end + 1;
   }
-  var first_line = try response.body.substr(global_allocator, 0, end);
+  var first_line = response.body.substr(global_allocator, 0, end);
   println(first_line);
 
-  return RequestResult.Ok;
+  return;
 }
 
-/** Reports errors and sets the process exit code. */
-function main() i32 {
-  return match run() {
-    (e: const ref IError) => {
-      match e.message() {
-        AllocationResult.Ok(message) => println(message),
-        _ => println("unable to allocate error message")
-      };
-      1;
-    },
-    _ => 0
-  };
+/** Runs the example; an uncaught exception produces a failing exit code. */
+function main() i32 throws {
+  run();
+  return 0;
 }
 
 manifest {

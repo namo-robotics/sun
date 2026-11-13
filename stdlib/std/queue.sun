@@ -10,8 +10,8 @@
 //
 // Usage:
 //   var q = Queue<i64>(global_allocator);
-//   try q.push(1);
-//   try q.push(2);
+//   q.push(1);
+//   q.push(2);
 //   match (q.pop()) {
 //     Option.Some(v) => println(v),   // 1
 //     Option.None => {},
@@ -31,10 +31,10 @@ public module std {
     /**
      * Add to the back of the queue. The value moves in.
      */
-    public method push(value: T) AllocationResult<void> {
-      try this.items.push_back(value);
+    public method push(value: T) void throws {
+      this.items.push_back(value);
 
-      return AllocationResult.Ok;
+      return;
     }
 
     /**
@@ -45,10 +45,12 @@ public module std {
       if (this.items.is_empty()) {
         return Option.None;
       }
-      return match this.items.pop_front() {
-        PopResult.Ok(value) => Option.Some(value),
-        PopResult.Empty(_) => Option.None
-      };
+      try {
+        var value = this.items.pop_front();
+        return Option.Some(value);
+      } catch (ignored_error: EmptyError) {
+        return Option.None;
+      }
     }
 
     /**

@@ -1,4 +1,4 @@
-/** Verifies trapping operators and recoverable arithmetic results. */
+/** Verifies trapping operators and recoverable arithmetic exceptions. */
 #include <gtest/gtest.h>
 #include <sys/resource.h>
 #include <sys/wait.h>
@@ -123,7 +123,7 @@ TEST(Errors_Arithmetic, ordinary_operations_need_no_error_contract) {
 /** Checked arithmetic propagates failure and drops owners in abandoned frames.
  */
 TEST(Errors_Arithmetic, propagation_drops_live_values) {
-  EXPECT_EQ(executeString(R"(
+  EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
 
     var drops = 0;
     /** Records resource cleanup. */
@@ -134,18 +134,19 @@ TEST(Errors_Arithmetic, propagation_drops_live_values) {
       deinit() { drops += 1; }
     }
     /** Returns a recoverable error while owning a local resource. */
-    function divide(a: i32, b: i32) _Result<i32, i32> {
+    function divide(a: i32, b: i32) i32 throws {
       var owner = Owner();
-      return _Result.Ok(try _checked_div(a, b));
+      return std.checked_div(a, b);
     }
     /** Propagates failure through a second resource-owning frame. */
-    function outer() _Result<i32, i32> {
+    function outer() i32 throws {
       var owner = Owner();
-      return _Result.Ok(try divide(1, 0));
+      return  divide(1, 0);
     }
     /** Inspects the error after both owners have been dropped. */
     function main() i32 {
-      return match outer() { _Result.Ok(value) => -1, _Result.Err(error) => drops };
+      try { outer(); } catch (error: std.ArithmeticError) { return drops; }
+      return -1;
     }
   )"),
             2);
@@ -156,15 +157,13 @@ TEST(Errors_Arithmetic, propagation_drops_live_values) {
 TEST(Errors_Arithmetic, messages_with_stdlib) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
     /** Reads the concrete error and explicitly owns its diagnostic. */
-    function main() i32 {
-      return match std.checked_div(1, 0) {
-        _Result.Ok(value) => -1,
-        _Result.Err(error) => {
-          var message = match error.message() { std.AllocationResult.Ok(text) => text, _ => { return -1; } };
-          if (message.equals_literal("integer division by zero")) { return 0; }
-          return 1;
-        }
-      };
+    function main() i32 throws {
+      try { std.checked_div(1, 0); }
+      catch (error: std.ArithmeticError) {
+        var message = error.message();
+        return message.equals_literal("integer division by zero") ? 0 : 1;
+      }
+      return -1;
     }
   )"),
             0);
@@ -195,7 +194,7 @@ TEST(Errors_Arithmetic, success_keeps_owners_alive) {
 }
 
 /** Primitive arithmetic failures cross libraries without a stdlib dependency. */
-TEST(Errors_Arithmetic, library_result_without_stdlib_handled_with_stdlib) {
+TEST(Errors_Arithmetic, library_exception_without_stdlib_handled_with_stdlib) {
   const auto directory =
       std::filesystem::path("tmp") /
       ("arithmetic_error_library_" + std::to_string(getpid()));
@@ -206,7 +205,12 @@ TEST(Errors_Arithmetic, library_result_without_stdlib_handled_with_stdlib) {
     /** Exports integer division without depending on the standard library. */
     public module arithmetic_fixture {
       /** Propagates arithmetic errors across a library boundary. */
-      public function divide(a: i32, b: i32) _Result<i32, i32> { return _checked_div(a, b); }
+      public function divide(a: i32, b: i32) i32 throws {
+        if (b == 0) { throw Failure(); }
+        return a / b;
+      }
+      /** Carries a bounded code without importing standard-library types. */
+      public exception Failure { public var code: i32 = 4; }
     }
   )";
   // These paths contain only the fixed prefix, the process id, and filenames.
@@ -220,15 +224,13 @@ TEST(Errors_Arithmetic, library_result_without_stdlib_handled_with_stdlib) {
   driver->setMoonImports(std::move(imports));
   EXPECT_EQ(driver->executeString(R"(
     /** Converts a library's primitive failure into a standard diagnostic. */
-    function main() i32 {
-      return match arithmetic_fixture.divide(1, 0) {
-        _Result.Ok(value) => value,
-        _Result.Err(error) => {
-          var message = match std.ArithmeticError(error).message() { std.AllocationResult.Ok(text) => text, _ => { return 2; } };
-          if (message.equals_literal("integer division by zero")) { return 0; }
-          return 1;
-        }
-      };
+    function main() i32 throws {
+      try { arithmetic_fixture.divide(1, 0); }
+      catch (error: arithmetic_fixture.Failure) {
+        var message = std.ArithmeticError(error.code).message();
+        return message.equals_literal("integer division by zero") ? 0 : 1;
+      }
+      return -1;
     }
   )"),
             0);
@@ -239,25 +241,24 @@ TEST(Errors_Arithmetic, stdlib_checked_promotion_and_interface) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
     using std;
     /** Checks the public wrappers without converting their operands. */
-    function main() i32 {
+    function main() i32 throws {
       var small: i8 = 12;
       var wide: i64 = 3;
-      var narrow: _Result<i8, ArithmeticError> = checked_div(small, 2);
-      var reverse: _Result<i8, ArithmeticError> = std.checked_rem(13, small);
-      var promoted: _Result<i64, ArithmeticError> = std.checked_div(small, wide);
-      var widened_literal: _Result<i32, ArithmeticError> = std.checked_div(small, 256);
-      var total = match narrow { _Result.Ok(v) => _convert<i32>(v), _ => -100 };
-      total += match reverse { _Result.Ok(v) => _convert<i32>(v), _ => -100 };
-      total += match promoted { _Result.Ok(v) => _convert<i32>(v), _ => -100 };
-      total += match widened_literal { _Result.Ok(v) => _convert<i32>(v), _ => -100 };
-      return match std.checked_div(small, 0) {
-        _Result.Ok(v) => -1,
-        (error: const ref IError) => {
-          var message = match error.message() { std.AllocationResult.Ok(text) => text, _ => { return -1; } };
-          if (not message.equals_literal("integer division by zero")) { return -2; }
-          return total + error.code();
-        }
-      };
+      var narrow: i8 = checked_div(small, 2);
+      var reverse: i8 = std.checked_rem(13, small);
+      var promoted: i64 = std.checked_div(small, wide);
+      var widened_literal: i32 = std.checked_div(small, 256);
+      var total = _convert<i32>(narrow);
+      total += _convert<i32>(reverse);
+      total += _convert<i32>(promoted);
+      total += _convert<i32>(widened_literal);
+      try { std.checked_div(small, 0); }
+      catch (error: ArithmeticError) {
+        var message = error.message();
+        if (not message.equals_literal("integer division by zero")) { return -2; }
+        return total + error.code();
+      }
+      return -1;
     }
   )"), 15);
 }
@@ -308,7 +309,7 @@ TEST(Errors_Arithmetic, library_stdlib_error_implements_interface) {
     /** Exports the standard checked arithmetic API through a library. */
     public module arithmetic_fixture {
       /** Returns an ordinary standard-library error on failure. */
-      public function divide(a: i32, b: i32) _Result<i32, std.ArithmeticError> {
+      public function divide(a: i32, b: i32) i32 throws {
         return std.checked_div(a, b);
       }
     }
@@ -323,15 +324,15 @@ TEST(Errors_Arithmetic, library_stdlib_error_implements_interface) {
   driver->setMoonImports(std::move(imports));
   EXPECT_EQ(driver->executeString(R"(
     /** Uses the interface without depending on a builtin error representation. */
-    function main() i32 {
-      return match arithmetic_fixture.divide(1, 0) {
-        _Result.Ok(value) => -1,
-        (error: const ref std.IError) => {
-          var message = match error.message() { std.AllocationResult.Ok(text) => text, _ => { return -1; } };
-          if (not message.equals_literal("integer division by zero")) { return -2; }
-          return error.code();
-        }
-      };
+    function main() i32 throws {
+      try { arithmetic_fixture.divide(1, 0); }
+      catch (error: std.ArithmeticError) {
+        var view: const ref std.IError = error;
+        var message = view.message();
+        if (not message.equals_literal("integer division by zero")) { return -2; }
+        return view.code();
+      }
+      return -1;
     }
   )"), 4);
 }
@@ -363,16 +364,16 @@ TEST(Errors_Arithmetic, native_panic_diagnostic) {
 TEST(Errors_Arithmetic, stdlib_mixed_signedness) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
     /** Verifies both width promotion and equal-width signedness. */
-    function main() i32 {
+    function main() i32 throws {
       var narrow: i16 = 12;
       var wide: u32 = 3;
       var signed: i32 = 12;
-      var first: _Result<u32, std.ArithmeticError> = std.checked_div(narrow, wide);
-      var second: _Result<i32, std.ArithmeticError> = std.checked_div(signed, wide);
-      var third: _Result<u32, std.ArithmeticError> = std.checked_rem(wide, signed);
-      var total = match first { _Result.Ok(v) => _convert<i32>(v), _ => -100 };
-      total += match second { _Result.Ok(v) => v, _ => -100 };
-      total += match third { _Result.Ok(v) => _convert<i32>(v), _ => -100 };
+      var first: u32 = std.checked_div(narrow, wide);
+      var second: i32 = std.checked_div(signed, wide);
+      var third: u32 = std.checked_rem(wide, signed);
+      var total = _convert<i32>(first);
+      total += second;
+      total += _convert<i32>(third);
       return total;
     }
   )"), 11);
@@ -386,6 +387,6 @@ TEST(Errors_Arithmetic, rejects_non_integer_checked_operands) {
   )"));
   EXPECT_ANY_THROW(sun::driver::analyzeString(R"(
     /** Attempts to use floating-point operands with checked integer division. */
-    function main() i32 { var result = _checked_div(1.0, 0.0); return 0; }
+    function main() i32 { var result = _division_overflows(1.0, 0.0); return 0; }
   )"));
 }

@@ -4,10 +4,10 @@ using std.net;
 public module std.io {
 
   /** Configure a new pipe endpoint before publishing it to another thread. */
-  function configure_wakeup_fd(fd: i32) SystemResult<void> {
-    try set_fd_nonblocking(fd, true);
-    try set_fd_close_on_exec(fd, true);
-    return SystemResult.Ok;
+  function configure_wakeup_fd(fd: i32) void throws {
+    set_fd_nonblocking(fd, true);
+    set_fd_close_on_exec(fd, true);
+    return;
   }
 
   /** Shared pipe ownership; the Shared mutex serializes notification and draining. */
@@ -17,33 +17,20 @@ public module std.io {
     var pending: bool = false;
 
     /** Create nonblocking, close-on-exec endpoints, cleaning up partial setup on failure. */
-    init() SystemResult<void> {
+    init() throws {
       var fds: array<i32, 2> = [0, 0];
       if (unsafe { c_pipe(_address_of<i32>(fds[0])); } < 0) {
-        return SystemResult.Error(Error(errno(), "failed to create wakeup pipe"));
+        throw Error(errno(), "failed to create wakeup pipe");
       }
       this.reader = _convert<i64>(fds[0]) + 1;
       this.writer = _convert<i64>(fds[1]) + 1;
-      for (var i: i64 = 0; i < 2; i = i + 1) {
-        match configure_wakeup_fd(fds[i]) {
-          SystemResult.Ok => {},
-          SystemResult.Error(error) => {
-            this.close();
-            return SystemResult.Error(error);
-          },
-          SystemResult.Allocation(error) => {
-            this.close();
-            return SystemResult.Allocation(error);
-          },
-          SystemResult.InvalidArgument(error) => {
-            this.close();
-            return SystemResult.InvalidArgument(error);
-          },
-          SystemResult.Overflow(error) => {
-            this.close();
-            return SystemResult.Overflow(error);
-          }
-        };
+      try {
+        for (var i: i64 = 0; i < 2; i = i + 1) {
+          configure_wakeup_fd(fds[i]);
+        }
+      } catch {
+        this.close();
+        throw;
       }
     }
 
@@ -77,9 +64,9 @@ public module std.io {
     var shared: Shared<WakeupState>;
 
     /** Allocate shared ownership after acquiring both endpoints. */
-    init(alloc: const ref HeapAllocator) SystemResult<void> {
-      var state = try WakeupState();
-      this.shared = try Shared<WakeupState>(alloc, state);
+    init(alloc: const ref HeapAllocator) throws {
+      var state = WakeupState();
+      this.shared = Shared<WakeupState>(alloc, state);
     }
 
     /** Reuse existing ownership; only library code can name the payload type. */
@@ -102,29 +89,29 @@ public module std.io {
      * Ensure read readiness. Repeated notifications coalesce until drain.
      * A full pipe already guarantees readiness and counts as success.
      */
-    public const method notify() SystemResult<void> {
+    public const method notify() void throws {
       var guard = this.shared.lock();
       var state = guard.get();
       if (state.pending) {
-        return SystemResult.Ok;
+        return;
       }
       var byte: u8 = 1;
       while (true) {
         var count = unsafe { c_write(_convert<i32>(state.writer - 1), _address_of<u8>(byte), 1); };
         if (count == 1) {
           state.pending = true;
-          return SystemResult.Ok;
+          return;
         }
         var code = errno();
         if (count < 0 and code == WOULD_BLOCK_ERRNO) {
           state.pending = true;
-          return SystemResult.Ok;
+          return;
         }
         if (count >= 0 or code != INTERRUPTED_ERRNO) {
-          return SystemResult.Error(Error(code, "failed to notify wakeup"));
+          throw Error(code, "failed to notify wakeup");
         }
       }
-      return SystemResult.Ok;
+      return;
     }
 
     /**
@@ -132,7 +119,7 @@ public module std.io {
      * drain or leaves readiness for the next wait; resetting cannot erase it.
      * Check the application's synchronized work queue after draining.
      */
-    public const method drain() SystemResult<void> {
+    public const method drain() void throws {
       var guard = this.shared.lock();
       var state = guard.get();
       var byte: u8 = 0;
@@ -144,13 +131,13 @@ public module std.io {
         var code = errno();
         if (count < 0 and code == WOULD_BLOCK_ERRNO) {
           state.pending = false;
-          return SystemResult.Ok;
+          return;
         }
         if (count >= 0 or code != INTERRUPTED_ERRNO) {
-          return SystemResult.Error(Error(code, "failed to drain wakeup"));
+          throw Error(code, "failed to drain wakeup");
         }
       }
-      return SystemResult.Ok;
+      return;
     }
   }
 }

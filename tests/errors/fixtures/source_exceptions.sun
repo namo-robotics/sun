@@ -1,0 +1,57 @@
+/** Groups related failures without imposing a concrete payload. */
+exception Failure {
+}
+
+/** Carries the original failure's code. */
+exception Original extends Failure {
+  var code: i32;
+}
+
+/** Carries a cleanup failure handled inside a destructor. */
+exception CleanupFailure {
+  var code: i32;
+}
+
+var cleaned: i32 = 0;
+
+/** Handles fallible work during exceptional cleanup. */
+class Resource {
+  /** Creates an empty resource. */
+  init() {}
+
+  /** Handles its own failure and records completion. */
+  deinit() {
+    try {
+      var error: CleanupFailure = { code: 20 };
+      throw error;
+    } catch (error: CleanupFailure) {
+      cleaned += error.code;
+    }
+  }
+}
+
+/** Raises the original concrete value. */
+function fail() void throws {
+  var error: Original = { code: 22 };
+  throw error;
+}
+
+/** Rethrows through a family handler before destroying its resource. */
+function forward() void throws {
+  var resource = Resource();
+  try {
+    fail();
+  } catch (error: Failure) {
+    throw error;
+  }
+}
+
+/** Returns both the preserved original value and the completed cleanup result. */
+function main() i32 {
+  try {
+    forward();
+  } catch (error: Original) {
+    return error.code + cleaned;
+  }
+  return 0;
+}

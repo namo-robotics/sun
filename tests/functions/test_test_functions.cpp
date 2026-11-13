@@ -58,7 +58,7 @@ TEST(TestFunctions, rejects_return_type) {
     }
     function main() i32 { return 0; }
   )"),
-                                "empty first success variant");
+                                "test functions return void");
 }
 
 /** Test failures use returned results instead of exception declarations. */
@@ -69,7 +69,7 @@ TEST(TestFunctions, rejects_explicit_throws) {
     }
     function main() i32 { return 0; }
   )"),
-                                "'throws' is not supported");
+                                "'throws' does not take an error type");
 }
 
 TEST(TestFunctions, rejects_public) {

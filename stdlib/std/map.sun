@@ -7,9 +7,9 @@
 // Usage:
 //   import "stdlib/std/map.sun";
 //   using std;
-//   
-//   var m = try Map<i64, i32>(global_allocator);
-//   try m.insert(42, 100);
+//
+//   var m = Map<i64, i32>(global_allocator);
+//   m.insert(42, 100);
 //   var val = m.get(42);              // Borrows 100, returns NotFoundError if not found
 //   var fallback = 0;
 //   var val2 = m.get_or_default(99, fallback); // Borrows the default: 99 absent
@@ -166,7 +166,7 @@ public module std {
   /** Owns key-value entries in a hash table and manages their storage. */
   public class Map<K, V> implements IIterable<ref V, Map<K, V>> {
     var keys: ContiguousBuffer<K>;  // Key storage
-    var values: ContiguousBuffer<V>;  // Value storage  
+    var values: ContiguousBuffer<V>;  // Value storage
     var states: ContiguousBuffer<i8>;  // State array: 0=empty, 1=occupied, 2=deleted
     var alloc: HeapAllocator;  // Allocator (stored via copy)
     var capacity_: i64;  // Number of buckets
@@ -175,14 +175,14 @@ public module std {
     /**
      * Constructor with allocator and capacity
      */
-    init(allocator: const ref HeapAllocator, capacity: i64) AllocationResult<void> {
+    init(allocator: const ref HeapAllocator, capacity: i64) throws {
       this.alloc = allocator.copy();
       this.capacity_ = capacity;
 
       // Allocate ContiguousBuffer storage - size equals capacity
-      this.keys = try ContiguousBuffer<K>(allocator, capacity);
-      this.values = try ContiguousBuffer<V>(allocator, capacity);
-      this.states = try ContiguousBuffer<i8>(allocator, capacity);
+      this.keys = ContiguousBuffer<K>(allocator, capacity);
+      this.values = ContiguousBuffer<V>(allocator, capacity);
+      this.states = ContiguousBuffer<i8>(allocator, capacity);
 
       // Initialize all states to EMPTY (0)
       this.states.fill(0);
@@ -222,13 +222,13 @@ public module std {
     /**
      * Insert or update a key-value pair.
      */
-    public method insert(key: K, value: V) AllocationResult<void> {
+    public method insert(key: K, value: V) void throws {
       var threshold: i64 = (this.capacity_ / 10) * 7 + (this.capacity_ % 10) * 7 / 10;
       if (this.size_ >= threshold) {
-        try this.grow();
+        this.grow();
       }
       this.insert_without_growth(key, value);
-      return AllocationResult.Ok;
+      return;
     }
 
     /** Move an entry into a table with available storage; never allocate. */
@@ -290,12 +290,12 @@ public module std {
      * ownership, so this hands back a reference — copying the value out would
      * leave two owners of anything it holds. Use remove() to move it out.
      */
-    public const method get(key: K) LookupResult<ref V> {
+    public const method get(key: K) ref V throws {
       var probe: i64 = this.find_index(key);
       if (probe < 0) {
-        return LookupResult.NotFound(NotFoundError());
+        throw NotFoundError();
       }
-      return LookupResult.Ok(unsafe { this.values.get_unchecked(probe); });
+      return unsafe { this.values.get_unchecked(probe); };
     }
 
     /**
@@ -323,17 +323,17 @@ public module std {
     /**
      * Remove key and return its value, returns NotFoundError if not found
      */
-    public method remove(key: K) LookupResult<V> {
+    public method remove(key: K) V throws {
       var probe: i64 = this.find_index(key);
       if (probe < 0) {
-        return LookupResult.NotFound(NotFoundError());
+        throw NotFoundError();
       }
 
       var value: V = unsafe { this.values.take_unchecked(probe); };
       this.drop_key(probe);  // Value moved out; the key is dropped here
       unsafe { this.states.set_unchecked(probe, 2); };  // Mark as DELETED
       this.size_ = this.size_ - 1;
-      return LookupResult.Ok(value);
+      return value;
     }
 
     /**
@@ -455,11 +455,11 @@ public module std {
     /**
      * Grow capacity and rehash all entries
      */
-    method grow() AllocationResult<void> {
+    method grow() void throws {
       var old_capacity = this.capacity_;
 
       if (old_capacity > std.I64_MAX / 2) {
-        return AllocationResult.Overflow(OverflowError());
+        throw OverflowError();
       }
       var new_capacity: i64 = old_capacity * 2;
       if (new_capacity < 2) {
@@ -467,9 +467,9 @@ public module std {
       }
 
       // Finish every allocation before replacing any of the original storage.
-      var next_keys = try ContiguousBuffer<K>(this.alloc, new_capacity);
-      var next_values = try ContiguousBuffer<V>(this.alloc, new_capacity);
-      var next_states = try ContiguousBuffer<i8>(this.alloc, new_capacity);
+      var next_keys = ContiguousBuffer<K>(this.alloc, new_capacity);
+      var next_values = ContiguousBuffer<V>(this.alloc, new_capacity);
+      var next_states = ContiguousBuffer<i8>(this.alloc, new_capacity);
       var old_keys = replace(this.keys, next_keys);
       var old_values = replace(this.values, next_values);
       var old_states = replace(this.states, next_states);
@@ -491,7 +491,7 @@ public module std {
         }
       }
 
-      return AllocationResult.Ok;
+      return;
       // old_* go out of scope - their destructor frees the old memory
     }
 

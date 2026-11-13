@@ -49,6 +49,10 @@ Value* CodegenVisitor::codegen(const ExprAST& expr) {
 
 Value* CodegenVisitor::codegenExpression(const ExprAST& expr) {
   switch (expr.getType()) {
+    case ASTNodeType::THROW:
+      return errors.codegen(static_cast<const sun::ast::ThrowAST&>(expr));
+    case ASTNodeType::TRY_CATCH:
+      return errors.codegen(static_cast<const sun::ast::TryCatchAST&>(expr));
     case ASTNodeType::NUMBER:
       return codegen(static_cast<const sun::ast::NumberExprAST&>(expr));
     case ASTNodeType::CHAR_LITERAL:

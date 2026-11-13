@@ -132,19 +132,15 @@ TEST(Lambdas_RefLambdaTypes, ref_and_throws_widen_together) {
   auto value = sun::driver::executeStringWithStdlib(R"(
 using std;
 /** Owns successes and concrete fixture errors. */
-enum Outcome<T> { Ok(T), Error(Error) }
 
-function run_guarded(f: <'_>(i32) => Outcome<i32>, x: i32) i32 {
-  return match f(x) {
-    Outcome.Ok(value) => value,
-    (e: ref IError) => {
-      return -1;
-    }
-  };
+
+function run_guarded(f: <'_>(i32) => i32 throws, x: i32) i32 {
+  try { var value = f(x);
+return value; } catch (e: Error) { return -1; }
 }
 function main() i32 {
   var k = 40;
-  return run_guarded([ref k](n: i32) => Outcome<i32> { return Outcome.Ok(k + n); }, 2);
+  return run_guarded([ref k](n: i32) => i32 throws { return k + n; }, 2);
 }
 )");
   EXPECT_EQ(value, 42);
@@ -404,7 +400,7 @@ TEST(Lambdas_RefLambdaTypes, local_bound_method_cannot_enter_ref_param_object) {
         public method subscribe(cb: <'this>() => i32) void { this.cb = cb; return; }
     }
     class Node {
-        var v: i32;
+        var v: i32 = 0;
         init() { this.v = 1; }
         public method onMsg() i32 { return this.v; }
     }
@@ -455,7 +451,7 @@ TEST(Lambdas_RefLambdaTypes, local_bus_subscribes_local_bound_method) {
         public method publish(x: i32) i32 { var f = this.cb; return f(x); }
     }
     class Handler {
-        var seen: i32;
+        var seen: i32 = 0;
         init() { this.seen = 0; }
         public method onMessage(x: i32) i32 {
             this.seen = this.seen + x;
@@ -486,7 +482,7 @@ TEST(Lambdas_RefLambdaTypes, object_subscribes_its_own_method_via_ref_param) {
         public method publish(x: i32) i32 { var f = this.cb; return f(x); }
     }
     class Node {
-        var total: i32;
+        var total: i32 = 0;
         init() { this.total = 0; }
         public method onMsg(x: i32) i32 { this.total = this.total + x; return this.total; }
         public method attach(bus: ref Bus<'this>) void { bus.subscribe(this.onMsg); return; }

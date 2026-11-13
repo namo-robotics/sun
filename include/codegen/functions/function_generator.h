@@ -65,7 +65,6 @@ struct FuncDeclResult {
   llvm::StructType* fatType;
   llvm::StructType* envType;
   llvm::Type* returnType;
-  llvm::Type* valueType;  // Underlying type before error union wrapping
   bool canError;
 };
 
@@ -84,8 +83,7 @@ class FunctionGenerator {
         typeResolver(state.typeResolver),
         debugInfo(state.debugInfo),
         currentFunctionCanError(state.frame.canError),
-        currentFunctionReturnsRef(state.frame.returnsRef),
-        currentFunctionValueType(state.frame.valueType) {}
+        currentFunctionReturnsRef(state.frame.returnsRef) {}
 
   /** Binds function generation to the shared expression visitor and state. */
   FunctionGenerator(const FunctionGenerator&) = delete;
@@ -166,7 +164,6 @@ class FunctionGenerator {
   sun::codegen::DebugInfoBuilder& debugInfo;
   bool& currentFunctionCanError;
   bool& currentFunctionReturnsRef;
-  llvm::Type*& currentFunctionValueType;
 
   // Closure environments for lambda compilations in flight
   std::vector<ClosureContext> closureStack;

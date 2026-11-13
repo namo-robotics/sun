@@ -20,12 +20,12 @@ public module std {
     }
 
     /** Borrows a checked range; rejects negative or out-of-bounds ranges. */
-    init(buffer: const ref ContiguousBuffer<u8>, start: i64, count: i64) AccessResult<void> {
+    init(buffer: const ref ContiguousBuffer<u8>, start: i64, count: i64) throws {
       this.buffer = buffer;
       this.start = 0;
       this.count = 0;
       if (not valid_byte_range(buffer.size(), start, count)) {
-        return AccessResult.OutOfBounds(IndexOutOfBoundsError(start));
+        throw IndexOutOfBoundsError(start);
       }
       this.start = start;
       this.count = count;
@@ -37,11 +37,11 @@ public module std {
     }
 
     /** Reads a byte after checking its position within this slice. */
-    public const method get(index: i64) AccessResult<u8> {
+    public const method get(index: i64) u8 throws {
       if (index < 0 or index >= this.count) {
-        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
+        throw IndexOutOfBoundsError(index);
       }
-      return AccessResult.Ok(unsafe { this.buffer.get_unchecked(this.start + index); });
+      return unsafe { this.buffer.get_unchecked(this.start + index); };
     }
 
     /** Exposes storage only to the standard library's checked native boundary. */
@@ -64,12 +64,12 @@ public module std {
     }
 
     /** Borrows a checked range; rejects negative or out-of-bounds ranges. */
-    init(buffer: ref ContiguousBuffer<u8>, start: i64, count: i64) AccessResult<void> {
+    init(buffer: ref ContiguousBuffer<u8>, start: i64, count: i64) throws {
       this.buffer = buffer;
       this.start = 0;
       this.count = 0;
       if (not valid_byte_range(buffer.size(), start, count)) {
-        return AccessResult.OutOfBounds(IndexOutOfBoundsError(start));
+        throw IndexOutOfBoundsError(start);
       }
       this.start = start;
       this.count = count;
@@ -81,11 +81,11 @@ public module std {
     }
 
     /** Reads a byte after checking its position within this slice. */
-    public const method get(index: i64) AccessResult<u8> {
+    public const method get(index: i64) u8 throws {
       if (index < 0 or index >= this.count) {
-        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
+        throw IndexOutOfBoundsError(index);
       }
-      return AccessResult.Ok(unsafe { this.buffer.get_unchecked(this.start + index); });
+      return unsafe { this.buffer.get_unchecked(this.start + index); };
     }
 
     /** Exposes storage only to the standard library's checked native boundary. */

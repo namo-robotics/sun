@@ -41,12 +41,12 @@ class Node {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var first = try allocator.create<Node>(10);
-  var second = try allocator.create<Node>(20);
+  var first =  allocator.create<Node>(10);
+  var second =  allocator.create<Node>(20);
   unsafe { first.set_next(second); };
-  return Result.Ok(unsafe { first.get_value(); } + unsafe { first.get_next().get_value(); });
+  return unsafe { first.get_value(); } + unsafe { first.get_next().get_value(); };
 }
 )");
   EXPECT_EQ(value, 30);
@@ -78,24 +78,24 @@ class Node {
   }
 }
 
-function createNode(alloc: ref HeapAllocator, v: i32) Result<raw_ptr<Node>> {
-  return Result.Ok(try alloc.create<Node>(v));
+function createNode(alloc: ref HeapAllocator, v: i32) raw_ptr<Node> throws {
+  return  alloc.create<Node>(v);
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var n1 = try allocator.create<Node>(1);
+  var n1 =  allocator.create<Node>(1);
   // Build chain: n1 -> n2 -> n3
   // After set_next, access through the chain, not original vars
-  unsafe { n1.set_next(try createNode(allocator, 2)); };
-  unsafe { n1.get_next().set_next(try createNode(allocator, 3)); };
+  unsafe { n1.set_next( createNode(allocator, 2)); };
+  unsafe { n1.get_next().set_next( createNode(allocator, 3)); };
 
   // Traverse: n1 -> n2 -> n3
   var sum = unsafe { n1.get_value(); };
   sum = sum + unsafe { n1.get_next().get_value(); };
   sum = sum + unsafe { n1.get_next().get_next().get_value(); };
-  return Result.Ok(sum);
+  return sum;
 }
 )");
   EXPECT_EQ(value, 6);
@@ -131,21 +131,21 @@ class Node {
   }
 }
 
-function createNode(alloc: ref HeapAllocator, v: i32) Result<raw_ptr<Node>> {
-  return Result.Ok(try alloc.create<Node>(v));
+function createNode(alloc: ref HeapAllocator, v: i32) raw_ptr<Node> throws {
+  return  alloc.create<Node>(v);
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var head = try allocator.create<Node>(100);
-  unsafe { head.set_next(try createNode(allocator, 200)); };
+  var head =  allocator.create<Node>(100);
+  unsafe { head.set_next( createNode(allocator, 200)); };
 
   // Modify tail through head's next pointer
   unsafe { head.get_next().set_value(999); };
 
   // Access through the chain (not through moved var)
-  return Result.Ok(unsafe { head.get_next().get_value(); });
+  return unsafe { head.get_next().get_value(); };
 }
 )");
   EXPECT_EQ(value, 999);
@@ -177,21 +177,21 @@ class Node {
   }
 }
 
-function createNode(alloc: ref HeapAllocator, v: i32) Result<raw_ptr<Node>> {
-  return Result.Ok(try alloc.create<Node>(v));
+function createNode(alloc: ref HeapAllocator, v: i32) raw_ptr<Node> throws {
+  return  alloc.create<Node>(v);
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var a = try allocator.create<Node>(1);
+  var a =  allocator.create<Node>(1);
   // Build chain: a -> b -> c -> d
-  unsafe { a.set_next(try createNode(allocator, 2)); };
-  unsafe { a.get_next().set_next(try createNode(allocator, 3)); };
-  unsafe { a.get_next().get_next().set_next(try createNode(allocator, 4)); };
+  unsafe { a.set_next( createNode(allocator, 2)); };
+  unsafe { a.get_next().set_next( createNode(allocator, 3)); };
+  unsafe { a.get_next().get_next().set_next( createNode(allocator, 4)); };
 
   // Access 4th element: a -> b -> c -> d
-  return Result.Ok(unsafe { a.get_next().get_next().get_next().get_value(); });
+  return unsafe { a.get_next().get_next().get_next().get_value(); };
 }
 )");
   EXPECT_EQ(value, 4);
@@ -227,17 +227,17 @@ class Node {
   }
 }
 
-function createNode(alloc: ref HeapAllocator, v: i32) Result<raw_ptr<Node>> {
-  return Result.Ok(try alloc.create<Node>(v));
+function createNode(alloc: ref HeapAllocator, v: i32) raw_ptr<Node> throws {
+  return  alloc.create<Node>(v);
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var n1 = try allocator.create<Node>(10);
+  var n1 =  allocator.create<Node>(10);
   // Build chain without reusing moved vars
-  unsafe { n1.set_next(try createNode(allocator, 20)); };
-  unsafe { n1.get_next().set_next(try createNode(allocator, 30)); };
+  unsafe { n1.set_next( createNode(allocator, 20)); };
+  unsafe { n1.get_next().set_next( createNode(allocator, 30)); };
   // n3.next is null by default from init
 
   // Sum all values by checking for null
@@ -248,7 +248,7 @@ function main() Result<i32> {
       sum = sum + unsafe { n1.get_next().get_next().get_value(); };
     }
   }
-  return Result.Ok(sum);
+  return sum;
 }
 )");
   EXPECT_EQ(value, 60);
@@ -284,19 +284,19 @@ class Node {
   }
 }
 
-function createNode(alloc: ref HeapAllocator, v: i32) Result<raw_ptr<Node>> {
-  return Result.Ok(try alloc.create<Node>(v));
+function createNode(alloc: ref HeapAllocator, v: i32) raw_ptr<Node> throws {
+  return  alloc.create<Node>(v);
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
   // Build list: 1 -> 2 -> 3 -> 4 -> 5 -> null
-  var head = try allocator.create<Node>(1);
-  unsafe { head.set_next(try createNode(allocator, 2)); };
-  unsafe { head.get_next().set_next(try createNode(allocator, 3)); };
-  unsafe { head.get_next().get_next().set_next(try createNode(allocator, 4)); };
-  unsafe { head.get_next().get_next().get_next().set_next(try createNode(allocator, 5)); };
+  var head =  allocator.create<Node>(1);
+  unsafe { head.set_next( createNode(allocator, 2)); };
+  unsafe { head.get_next().set_next( createNode(allocator, 3)); };
+  unsafe { head.get_next().get_next().set_next( createNode(allocator, 4)); };
+  unsafe { head.get_next().get_next().get_next().set_next( createNode(allocator, 5)); };
 
   // Traverse with while loop
   var sum = 0;
@@ -305,7 +305,7 @@ function main() Result<i32> {
     sum = sum + unsafe { curr.get_value(); };
     curr = unsafe { curr.get_next(); };
   }
-  return Result.Ok(sum);
+  return sum;
 }
 )");
   EXPECT_EQ(value, 15);
@@ -341,8 +341,8 @@ class Node {
   }
 }
 
-function createNode(alloc: ref HeapAllocator, v: i32) Result<raw_ptr<Node>> {
-  return Result.Ok(try alloc.create<Node>(v));
+function createNode(alloc: ref HeapAllocator, v: i32) raw_ptr<Node> throws {
+  return  alloc.create<Node>(v);
 }
 
 class List {
@@ -354,18 +354,18 @@ class List {
     this.tail = null;
   }
 
-  method append(alloc: ref HeapAllocator, v: i32) Result<void> {
+  method append(alloc: ref HeapAllocator, v: i32) void throws {
     if (this.tail != null) {
       // Append to existing list - create node and link via tail
-      unsafe { this.tail.set_next(try createNode(alloc, v)); };
+      unsafe { this.tail.set_next( createNode(alloc, v)); };
       this.tail = unsafe { this.tail.get_next(); };
     } else {
       // First node - set both head and tail
-      this.head = try createNode(alloc, v);
+      this.head =  createNode(alloc, v);
       this.tail = this.head;
     }
 
-    return Result.Ok;
+    return;
   }
 
   method sum() i32 {
@@ -380,15 +380,15 @@ class List {
 }
 
 /** Runs the fixture with explicit error propagation. */
-function main() Result<i32> {
+function main() i32 throws {
   var allocator = make_heap_allocator();
-  var list = try allocator.create<List>();
-  unsafe { try list.append(allocator, 1); };
-  unsafe { try list.append(allocator, 2); };
-  unsafe { try list.append(allocator, 3); };
-  unsafe { try list.append(allocator, 4); };
-  unsafe { try list.append(allocator, 5); };
-  return Result.Ok(unsafe { list.sum(); });
+  var list =  allocator.create<List>();
+  unsafe {  list.append(allocator, 1); };
+  unsafe {  list.append(allocator, 2); };
+  unsafe {  list.append(allocator, 3); };
+  unsafe {  list.append(allocator, 4); };
+  unsafe {  list.append(allocator, 5); };
+  return unsafe { list.sum(); };
 }
 )");
   EXPECT_EQ(value, 15);

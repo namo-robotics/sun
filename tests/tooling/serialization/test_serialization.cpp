@@ -618,12 +618,12 @@ TEST(Tooling_Serialization, ClassDefinitionRoundtrip) {
     class Point {
       var x: i32;
       var y: i32;
-      
+
       init(x: i32, y: i32) {
         this.x = x;
         this.y = y;
       }
-      
+
       method getX() i32 {
         return this.x;
       }
@@ -799,8 +799,8 @@ TEST(Tooling_Serialization, ModuleDefinitionRoundtrip) {
 TEST(Tooling_Serialization, TryCatchRoundtrip) {
   auto block = parseCode(R"(
 
-    function test() Result<i32> {
-      return Result.Ok(try work());
+    function test() i32 throws {
+      return  work();
     }
   )");
 
@@ -986,11 +986,11 @@ TEST(Tooling_Serialization, ProgramRoundtrip) {
   auto block = parseCode(R"(
     var x: i32 = 10;
     var y: i32 = 20;
-    
+
     function add(a: i32, b: i32) i32 {
       return a + b;
     }
-    
+
     var result = add(x, y);
   )");
 
@@ -1057,7 +1057,7 @@ TEST(Tooling_Serialization, ReferenceTypeAnnotation) {
 }
 TEST(Tooling_Serialization, FunctionPointerTypeAnnotationRoundtrip) {
   auto block = parseCode(R"(
-    function use(callback: function (i32, bool) Result<i64>) void {}
+    function use(callback: function (i32, bool) i64 throws) void {}
   )");
   ASSERT_NE(block, nullptr);
 
@@ -1071,8 +1071,8 @@ TEST(Tooling_Serialization, FunctionPointerTypeAnnotationRoundtrip) {
   auto* function = static_cast<FunctionAST*>(restoredBlock->getBody()[0].get());
   const auto& type = function->getProto().getArgs()[0].second;
   EXPECT_TRUE(type.isFunction());
-  EXPECT_FALSE(type.canError);
-  EXPECT_EQ(type.toString(), "function (i32, bool) Result<i64>");
+  EXPECT_TRUE(type.canError);
+  EXPECT_EQ(type.toString(), "function (i32, bool) i64 throws");
 }
 
 // =============================================================================

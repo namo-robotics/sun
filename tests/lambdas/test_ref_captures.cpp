@@ -421,12 +421,12 @@ TEST(Lambdas_RefCaptures, nested_byref_of_byvalue_rejected) {
 TEST(Lambdas_RefCaptures, spawn_byref_lambda_accepted) {
   auto value = sun::driver::executeStringWithStdlib(R"(
     using std.thread;
-      function main() i32 {
+      function main() i32 throws {
           var x: i32 = 0;
-          var t = match spawn([ref x]() => i32 {
+          var t = spawn([ref x]() => i32 {
               x = 7;
               return 0;
-          }) { std.AllocationResult.Ok(thread) => thread, _ => { return -1; } };
+          });
           var r = t.join();
           return x;
       }
@@ -437,13 +437,13 @@ TEST(Lambdas_RefCaptures, spawn_byref_lambda_accepted) {
 TEST(Lambdas_RefCaptures, spawn_byref_lambda_via_variable_accepted) {
   auto value = sun::driver::executeStringWithStdlib(R"(
     using std.thread;
-      function main() i32 {
+      function main() i32 throws {
           var x: i32 = 0;
           var f = [ref x]() => i32 {
               x = 9;
               return 0;
           };
-          var t = match spawn(f) { std.AllocationResult.Ok(thread) => thread, _ => { return -1; } };
+          var t = spawn(f);
           var r = t.join();
           return x;
       }

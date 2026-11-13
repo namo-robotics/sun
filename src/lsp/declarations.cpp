@@ -745,6 +745,9 @@ void forEachAnnotation(const ExprAST& node, const AnnotationFn& fn) {
       for (const auto& field : cls.getFields()) {
         fn(field.type);
       }
+      if (cls.getExceptionParent()) {
+        fn(*cls.getExceptionParent());
+      }
       for (const auto& iface : cls.getImplementedInterfaces()) {
         for (const auto& arg : iface.typeArguments) {
           fn(arg);
@@ -920,9 +923,7 @@ std::optional<Declaration> ownDeclaration(const ExprAST& node, int offset,
       break;
     }
     case ASTNodeType::MATCH: {
-      if (static_cast<const sun::ast::MatchExprAST&>(node).isPropagation()) {
-        return std::nullopt;
-      }
+
       for (const auto& arm :
            static_cast<const sun::ast::MatchExprAST&>(node).getArms()) {
         for (const auto& binding : arm.bindings) {

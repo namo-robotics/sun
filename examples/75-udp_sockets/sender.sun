@@ -4,30 +4,22 @@ using std.io;
 // Sender: sends one datagram to the receiver
 using std;
 
-/** Performs the operation and propagates returned failures. */
-function run() Result<void> {
+/** Performs the operation and propagates exceptions. */
+function run() void throws {
   var socket = UdpSocket();
-  try socket.bind(ipv4_any(), 0);  // port 0: the OS picks a free port
-  try socket.send_str_to("Hello from sender!", ipv4_loopback(), 9090);
+  socket.bind(ipv4_any(), 0);  // port 0: the OS picks a free port
+  socket.send_str_to("Hello from sender!", ipv4_loopback(), 9090);
   println("Datagram sent");
 
   socket.close();
 
-  return Result.Ok;
+  return;
 }
 
-/** Reports errors and sets the process exit code. */
-function main() i32 {
-  return match run() {
-    (e: const ref IError) => {
-      match e.message() {
-        AllocationResult.Ok(message) => println(message),
-        _ => println("unable to allocate error message")
-      };
-      1;
-    },
-    _ => 0
-  };
+/** Runs the example; an uncaught exception produces a failing exit code. */
+function main() i32 throws {
+  run();
+  return 0;
 }
 
 manifest {

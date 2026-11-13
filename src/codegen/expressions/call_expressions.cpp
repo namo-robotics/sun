@@ -24,10 +24,6 @@ using namespace llvm;
 namespace sun::codegen {
 
 // -------------------------------------------------------------------
-// Helper for unwrapping error union from call results
-// -------------------------------------------------------------------
-
-// -------------------------------------------------------------------
 // Helper: Apply move semantics for class arguments passed by value
 // -------------------------------------------------------------------
 
@@ -790,61 +786,22 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
       return nullptr;
     }
 
-    if (!varRef->getTargetDeclarationId() &&
-        (calleeName == "_checked_div" || calleeName == "_checked_rem")) {
-      auto& resultType =
-          static_cast<sun::types::EnumType&>(*expr.getResolvedType());
-      auto valueType = resultType.getGenericArgs()[0];
-      auto* function = ctx.builder->GetInsertBlock()->getParent();
-      auto* storageType = typeResolver.getEnumStorageType(resultType);
-      auto* storage =
-          createEntryBlockAlloca(function, "arithmetic.result", storageType);
+    if (!varRef->getTargetDeclarationId() && calleeName == "_division_overflows") {
+      const auto& signature =
+          static_cast<const sun::types::FunctionType&>(*expr.getCallee()->getResolvedType());
+      const auto& valueType = signature.getParamTypes().front();
       Value* left = codegen(*expr.getArgs()[0]);
       Value* right = codegen(*expr.getArgs()[1]);
-      left = support::widenNumericIfNeeded(
-          *ctx.builder, typeResolver, left, valueType,
-          expr.getArgs()[0]->getResolvedType());
-      right = support::widenNumericIfNeeded(
-          *ctx.builder, typeResolver, right, valueType,
-          expr.getArgs()[1]->getResolvedType());
-      auto* done =
-          BasicBlock::Create(ctx.getContext(), "checked.done", function);
-      auto* tag = ctx.builder->CreateStructGEP(storageType, storage, 0);
-      Value* value = support::createIntDivRem(
-          *ctx.builder, left, right, calleeName == "_checked_rem",
-          valueType->isUnsigned(), [&](int code) {
-            ctx.builder->CreateStore(ctx.builder->getInt32(1), tag);
-            auto* variantType =
-                typeResolver.getEnumVariantStruct(resultType, "Err");
-            auto* payload = ctx.builder->CreateStructGEP(
-                variantType, storage,
-                typeResolver.enumPayloadFieldIndex(resultType, "Err", 0));
-            // The intrinsic returns a primitive failure code.
-            ctx.builder->CreateStore(ctx.builder->getInt32(code), payload);
-            ctx.builder->CreateBr(done);
-          });
-      ctx.builder->CreateStore(ctx.builder->getInt32(0), tag);
-      auto* variantType = typeResolver.getEnumVariantStruct(resultType, "Ok");
-      auto* payload = ctx.builder->CreateStructGEP(
-          variantType, storage,
-          typeResolver.enumPayloadFieldIndex(resultType, "Ok", 0));
-      ctx.builder->CreateStore(value, payload);
-      ctx.builder->CreateBr(done);
-      ctx.builder->SetInsertPoint(done);
-      if (!expr.isMoved()) {
-        scopes.trackClassAllocation(storage, "arithmetic.result",
-                                    expr.getResolvedType());
-      }
-      return storage;
-    }
-
-    if (!varRef->getTargetDeclarationId() && calleeName == "ignore_error") {
-      const auto& argument = *expr.getArgs().front();
-      Value* storage = codegen(argument);
-      scopes.emitDropInPlace(argument.getResolvedType(), storage,
-                             "ignored.result");
-      scopes.markClassAllocationAsDeinited(storage, argument.getResolvedType());
-      return ConstantInt::get(ctx.builder->getInt32Ty(), 0);
+      left = support::widenNumericIfNeeded(*ctx.builder, typeResolver, left,
+                                           valueType, expr.getArgs()[0]->getResolvedType());
+      right = support::widenNumericIfNeeded(*ctx.builder, typeResolver, right,
+                                            valueType, expr.getArgs()[1]->getResolvedType());
+      if (valueType->isUnsigned()) return ctx.builder->getFalse();
+      const auto width = left->getType()->getIntegerBitWidth();
+      auto* minimum = ConstantInt::get(ctx.getContext(), APInt::getSignedMinValue(width));
+      auto* negativeOne = ConstantInt::get(ctx.getContext(), APInt::getAllOnes(width));
+      return ctx.builder->CreateAnd(ctx.builder->CreateICmpEQ(left, minimum),
+                                   ctx.builder->CreateICmpEQ(right, negativeOne));
     }
 
     // Check for built-in functions (bypass type system)
@@ -1198,7 +1155,7 @@ Value* CodegenVisitor::codegenFunctionCall(
     return nullptr;
   }
 
-  // A throwing callee ('T throws IError') is tagged with "sun.canthrow"; inside
+  // A throwing callee ('T throws') is tagged with "sun.canthrow"; inside
   // a try block it must be `invoke`d so its exception routes to the local
   // landing pad. Exceptions now propagate natively — no error-union unwrapping.
   bool canThrow = func->hasFnAttribute("sun.canthrow") || funcType.canThrow();
@@ -1275,7 +1232,7 @@ Value* CodegenVisitor::codegenLambdaCall(
   }
 
   // Indirect call through the extracted function pointer. Throwing lambdas
-  // ('throws IError') are invoked so exceptions route to a local landing pad
+  // ('throws') are invoked so exceptions route to a local landing pad
   // inside try blocks.
   Value* result = errors.emitPossiblyThrowingCall(
       llvmFuncType, funcPtr, argValues, lambdaType.canThrow(), "calltmp");

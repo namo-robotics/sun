@@ -8,7 +8,7 @@ public module std.linalg {
   public enum LinalgErrorReason { InvalidDimensions, IncompatibleShapes, OverlappingOutput }
 
   /** Describes an invalid operation; message text is allocated only on request. */
-  public class LinalgError implements IError {
+  public exception LinalgError implements IError {
     var reason_: LinalgErrorReason;
 
     /** Stores the reason without allocating. */
@@ -33,7 +33,7 @@ public module std.linalg {
     }
 
     /** Allocates a description of the rejected operation. */
-    public const method message() std.AllocationResult<std.String> {
+    public const method message() std.String throws {
       if (this.reason_ == LinalgErrorReason.InvalidDimensions) {
         return std.String("GEMM requires valid two-dimensional matrices");
       }
@@ -45,7 +45,6 @@ public module std.linalg {
   }
 
   /** Returns an operation result or an allocation-free validation error. */
-  public enum LinalgResult<T> { Ok(T), Error(LinalgError), Allocation(AllocationError), InvalidArgument(InvalidArgumentError), Overflow(OverflowError) }
 
   /** Checks shape and byte counts before any offset arithmetic is performed. */
   function valid_dimensions<T: _Float>(rows: i64, cols: i64, size: i64) bool {
@@ -719,9 +718,9 @@ public module std.linalg {
     trans_b: Transpose,
     beta: T,
     c: ref std.linalg.Matrix<T>
-  ) LinalgResult<void> {
+  ) void throws {
     if (not valid_matrix<T>(a) or not valid_matrix<T>(b) or not valid_matrix<T>(c)) {
-      return LinalgResult.Error(LinalgError(LinalgErrorReason.InvalidDimensions));
+      throw LinalgError(LinalgErrorReason.InvalidDimensions);
     }
     var m = a.dim(0);
     var k = a.dim(1);
@@ -744,23 +743,23 @@ public module std.linalg {
       bc = b.dim(1);
     }
     if (k != bk or c.dim(0) != m or c.dim(1) != n) {
-      return LinalgResult.Error(LinalgError(LinalgErrorReason.IncompatibleShapes));
+      throw LinalgError(LinalgErrorReason.IncompatibleShapes);
     }
     if (c.size() != 0) {
       if ((a.size() != 0 and c.raw_data() == a.raw_data()) or
         (b.size() != 0 and c.raw_data() == b.raw_data())) {
-        return LinalgResult.Error(LinalgError(LinalgErrorReason.OverlappingOutput));
+        throw LinalgError(LinalgErrorReason.OverlappingOutput);
       }
     }
     if (m == 0 or n == 0) {
-      return LinalgResult.Ok;
+      return;
     }
     if (alpha != _convert<T>(0) and k != 0) {
       multiply<T>(alpha, a, ar, ac, b, br, bc, c, k, beta);
     } else {
       scale_output<T>(c, beta);
     }
-    return LinalgResult.Ok;
+    return;
   }
 
   /** Allocates A * B through the supplied allocator after validating both shapes.
@@ -769,22 +768,22 @@ public module std.linalg {
     a: const ref std.linalg.Matrix<T>,
     b: const ref std.linalg.Matrix<T>,
     alloc: const ref std.HeapAllocator
-  ) LinalgResult<std.linalg.Matrix<T>> {
+  ) std.linalg.Matrix<T> throws {
     if (not valid_matrix<T>(a) or not valid_matrix<T>(b)) {
-      return LinalgResult.Error(LinalgError(LinalgErrorReason.InvalidDimensions));
+      throw LinalgError(LinalgErrorReason.InvalidDimensions);
     }
     if (a.dim(1) != b.dim(0)) {
-      return LinalgResult.Error(LinalgError(LinalgErrorReason.IncompatibleShapes));
+      throw LinalgError(LinalgErrorReason.IncompatibleShapes);
     }
     var rows = a.dim(0);
     var cols = b.dim(1);
     if (rows != 0) {
       if (cols > std.I64_MAX / _sizeof<T>() / rows) {
-        return LinalgResult.Error(LinalgError(LinalgErrorReason.InvalidDimensions));
+        throw LinalgError(LinalgErrorReason.InvalidDimensions);
       }
     }
-    var output = try std.linalg.Matrix<T>(alloc, [rows, cols]);
-    try gemm<T>(_convert<T>(1), a, Transpose.None, b, Transpose.None, _convert<T>(0), output);
-    return LinalgResult.Ok(output);
+    var output = std.linalg.Matrix<T>(alloc, [rows, cols]);
+    gemm<T>(_convert<T>(1), a, Transpose.None, b, Transpose.None, _convert<T>(0), output);
+    return output;
   }
 }

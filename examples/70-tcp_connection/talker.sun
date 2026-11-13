@@ -4,32 +4,24 @@ using std.io;
 // Talker: connects and sends a message
 using std;
 
-/** Performs the operation and propagates returned failures. */
-function run() Result<void> {
+/** Performs the operation and propagates exceptions. */
+function run() void throws {
   var stream = TcpStream();
-  try stream.connect_local(8080);
+  stream.connect_local(8080);
   println("Connected to 127.0.0.1:8080");
 
-  try stream.send_str("Hello from talker!");
+  stream.send_str("Hello from talker!");
   println("Message sent");
 
   stream.close();
 
-  return Result.Ok;
+  return;
 }
 
-/** Reports errors and sets the process exit code. */
-function main() i32 {
-  return match run() {
-    (e: const ref IError) => {
-      match e.message() {
-        AllocationResult.Ok(message) => println(message),
-        _ => println("unable to allocate error message")
-      };
-      1;
-    },
-    _ => 0
-  };
+/** Runs the example; an uncaught exception produces a failing exit code. */
+function main() i32 throws {
+  run();
+  return 0;
 }
 
 manifest {

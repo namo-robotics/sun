@@ -16,7 +16,7 @@ class LambdaType : public Type {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;
   bool requiresUnsafe_ = false;
-  bool canThrow_ = false;  // declared with 'throws IError' — may unwind
+  bool canThrow_ = false;  // declared with 'throws' — may unwind
   // Part of the type's identity: `<'_>() => T` in source. True when the
   // lambda carries a captured environment that lives in a stack frame
   // (capture lists, bound methods). A plain '() => T' is reserved for
@@ -74,7 +74,7 @@ class LambdaType : public Type {
       result = "unsafe " + result;
     }
     if (canThrow_) {
-      result += " throws IError";
+      result += " throws";
     }
     return result;
   }
@@ -93,7 +93,7 @@ class LambdaType : public Type {
       result = "unsafe " + result;
     }
     if (canThrow_) {
-      result += " throws IError";
+      result += " throws";
     }
     return result;
   }

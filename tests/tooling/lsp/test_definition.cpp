@@ -330,26 +330,21 @@ function main() i32 {
 
 TEST(Tooling_Lsp_Definition, CatchBinding) {
   std::string source = R"(
-class Oops {
+exception Oops {
     init() {}
     const method code() i32 { return 1; }
     const method message() static_ptr<u8> { return "oops"; }
 }
-function risky(x: i32) _Result<i32, Oops> {
-    if (x < 0) { return _Result.Err(Oops()); }
-    return _Result.Ok(x);
+function risky(x: i32) i32 throws {
+    if (x < 0) { throw Oops(); }
+    return x;
 }
 function main() i32 {
-    return match risky(1) {
-      _Result.Ok(value) => value,
-      (err: ref Oops) => {
-        return err.code();
-      }
-    };
+    try { return risky(1); } catch (err: Oops) { return err.code(); }
 }
 )";
-  EXPECT_TRUE(definedAt(source, "err.code()", "err: ref Oops"));
-  EXPECT_TRUE(definedAt(source, "Oops());", "Oops {"));
+  EXPECT_TRUE(definedAt(source, "err.code()", "err: Oops"));
+  EXPECT_TRUE(definedAt(source, "Oops();", "Oops {"));
   EXPECT_TRUE(definedAt(source, "risky(1)", "risky(x: i32)"));
 }
 
@@ -402,15 +397,15 @@ class Config {
     var n: i64;
     init(alloc: ref HeapAllocator) { this.n = 1; }
 }
-function main() AllocationResult<i64> {
+function main() i64 throws {
     var allocator = make_heap_allocator();
-    var v = try Vec<i64>(allocator, 8);
-    try v.push(1);
+    var v =  Vec<i64>(allocator, 8);
+     v.push(1);
     var sum: i64 = 0;
     for (var item: i64 in v) {
         sum = sum + item;
     }
-    return AllocationResult.Ok(sum);
+    return sum;
 }
 )";
   // Resolve every location against the same analyzed document.
@@ -478,4 +473,16 @@ function main() i32 {
   EXPECT_TRUE(definedAt(source, "value(true)", "value(x: bool)"));
   EXPECT_TRUE(definedAt(source, "value(2)", "value(x: i32)", 1));
   EXPECT_TRUE(definedAt(source, "value(false)", "value(x: bool)", 1));
+}
+
+/** Exception inheritance links to the declared family. */
+TEST(Tooling_Lsp_Definition, ExceptionParent) {
+  const std::string source = R"(
+    /** Groups related failures. */
+    exception Failure {}
+    /** Retains its parent as a navigable type reference. */
+    exception DeviceFailure extends Failure {}
+    function main() i32 { return 0; }
+)";
+  EXPECT_TRUE(definedAt(source, "Failure {}", "Failure {}", 0, 1));
 }

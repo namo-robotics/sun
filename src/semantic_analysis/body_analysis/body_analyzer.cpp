@@ -50,147 +50,6 @@ static void checkAllPathsReturn(const PrototypeAST& proto,
                    loc);
 }
 
-/** Checks the status enum used by a fallible constructor. */
-static void checkConstructorStatus(const TypePtr& type,
-                                   const sun::support::Position& location) {
-  auto result = std::dynamic_pointer_cast<sun::types::EnumType>(type);
-  if (!result || result->getGenericArgs().empty() ||
-      !result->getGenericArgs().front()->isVoid() ||
-      result->getVariants().size() < 2 ||
-      !result->getVariants().front().payloadTypes.empty()) {
-    logAndThrowError(
-        "A fallible init must return a generic result with void as its first "
-        "type argument and an empty first variant",
-        location);
-  }
-  for (size_t i = 1; i < result->getVariants().size(); ++i) {
-    if (result->getVariants()[i].payloadTypes.size() != 1) {
-      logAndThrowError("Constructor failure variants must have one payload",
-                       location);
-    }
-  }
-}
-
-/** Turns a test's bare success returns into unit result values. */
-static void completeTestReturns(sun::ast::ExprAST& expression,
-                                const std::string& successVariant) {
-  using namespace sun::ast;
-  if (expression.getType() == ASTNodeType::FUNCTION ||
-      expression.getType() == ASTNodeType::LAMBDA) {
-    return;
-  }
-  if (auto* returned = dynamic_cast<ReturnExprAST*>(&expression);
-      returned && !returned->hasValue()) {
-    returned->forEachChildSlot([&](std::unique_ptr<ExprAST>& value) {
-      value = std::make_unique<MemberAccessAST>(
-          std::make_unique<VariableReferenceAST>("$test_result"),
-          successVariant);
-      value->setLocation(returned->getLocation());
-    });
-    return;
-  }
-  sun::ast::forEachChild(expression, [&](const ExprAST& child) {
-    completeTestReturns(const_cast<ExprAST&>(child), successVariant);
-  });
-}
-
-/** Rejects discarded results and result locals that are never used. */
-static void checkResultHandling(const BlockExprAST& body,
-                                SemanticContext& ctx) {
-  using namespace sun::ast;
-  const auto resultId =
-      ctx.lookupGenericEnum("_Result")->AST->getDeclarationId();
-  auto isResult = [&](const TypePtr& type) {
-    auto result = std::dynamic_pointer_cast<sun::types::EnumType>(
-        sun::types::unwrapRef(type));
-    if (!result) {
-      return false;
-    }
-    if (result->sourceDeclaration(ctx.results().declarations) == resultId) {
-      return true;
-    }
-    const auto& variants = result->getVariants();
-    if (variants.size() < 2 || variants.front().payloadTypes.size() > 1) {
-      return false;
-    }
-    for (size_t i = 1; i < variants.size(); ++i) {
-      if (variants[i].payloadTypes.size() != 1) {
-        return false;
-      }
-      auto error = std::dynamic_pointer_cast<sun::types::ClassType>(
-          sun::types::unwrapRef(variants[i].payloadTypes.front()));
-      if (!error) {
-        return false;
-      }
-    }
-    return true;
-  };
-  std::vector<const VariableCreationAST*> locals;
-  std::unordered_set<DeclarationId> usedLocals;
-  std::function<void(const ExprAST&, bool)> visit =
-      [&](const ExprAST& expression, bool used) {
-        if (expression.getType() == ASTNodeType::FUNCTION ||
-            expression.getType() == ASTNodeType::LAMBDA) {
-          return;
-        }
-        if (!used && !exprDiverges(expression) &&
-            expression.getType() != ASTNodeType::VARIABLE_CREATION &&
-            expression.getType() != ASTNodeType::REFERENCE_CREATION &&
-            expression.getType() != ASTNodeType::VARIABLE_ASSIGNMENT &&
-            isResult(expression.getResolvedType())) {
-          logAndThrowError(
-              "Error result must be handled, returned, propagated with try, "
-              "or explicitly discarded with ignore_error",
-              expression.getLocation());
-        }
-        if (auto* local =
-                dynamic_cast<const VariableCreationAST*>(&expression)) {
-          if (isResult(local->getResolvedType())) {
-            locals.push_back(local);
-          }
-        }
-        if (auto* reference =
-                dynamic_cast<const VariableReferenceAST*>(&expression)) {
-          usedLocals.insert(reference->getTargetDeclarationId());
-        }
-        if (auto* block = dynamic_cast<const BlockExprAST*>(&expression)) {
-          const auto& statements = block->getBody();
-          for (size_t i = 0; i < statements.size(); ++i) {
-            visit(*statements[i], used && i + 1 == statements.size());
-          }
-          return;
-        }
-        if (auto* match = dynamic_cast<const MatchExprAST*>(&expression)) {
-          visit(*match->getDiscriminant(), true);
-          for (const auto& arm : match->getArms()) {
-            visit(*arm.body, used);
-          }
-          return;
-        }
-        if (auto* branch = dynamic_cast<const IfExprAST*>(&expression)) {
-          visit(*branch->getCond(), true);
-          visit(*branch->getThen(), false);
-          if (branch->getElse()) {
-            visit(*branch->getElse(), false);
-          }
-          return;
-        }
-        forEachChild(expression, [&](const ExprAST& child) {
-          const auto* block = dynamic_cast<const BlockExprAST*>(&child);
-          visit(child, !block || block->producesValue());
-        });
-      };
-  visit(body, false);
-  for (const auto* local : locals) {
-    if (!usedLocals.count(local->getDeclarationId())) {
-      logAndThrowError(
-          "Unused error result '" + local->getName() +
-              "'; handle it or explicitly discard it with ignore_error",
-          local->getLocation());
-    }
-  }
-}
-
 void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
 
@@ -248,43 +107,14 @@ void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
         sema_.typeResolver().typeAnnotationToType(*proto.getReturnType());
   }
 
-  const bool fallibleInit = ctx_.getCurrentClass() &&
-                            proto.getName() == "init" && scopeReturnType &&
-                            !scopeReturnType->isVoid();
-  const bool resultTest = func.isTest();
-  if (fallibleInit) {
-    checkConstructorStatus(scopeReturnType, func.getLocation());
+  if (ctx_.getCurrentClass() && proto.getName() == "init" &&
+      scopeReturnType && !scopeReturnType->isVoid()) {
+    logAndThrowError("Constructors cannot return values; use throws for failures",
+                     func.getLocation());
   }
-
-  std::shared_ptr<sun::types::EnumType> testResult;
-  std::string testSuccess;
-  if (resultTest) {
-    testResult =
-        std::dynamic_pointer_cast<sun::types::EnumType>(scopeReturnType);
-    if (!testResult || testResult->getVariants().size() < 2 ||
-        !testResult->getVariants().front().payloadTypes.empty()) {
-      logAndThrowError(
-          "A test function must return an enum with an empty first success "
-          "variant",
-          func.getLocation());
-    }
-    if (proto.getReturnType()->baseName != "_Result") {
-      for (size_t i = 1; i < testResult->getVariants().size(); ++i) {
-        const auto& payload = testResult->getVariants()[i].payloadTypes;
-        auto error = payload.size() == 1
-                         ? std::dynamic_pointer_cast<sun::types::ClassType>(
-                               payload.front())
-                         : nullptr;
-        auto reportable = ctx_.lookupInterface("std.IError");
-        if (!error || !reportable || !error->implementsInterface(*reportable)) {
-          logAndThrowError(
-              "Test failure variants must own a concrete std.IError payload",
-              func.getLocation());
-        }
-      }
-    }
-    testSuccess = testResult->getVariants().front().name;
-    completeTestReturns(const_cast<BlockExprAST&>(func.getBody()), testSuccess);
+  if (func.isTest() && (!scopeReturnType || !scopeReturnType->isVoid())) {
+    logAndThrowError("Test functions return void and report failures by throwing",
+                     func.getLocation());
   }
 
   // Enter the function scope with its diagnostic signature.
@@ -297,9 +127,6 @@ void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
   }
   ctx_.enterFunctionScope(funcSig, proto.getQualifiedName(), proto.canThrow(),
                           scopeReturnType);
-  if (resultTest) {
-    ctx_.currentScope().declareEnum("$test_result", testResult);
-  }
 
   // Declare 'this' for methods (when we're inside a class context); it is
   // immutable inside a const method
@@ -372,21 +199,10 @@ void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
     }
   }
 
-  if ((fallibleInit || resultTest) &&
-      !sun::semantic_analysis::alwaysExits(func.getBody())) {
-    auto success = std::make_unique<sun::ast::ReturnExprAST>();
-    success->setLocation(func.getLocation());
-    if (resultTest) {
-      completeTestReturns(*success, testSuccess);
-    }
-    analyzeReturnExpr(*success);
-    const_cast<BlockExprAST&>(func.getBody()).addExpression(std::move(success));
-  }
-
   // No implicit returns: a non-void signature must be met by an explicit
   // return (or throw) on every path. Moon stubs carry no body to check.
   if (!ctx_.isInMoonScope()) {
-    checkResultHandling(func.getBody(), ctx_);
+
     checkAllPathsReturn(proto, func.getBody(), scopeReturnType,
                         func.getLocation());
   }
@@ -436,7 +252,6 @@ void BodyAnalyzer::analyzeLambda(sun::ast::LambdaAST& lambda) {
     analyzeBlock(const_cast<BlockExprAST&>(lambda.getBody()));
   }
 
-  checkResultHandling(lambda.getBody(), ctx_);
 
   // Same rule as named functions: no implicit returns
   checkAllPathsReturn(proto, lambda.getBody(), proto.getResolvedReturnType(),
@@ -515,7 +330,8 @@ void BodyAnalyzer::analyzeMethodWithBindings(
 
   if (proto.getName() == "init" && methodReturnType &&
       !methodReturnType->isVoid()) {
-    checkConstructorStatus(methodReturnType, methodFunc.getLocation());
+    logAndThrowError("Constructors cannot return values; use throws for failures",
+                     methodFunc.getLocation());
   }
 
   // Analyze the source body after its parameters are in scope.
@@ -534,7 +350,7 @@ void BodyAnalyzer::analyzeMethodWithBindings(
           .addExpression(std::move(success));
     }
   }
-  checkResultHandling(methodFunc.getBody(), ctx_);
+
 
   // Step 7: Pop scopes and restore context
   ctx_.exitScope();  // method scope

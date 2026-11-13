@@ -787,48 +787,43 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
   // parameters; lambda literals put it after the fat arrow.
   // Syntax: function foo(args) ReturnType { ... }
   //         (args) => ReturnType { ... }
-  // Infallible lifecycle methods omit the return type. Fallible init methods
-  // declare a result enum.
+  // Lifecycle methods omit the return type. Fallible constructors declare throws.
   std::optional<sun::ast::TypeAnnotation> retType;
   if (isTestFunction) {
-    // Tests return assertion failures by default; broader error enums may be
-    // explicit.
-    retType = sun::ast::TypeAnnotation("std.test.AssertionResult");
-    retType->typeArguments.push_back(
-        std::make_unique<sun::ast::TypeAnnotation>("void"));
-    if (curTok.kind == TokenKind::THROWS) {
-      parsingError(
-          "test functions return result enums; 'throws' is not supported");
-    }
-    if (curTok.kind != TokenKind::BRACE_OPEN) {
+    retType = sun::ast::TypeAnnotation("void");
+    retType->canError = true;
+    if (curTok.kind != TokenKind::BRACE_OPEN && curTok.kind != TokenKind::THROWS) {
       retType = parseTypeAnnotation();
-      if (!retType) {
-        parsingError("expected a test result type");
-      }
+      if (!retType || retType->baseName != "void")
+        parsingError("test functions return void and report failures by throwing");
+      retType->canError = true;
+    }
+    if (curTok.kind == TokenKind::THROWS) {
+      getNextToken();
+      if (curTok.kind == TokenKind::IDENTIFIER)
+        parsingError("'throws' does not take an error type; use bare throws");
     }
   } else if (isLifecycleMethod) {
     retType = sun::ast::TypeAnnotation("void");
-    // Reject the removed exception clause before parsing a result type.
     if (curTok.kind == TokenKind::THROWS) {
-      parsingError("'throws' is no longer supported; return a result enum");
+      if (name == "deinit") parsingError("deinit cannot declare throws; catch failures inside it");
+      getNextToken();
+      if (curTok.kind == TokenKind::IDENTIFIER) parsingError("'throws' does not take an error type; use bare throws");
+      retType->canError = true;
     }
     if (curTok.kind != TokenKind::BRACE_OPEN) {
       if (name == "deinit") {
         parsingError("'deinit' cannot declare a return type");
       }
-      retType = parseTypeAnnotation();
-      if (retType && retType->baseName == "void") {
-        parsingError(
-            "'init' does not declare a return type for infallible "
-            "construction");
-      }
+      parsingError("Constructors do not return status values; use init(...) throws");
     }
   } else if (curTok.kind != TokenKind::BRACE_OPEN) {
     retType = parseTypeAnnotation();
 
-    // Reject the removed exception clause.
     if (curTok.kind == TokenKind::THROWS) {
-      parsingError("'throws' is no longer supported; return a result enum");
+      getNextToken();
+      if (curTok.kind == TokenKind::IDENTIFIER) parsingError("'throws' does not take an error type; use bare throws");
+      retType->canError = true;
     }
   } else {
     // No return type specified
@@ -1265,26 +1260,38 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
           "such as '() => i32 { return 0; }' instead");
       break;
     case TokenKind::TRY: {
-      // Prefix try propagates the failure variants of an enum value.
       Position start = captureStart();
-      getNextToken();  // eat 'try'
-      if (curTok.kind != TokenKind::BRACE_OPEN) {
-        auto operand = parseUnary();
-        if (!operand) {
-          return nullptr;
+      getNextToken();
+      if (curTok.kind != TokenKind::BRACE_OPEN)
+        parsingError("Prefix try was removed; use a try block with catch, or declare throws");
+      auto body = parseBlock(sun::ast::BlockKind::Try);
+      std::vector<sun::ast::ExceptionHandler> handlers;
+      while (curTok.kind == TokenKind::CATCH) {
+        getNextToken();
+        std::unique_ptr<ExprAST> binding;
+        if (curTok.kind == TokenKind::PAREN_OPEN) {
+          getNextToken();
+          auto bindingStart = captureStart();
+          expectCurrentTokenKind(TokenKind::IDENTIFIER, "expected catch binding name");
+          auto name = curTok.getIdentifier().value();
+          getNextToken();
+          expectCurrentTokenKind(TokenKind::COLON, "expected ':' after catch binding");
+          getNextToken();
+          auto type = parseTypeAnnotation();
+          binding = finishNode(std::make_unique<sun::ast::VariableCreationAST>(
+              name, nullptr, std::move(type)), bindingStart);
+          expectCurrentTokenKind(TokenKind::PAREN_CLOSE, "expected ')' after catch type");
+          getNextToken();
         }
-        std::vector<sun::ast::MatchArm> arms;
-        return finishNode(std::make_unique<sun::ast::MatchExprAST>(
-                              std::move(operand), std::move(arms), true),
-                          start);
+        handlers.push_back({std::move(binding), parseBlock(sun::ast::BlockKind::Catch)});
       }
-      parsingError(
-          "block-form 'try' is no longer supported; use 'try expression' or "
-          "match a result");
+      if (handlers.empty()) parsingError("try block requires a catch handler");
+      return finishNode(std::make_unique<sun::ast::TryCatchAST>(
+          std::move(body), std::move(handlers)), start);
       break;
     }
     case TokenKind::THROW:
-      parsingError("'throw' is no longer supported; return an error variant");
+      parsingError("'throw' is a statement and cannot be used as a value");
       break;
     case TokenKind::UNSAFE:
       base = parseUnsafeBlock();
@@ -1749,7 +1756,9 @@ sun::ast::TypeAnnotation Parser::parseTypeAnnotationImpl() {
         std::make_unique<sun::ast::TypeAnnotation>(parseTypeAnnotation());
 
     if (curTok.kind == TokenKind::THROWS) {
-      parsingError("'throws' is no longer supported; return a result enum");
+      getNextToken();
+      if (curTok.kind == TokenKind::IDENTIFIER) parsingError("'throws' does not take an error type; use bare throws");
+      type.canError = true;
     }
 
     return type;
@@ -1782,7 +1791,7 @@ sun::ast::TypeAnnotation Parser::parseTypeAnnotationImpl() {
     refEnvMarker = true;
   }
 
-  // Check for lambda type: (param_types) => return_type [throws IError]
+  // Check for lambda type: (param_types) => return_type [throws]
   if (curTok.kind == TokenKind::PAREN_OPEN) {
     type.baseName = "lambda";
     type.refEnv = refEnvMarker;
@@ -1818,7 +1827,9 @@ sun::ast::TypeAnnotation Parser::parseTypeAnnotationImpl() {
 
     // A lambda expresses failure through its return type.
     if (curTok.kind == TokenKind::THROWS) {
-      parsingError("'throws' is no longer supported; return a result enum");
+      getNextToken();
+      if (curTok.kind == TokenKind::IDENTIFIER) parsingError("'throws' does not take an error type; use bare throws");
+      type.canError = true;
     }
 
     return type;
@@ -2486,6 +2497,7 @@ static bool isPublicableStatementStart(TokenKind kind) {
     case TokenKind::MODULE:
     case TokenKind::PARTIAL:
     case TokenKind::PACKED_CLASS:
+    case TokenKind::EXCEPTION:
     case TokenKind::CLASS:
     case TokenKind::INTERFACE:
     case TokenKind::ENUM:
@@ -2592,6 +2604,7 @@ unique_ptr<ExprAST> Parser::parseStatementCore() {
     }
 
     case TokenKind::PACKED_CLASS:
+    case TokenKind::EXCEPTION:
     case TokenKind::CLASS: {
       // packed_class lays fields out with no padding; otherwise identical
       bool isPacked = curTok.kind == TokenKind::PACKED_CLASS;
@@ -2751,18 +2764,18 @@ unique_ptr<ExprAST> Parser::parseStatementCore() {
       if (!tryExpr) {
         return nullptr;
       }
-      expectCurrentTokenKind(TokenKind::SEMI_COLON,
-                             "expected ';' after propagation statement");
-      while (curTok.kind == TokenKind::SEMI_COLON) {
-        getNextToken();
-      }
       return tryExpr;
     }
-    case TokenKind::THROW:
-      parsingError("'throw' is no longer supported; return an error variant");
-      return nullptr;
+    case TokenKind::THROW: {
+      Position start = captureStart();
+      getNextToken();
+      auto value = curTok.kind == TokenKind::SEMI_COLON ? nullptr : parseExpression();
+      expectCurrentTokenKind(TokenKind::SEMI_COLON, "expected ';' after throw");
+      getNextToken();
+      return finishNode(std::make_unique<sun::ast::ThrowAST>(std::move(value)), start);
+    }
     case TokenKind::CATCH:
-      parsingError("'catch' is no longer supported; match a result instead");
+      parsingError("'catch' must follow a try block");
       return nullptr;
     case TokenKind::SEMI_COLON:
       getNextToken();  // ignore empty statement
@@ -4183,6 +4196,7 @@ std::unique_ptr<BlockExprAST> Parser::parseString(const std::string& source) {
 // fields and methods }
 unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
   Position start = captureStart();
+  const bool exception = curTok.kind == TokenKind::EXCEPTION;
   const bool packed = curTok.kind == TokenKind::PACKED_CLASS;
   getNextToken();  // eat 'class' or 'packed_class'
 
@@ -4200,6 +4214,14 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
   std::vector<sun::ast::TypeParameter> typeParameters =
       parseTypeParameterList(&lifetimeParameters);
 
+  std::optional<sun::ast::TypeAnnotation> exceptionParent;
+  if (exception && curTok.kind == TokenKind::EXTENDS) {
+    getNextToken();
+    exceptionParent = parseTypeAnnotation();
+  }
+  if (exception && (!typeParameters.empty() || !lifetimeParameters.empty())) {
+    parsingError("exception declarations cannot have generics or lifetimes");
+  }
   // Parse optional implements clause
   std::vector<sun::ast::ImplementedInterfaceAST> implementedInterfaces;
   if (curTok.kind == TokenKind::IMPLEMENTS) {
@@ -4414,6 +4436,17 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
   auto classDef = std::make_unique<ClassDefinitionAST>(
       std::move(className), std::move(typeParameters),
       std::move(implementedInterfaces), std::move(fields), std::move(methods));
+  classDef->setException(exception);
+  classDef->setExceptionParent(std::move(exceptionParent));
+  if (exception) {
+    if (alignment)
+      parsingError("exception declarations cannot override payload alignment");
+    for (const auto& method : classDef->getMethods()) {
+      if (method.function->getProto().getName() == "deinit")
+        parsingError("exception payloads cannot declare a destructor");
+    }
+    for (auto& field : classDef->getMutableFields()) field.visibility = Visibility::Public;
+  }
   classDef->setAlignment(alignment);
   classDef->setLifetimeParameters(std::move(lifetimeParameters));
   return finishNode(std::move(classDef), start);
@@ -4585,7 +4618,11 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
       }
 
       if (curTok.kind == TokenKind::THROWS) {
-        parsingError("'throws' is no longer supported; return a result enum");
+        getNextToken();
+        if (curTok.kind != TokenKind::BRACE_OPEN && curTok.kind != TokenKind::SEMI_COLON)
+          parsingError("'throws' does not take an error type; use bare throws");
+        if (!retType) retType = sun::ast::TypeAnnotation("void");
+        retType->canError = true;
       }
 
       // Signature span ends at the last token before the body/semicolon

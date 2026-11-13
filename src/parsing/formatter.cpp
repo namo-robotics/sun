@@ -373,6 +373,7 @@ class Formatter {
       case ASTNodeType::MANIFEST:
       case ASTNodeType::MOON_SCOPE:
       case ASTNodeType::IMPORT_SCOPE:
+      case ASTNodeType::TRY_CATCH:
       case ASTNodeType::IF:
       case ASTNodeType::WHILE_LOOP:
       case ASTNodeType::FOR_LOOP:
@@ -458,7 +459,7 @@ class Formatter {
         out_ += "void";
       }
       if (t.canError) {
-        out_ += " throws IError";
+        out_ += " throws";
       }
       return;
     }
@@ -579,11 +580,12 @@ class Formatter {
           p.getReturnType()->span.endOffset.has_value()) {
         out_ += ' ';
         printType(*p.getReturnType());
+        if (p.canThrow()) out_ += " throws";
       } else if (includeReturnType && p.getReturnType().has_value() &&
                  p.getReturnType()->canError) {
         // A throwing constructor spells only the error part:
-        // init(...) throws IError
-        out_ += " throws IError";
+        // init(...) throws
+        out_ += " throws";
       }
     };
     if (!tryInline([&] {
@@ -618,14 +620,8 @@ class Formatter {
       return;  // ';' comes from needsSemicolon
     }
     out_ += asMethod ? "method " : f.isTest() ? "test_function " : "function ";
-    const auto& result = f.getProto().getReturnType();
-    const bool defaultTestResult =
-        f.isTest() && result && result->baseName == "_Result" &&
-        result->typeArguments.size() == 2 &&
-        result->typeArguments[0]->baseName == "void" &&
-        result->typeArguments[1]->baseName == "std.test.AssertionError";
     printProtoSig(f.getProto(), /*includeParameters=*/true,
-                  /*includeReturnType=*/!defaultTestResult);
+                  /*includeReturnType=*/!f.isTest());
     out_ += ' ';
     printBlockML(f.getBody());
   }
@@ -721,6 +717,10 @@ class Formatter {
     out_ += ' ';
     out_ += c.getName();
     printTypeParams(c.getTypeParameters(), c.getLifetimeParameters());
+    if (c.getExceptionParent()) {
+      out_ += " extends ";
+      printType(*c.getExceptionParent());
+    }
     const auto& ifaces = c.getImplementedInterfaces();
     if (!ifaces.empty()) {
       out_ += " implements ";
@@ -765,9 +765,12 @@ class Formatter {
       members.push_back(
           {loc.offset, loc.line, endLineOf(loc), nullptr, m.function.get()});
     }
-    printMembers(members, [this](const auto& m) {
+    /** Prints exception fields without their implicit public modifier. */
+    printMembers(members, [this, &c](const auto& m) {
       if (m.field) {
-        printVisibility(m.field->visibility);
+        if (!c.isException()) {
+          printVisibility(m.field->visibility);
+        }
         out_ += "var ";
         out_ += m.field->name;
         out_ += ": ";
@@ -950,11 +953,6 @@ class Formatter {
 
   /** Writes a pattern match using formatted Sun source syntax. */
   void printMatch(const sun::ast::MatchExprAST& m) {
-    if (m.isPropagation()) {
-      out_ += "try ";
-      printExpr(*m.getDiscriminant());
-      return;
-    }
     out_ += "match ";
     printExpr(*m.getDiscriminant());
     out_ += " {\n";
@@ -1065,6 +1063,7 @@ class Formatter {
     printProtoSig(l.getProto(), false, false);
     out_ += " => ";
     printType(*l.getProto().getReturnType());
+    if (l.getProto().canThrow()) out_ += " throws";
     out_ += ' ';
     printBlockAuto(l.getBody());
   }
@@ -1396,6 +1395,29 @@ class Formatter {
         break;
       }
 
+      case ASTNodeType::THROW: {
+        const auto& statement = static_cast<const sun::ast::ThrowAST&>(e);
+        out_ += "throw";
+        if (statement.value) { out_ += ' '; printExpr(*statement.value); }
+        break;
+      }
+      case ASTNodeType::TRY_CATCH: {
+        const auto& statement = static_cast<const sun::ast::TryCatchAST&>(e);
+        out_ += "try ";
+        printBlockML(static_cast<const BlockExprAST&>(*statement.body));
+        for (const auto& handler : statement.handlers) {
+          out_ += " catch";
+          if (handler.binding) {
+            const auto& binding = static_cast<const sun::ast::VariableCreationAST&>(*handler.binding);
+            out_ += " (" + binding.getName() + ": ";
+            printType(*binding.getTypeAnnotation());
+            out_ += ')';
+          }
+          out_ += ' ';
+          printBlockML(static_cast<const BlockExprAST&>(*handler.body));
+        }
+        break;
+      }
       case ASTNodeType::RETURN: {
         const auto& n = static_cast<const sun::ast::ReturnExprAST&>(e);
         out_ += "return";
