@@ -1118,6 +1118,20 @@ jobs:
           # AOT: links through Apple's cc with -lc++.
           sun -c -o test_aot test.sun
           ./test_aot
+          # Exercise the packaged runtime in both execution modes.
+          test ! -e "$HOME/cellar/lib/sun/libsun_exception_runtime.a"
+          cat > exception_test.sun << 'PROGRAM'
+          /** Reports a test failure without allocating. */
+          exception Failure {}
+          /** Verifies exception transport from the installed compiler. */
+          function main() i32 {
+              try { throw Failure(); }
+              catch (error: Failure) { return 0; }
+          }
+          PROGRAM
+          sun exception_test.sun
+          sun -c --no-test -o exception_aot exception_test.sun
+          ./exception_aot
           # TLS: tls.moon carries its own static OpenSSL, so this needs no
           # libssl installed and no linker flags. A real fetch also proves
           # certificate verification uses the maintained PEM CA bundle.
@@ -1128,21 +1142,13 @@ jobs:
           using std.io;
           using tls;
           /** Verify HTTPS transport and certificate trust regardless of HTTP status. */
-          function main() AllocationResult<i32> {
+          function main() i32 throws {
               var alloc = make_heap_allocator();
               var client = HttpsClient(alloc);
-              var host = try String(alloc, "example.com");
-              match client.get(host, "/") {
-                  ClientResult.Ok(resp) => {
-                      println(resp.status);
-                      return AllocationResult.Ok(0);
-                  },
-                  (e: const ref IError) => {
-                      var message = try e.message();
-                      println(message);
-                      return AllocationResult.Ok(2);
-                  }
-              };
+              var host = String(alloc, "example.com");
+              var response = client.get(host, "/");
+              println(response.status);
+              return 0;
           }
           manifest {
               libraries: ["stdlib.moon", "tls.moon"]

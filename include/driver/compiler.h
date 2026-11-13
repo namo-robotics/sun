@@ -6,6 +6,7 @@
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Support/DynamicLibrary.h>
 #include <llvm/Support/FileSystem.h>
+#include <llvm/Support/FileUtilities.h>
 #include <llvm/Support/Path.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/raw_ostream.h>
@@ -27,6 +28,9 @@
 /** Coordinates compilation, dependency loading, linking, and program execution.
  */
 namespace sun::driver {
+
+/** Returns the host runtime archive embedded in this compiler. */
+llvm::StringRef embeddedExceptionRuntime();
 
 /**
  * Native libraries to link against, from -l / -L on the command line.
@@ -401,11 +405,31 @@ inline bool linkExecutable(const std::string& objectPath,
   for (const auto& argument : linkOpts.arguments) {
     cmd += " " + shellQuote(argument);
   }
-  // The prototype archive is built for the compiler's host target.
-  if (triple.getArch() == llvm::Triple(llvm::sys::getDefaultTargetTriple()).getArch() &&
-      ((triple.isOSDarwin() && llvm::Triple(llvm::sys::getDefaultTargetTriple()).isOSDarwin()) ||
-       (triple.isOSLinux() && llvm::Triple(llvm::sys::getDefaultTargetTriple()).isOSLinux()))) {
-    cmd += " " + shellQuote(SUN_EXCEPTION_RUNTIME_ARCHIVE);
+  // Keep the extracted host archive alive until the linker finishes.
+  llvm::FileRemover runtimeCleanup;
+  const llvm::Triple host(llvm::sys::getDefaultTargetTriple());
+  if (triple.getArch() == host.getArch() &&
+      ((triple.isOSDarwin() && host.isOSDarwin()) ||
+       (triple.isOSLinux() && host.isOSLinux()))) {
+    llvm::SmallString<256> runtimePath;
+    int runtimeFD;
+    auto error = llvm::sys::fs::createUniqueFile(
+        objectPath + ".runtime-%%%%%%.a", runtimeFD, runtimePath);
+    if (error) {
+      errorMsg = "Could not extract exception runtime: " + error.message();
+      return false;
+    }
+    runtimeCleanup.setFile(runtimePath);
+    llvm::raw_fd_ostream archive(runtimeFD, true);
+    archive << embeddedExceptionRuntime();
+    archive.close();
+    if (archive.has_error()) {
+      errorMsg = "Could not write extracted exception runtime: " +
+                 archive.error().message();
+      archive.clear_error();
+      return false;
+    }
+    cmd += " " + shellQuote(runtimePath.str().str());
   }
   cmd += isDarwin ? " -lc++" : " -lstdc++";
 

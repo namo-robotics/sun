@@ -452,8 +452,15 @@ target_include_directories(sun_lib
 target_include_directories(sun_lib SYSTEM PRIVATE ${SUN_LIBCLANG_INCLUDE_DIR})
 target_link_libraries(sun_lib PUBLIC ${SUN_LIBCLANG_LIBRARY} sun_jit_support)
 target_link_libraries(sun_lib PUBLIC sun_exception_runtime)
-target_compile_definitions(sun_lib PUBLIC
-    SUN_EXCEPTION_RUNTIME_ARCHIVE="$<TARGET_FILE:sun_exception_runtime>")
+set(EXCEPTION_ARCHIVE_SOURCE ${CMAKE_CURRENT_BINARY_DIR}/embedded_exception_runtime.cpp)
+add_custom_command(OUTPUT ${EXCEPTION_ARCHIVE_SOURCE}
+    COMMAND ${CMAKE_COMMAND}
+        -DINPUT_FILE=$<TARGET_FILE:sun_exception_runtime>
+        -DOUTPUT_FILE=${EXCEPTION_ARCHIVE_SOURCE}
+        -P ${CMAKE_SOURCE_DIR}/cmake/EmbedArchive.cmake
+    DEPENDS sun_exception_runtime ${CMAKE_SOURCE_DIR}/cmake/EmbedArchive.cmake
+    COMMENT "Embedding the native exception runtime archive" VERBATIM)
+target_sources(sun_lib PRIVATE ${EXCEPTION_ARCHIVE_SOURCE})
 
 # Link LLVM the modern way (target-based)
 # libprotoc provides google::protobuf::compiler::Importer, used to parse .proto
