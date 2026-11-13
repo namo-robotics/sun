@@ -67,7 +67,9 @@ class TerminalFileFixture : public testing::Test {
   std::filesystem::path directory;
   /** Creates a scratch directory under the workspace temporary directory. */
   void SetUp() override {
-    directory = std::filesystem::current_path() / "tmp" / "terminal_format";
+    directory = std::filesystem::current_path() / "tmp" /
+        (std::string("terminal_format_") +
+         testing::UnitTest::GetInstance()->current_test_info()->name());
     std::filesystem::create_directories(directory);
   }
   /** Removes this fixture's scratch files. */
@@ -134,7 +136,7 @@ TEST_F(TerminalFileFixture, links_preserve_paths_and_terminal_preferences) {
   EXPECT_EQ(sun::support::terminalFileLabel(directory / "missing.sun", stream),
             "missing.sun");
   EXPECT_EQ(sun::support::terminalFileLabel(directory, stream),
-            "terminal_format");
+            directory.filename().string());
   {
     ScopedEnvironment vscode("TERM_PROGRAM", "vscode");
     EXPECT_EQ(sun::support::terminalFileLabel(file, stream), link);
@@ -289,6 +291,25 @@ TEST(Tooling_Cli_Terminal, linker_output_preserves_severity_and_exit_status) {
             "[sun][warning]: warning: test-warning\n"
             "[sun][error]: error: test-error\n");
   EXPECT_EQ(error, "Linker failed with exit code: 7");
+}
+
+/** Compiles the embedded cross-runtime source without the source tree's
+ * headers. */
+TEST_F(TerminalFileFixture, embedded_runtime_source_is_self_contained) {
+  const auto source = directory / "runtime source.cpp";
+  const auto binary = directory / "runtime probe";
+  {
+    std::ofstream output(source);
+    output << sun::driver::embeddedExceptionRuntimeSource().str();
+    output << "\n/** Initializes the standalone runtime. */\n"
+              "int main() { sun_eh_initialize(); return 0; }\n";
+  }
+  const auto command =
+      "cc -std=c++20 -O2 -fno-exceptions -fno-rtti -funwind-tables " +
+      sun::driver::shellQuote(source.string()) + " -o " +
+      sun::driver::shellQuote(binary.string());
+  ASSERT_EQ(std::system(command.c_str()), 0);
+  EXPECT_EQ(std::system(sun::driver::shellQuote(binary.string()).c_str()), 0);
 }
 
 }  // namespace

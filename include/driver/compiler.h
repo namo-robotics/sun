@@ -32,6 +32,9 @@ namespace sun::driver {
 /** Returns the host runtime archive embedded in this compiler. */
 llvm::StringRef embeddedExceptionRuntime();
 
+/** Returns self-contained runtime source for compilation by a cross toolchain. */
+llvm::StringRef embeddedExceptionRuntimeSource();
+
 /**
  * Native libraries to link against, from -l / -L on the command line.
  * Distinct from LibraryCache's search paths, which locate Sun .moon
@@ -325,10 +328,8 @@ inline bool linkExecutable(const std::string& objectPath,
   bool isDarwin = triple.isOSDarwin();
 
   // Build linker command using a C compiler driver so it handles the C
-  // runtime and startup files. The C++ runtime library provides the Itanium
-  // C++ ABI symbols (__cxa_throw, __cxa_allocate_exception, typeinfo,
-  // _Unwind_*) that native exception handling lowers to: libstdc++ on
-  // Linux, libc++ (with libc++abi) on macOS.
+  // runtime and startup files. Native dependencies may also need libstdc++
+  // on Linux or libc++ on macOS; Sun's exception helpers use the unwinder.
   std::string linker =
       linkerCommandFor(linkOpts.targetTriple, linkOpts.staticLink);
   if (linker.empty()) {
@@ -353,6 +354,12 @@ inline bool linkExecutable(const std::string& objectPath,
 
   std::string cmd =
       linker + " -o " + shellQuote(outputPath) + " " + shellQuote(objectPath);
+  // Apple's driver otherwise compiles the extracted runtime for the host.
+  if (isDarwin && !linkOpts.targetTriple.empty()) {
+    cmd +=
+        " -arch " +
+        shellQuote(triple.isAArch64() ? "arm64" : triple.getArchName().str());
+  }
 
   // Static: copy libc/libstdc++ into the binary instead of referencing their
   // .so files. The result runs on any Linux of the same architecture with no
@@ -405,32 +412,38 @@ inline bool linkExecutable(const std::string& objectPath,
   for (const auto& argument : linkOpts.arguments) {
     cmd += " " + shellQuote(argument);
   }
-  // Keep the extracted host archive alive until the linker finishes.
+  // Keep the extracted runtime alive until the linker finishes. Cross links
+  // compile the embedded source with the selected driver and sysroot.
   llvm::FileRemover runtimeCleanup;
   const llvm::Triple host(llvm::sys::getDefaultTargetTriple());
-  if (triple.getArch() == host.getArch() &&
-      ((triple.isOSDarwin() && host.isOSDarwin()) ||
-       (triple.isOSLinux() && host.isOSLinux()))) {
-    llvm::SmallString<256> runtimePath;
-    int runtimeFD;
-    auto error = llvm::sys::fs::createUniqueFile(
-        objectPath + ".runtime-%%%%%%.a", runtimeFD, runtimePath);
-    if (error) {
-      errorMsg = "Could not extract exception runtime: " + error.message();
-      return false;
-    }
-    runtimeCleanup.setFile(runtimePath);
-    llvm::raw_fd_ostream archive(runtimeFD, true);
-    archive << embeddedExceptionRuntime();
-    archive.close();
-    if (archive.has_error()) {
-      errorMsg = "Could not write extracted exception runtime: " +
-                 archive.error().message();
-      archive.clear_error();
-      return false;
-    }
-    cmd += " " + shellQuote(runtimePath.str().str());
+  const bool useHostRuntime = triple.getArch() == host.getArch() &&
+                              ((triple.isOSDarwin() && host.isOSDarwin()) ||
+                               (triple.isOSLinux() && host.isOSLinux()));
+  llvm::SmallString<256> runtimePath;
+  int runtimeFD;
+  auto error = llvm::sys::fs::createUniqueFile(
+      objectPath +
+          (useHostRuntime ? ".runtime-%%%%%%.a" : ".runtime-%%%%%%.cpp"),
+      runtimeFD, runtimePath);
+  if (error) {
+    errorMsg = "Could not extract exception runtime: " + error.message();
+    return false;
   }
+  runtimeCleanup.setFile(runtimePath);
+  llvm::raw_fd_ostream runtimeFile(runtimeFD, true);
+  runtimeFile << (useHostRuntime ? embeddedExceptionRuntime()
+                                 : embeddedExceptionRuntimeSource());
+  runtimeFile.close();
+  if (runtimeFile.has_error()) {
+    errorMsg = "Could not write extracted exception runtime: " +
+               runtimeFile.error().message();
+    runtimeFile.clear_error();
+    return false;
+  }
+  if (!useHostRuntime) {
+    cmd += " -std=c++20 -O2 -fPIC -fno-exceptions -fno-rtti -funwind-tables";
+  }
+  cmd += " " + shellQuote(runtimePath.str().str());
   cmd += isDarwin ? " -lc++" : " -lstdc++";
 
   // Capture the driver's diagnostics so every line has a Sun severity label.
