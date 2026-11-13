@@ -1,5 +1,6 @@
 """Check native exception code generation and source formatting through the CLI."""
 import pathlib
+import platform
 import shutil
 import subprocess
 import sys
@@ -57,6 +58,28 @@ function main() i32 {
             raise AssertionError(f"Expected an unresolved-symbol linker failure: {diagnostics}")
         if list(directory.glob("*.runtime-*.a")):
             raise AssertionError("Failed linking left an extracted runtime archive behind")
+        # Exercise source extraction with a relocated compiler and a real cross link.
+        target = None
+        runner = None
+        if platform.system() == "Darwin" and platform.machine() == "arm64":
+            target = "x86_64-apple-darwin"
+        elif (platform.system() == "Linux" and platform.machine() == "x86_64"
+              and shutil.which("aarch64-linux-gnu-g++")):
+            target = "aarch64-linux-gnu"
+            if shutil.which("qemu-aarch64"):
+                runner = ["qemu-aarch64", "-L", "/usr/aarch64-linux-gnu"]
+        if target:
+            output = directory / "cross"
+            check([compiler, "--dynamic", "-c", "--target", target,
+                   str(formatted), "-o", str(output)])
+            if runner is not None:
+                check([*runner, str(output)], 42)
+            failure = check([compiler, "--dynamic", "-c", "--no-test", "--target", target,
+                             str(failing), "-o", str(directory / "cross-unresolved")], 1)
+            if "sun_missing_link_fixture" not in failure.stdout + failure.stderr:
+                raise AssertionError("Cross link failed before reaching the unresolved fixture")
+            if list(directory.glob("*.runtime-*")):
+                raise AssertionError("Cross linking left extracted runtime files behind")
         ir_path = directory / "fixture.ll"
         check([compiler, "--emit-llvm", "-O0", str(formatted), "-o", str(ir_path)])
         ir = ir_path.read_text()

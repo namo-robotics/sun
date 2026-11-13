@@ -173,8 +173,13 @@ in these cases; the strict AOT requirement is unchanged.
 The compiler embeds the runtime archive for its host architecture and operating
 system. Native linking extracts a temporary copy and removes it when linking
 finishes; compiler installations need no separate Sun runtime archive.
-Cross-target Moon bundles and object files support x86-64 and AArch64 Linux and Darwin; linking an executable requires
-a matching runtime archive. Linux x86-64 has been validated locally; macOS
+Cross-target Moon bundles and object files support x86-64 and AArch64 Linux and Darwin.
+For a different architecture or operating system, the compiler extracts embedded
+runtime source and compiles it with the selected link driver and sysroot. The
+cross toolchain must provide C++20 support and the target's C++ headers (for
+example, `g++-aarch64-linux-gnu` for AArch64 GNU/Linux). Temporary runtime files
+are removed after linking, including on failure.
+Linux x86-64 has been validated locally; macOS
 Apple Silicon validation has not been run locally. Passing the probes does not replace
 auditing the selected unwinder and platform.
 

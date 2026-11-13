@@ -459,8 +459,11 @@ add_custom_command(OUTPUT ${EXCEPTION_ARCHIVE_SOURCE}
     COMMAND ${CMAKE_COMMAND}
         -DINPUT_FILE=$<TARGET_FILE:sun_exception_runtime>
         -DOUTPUT_FILE=${EXCEPTION_ARCHIVE_SOURCE}
+        -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
         -P ${CMAKE_SOURCE_DIR}/cmake/EmbedArchive.cmake
     DEPENDS sun_exception_runtime ${CMAKE_SOURCE_DIR}/cmake/EmbedArchive.cmake
+        include/abi/exception_layout.h include/runtime/exceptions.h
+        include/runtime/panic.h src/runtime/exceptions.cpp src/runtime/panic.cpp
     COMMENT "Embedding the native exception runtime archive" VERBATIM)
 target_sources(sun_lib PRIVATE ${EXCEPTION_ARCHIVE_SOURCE})
 
