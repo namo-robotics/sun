@@ -1,3 +1,4 @@
+/** Exercises configured builds through the compiler command line. */
 #include <gtest/gtest.h>
 #include <llvm/Support/JSON.h>
 #include <llvm/Support/Program.h>
@@ -238,6 +239,58 @@ TEST_F(CustomBuild, OrderContextAndLocalDependency) {
   const auto timestamp = fs::last_write_time(artifact);
   ASSERT_EQ(command("build", {"-g", "-O0"}), 0) << diagnostics();
   EXPECT_EQ(fs::last_write_time(artifact), timestamp);
+}
+
+/** All builds internal runners without changing exports or enabling disabled entries. */
+TEST_F(CustomBuild, AllEntrypointsIncludesInternalTests) {
+  config = document(R"({"package_id":"example/app","entrypoints":[
+    {"name":"app","path":"main.sun","export":true,"compile_args":["--dynamic"]},
+    {"name":"checks","path":"checks.sun","export":false,"compile_args":["--dynamic"]},
+    {"name":"disabled","path":"missing.sun","enabled":false}],
+    "packages":[{"name":"app","entrypoints":["app"]}]})");
+  save();
+  write("app/main.sun",
+        "/** Starts the fixture. */ function main() i32 { return 0; }\n");
+  const auto tests = "manifest { libraries: [\"" +
+                     (compiler.parent_path() / "stdlib.moon").string() +
+                     "\"] }\n/** Checks internal test discovery. */ "
+                     "test_function check() {}\n";
+  write("app/checks.sun", tests);
+  write("lib/sun-config.json", R"({"package_id":"example/helper","entrypoints":[
+    {"name":"helper","path":"helper.sun","type":"library","export":true},
+    {"name":"checks","path":"checks.sun","export":false,"compile_args":["--dynamic"]}]})");
+  write("lib/checks.sun", tests);
+  const auto selected = describe();
+  const fs::path output(selected.getString("build_root")->str());
+  const auto helperOutput = output.parent_path() / "helper";
+  const std::vector<std::string> base{
+      "build", "--config", (root / "sun-config.json").string()};
+  ASSERT_EQ(invoke(compiler, base), 0) << diagnostics();
+  EXPECT_FALSE(fs::exists(output / "checks_test"));
+  EXPECT_FALSE(fs::exists(helperOutput / "checks_test"));
+  const auto package = read(output / "packages/app.tar.gz");
+  ASSERT_FALSE(package.empty());
+  auto flags = base;
+  flags.insert(flags.end(), {"--all", "--package", "example/app"});
+  ASSERT_EQ(invoke(compiler, flags), 0) << diagnostics();
+  EXPECT_TRUE(fs::is_regular_file(output / "checks_test"));
+  EXPECT_FALSE(fs::exists(output / "disabled"));
+  EXPECT_FALSE(fs::exists(helperOutput / "checks_test"));
+  EXPECT_EQ(read(output / "packages/app.tar.gz"), package);
+  flags = base;
+  flags.push_back("--all");
+  ASSERT_EQ(invoke(compiler, flags), 0) << diagnostics();
+  EXPECT_TRUE(fs::is_regular_file(helperOutput / "checks_test"));
+}
+
+/** All cannot select one entrypoint or apply to a non-build operation. */
+TEST_F(CustomBuild, AllEntrypointsRejectsConflictingOptions) {
+  EXPECT_NE(command("build", {"--all", "--entrypoint", "app"}), 0);
+  EXPECT_NE(diagnostics().find("--all cannot be combined with --entrypoint"),
+            std::string::npos);
+  EXPECT_NE(command("describe", {"--all"}), 0);
+  EXPECT_NE(diagnostics().find("--all is only supported by sun build"),
+            std::string::npos);
 }
 
 /** Script failure stops the sequence; missing outputs cannot replace the

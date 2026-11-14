@@ -117,7 +117,8 @@ tests. Each test's own threads still run normally. Cancellation stops active
 process groups and skips queued tests. Direct binary execution retains its
 existing runner options.
 
-Build tests before first discovery. Missing binaries show **Build required**.
+Build tests before first discovery. Use `sun build --all` to include internal
+test entrypoints that are not exported by their packages. Missing binaries show **Build required**.
 Older binaries without the listing capability show **Rebuild required for test
 discovery** and are never launched to probe their options. Rebuild them with the
 updated compiler. Update both `sun-lsp` and this extension together.
