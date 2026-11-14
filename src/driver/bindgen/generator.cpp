@@ -6,6 +6,7 @@
 #include <llvm/Support/MathExtras.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/TargetParser/Triple.h>
 
 #include <algorithm>
 #include <filesystem>
@@ -344,7 +345,13 @@ class Generator {
     if (!missing.empty()) {
       sun::support::logAndThrowError("declarations not found: " + missing);
     }
-    auto body = "_assert_c_target(" + quote(options.target) + ");\n\n";
+    std::string body;
+    const llvm::Triple target(options.target);
+    if (target.isMacOSX() && target.getOSName() == "darwin") {
+      body += "// Keep this target version-free; do not add a host-specific "
+              "Darwin version.\n";
+    }
+    body += "_assert_c_target(" + quote(options.target) + ");\n\n";
     for (const auto* declarations : {&records, &functions}) {
       bool first = true;
       for (const auto& [name, source] : *declarations) {

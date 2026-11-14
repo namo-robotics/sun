@@ -16,15 +16,15 @@ import PathVariables from '../generated/path_variables.mdx'
 ```sun
 /** Small arithmetic helpers. */
 public module math {
-    /** Returns the square of a number. */
-    public function square(x: i32) i32 {
-        return x * x;
-    }
+  /** Returns the square of a number. */
+  public function square(x: i32) i32 {
+    return x * x;
+  }
 }
 
 /** Uses a function from another module. */
 function main() i32 {
-    return math.square(3); // 9
+  return math.square(3);  // 9
 }
 ```
 
@@ -34,8 +34,7 @@ Dotted names create nested modules:
 
 ```sun
 /** Helpers for reading files. */
-public module app.files.readers {
-}
+public module app.files.readers {}
 ```
 
 This makes `app`, `files`, and `readers` public. The comment documents `readers`.
@@ -48,7 +47,7 @@ using math;
 
 /** Calls square without the module prefix. */
 function main() i32 {
-    return square(3);
+  return square(3);
 }
 ```
 
@@ -64,11 +63,11 @@ contribute to the same module.
 ```sun
 /** Number operations available to callers. */
 public module numbers {
-    /** Private helper used within this module. */
-    function twice(x: i32) i32 { return x * 2; }
+  /** Private helper used within this module. */
+  function twice(x: i32) i32 { return x * 2; }
 
-    /** Returns four times the input. */
-    public function four_times(x: i32) i32 { return twice(twice(x)); }
+  /** Returns four times the input. */
+  public function four_times(x: i32) i32 { return twice(twice(x)); }
 }
 ```
 
@@ -87,10 +86,10 @@ throughout the program.
 ```sun
 /** Counts calls for the lifetime of the program. */
 public module counter {
-    public var count: i64 = 0;
+  public var count: i64 = 0;
 
-    /** Records one call. */
-    public function add() void { count += 1; }
+  /** Records one call. */
+  public function add() void { count += 1; }
 }
 ```
 
@@ -105,12 +104,12 @@ using std.io;
 
 /** Prints a greeting. */
 function main() void {
-    println("Hello!");
+  println("Hello!");
 }
 
 manifest {
-    source_files: ["helpers.sun"]
-    libraries: ["stdlib.moon"]
+  source_files: ["helpers.sun"]
+  libraries: ["stdlib.moon"]
 }
 ```
 
@@ -141,9 +140,9 @@ Renaming a published entrypoint changes its identity and can break consumers.
 
 ```sun
 manifest {
-    test_files: ["helpers_tests.sun"]
-    protos: ["messages.proto"]
-    archives: ["native/libhelper.a"]
+  test_files: ["helpers_tests.sun"]
+  protos: ["messages.proto"]
+  archives: ["native/libhelper.a"]
 }
 ```
 
@@ -161,11 +160,11 @@ See [Testing](/testing), [Protobuf](/protobuf), and [C FFI](/c-ffi) for examples
 
 ```sun
 manifest {
-    source_files: ["files.sun"]
-    target: {
-        linux: { source_files: ["files_linux.sun"] }
-        macos: { source_files: ["files_macos.sun"] }
-    }
+  source_files: ["files.sun"]
+  target: {
+    linux: { source_files: ["files_linux.sun"] }
+    macos: { source_files: ["files_macos.sun"] }
+  }
 }
 ```
 
@@ -179,7 +178,7 @@ The manifest only selects inputs for that target.
 
 ```sun
 manifest {
-    libraries: ["libs/shapes.moon", "stdlib.moon"]
+  libraries: ["libs/shapes.moon", "stdlib.moon"]
 }
 ```
 
@@ -211,8 +210,8 @@ A `.moon` file contains compiled code and the type information needed to use it.
 ```sun filename="shapes.sun"
 /** Helpers for measuring shapes. */
 public module shapes {
-    /** Returns the area of a square. */
-    public function square_area(side: i32) i32 { return side * side; }
+  /** Returns the area of a square. */
+  public function square_area(side: i32) i32 { return side * side; }
 }
 
 manifest {
@@ -231,11 +230,11 @@ module too.
 ```sun filename="main.sun"
 /** Uses the compiled shapes library. */
 function main() i32 {
-    return shapes.square_area(4); // 16
+  return shapes.square_area(4);  // 16
 }
 
 manifest {
-    libraries: ["shapes.moon"]
+  libraries: ["shapes.moon"]
 }
 ```
 
@@ -284,7 +283,7 @@ change lookup names, not type identity or compatibility.
 ```sun
 /** Shared dimensions. */
 public module limits {
-    public const ROWS: i64 = 3;
+  public const ROWS: i64 = 3;
 }
 ```
 
@@ -306,7 +305,7 @@ versions or change compatibility rules.
 
 ```sun
 manifest {
-    libraries: ["stdlib.moon", "tls.moon"]
+  libraries: ["stdlib.moon", "tls.moon"]
 }
 ```
 
@@ -411,7 +410,7 @@ Every dependency belongs in the config's `dependencies` array:
 
 ```sun
 manifest {
-    libraries: ["${example/math}/lib/math.moon"]
+  libraries: ["${example/math}/lib/math.moon"]
 }
 ```
 

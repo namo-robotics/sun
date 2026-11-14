@@ -17,7 +17,18 @@ if(TARGET sun_exception_runtime)
             $<TARGET_FILE:sun> ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/source_exceptions.sun
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
     find_program(SUN_EXCEPTION_CLANG NAMES clang-20 clang HINTS ${LLVM_TOOLS_BINARY_DIR} REQUIRED)
-    set(SUN_EXCEPTION_FIXTURE ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/exceptions.ll)
+    # Ask the backend for its IR triple; Darwin's driver triple can differ.
+    execute_process(COMMAND ${SUN_EXCEPTION_CLANG} -S -emit-llvm -x c /dev/null -o -
+        OUTPUT_VARIABLE SUN_EXCEPTION_EMPTY_IR
+        COMMAND_ERROR_IS_FATAL ANY)
+    string(REGEX MATCH "target triple = \"([^\"]+)\"" SUN_EXCEPTION_TRIPLE_LINE
+        "${SUN_EXCEPTION_EMPTY_IR}")
+    if(NOT SUN_EXCEPTION_TRIPLE_LINE)
+        message(FATAL_ERROR "Cannot determine the exception fixture target triple")
+    endif()
+    set(SUN_EXCEPTION_TARGET "${CMAKE_MATCH_1}")
+    set(SUN_EXCEPTION_FIXTURE ${CMAKE_CURRENT_BINARY_DIR}/exceptions.ll)
+    configure_file(fixtures/exceptions.ll.in ${SUN_EXCEPTION_FIXTURE} @ONLY)
     set(SUN_EXCEPTION_OBJECT ${CMAKE_CURRENT_BINARY_DIR}/exceptions_fixture.o)
     add_custom_command(OUTPUT ${SUN_EXCEPTION_OBJECT}
         COMMAND ${SUN_EXCEPTION_CLANG} -x ir -c -fPIC -O2

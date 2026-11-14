@@ -1,4 +1,5 @@
 ; Exercises Sun-owned exception storage independently of source-language lowering.
+target triple = "@SUN_EXCEPTION_TARGET@"
 
 @root_name = private constant [13 x i8] c"fixture.Root\00"
 @a_name = private constant [10 x i8] c"fixture.A\00"

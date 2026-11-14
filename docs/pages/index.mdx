@@ -170,8 +170,6 @@ Hello, Sun!
 
 ```bash
 sun -c -o main main.sun
-Compiling: main.sun -> main
-Successfully compiled to: main
 ./main
 Hello, Sun!
 ```
@@ -198,20 +196,19 @@ The IR keeps only what this file compiled to; the stdlib it calls into is
 filtered out:
 
 ```llvm filename="main_debug/ir.ll"
-; LLVM IR (user-defined only)
-; Generated in debug mode - library and imported symbols filtered out
+; Excerpt: the Sun entrypoint and its string constant
 
 @str = private unnamed_addr constant [12 x i8] c"Hello, Sun!\00", align 1
-define void @main() {
+define void @__sun_main_void() {
 entry:
-  call void @"$5b663db4$_std_println$static_ptr_u8_"(%static_ptr_struct { ptr @str, i64 11 })
+  call void @_SUN1_301c2b20b910ebbf5751c1ef73b178d7c02fdace99dd1aec60630f7a7a7119e4(%static_ptr_struct { ptr @str, i64 11 })
   ret void
 }
 ```
 
-The `$5b663db4$` prefix on `println` marks it as coming from a library bundle;
-the hash keys the bundle, so two moons can define the same name without
-colliding.
+The `_SUN1_` symbol identifies the imported `println` declaration. Its digest
+comes from the declaration’s portable identity, so unrelated declarations do
+not collide. The exact symbol depends on the library being used.
 
 Visualize the AST:
 ```bash
@@ -224,11 +221,11 @@ Declare source files and library dependencies in a `manifest` block:
 
 ```sun
 manifest {
-    source_files: ["utils.sun", "math.sun"]
-    libraries: [
-        "stdlib.moon",
-        "$MYLIB/mylib.moon"
-    ]
+  source_files: ["utils.sun", "math.sun"]
+  libraries: [
+    "stdlib.moon",
+    "$MYLIB/mylib.moon"
+]
 }
 ```
 
@@ -247,11 +244,11 @@ relative to the config file.
 
 ```json filename="sun-config.json"
 {
-    "root": true,
-    "package_id": "example/app",
-    "entrypoints": [
-        {"name": "app", "path": "src/main.sun", "type": "binary", "export": true}
-    ]
+  "root": true,
+  "package_id": "example/app",
+  "entrypoints": [
+    {"name": "app", "path": "src/main.sun", "type": "binary", "export": true}
+  ]
 }
 ```
 
@@ -266,7 +263,7 @@ A workspace can include several projects, each with its own config:
 
 ```json
 {
-    "projects": ["core/sun-config.json", "ui/sun-config.json"]
+  "projects": ["core/sun-config.json", "ui/sun-config.json"]
 }
 ```
 
@@ -274,15 +271,15 @@ Select packages and products from a Git repository:
 
 ```json
 {
-    "dependencies": [{
-        "type": "git",
-        "url": "git@github.com:example/toolkit.git",
-        "version": "v1.2.3",
-        "packages": {
-            "example/core": {"entrypoints": ["core"]},
-            "example/ui": {"entrypoints": ["widgets", "viewc"]}
-        }
-    }]
+  "dependencies": [{
+    "type": "git",
+    "url": "git@github.com:example/toolkit.git",
+    "version": "v1.2.3",
+    "packages": {
+      "example/core": {"entrypoints": ["core"]},
+      "example/ui": {"entrypoints": ["widgets", "viewc"]}
+    }
+  }]
 }
 ```
 
@@ -299,11 +296,11 @@ See [project configuration](/modules#project-configuration-sun-configjson),
 
 ```sun filename="mylib.sun"
 public module mylib {
-    public function helper() i32 { return 42; }
+  public function helper() i32 { return 42; }
 }
 
 manifest {
-    source_files: ["utils.sun", "math.sun"]
+  source_files: ["utils.sun", "math.sun"]
 }
 ```
 

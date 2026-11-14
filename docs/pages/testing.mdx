@@ -8,19 +8,18 @@ appear in production binaries or `.moon` bundles.
 using std;
 
 module geometry {
-    function addOne(n: i32) i32 {
-        return n + 1;
-    }
+  function addOne(n: i32) i32 {
+    return n + 1;
+  }
 
-    test_function addsOne() {
-         std.test.assert_eq(geometry.addOne(1), 2);
-    }
+  test_function addsOne() {
+    std.test.assert_eq(geometry.addOne(1), 2);
+  }
 }
 
 function main() i32 throws {
-    return 0;
+  return 0;
 }
-
 manifest { libraries: ["stdlib.moon"] }
 ```
 
@@ -40,7 +39,7 @@ test process.
 ```sun
 /** Checks arithmetic and propagates any assertion failure to the runner. */
 test_function arithmetic() {
-    std.test.assert_eq(2 + 2, 4);
+  std.test.assert_eq(2 + 2, 4);
 }
 ```
 
@@ -68,9 +67,9 @@ module it tests to reach its private items:
 
 ```sun
 manifest {
-    source_files: ["geometry.sun"]
-    test_files: ["geometry_tests.sun"]
-    libraries: ["stdlib.moon"]
+  source_files: ["geometry.sun"]
+  test_files: ["geometry_tests.sun"]
+  libraries: ["stdlib.moon"]
 }
 ```
 
@@ -169,11 +168,11 @@ the operation returns successfully:
 ```sun
 /** Checks that invalid indexing throws the expected exception type. */
 test_function rejects_invalid_index() {
-    var values = std.Vec<i32>(std.global_allocator, 1);
-    try {
-        values.at(10);
-        std.test.fail("expected an out-of-bounds exception");
-    } catch (error: std.IndexOutOfBoundsError) {}
+  var values = std.Vec<i32>(std.global_allocator, 1);
+  try {
+    values.at(10);
+    std.test.fail("expected an out-of-bounds exception");
+  } catch (error: std.IndexOutOfBoundsError) {}
 }
 ```
 
@@ -193,27 +192,27 @@ using std;
 
 /** Tests directory setup and cleanup. */
 module config {
-    /** Owns an empty directory for this test process. */
-    class TempDir {
-        public var path: String;
+  /** Owns an empty directory for this test process. */
+  class TempDir {
+    public var path: String;
 
-        /** Creates a directory whose name includes the process ID. */
-        init() throws {
-            this.path =  String("/tmp/sun_config_test_");
-            this.path.append(std.process.pid());
-             std.io.make_dir(this.path, 448);
-        }
-
-        /** Removes the empty directory when the fixture leaves scope. */
-        deinit() { try { std.io.remove_dir(this.path); } catch {} }
+    /** Creates a directory whose name includes the process ID. */
+    init() throws {
+      this.path = String("/tmp/sun_config_test_");
+      this.path.append(std.process.pid());
+      std.io.make_dir(this.path, 448);
     }
 
-    /** Checks the directory while the fixture keeps it alive. */
-    test_function createsScratchDirectory() {
-        var dir =  std.test.expect_system(config.TempDir());  // setup
-         std.test.assert(std.io.is_dir(dir.path));
-        // teardown runs here or when try returns an assertion failure
-    }
+    /** Removes the empty directory when the fixture leaves scope. */
+    deinit() { try { std.io.remove_dir(this.path); } catch {} }
+  }
+
+  /** Checks the directory while the fixture keeps it alive. */
+  test_function createsScratchDirectory() {
+    var dir = std.test.expect_system(config.TempDir());  // setup
+    std.test.assert(std.io.is_dir(dir.path));
+    // teardown runs here or when try returns an assertion failure
+  }
 }
 ```
 

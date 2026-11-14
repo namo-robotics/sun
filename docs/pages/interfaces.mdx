@@ -35,14 +35,14 @@ and the parent may be declared later in the same module.
 ```sun
 /** Provides a readable value. */
 interface Readable {
-    /** Returns the current value. */
-    method read() i32;
+  /** Returns the current value. */
+  method read() i32;
 }
 
 /** Adds a write operation to the readable contract. */
 interface Writable extends Readable {
-    /** Replaces the current value. */
-    method write(value: i32) void;
+  /** Replaces the current value. */
+  method write(value: i32) void;
 }
 ```
 
@@ -92,15 +92,15 @@ a class keep the visibility they were declared with on the interface.
 
 ```sun
 public module shapes {
-    public interface IShape {
-        public method area() f64;
-        method debug_id() i32 { return 0; }   // module-internal default
-    }
-    public class Square implements IShape {
-        var side: f64;
-        init(s: f64) { this.side = s; }
-        public method area() f64 { return this.side * this.side; }
-    }
+  public interface IShape {
+    public method area() f64;
+    method debug_id() i32 { return 0; }  // module-internal default
+  }
+  public class Square implements IShape {
+    var side: f64;
+    init(s: f64) { this.side = s; }
+    public method area() f64 { return this.side * this.side; }
+  }
 }
 ```
 
@@ -114,7 +114,7 @@ methods the interface does not require.
 
 ```sun
 interface IShape {
-    const method area() f64;
+  const method area() f64;
 }
 function measure(s: const ref IShape) f64 { return s.area(); }
 ```
@@ -127,14 +127,14 @@ methods with default implementations:
 ```sun
 /** Describes an operation that may fail. */
 interface Operation {
-    /** Runs the operation or throws an exception. */
-    method run() void throws;
+  /** Runs the operation or throws an exception. */
+  method run() void throws;
 }
 
 /** Propagates an error from interface dispatch. */
 function invoke(operation: ref Operation) void throws {
-     operation.run();
-    return;
+  operation.run();
+  return;
 }
 ```
 
@@ -148,15 +148,15 @@ Interfaces can declare fields that implementing classes must have:
 
 ```sun
 interface Named {
-    var name: i32;  // Implementing class must have this field
+  var name: i32;  // Implementing class must have this field
 }
 
 class Person implements Named {
-    // 'name' field is inherited from Named interface
+  // 'name' field is inherited from Named interface
 
-    init(n: i32) {
-        this.name = n;
-    }
+  init(n: i32) {
+    this.name = n;
+  }
 }
 ```
 
@@ -165,25 +165,25 @@ A class can own a concrete implementation through a generic parameter:
 ```sun
 /** Handles an input value. */
 interface Handler {
-    /** Transforms the input. */
-    method handle(value: i32) i32;
+  /** Transforms the input. */
+  method handle(value: i32) i32;
 }
 
 /** Doubles each input. */
 class Doubler implements Handler {
-    /** Creates the handler. */
-    init() {}
-    /** Doubles the input. */
-    method handle(value: i32) i32 { return value * 2; }
+  /** Creates the handler. */
+  init() {}
+  /** Doubles the input. */
+  method handle(value: i32) i32 { return value * 2; }
 }
 
 /** Owns its concrete handler directly. */
 class Service<H: Handler> {
-    var handler: H;
-    /** Moves the concrete handler into the service. */
-    init(handler: H) { this.handler = handler; }
-    /** Handles one input. */
-    method run(value: i32) i32 { return this.handler.handle(value); }
+  var handler: H;
+  /** Moves the concrete handler into the service. */
+  init(handler: H) { this.handler = handler; }
+  /** Handles one input. */
+  method run(value: i32) i32 { return this.handler.handle(value); }
 }
 ```
 
@@ -216,8 +216,8 @@ class Thinker implements Answerable {
 }
 
 function main() i32 {
-    var t = Thinker();
-    return t.answer();  // Uses default: returns 42
+  var t = Thinker();
+  return t.answer();  // Uses default: returns 42
 }
 ```
 
@@ -225,11 +225,11 @@ Classes can override default implementations:
 
 ```sun
 class DeepThinker implements Answerable {
-    init() {}
+  init() {}
 
-    method answer() i32 {
-        return 43;  // Override default
-    }
+  method answer() i32 {
+    return 43;  // Override default
+  }
 }
 ```
 
@@ -239,24 +239,24 @@ Interfaces can have type parameters, allowing generic contracts:
 
 ```sun
 interface Container<T> {
-    method get() T;
-    method set(value: T) void;
+  method get() T;
+  method set(value: T) void;
 }
 
 class Box<T> implements Container<T> {
-    var value: T;
+  var value: T;
 
-    init(v: T) {
-        this.value = v;
-    }
+  init(v: T) {
+    this.value = v;
+  }
 
-    method get() T {
-        return this.value;
-    }
+  method get() T {
+    return this.value;
+  }
 
-    method set(v: T) void {
-        this.value = v;
-    }
+  method set(v: T) void {
+    this.value = v;
+  }
 }
 ```
 
@@ -266,19 +266,19 @@ A non-generic class can implement a generic interface with a specific type:
 
 ```sun
 interface Wrapper<T> {
-    method unwrap() T;
+  method unwrap() T;
 }
 
 class IntWrapper implements Wrapper<i32> {
-    var value: i32;
+  var value: i32;
 
-    init(v: i32) {
-        this.value = v;
-    }
+  init(v: i32) {
+    this.value = v;
+  }
 
-    method unwrap() i32 {
-        return this.value;
-    }
+  method unwrap() i32 {
+    return this.value;
+  }
 }
 ```
 
@@ -288,19 +288,19 @@ When a generic class implements a generic interface, the type parameters flow th
 
 ```sun
 interface Mappable<T, U> {
-    method map(f: (const ref T) => U) U;
+  method map(f: (const ref T) => U) U;
 }
 
 class Value<T> implements Mappable<T, T> {
-    var data: T;
+  var data: T;
 
-    init(d: T) {
-        this.data = d;
-    }
+  init(d: T) {
+    this.data = d;
+  }
 
-    method map(f: (const ref T) => T) T {
-        return f(this.data);
-    }
+  method map(f: (const ref T) => T) T {
+    return f(this.data);
+  }
 }
 ```
 
@@ -315,13 +315,13 @@ signature:
 
 ```sun
 interface ISink {
-    public method accept(cb: <'this>(i32) => i32) void;
+  public method accept(cb: <'this>(i32) => i32) void;
 }
 
 class Holder implements ISink {
-    var cb: <'_>(i32) => i32;
-    /* must say <'this> here too - a plain <'_> is rejected */
-    public method accept(cb: <'this>(i32) => i32) void { this.cb = cb; }
+  var cb: <'_>(i32) => i32;
+  /* must say <'this> here too - a plain <'_> is rejected */
+  public method accept(cb: <'this>(i32) => i32) void { this.cb = cb; }
 }
 ```
 
@@ -335,27 +335,27 @@ Classes can implement multiple interfaces:
 
 ```sun
 interface Runnable {
-    method run() void;
+  method run() void;
 }
 
 interface Stoppable {
-    method stop() void;
+  method stop() void;
 }
 
 class Service implements Runnable, Stoppable {
-    var running: bool;
+  var running: bool;
 
-    init() {
-        this.running = false;
-    }
+  init() {
+    this.running = false;
+  }
 
-    method run() void {
-        this.running = true;
-    }
+  method run() void {
+    this.running = true;
+  }
 
-    method stop() void {
-        this.running = false;
-    }
+  method stop() void {
+    this.running = false;
+  }
 }
 ```
 
@@ -375,22 +375,22 @@ using std;
 
 // Implementing IIterator (self-iterating pattern)
 class NumberIterator implements IIterator<i32, NumberIterator> {
-    var current: i32;
-    var max: i32;
+  var current: i32;
+  var max: i32;
 
-    init(start: i32, end: i32) {
-        this.current = start;
-        this.max = end;
-    }
+  init(start: i32, end: i32) {
+    this.current = start;
+    this.max = end;
+  }
 
-    method next(self: ref NumberIterator) Option<i32> {
-        if (this.current >= this.max) {
-            return Option.None;
-        }
-        var result = this.current;
-        this.current = this.current + 1;
-        return Option.Some(result);
+  method next(self: ref NumberIterator) Option<i32> {
+    if (this.current >= this.max) {
+      return Option.None;
     }
+    var result = this.current;
+    this.current = this.current + 1;
+    return Option.Some(result);
+  }
 }
 ```
 

@@ -9,7 +9,7 @@ There are no result wrappers or prefix `try` expressions.
 
 ```sun
 /** Groups failures from storage operations. */
-exception StorageFailure {}
+exception StorageFailure { }
 
 /** Carries the failing device's numeric status. */
 exception DeviceFailure extends StorageFailure {
@@ -19,7 +19,7 @@ exception DeviceFailure extends StorageFailure {
 /** Returns a value or propagates a bounded exception. */
 function read_value(ready: bool) i32 throws {
   if (not ready) {
-    var error: DeviceFailure = {code: 7};
+    var error: DeviceFailure = { code: 7 };
     throw error;
   }
   return 42;

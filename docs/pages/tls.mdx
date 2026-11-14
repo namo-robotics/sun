@@ -16,22 +16,21 @@ flags and no OpenSSL installed on the machine it runs on.
 
 ```sun
 using std.io;
-
 using std;
 using tls;
 
 /** Fetches a page and reports either error category. */
 function main() i32 throws {
-    var client = HttpsClient(global_allocator);
-    var host = String(global_allocator, "example.com");
-    var response = client.get(host, "/");
-    println(response.status);
-    println(response.body);
-    return 0;
+  var client = HttpsClient(global_allocator);
+  var host = String(global_allocator, "example.com");
+  var response = client.get(host, "/");
+  println(response.status);
+  println(response.body);
+  return 0;
 }
 
 manifest {
-    libraries: ["stdlib.moon", "tls.moon"]
+  libraries: ["stdlib.moon", "tls.moon"]
 }
 ```
 
@@ -88,9 +87,9 @@ The response carries the status, the raw header block, and the decoded body:
 
 ```sun
 public class HttpClientResponse {
-    public var status: i32;
-    public var headers: String;
-    public var body: String;
+  public var status: i32;
+  public var headers: String;
+  public var body: String;
 }
 ```
 
@@ -110,11 +109,11 @@ same shape as `TcpStream`, with the handshake done in `connect`.
 
 ```sun
 var stream = TlsStream();
- stream.connect(host, 443);
- stream.send_str("PING\r\n");
+stream.connect(host, 443);
+stream.send_str("PING\r\n");
 
-var buf =  ContiguousBuffer<u8>(alloc, 4096);
-var n =  stream.recv(buf);   // 0 once the peer closes
+var buf = ContiguousBuffer<u8>(alloc, 4096);
+var n = stream.recv(buf);  // 0 once the peer closes
 stream.close();
 ```
 
@@ -136,14 +135,14 @@ it does not run the handshake or wait for network traffic.
 using std.net;
 
 var context = TlsServerContext();
-var cert =  String("cert.pem");
-var key =  String("key.pem");
- context.load(cert, key);
+var cert = String("cert.pem");
+var key = String("key.pem");
+context.load(cert, key);
 
 var listener = TcpListener();
- listener.bind_port(8443);
- listener.listen(128);
-var stream =  context.accept( listener.accept());
+listener.bind_port(8443);
+listener.listen(128);
+var stream = context.accept(listener.accept());
 ```
 
 Setup returns ordinary values and may throw transport or TLS exceptions.
@@ -181,7 +180,7 @@ The optional third argument to `load` is a static, length-prefixed ALPN list,
 in server preference order:
 
 ```sun
- context.load(cert, key, "\x02h2\x08http/1.1");
+context.load(cert, key, "\x02h2\x08http/1.1");
 ```
 
 Each length byte must be nonzero and followed by exactly that many protocol
@@ -200,13 +199,12 @@ can use it too:
 
 ```sun
 using std.net;
-
 using std;
 
 var stream = TcpStream();
- stream.connect_host(host, 8080);          // resolve, then connect
+stream.connect_host(host, 8080);  // resolve, then connect
 
-var ip: i32 =  resolve_host_ipv4(host);    // first A record, network order
+var ip: i32 = resolve_host_ipv4(host);  // first A record, network order
 ```
 
 Both throw `std.Error` if the name does not resolve or has no IPv4 address. IPv6 is not
@@ -264,16 +262,16 @@ the set matching the compilation target:
 
 ```sun
 manifest {
-    source_files: ["openssl.sun", "tls_stream.sun", "tls_server.sun", "tls_socket.sun", "https_client.sun"]
-    libraries: ["stdlib.moon"]
-    target: {
-        linux: {
-            archives: ["$OPENSSL_LIBS_LINUX/libssl.a", "$OPENSSL_LIBS_LINUX/libcrypto.a"]
-        }
-        macos: {
-            archives: ["$OPENSSL_LIBS_MACOS/libssl.a", "$OPENSSL_LIBS_MACOS/libcrypto.a"]
-        }
+  source_files: ["openssl.sun", "tls_stream.sun", "tls_server.sun", "tls_socket.sun", "https_client.sun"]
+  libraries: ["stdlib.moon"]
+  target: {
+    linux: {
+      archives: ["$OPENSSL_LIBS_LINUX/libssl.a", "$OPENSSL_LIBS_LINUX/libcrypto.a"]
     }
+    macos: {
+      archives: ["$OPENSSL_LIBS_MACOS/libssl.a", "$OPENSSL_LIBS_MACOS/libcrypto.a"]
+    }
+  }
 }
 ```
 

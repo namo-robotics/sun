@@ -23,15 +23,15 @@ These intrinsics require a type parameter `<T>`.
 Returns the byte size of type `T` as `i64`.
 
 ```sun
-var size = _sizeof<i32>();   // 4
+var size = _sizeof<i32>();  // 4
 var size2 = _sizeof<i64>();  // 8
 
 /** Two coordinates stored inline. */
 class Point {
-    var x: f64;
-    var y: f64;
-    /** Initializes both coordinates. */
-    init(x: f64, y: f64) { this.x = x; this.y = y; }
+  var x: f64;
+  var y: f64;
+  /** Initializes both coordinates. */
+  init(x: f64, y: f64) { this.x = x; this.y = y; }
 }
 var pointSize = _sizeof<Point>();  // 16 (two 8-byte floats)
 ```
@@ -82,7 +82,7 @@ container can call it on every element without asking what `T` is.
 ```sun
 // Release element i, then reuse its slot
 unsafe {
-    _deinit<T>(_ptr_offset(this.data, i * _sizeof<T>()));
+  _deinit<T>(_ptr_offset(this.data, i * _sizeof<T>()));
 };
 ```
 
@@ -96,10 +96,10 @@ colon of an `args...` pack in a parameter list, never as a type of its own:
 
 ```sun
 function make<T>(args...: _params_of<T>) raw_ptr<T> {
-    var size: i64 = _sizeof<T>();
-    var memory: raw_ptr<u8> = unsafe { _aligned_malloc<T>(size); };
-    unsafe { _init<T>(memory, args...); };
-    return memory;
+  var size: i64 = _sizeof<T>();
+  var memory: raw_ptr<u8> = unsafe { _aligned_malloc<T>(size); };
+  unsafe { _init<T>(memory, args...); };
+  return memory;
 }
 ```
 
@@ -117,9 +117,8 @@ but unlike it, it is a type in its own right and goes wherever a type
 annotation goes. `F` must be a lambda or a function type.
 
 ```sun
-public function spawn<F: _Callable>(fn: F, args...: _params_of<F>)
-    Thread<_return_type_of<F>> {
-    return Thread<_return_type_of<F>>(unsafe { _spawn<F>(fn, args...); });
+public function spawn<F: _Callable>(fn: F, args...: _params_of<F>) Thread<_return_type_of<F>> {
+  return Thread<_return_type_of<F>>(unsafe { _spawn<F>(fn, args...); });
 }
 ```
 
@@ -189,10 +188,10 @@ Compile-time type check that returns `true` or `false` based on whether the type
 
 ```sun
 function example(x: i32, y: f64) void {
-    _is<i32>(x);      // true - exact type match
-    _is<i64>(x);      // false - i32 is not i64
-    _is<_Integer>(x); // true - i32 is an integer
-    _is<_Float>(y);   // true - f64 is a float
+  _is<i32>(x);  // true - exact type match
+  _is<i64>(x);  // false - i32 is not i64
+  _is<_Integer>(x);  // true - i32 is an integer
+  _is<_Float>(y);  // true - f64 is a float
 }
 ```
 
@@ -218,21 +217,21 @@ Type traits are pseudo-types that categorize primitives:
 
 ```sun
 function processValue<T>(x: T) i32 {
-    if (_is<_Integer>(x)) {
-        // Integer-specific logic
-        return 1;
-    }
-    if (_is<_Float>(x)) {
-        // Float-specific logic
-        return 2;
-    }
-    return 0;
+  if (_is<_Integer>(x)) {
+    // Integer-specific logic
+    return 1;
+  }
+  if (_is<_Float>(x)) {
+    // Float-specific logic
+    return 2;
+  }
+  return 0;
 }
 
 function main() i32 {
-    var a = processValue<i32>(42);    // Returns 1
-    var b = processValue<f64>(3.14);  // Returns 2
-    return a + b;  // 3
+  var a = processValue<i32>(42);  // Returns 1
+  var b = processValue<f64>(3.14);  // Returns 2
+  return a + b;  // 3
 }
 ```
 
@@ -244,15 +243,15 @@ For class types, `_is<T>` can check interface implementation:
 
 ```sun
 interface IHashable {
-    method hash() i64;
+  method hash() i64;
 }
 
 class MyKey implements IHashable {
-    method hash() i64 { return 42; }
+  method hash() i64 { return 42; }
 }
 
 function example(key: MyKey) bool {
-    return _is<IHashable>(key);  // true
+  return _is<IHashable>(key);  // true
 }
 ```
 
@@ -266,9 +265,9 @@ narrow an integer — an assignment never does it on its own.
 
 ```sun
 var ms: i64 = 200;
-var t: i32 = _convert<i32>(ms);     // 200
-var f: f64 = _convert<f64>(t);      // 200.0
-var b: u8 = _convert<u8>(300);      // 44 — the high bits are dropped
+var t: i32 = _convert<i32>(ms);  // 200
+var f: f64 = _convert<f64>(t);  // 200.0
+var b: u8 = _convert<u8>(300);  // 44 — the high bits are dropped
 ```
 
 Use the stdlib's `safe_convert<T>(value)` when the value may not fit; it returns
@@ -294,7 +293,7 @@ size — `f32` ↔ `u32`/`i32`, `f64` ↔ `u64`/`i64`. The sizes must match, whi
 checked at compile time. Used by binary wire formats to read and write floats.
 
 ```sun
-var bits: u64 = _bitcast<u64>(1.0);   // 0x3FF0000000000000
+var bits: u64 = _bitcast<u64>(1.0);  // 0x3FF0000000000000
 var back: f64 = _bitcast<f64>(bits);  // 1.0
 ```
 
@@ -307,14 +306,14 @@ header:
 extern "C" function c_send(fd: i32, buf: raw_ptr<u8>, n: i64, flags: i32) i64 as "send";
 
 packed_class Header {
-    var kind: u16;
-    var length: u16;
-    init(k: u16, n: u16) { this.kind = k; this.length = n; }
+  var kind: u16;
+  var length: u16;
+  init(k: u16, n: u16) { this.kind = k; this.length = n; }
 }
 
 function send_header(fd: i32, h: ref Header) i64 {
-    var bytes = _bitcast<raw_ptr<u8>>(_address_of<Header>(h));
-    unsafe { return c_send(fd, bytes, _sizeof<Header>(), 0); };
+  var bytes = _bitcast<raw_ptr<u8>>(_address_of<Header>(h));
+  unsafe { return c_send(fd, bytes, _sizeof<Header>(), 0); };
 }
 ```
 
@@ -361,8 +360,8 @@ and destination regions not to overlap.
 ```sun
 // Grow a buffer: move the old bytes across, then zero the new tail
 unsafe {
-    _memcpy(newData, oldData, this.len * _sizeof<T>());
-    _memset(_ptr_offset(newData, this.len * _sizeof<T>()), 0, added);
+  _memcpy(newData, oldData, this.len * _sizeof<T>());
+  _memset(_ptr_offset(newData, this.len * _sizeof<T>()), 0, added);
 };
 ```
 
@@ -405,7 +404,7 @@ must stay valid for as long as the reference is used.
 var x: i32 = 1;
 var p: raw_ptr<i32> = _address_of<i32>(x);
 var r: ref i32 = unsafe { _to_ref<i32>(p); };
-r = 2;   // x is now 2
+r = 2;  // x is now 2
 ```
 
 ### `_load_i64(ptr, index)`
@@ -456,7 +455,7 @@ scalar value, so one call may write between one and four bytes (see
 [Characters and Bytes](/builtin-types#characters-and-bytes)).
 
 ```sun
-_print_char('é');   // writes two bytes
+_print_char('é');  // writes two bytes
 ```
 
 ### `_print_bytes(ptr, len)`
@@ -518,7 +517,7 @@ exchange succeeded when the return value equals `expected`.
 ```sun
 var state: i32 = 0;
 var old = unsafe {
-    _atomic_cmpxchg_i32(_address_of<i32>(state), 0, 1);
+  _atomic_cmpxchg_i32(_address_of<i32>(state), 0, 1);
 };
 ```
 
@@ -538,7 +537,7 @@ Loads the value with acquire ordering.
 
 ```sun
 var current = unsafe {
-    _atomic_load_u64(_address_of<u64>(sequence));
+  _atomic_load_u64(_address_of<u64>(sequence));
 };
 ```
 
@@ -552,7 +551,7 @@ the cleanup.
 ```sun
 var delta: u64 = 1;
 var before = unsafe {
-    _atomic_fetch_add_u64(_address_of<u64>(sequence), delta);
+  _atomic_fetch_add_u64(_address_of<u64>(sequence), delta);
 };
 ```
 
@@ -590,7 +589,7 @@ var hi: u64 = _mul_hi_u64(a, b);
 Number of leading / trailing zero bits in a `u64`; both return 64 for 0.
 
 ```sun
-var bits: u64 = 64 - _ctlz_u64(x);   // bit length of x
+var bits: u64 = 64 - _ctlz_u64(x);  // bit length of x
 ```
 
 ### `_bswap_u16(x)` / `_bswap_u32(x)` / `_bswap_u64(x)`
@@ -599,7 +598,7 @@ The value with its bytes in the opposite order. Each lowers to a single
 instruction on every target Sun supports.
 
 ```sun
-var swapped: u32 = _bswap_u32(305419896);   // 0x12345678 -> 0x78563412
+var swapped: u32 = _bswap_u32(305419896);  // 0x12345678 -> 0x78563412
 ```
 
 Most code should reach for
@@ -624,7 +623,7 @@ call C symbols the other systems' libraries lack:
 var CLOCK_MONOTONIC: i32 = _target_is("macos") ? 6 : 1;
 
 if (_target_is("macos")) {
-    // only ever compiled into macOS binaries
+  // only ever compiled into macOS binaries
 }
 ```
 
@@ -736,9 +735,8 @@ in host order, both directions:
 
 ```sun
 using std.net;
-
-var fd: i32 = unsafe { __socket(2, 1, 0); };            // AF_INET, SOCK_STREAM
-var rc: i32 = unsafe { __bind_ipv4(fd, 0, 8080); };     // 0.0.0.0:8080
+var fd: i32 = unsafe { __socket(2, 1, 0); };  // AF_INET, SOCK_STREAM
+var rc: i32 = unsafe { __bind_ipv4(fd, 0, 8080); };  // 0.0.0.0:8080
 unsafe { __listen(fd, 16); };
 var client: i32 = unsafe { __accept_fd(fd); };
 ```

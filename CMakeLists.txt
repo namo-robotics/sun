@@ -82,6 +82,9 @@ option(SUN_BUNDLED_PROTOBUF
        ON)
 if(SUN_BUNDLED_PROTOBUF)
     include(FetchContent)
+    if(POLICY CMP0135)
+        cmake_policy(SET CMP0135 NEW)
+    endif()
     set(protobuf_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(protobuf_INSTALL OFF CACHE BOOL "" FORCE)
     set(protobuf_WITH_ZLIB OFF CACHE BOOL "" FORCE)
@@ -91,12 +94,20 @@ if(SUN_BUNDLED_PROTOBUF)
     FetchContent_Declare(protobuf
         URL https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protobuf-cpp-3.21.12.tar.gz
         URL_HASH SHA256=4eab9b524aa5913c6fffb20b2a8abf5ef7f95a80bc0701f3a6dbb4c607f73460
+        # Populate without configuring; patches must run first, even offline.
+        SOURCE_SUBDIR _sun_patch_before_configure
     )
     # protobuf 3.21 predates C++20 cleanups; build it as C++17 (the standard
     # Ubuntu builds it with). The ABI is unaffected.
     set(SUN_SAVED_CXX_STANDARD ${CMAKE_CXX_STANDARD})
     set(CMAKE_CXX_STANDARD 17)
     FetchContent_MakeAvailable(protobuf)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        ${CMAKE_CURRENT_SOURCE_DIR}/cmake/PatchProtobuf.cmake)
+    execute_process(COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${protobuf_SOURCE_DIR}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/PatchProtobuf.cmake
+        COMMAND_ERROR_IS_FATAL ANY)
+    add_subdirectory("${protobuf_SOURCE_DIR}" "${protobuf_BINARY_DIR}")
     set(CMAKE_CXX_STANDARD ${SUN_SAVED_CXX_STANDARD})
     message(STATUS "Using bundled protobuf 3.21.12 (static)")
 else()

@@ -9,7 +9,7 @@ wrapper layer, no marshalling cost beyond what the C ABI itself requires.
 extern "C" function abs(x: i32) i32;
 
 function main() i32 {
-    unsafe { return abs(-42); };
+  unsafe { return abs(-42); };
 }
 ```
 
@@ -26,7 +26,7 @@ function main() i32 {
 The ABI string is optional and only `"C"` is supported:
 
 ```sun
-extern function puts(s: raw_ptr<u8>) i32;        // same as extern "C"
+extern function puts(s: raw_ptr<u8>) i32;  // same as extern "C"
 extern "C" function puts(s: raw_ptr<u8>) i32;
 ```
 
@@ -38,7 +38,7 @@ and may live inside a module:
 
 ```sun
 public module libc {
-    public extern "C" function abs(x: i32) i32;
+  public extern "C" function abs(x: i32) i32;
 }
 using libc;
 ```
@@ -52,7 +52,7 @@ no initializer, and may be public or private like any other module item:
 public extern "C" var c_environ: raw_ptr<raw_ptr<u8>> as "environ";
 
 function first_entry() raw_ptr<u8> {
-    unsafe { return _load<raw_ptr<u8>>(c_environ, 0); };
+  unsafe { return _load<raw_ptr<u8>>(c_environ, 0); };
 }
 ```
 
@@ -115,9 +115,9 @@ type:
 extern "C" function c_setsockopt(fd: i32, level: i32, opt: i32, val: raw_ptr<u8>, len: i32) i32 as "setsockopt";
 
 function set_reuse_addr(fd: i32) i32 {
-    var on: i32 = 1;
-    var p = _bitcast<raw_ptr<u8>>(_address_of<i32>(on));
-    unsafe { return c_setsockopt(fd, 1, 2, p, 4); };
+  var on: i32 = 1;
+  var p = _bitcast<raw_ptr<u8>>(_address_of<i32>(on));
+  unsafe { return c_setsockopt(fd, 1, 2, p, 4); };
 }
 ```
 
@@ -134,15 +134,11 @@ int call_callback(callback_t callback, int value);
 ```
 
 ```sun
-extern "C" function call_callback(
-    callback: function (i32) i32,
-    value: i32
-) i32;
-
+extern "C" function call_callback(callback: function (i32) i32, value: i32) i32;
 function double(value: i32) i32 { return value * 2; }
 
 function main() i32 {
-    unsafe { return call_callback(double, 21); };
+  unsafe { return call_callback(double, 21); };
 }
 ```
 
@@ -172,8 +168,8 @@ the concrete pointer explicitly inside `unsafe` code:
 
 ```sun
 extern "C" function register_callback(
-    callback: function (raw_ptr<u8>, i32) void,
-    userdata: raw_ptr<u8>
+  callback: function (raw_ptr<u8>, i32) void,
+  userdata: raw_ptr<u8>
 ) void;
 ```
 
@@ -191,7 +187,7 @@ where a `raw_ptr<u8>` is expected narrows it to the data pointer automatically:
 extern "C" function strlen(s: raw_ptr<u8>) i64;
 
 function main() i32 {
-    unsafe { return strlen("hello"); };   // 5
+  unsafe { return strlen("hello"); };  // 5
 }
 ```
 
@@ -203,9 +199,9 @@ function wants the pointer and the length separately, take them apart with
 extern "C" function write(fd: i32, buf: raw_ptr<u8>, n: i64) i64;
 
 function main() i32 {
-    var s: static_ptr<u8> = "hello\n";
-    unsafe { write(1, s.raw(), s.length()); };
-    return 0;
+  var s: static_ptr<u8> = "hello\n";
+  unsafe { write(1, s.raw(), s.length()); };
+  return 0;
 }
 ```
 
@@ -220,16 +216,16 @@ void fill(struct TS* t);
 
 ```sun
 class TS {
-    var sec: i64;
-    var nsec: i64;
+  var sec: i64;
+  var nsec: i64;
 }
 
 extern "C" function fill(t: ref TS) void;
 
 function main() i32 {
-    var t: TS = { sec: 0, nsec: 0 };
-    unsafe { fill(t); };
-    return t.sec + t.nsec;
+  var t: TS = { sec: 0, nsec: 0 };
+  unsafe { fill(t); };
+  return t.sec + t.nsec;
 }
 ```
 
@@ -245,8 +241,8 @@ extern "C" function take_pair(p: Pair) i32;
 extern "C" function make_pair(a: i32, b: i32) Pair;
 
 function main() i32 {
-    var p: Pair = { a: 3, b: 7 };
-    unsafe { return take_pair(p); };
+  var p: Pair = { a: 3, b: 7 };
+  unsafe { return take_pair(p); };
 }
 ```
 
@@ -266,7 +262,7 @@ not.
 extern "C" function poll(fds: raw_ptr<u8>, nfds: i64, timeout: i32) i32;
 
 function wait_for(fds: raw_ptr<u8>, interval_ms: i64) i32 {
-    unsafe { return poll(fds, 1, _convert<i32>(interval_ms)); };
+  unsafe { return poll(fds, 1, _convert<i32>(interval_ms)); };
 }
 ```
 
@@ -281,8 +277,8 @@ pointer:
 extern "C" function printf(fmt: raw_ptr<u8>, ...) i32;
 
 function main() i32 {
-    unsafe { printf("%d and %s\n", 42, "text"); };
-    return 0;
+  unsafe { printf("%d and %s\n", 42, "text"); };
+  return 0;
 }
 ```
 
@@ -320,12 +316,12 @@ of the program a safe API:
 extern "C" function abs(x: i32) i32;
 
 function absolute(x: i32) i32 {
-    var r = 0;
-    unsafe { r = abs(x); };
-    return r;
+  var r = 0;
+  unsafe { r = abs(x); };
+  return r;
 }
 
-function main() i32 { return absolute(-5); }   // no unsafe needed here
+function main() i32 { return absolute(-5); }  // no unsafe needed here
 ```
 
 Externs can be declared in a `.moon` library, so a wrapper module can be
@@ -338,14 +334,14 @@ library can wrap a C function without exporting it:
 
 ```sun
 public module wrap {
-    // Private: importers get the wrapper, not the raw call.
-    extern "C" function c_getenv(name: raw_ptr<u8>) raw_ptr<u8> as "getenv";
+  // Private: importers get the wrapper, not the raw call.
+  extern "C" function c_getenv(name: raw_ptr<u8>) raw_ptr<u8> as "getenv";
 
-    public function lookup(alloc: ref HeapAllocator, name: raw_ptr<u8>) Option<String> {
-        var value = unsafe { c_getenv(name); };
-        if (value == null) { return Option.None; }
-        return Option.Some(from_c_str(alloc, value));
-    }
+  public function lookup(alloc: ref HeapAllocator, name: raw_ptr<u8>) Option<String> {
+    var value = unsafe { c_getenv(name); };
+    if (value == null) { return Option.None; }
+    return Option.Some(from_c_str(alloc, value));
+  }
 }
 ```
 
@@ -368,8 +364,8 @@ in its manifest:
 
 ```sun
 manifest {
-    source_files: ["mylib.sun"]
-    archives: ["$VENDOR/libfoo.a"]
+  source_files: ["mylib.sun"]
+  archives: ["$VENDOR/libfoo.a"]
 }
 ```
 
@@ -483,7 +479,7 @@ yourself or configure Sun to run it before compilation:
 
 ```sun
 manifest {
-    source_files: ["bindings/sensor.sun"]
+  source_files: ["bindings/sensor.sun"]
 }
 ```
 
@@ -588,9 +584,9 @@ an external interface requires gaps between fields:
 ```sun
 /** Describes registers separated by reserved bytes. */
 class Registers {
-    var status: u32;
-    var reserved: array<u8, 12>;
-    var control: u32;
+  var status: u32;
+  var reserved: array<u8, 12>;
+  var control: u32;
 }
 
 _assert_c_layout<Registers>(20, 4, 0, 4, 16);

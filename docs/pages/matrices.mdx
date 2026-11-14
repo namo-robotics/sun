@@ -10,7 +10,7 @@ Include `stdlib.moon` in your manifest:
 
 ```sun
 manifest {
-    libraries: ["stdlib.moon"]
+  libraries: ["stdlib.moon"]
 }
 ```
 
@@ -20,25 +20,23 @@ Use `Matrix<T>(allocator, shape)` to create a matrix with the specified dimensio
 
 ```sun
 using std.linalg;
-
 using std;
 
 function main() i32 throws {
+  // 1D array (vector) of 10 elements
+  var v = Matrix<i32>(global_allocator, [10]);
 
-    // 1D array (vector) of 10 elements
-    var v =  Matrix<i32>(global_allocator, [10]);
+  // 2D matrix (3x4)
+  var m = Matrix<i32>(global_allocator, [3, 4]);
 
-    // 2D matrix (3x4)
-    var m =  Matrix<i32>(global_allocator, [3, 4]);
+  // 3D tensor (2x3x4)
+  var t = Matrix<f64>(global_allocator, [2, 3, 4]);
 
-    // 3D tensor (2x3x4)
-    var t =  Matrix<f64>(global_allocator, [2, 3, 4]);
-
-    return 0;
+  return 0;
 }
 
 manifest {
-    libraries: ["stdlib.moon"]
+  libraries: ["stdlib.moon"]
 }
 ```
 
@@ -47,8 +45,7 @@ second. The matrix infers all dimensions and owns independent storage:
 
 ```sun
 using std.linalg;
-
-var m =  Matrix<f32>([[1.0f32, 2.0f32], [3.0f32, 4.0f32]], allocator);
+var m = Matrix<f32>([[1.0f32, 2.0f32], [3.0f32, 4.0f32]], allocator);
 var value = m[1, 0];  // 3.0f32
 ```
 
@@ -63,25 +60,24 @@ Access elements using comma-separated indices in brackets:
 
 ```sun
 using std.linalg;
-
 using std;
 
 function main() i32 throws {
-    var m =  Matrix<i32>(global_allocator, [3, 3]);
+  var m = Matrix<i32>(global_allocator, [3, 3]);
 
-    // Assignment
-    m[0, 0] = 1;
-    m[1, 1] = 5;
-    m[2, 2] = 9;
+  // Assignment
+  m[0, 0] = 1;
+  m[1, 1] = 5;
+  m[2, 2] = 9;
 
-    // Reading
-    var diag = m[0, 0] + m[1, 1] + m[2, 2];  // 15
+  // Reading
+  var diag = m[0, 0] + m[1, 1] + m[2, 2];  // 15
 
-    return diag;
+  return diag;
 }
 
 manifest {
-    libraries: ["stdlib.moon"]
+  libraries: ["stdlib.moon"]
 }
 ```
 
@@ -89,17 +85,14 @@ For 1D matrices:
 
 ```sun
 using std.linalg;
-
 using std;
 
 function main() i32 throws {
-    var arr =  Matrix<i32>(global_allocator, [5]);
-
-    arr[0] = 10;
-    arr[1] = 20;
-    arr[2] = 30;
-
-    return arr[0] + arr[1] + arr[2];  // 60
+  var arr = Matrix<i32>(global_allocator, [5]);
+  arr[0] = 10;
+  arr[1] = 20;
+  arr[2] = 30;
+  return arr[0] + arr[1] + arr[2];  // 60
 }
 ```
 
@@ -110,8 +103,8 @@ function main() i32 throws {
 Direct method access (equivalent to bracket syntax):
 
 ```sun
-var val = m.get([i, j]);     // Same as m[i, j]
-m.set([i, j], value);        // Same as m[i, j] = value
+var val = m.get([i, j]);  // Same as m[i, j]
+m.set([i, j], value);  // Same as m[i, j] = value
 ```
 
 ### `dim(i)`
@@ -124,12 +117,12 @@ using std.linalg;
 using std.io;
 
 function main() void throws {
-    var m =  Matrix<i32>(global_allocator, [3, 4]);
+  var m = Matrix<i32>(global_allocator, [3, 4]);
 
-    println(m.dim(0));  // 3
-    println(m.dim(1));  // 4
+  println(m.dim(0));  // 3
+  println(m.dim(1));  // 4
 
-    println(m.dim(0) * m.dim(1));  // 12
+  println(m.dim(0) * m.dim(1));  // 12
 }
 ```
 
@@ -141,9 +134,9 @@ Returns the total number of elements:
 using std.linalg;
 
 function main() void throws {
-    var m =  Matrix<i32>(global_allocator, [3, 4]);
+  var m = Matrix<i32>(global_allocator, [3, 4]);
 
-    std.io.println(m.size());  // 12
+  std.io.println(m.size());  // 12
 }
 ```
 
@@ -155,9 +148,9 @@ Returns the number of dimensions:
 using std.linalg;
 
 function main() void throws {
-    var t =  Matrix<f32>(global_allocator, [2, 3, 4]);
+  var t = Matrix<f32>(global_allocator, [2, 3, 4]);
 
-    std.io.println(t.ndims());  // 3
+  std.io.println(t.ndims());  // 3
 }
 ```
 
@@ -174,13 +167,12 @@ and points at the matrix's elements:
 using std.linalg;
 
 function main() i32 throws {
-    var m =  Matrix<i32>(global_allocator, [9]);
-    for (var i: i64 = 0; i < 9; i = i + 1) { m[i] = i; }
+  var m = Matrix<i32>(global_allocator, [9]);
+  for (var i: i64 = 0; i < 9; i = i + 1) { m[i] = i; }
 
-    // Elements 2, 3, 4 of m (shares memory with m)
-    var view = m[2:5];
-
-    return view[1] + view.dim(0);  // 3 + 3
+  // Elements 2, 3, 4 of m (shares memory with m)
+  var view = m[2:5];
+  return view[1] + view.dim(0);  // 3 + 3
 }
 ```
 
@@ -202,29 +194,28 @@ To make your own class indexable, implement `__index__` and `__setindex__`:
 ```sun
 /** Owns checked storage and exposes bracket indexing. */
 class MyArray {
-    var data: ContiguousBuffer<i32>;
+  var data: ContiguousBuffer<i32>;
 
-    /** Allocates storage that is freed when the array goes out of scope. */
-    init(global_allocator: ref HeapAllocator, size: i64) {
-        this.data =  ContiguousBuffer<i32>(global_allocator, size);
-    }
+  /** Allocates storage that is freed when the array goes out of scope. */
+  init(allocator: const ref HeapAllocator, size: i64) throws {
+    this.data = ContiguousBuffer<i32>(allocator, size);
+  }
 
-    /** Reads an element with bounds checking. */
-    method __index__(indices: const ref array<i64>) i32 {
-        return this.data[indices[0]];
-    }
+  /** Reads an element with bounds checking. */
+  method __index__(indices: const ref array<i64>) i32 throws {
+    return this.data[indices[0]];
+  }
 
-    /** Writes an element with bounds checking. */
-    method __setindex__(indices: const ref array<i64>, value: i32) void {
-        this.data[indices[0]] = value;
-    }
+  /** Writes an element with bounds checking. */
+  method __setindex__(indices: const ref array<i64>, value: i32) void throws {
+    this.data[indices[0]] = value;
+  }
 }
 
 function main() i32 throws {
-    var arr = MyArray(global_allocator, 10);
-
-    arr[0] = 42;      // Calls __setindex__
-    return arr[0];    // Calls __index__, returns 42
+  var arr = MyArray(global_allocator, 10);
+  arr[0] = 42;  // Calls __setindex__
+  return arr[0];  // Calls __index__, returns 42
 }
 ```
 
@@ -232,34 +223,32 @@ function main() i32 throws {
 
 ```sun
 using std.linalg;
-
 using std;
 
 function main() i32 throws {
+  // Create a 3x3 identity matrix
+  var identity = Matrix<i32>(global_allocator, [3, 3]);
 
-    // Create a 3x3 identity matrix
-    var identity =  Matrix<i32>(global_allocator, [3, 3]);
-
-    // Initialize to zero
-    for (var i: i64 = 0; i < 3; i = i + 1) {
-        for (var j: i64 = 0; j < 3; j = j + 1) {
-            identity[i, j] = 0;
-        }
+  // Initialize to zero
+  for (var i: i64 = 0; i < 3; i = i + 1) {
+    for (var j: i64 = 0; j < 3; j = j + 1) {
+      identity[i, j] = 0;
     }
+  }
 
-    // Set diagonal to 1
-    identity[0, 0] = 1;
-    identity[1, 1] = 1;
-    identity[2, 2] = 1;
+  // Set diagonal to 1
+  identity[0, 0] = 1;
+  identity[1, 1] = 1;
+  identity[2, 2] = 1;
 
-    // Sum the diagonal
-    var trace = identity[0, 0] + identity[1, 1] + identity[2, 2];
+  // Sum the diagonal
+  var trace = identity[0, 0] + identity[1, 1] + identity[2, 2];
 
-    return trace;  // 3
+  return trace;  // 3
 }
 
 manifest {
-    libraries: ["stdlib.moon"]
+  libraries: ["stdlib.moon"]
 }
 ```
 
@@ -269,20 +258,18 @@ manifest {
 
 ```sun
 using std.linalg;
-
 using std;
 
-function createMatrix() i32 {
-    var m =  Matrix<i32>(global_allocator, [100, 100]);
+function createMatrix() i32 throws {
+  var m = Matrix<i32>(global_allocator, [100, 100]);
+  m[50, 50] = 42;
+  return m[50, 50];
 
-    m[50, 50] = 42;
-    return m[50, 50];
-
-    // m is automatically freed here
+  // m is automatically freed here
 }
 
 manifest {
-    libraries: ["stdlib.moon"]
+  libraries: ["stdlib.moon"]
 }
 ```
 
@@ -307,25 +294,25 @@ using std.linalg;
 
 /** Demonstrates allocating multiplication and reusable output storage. */
 function multiply() void throws {
-    var a =  Matrix<f64>([[1.0, 2.0], [3.0, 4.0]], global_allocator);
-    var b =  Matrix<f64>([[5.0, 6.0], [7.0, 8.0]], global_allocator);
-    var product =  (a * b);
-
-    var output =  Matrix<f64>(global_allocator, [2, 2]);
-     a.matmul_into(b, output);  // output = a * b, without allocation
-     output.gemm(1.0, a, Transpose.None, b, Transpose.None, 1.0);
-    // output now contains twice a * b; product and both inputs are unchanged.
-    return;
+  var a = Matrix<f64>([[1.0, 2.0], [3.0, 4.0]], global_allocator);
+  var b = Matrix<f64>([[5.0, 6.0], [7.0, 8.0]], global_allocator);
+  var product = (a * b);
+  var output = Matrix<f64>(global_allocator, [2, 2]);
+  a.matmul_into(b, output);  // output = a * b, without allocation
+  output.gemm(1.0, a, Transpose.None, b, Transpose.None, 1.0);
+  // output now contains twice a * b; product and both inputs are unchanged.
+  return;
 }
 
 /** Converts a failed matrix operation into a nonzero exit status. */
 function main() i32 throws {
-    try { multiply();
-return 0; } catch (error: LinalgError) { return 1; }
+  try {
+    multiply();
+    return 0; } catch (error: LinalgError) { return 1; }
 }
 
 manifest {
-    libraries: ["stdlib.moon"]
+  libraries: ["stdlib.moon"]
 }
 ```
 
@@ -354,22 +341,23 @@ using std.linalg;
 
 /** Multiplies two matrices into caller-owned output storage. */
 function multiply() void throws {
-    var a =  Matrix<f64>([[1.0, 2.0], [3.0, 4.0]], global_allocator);
-    var b =  Matrix<f64>([[5.0, 6.0], [7.0, 8.0]], global_allocator);
-    var c =  Matrix<f64>(global_allocator, [2, 2]);
-     gemm<f64>(1.0, a, Transpose.None, b, Transpose.None, 0.0, c);
-    // c now contains [[19, 22], [43, 50]].
-    return;
+  var a = Matrix<f64>([[1.0, 2.0], [3.0, 4.0]], global_allocator);
+  var b = Matrix<f64>([[5.0, 6.0], [7.0, 8.0]], global_allocator);
+  var c = Matrix<f64>(global_allocator, [2, 2]);
+  gemm<f64>(1.0, a, Transpose.None, b, Transpose.None, 0.0, c);
+  // c now contains [[19, 22], [43, 50]].
+  return;
 }
 
 /** Converts a failed matrix operation into a nonzero exit status. */
 function main() i32 throws {
-    try { multiply();
-return 0; } catch (error: LinalgError) { return 1; }
+  try {
+    multiply();
+    return 0; } catch (error: LinalgError) { return 1; }
 }
 
 manifest {
-    libraries: ["stdlib.moon"]
+  libraries: ["stdlib.moon"]
 }
 ```
 

@@ -11,12 +11,12 @@ available throughout their module:
 using std.io;
 
 function add(a: i32, b: i32) i32 {
-    return a + b;
+  return a + b;
 }
 
 function main() i32 {
-    println(add(3, 4));  // 7
-    return 0;
+  println(add(3, 4));  // 7
+  return 0;
 }
 ```
 
@@ -35,14 +35,14 @@ trailing expression is not a return, and a body that can fall off the end is a
 compile error:
 
 ```sun
-function f() i32 { 42; }             // ❌ ERROR: can reach the end without a value
+function f() i32 { 42; }  // ❌ ERROR: can reach the end without a value
 
 function g(c: bool) i32 {
-    if (c) { return 1; }             // ❌ ERROR: falls through when c is false
+  if (c) { return 1; }  // ❌ ERROR: falls through when c is false
 }
 
 function h(c: bool) i32 {
-    if (c) { return 1; } else { return 2; }   // ✓ every path returns
+  if (c) { return 1; } else { return 2; }  // ✓ every path returns
 }
 ```
 
@@ -56,10 +56,10 @@ kind. See [Constant references](/memory-safety#constant-references).
 
 ```sun
 function total(v: const ref Vec<i32>) i32 {
-    var sum: i32 = 0;
-    var i: i64 = 0;
-    while (i < v.size()) { sum = sum + v[i]; i = i + 1; }
-    return sum;
+  var sum: i32 = 0;
+  var i: i64 = 0;
+  while (i < v.size()) { sum = sum + v[i]; i = i + 1; }
+  return sum;
 }
 ```
 
@@ -72,7 +72,7 @@ the argument count and the argument vector:
 function main() i32 { return 0; }
 
 function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
-    return argc;
+  return argc;
 }
 ```
 
@@ -106,15 +106,14 @@ a `Vec<String>`:
 
 ```sun
 using std.io;
-
 using std;
 using std.env;
 
 function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 throws {
-    var environment =  Env(global_allocator);
-    var cli = environment.args(argc, argv);
-    for (var arg: ref String in cli) { println(arg); }
-    return 0;
+  var environment = Env(global_allocator);
+  var cli = environment.args(argc, argv);
+  for (var arg: ref String in cli) { println(arg); }
+  return 0;
 }
 ```
 
@@ -128,18 +127,18 @@ type:
 function double(x: i32) i32 { return x * 2; }
 
 function apply(fn: function (i32) i32, value: i32) i32 {
-    return fn(value);
+  return fn(value);
 }
 
 function choose() function (i32) i32 {
-    return double;
+  return double;
 }
 
 /** Selects and invokes a function pointer. */
 function invoke_selected() i32 {
-    var callback: function (i32) i32 = double;
-    callback = choose();
-    return callback(21);
+  var callback: function (i32) i32 = double;
+  callback = choose();
+  return callback(21);
 }
 ```
 
@@ -181,9 +180,9 @@ Lambdas are anonymous functions written with a parameter list and fat arrow. No 
 using std.io;
 
 function main() i32 {
-    var square = (x: i32) => i32 { return x * x; };
-    println(square(5));  // 25
-    return 0;
+  var square = (x: i32) => i32 { return x * x; };
+  println(square(5));  // 25
+  return 0;
 }
 ```
 
@@ -192,12 +191,9 @@ names scope over its parameter and return types and over annotations in its
 body, just as they do for a named function:
 
 ```sun
-var store = <'a>(
-    cb: <'a>(i32) => i32,
-    dst: ref 'a Holder
-) => void {
-    dst.set(cb);
-    return;
+var store = <'a>(cb: <'a>(i32) => i32, dst: ref 'a Holder) => void {
+  dst.set(cb);
+  return;
 };
 ```
 
@@ -212,13 +208,13 @@ A lambda may use variables from its enclosing scope. By default they are **captu
 
 ```sun
 function main() i32 {
-    var count: i32 = 0;
-    var tick = [ref count]() => void {
-        count += 1;       // mutates the original
-    };
-    tick();
-    tick();
-    return count;         // 2
+  var count: i32 = 0;
+  var tick = [ref count]() => void {
+    count += 1;  // mutates the original
+  };
+  tick();
+  tick();
+  return count;  // 2
 }
 ```
 
@@ -226,11 +222,11 @@ A capture the lambda only reads is written `[const ref x]`. It borrows the varia
 
 ```sun
 function main() i32 {
-    var limit: i32 = 10;
-    var under = [const ref limit]() => bool {
-        return limit > 5;     // reading is fine; limit = 5 would not compile
-    };
-    return under() ? 1 : 0;
+  var limit: i32 = 10;
+  var under = [const ref limit]() => bool {
+    return limit > 5;  // reading is fine; limit = 5 would not compile
+  };
+  return under() ? 1 : 0;
 }
 ```
 
@@ -275,8 +271,8 @@ carries an environment in a stack frame and has the type
 
 ```sun
 function apply(cb: <'_>(i32) => i32, dst: ref Holder) i32 {
-    dst.bump();
-    return cb(1);      // cb may be called, but its lifetime is unrelated to dst
+  dst.bump();
+  return cb(1);  // cb may be called, but its lifetime is unrelated to dst
 }
 ```
 
@@ -309,13 +305,13 @@ the relationship explicitly:
 ```sun
 /* wire may keep cb inside dst, so both positions carry 'a */
 function wire<'a>(cb: <'a>(i32) => i32, dst: ref 'a Holder) void {
-    dst.set(cb);
+  dst.set(cb);
 }
 
 var h = Holder();
 if (true) {
-    var n = Node(1);
-    wire(n.onMsg, h);   // ❌ ERROR: n dies before h
+  var n = Node(1);
+  wire(n.onMsg, h);  // ❌ ERROR: n dies before h
 }
 ```
 
@@ -325,10 +321,10 @@ the parameter:
 
 ```sun
 class Holder {
-    var cb: <'_>(i32) => i32;
-    public method set(cb: <'this>(i32) => i32) void {
-        this.cb = cb;
-    }
+  var cb: <'_>(i32) => i32;
+  public method set(cb: <'this>(i32) => i32) void {
+    this.cb = cb;
+  }
 }
 ```
 
@@ -342,8 +338,8 @@ caller which input frame the result depends on:
 
 ```sun
 function pick<'a>(x: <'a>() => i32, y: <'a>() => i32, first: bool) <'a>() => i32 {
-    if (first) { return x; }
-    return y;
+  if (first) { return x; }
+  return y;
 }
 ```
 
@@ -366,13 +362,13 @@ println(double(5));  // 10
 
 // Pass a lambda as an argument
 function apply(fn: (i32) => i32, x: i32) i32 {
-    return fn(x);
+  return fn(x);
 }
 println(apply(double, 3));  // 6
 
 // Return a lambda from a function
 function makeAdder(n: i32) (i32) => i32 {
-    return (x: i32) => i32 { return x + n; };
+  return (x: i32) => i32 { return x + n; };
 }
 var add5 = makeAdder(5);
 println(add5(10));  // 15
@@ -384,24 +380,24 @@ Class methods are first-class values: `obj.method` (without parentheses) produce
 
 ```sun
 class Counter {
-    var count: i32;
-    init() { this.count = 0; }
-    method add(amount: i32) i32 {
-        this.count = this.count + amount;
-        return this.count;
-    }
+  var count: i32;
+  init() { this.count = 0; }
+  method add(amount: i32) i32 {
+    this.count = this.count + amount;
+    return this.count;
+  }
 }
 
 function apply(f: <'_>(i32) => i32, x: i32) i32 {
-    return f(x);
+  return f(x);
 }
 
 function main() i32 {
-    var c = Counter();
-    apply(c.add, 5);      // pass a method as a callback
-    var f = c.add;        // or store it in a variable
-    f(7);
-    return c.count;       // 12 — calls mutate the original object
+  var c = Counter();
+  apply(c.add, 5);  // pass a method as a callback
+  var f = c.add;  // or store it in a variable
+  f(7);
+  return c.count;  // 12 — calls mutate the original object
 }
 ```
 

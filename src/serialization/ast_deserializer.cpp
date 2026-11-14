@@ -50,28 +50,21 @@ template <typename Owner>
 std::vector<sun::ast::TypeParameter> ASTDeserializer::deserializeTypeParameters(
     const Owner& owner) const {
   std::vector<sun::ast::TypeParameter> params;
-  if (owner.type_params_size() > 0) {
-    params.reserve(owner.type_params_size());
-    for (const auto& tp : owner.type_params()) {
-      auto& parameter = params.emplace_back(tp.name());
-      if (!tp.has_constraint()) {
-        continue;
-      }
-
-      auto& constraint = parameter.constraint.emplace(tp.constraint());
-      for (const auto& argument : tp.constraint_arguments()) {
-        constraint.typeArguments.push_back(deserializeTypeAnnotation(argument));
-      }
-      if (tp.has_declaration_key()) {
-        constraint.declarationKey =
-            PortableDeclarationKey::fromString(tp.declaration_key());
-      }
+  params.reserve(owner.type_params_size());
+  for (const auto& tp : owner.type_params()) {
+    auto& parameter = params.emplace_back(tp.name());
+    if (!tp.has_constraint()) {
+      continue;
     }
-    return params;
-  }
-  params.reserve(owner.type_parameters_size());
-  for (const auto& name : owner.type_parameters()) {
-    params.emplace_back(name);
+
+    auto& constraint = parameter.constraint.emplace(tp.constraint());
+    for (const auto& argument : tp.constraint_arguments()) {
+      constraint.typeArguments.push_back(deserializeTypeAnnotation(argument));
+    }
+    if (tp.has_declaration_key()) {
+      constraint.declarationKey =
+          PortableDeclarationKey::fromString(tp.declaration_key());
+    }
   }
   return params;
 }
