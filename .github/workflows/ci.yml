@@ -727,7 +727,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             cmake \
-            llvm-20-dev libclang-20-dev \
+            clang-20 lld-20 llvm-20-dev libclang-20-dev \
             libarchive-dev \
             libzstd-dev \
             devscripts \
@@ -737,7 +737,7 @@ jobs:
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1.2.23
         with:
-          key: deb-gcc
+          key: deb-clang20
           max-size: 2G
 
       - name: Install CUDA toolkit without GPU drivers
@@ -900,10 +900,15 @@ jobs:
   test-install:
     needs: build-deb
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        ubuntu: ['24.04', '26.04']
     # A bare container, not the runner image: the runner ships gcc, libc6-dev
     # and libstdc++-dev already, so a missing Depends would go unnoticed there.
     # Here everything `sun -c` needs has to come from the package's own deps.
-    container: ubuntu:24.04
+    # Also link on a newer distribution so build-host LTO cannot escape unnoticed.
+    container: ubuntu:${{ matrix.ubuntu }}
 
     steps:
       - name: Download artifact
@@ -912,14 +917,18 @@ jobs:
           name: sun-deb-package-${{ env.BUILD_SHA }}
           path: dist/
 
-      - name: Install LLVM 20 runtime
+      - name: Prepare package dependencies
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends \
-            wget ca-certificates gnupg lsb-release software-properties-common
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          ./llvm.sh 20
+          apt-get install -y --no-install-recommends ca-certificates
+          # Ubuntu 26.04 supplies LLVM 20 through its own repositories.
+          if [ '${{ matrix.ubuntu }}' = '24.04' ]; then
+            apt-get install -y --no-install-recommends \
+              wget gnupg lsb-release software-properties-common
+            wget https://apt.llvm.org/llvm.sh
+            chmod +x llvm.sh
+            ./llvm.sh 20
+          fi
 
       - name: Install package
         run: |
@@ -966,6 +975,29 @@ jobs:
           # needs the separate musl toolchain tested in build-and-test.
           sun -c --dynamic -o test_aot test.sun
           ./test_aot
+          # Exercise the packaged exception runtime with the consumer's GCC.
+          cat > exception_test.sun << 'EOF'
+          /** Carries a value through native exception unwinding. */
+          exception Failure {
+              var code: i32;
+          }
+          /** Raises a value from a separate stack frame. */
+          function fail() void throws {
+              var error: Failure = { code: 42 };
+              throw error;
+          }
+          /** Verifies that the installed runtime preserves the thrown payload. */
+          function main() i32 {
+              try {
+                  fail();
+              } catch (error: Failure) {
+                  return error.code == 42 ? 0 : 1;
+              }
+              return 1;
+          }
+          EOF
+          sun -c --dynamic -o exception_aot exception_test.sun
+          ./exception_aot
           # TLS: tls.moon carries its own static OpenSSL, so this needs no
           # libssl installed and no linker flags.
           cat > tls_test.sun << 'EOF'

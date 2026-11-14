@@ -26,7 +26,7 @@ error() { echo -e "${RED}[build-deb]${NC} $1" >&2; }
 check_dependencies() {
     local missing=()
     
-    for cmd in dpkg-buildpackage debhelper cmake; do
+    for cmd in dpkg-buildpackage debhelper cmake clang-20 lld-20; do
         if ! command -v "$cmd" &> /dev/null && ! dpkg -s "$cmd" &> /dev/null 2>&1; then
             missing+=("$cmd")
         fi
@@ -34,7 +34,7 @@ check_dependencies() {
     
     if [ ${#missing[@]} -ne 0 ]; then
         error "Missing dependencies: ${missing[*]}"
-        log "Install with: sudo apt-get install -y devscripts debhelper build-essential cmake llvm-20-dev libclang-20-dev libzstd-dev nvidia-cuda-toolkit"
+        log "Install with: sudo apt-get install -y devscripts debhelper build-essential cmake clang-20 lld-20 llvm-20-dev libclang-20-dev libzstd-dev nvidia-cuda-toolkit"
         exit 1
     fi
 }
