@@ -7,10 +7,12 @@ on:
       - "v[0-9]*"
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, closed]
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # A merged PR's ref becomes main; keep its original group to cancel its runs.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -22,6 +24,8 @@ env:
 
 jobs:
   changes:
+    # Closing a PR only cancels its pending CI; it must not start another build.
+    if: github.event.action != 'closed'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
