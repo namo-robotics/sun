@@ -18,7 +18,7 @@ if(TARGET sun_exception_runtime)
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
     find_program(SUN_EXCEPTION_CLANG NAMES clang-20 clang HINTS ${LLVM_TOOLS_BINARY_DIR} REQUIRED)
     # Ask the backend for its IR triple; Darwin's driver triple can differ.
-    execute_process(COMMAND ${SUN_EXCEPTION_CLANG} -S -emit-llvm -x c /dev/null -o -
+    execute_process(COMMAND ${SUN_EXCEPTION_CLANG} -Werror -S -emit-llvm -x c /dev/null -o -
         OUTPUT_VARIABLE SUN_EXCEPTION_EMPTY_IR
         COMMAND_ERROR_IS_FATAL ANY)
     string(REGEX MATCH "target triple = \"([^\"]+)\"" SUN_EXCEPTION_TRIPLE_LINE
@@ -31,7 +31,7 @@ if(TARGET sun_exception_runtime)
     configure_file(fixtures/exceptions.ll.in ${SUN_EXCEPTION_FIXTURE} @ONLY)
     set(SUN_EXCEPTION_OBJECT ${CMAKE_CURRENT_BINARY_DIR}/exceptions_fixture.o)
     add_custom_command(OUTPUT ${SUN_EXCEPTION_OBJECT}
-        COMMAND ${SUN_EXCEPTION_CLANG} -x ir -c -fPIC -O2
+        COMMAND ${SUN_EXCEPTION_CLANG} -Werror -x ir -c -fPIC -O2
             ${SUN_EXCEPTION_FIXTURE} -o ${SUN_EXCEPTION_OBJECT}
         DEPENDS ${SUN_EXCEPTION_FIXTURE}
         COMMENT "Compiling native Sun exception runtime fixtures" VERBATIM)

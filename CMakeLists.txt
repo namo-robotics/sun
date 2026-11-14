@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.22)
 project(SunCompiler LANGUAGES C CXX)
 
+# Apply to every native target, including bundled dependencies and tests.
+add_compile_options(-Werror)
+
 include(CTest)  # Defines BUILD_TESTING before creating any test targets.
 
 # CUDA CI reuses the compiler and standard library from the Linux build.
