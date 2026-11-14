@@ -482,7 +482,10 @@ inline bool linkExecutable(const std::string& objectPath,
   }
 
   if (collectDebugSymbols && isDarwin && haveTool("dsymutil")) {
-    std::system(("dsymutil " + shellQuote(outputPath)).c_str());
+    if (std::system(("dsymutil " + shellQuote(outputPath)).c_str()) != 0) {
+      sun::support::logMessage("warning",
+                               "Could not collect debug symbols for " + outputPath);
+    }
   }
 
   return true;
