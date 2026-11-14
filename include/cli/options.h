@@ -52,6 +52,7 @@ struct SharedOptions {
 struct BuildRunOptions {
   std::string buildPackage;
   std::string buildEntrypoint;
+  bool buildAll = false;  // --all selects every enabled configured entrypoint
   SharedOptions shared;
   std::vector<std::string> inputFiles;
   std::string outputFile;                // -o <file>

@@ -300,12 +300,19 @@ int runConfigBuildCommand(const BuildRunOptions& options) {
     }
     const bool matched = !configs.empty();
     for (auto& config : configs) {
+      const auto defaults = sun::driver::defaultConfigEntrypoints(config);
       auto names = options.buildEntrypoint.empty()
-                       ? sun::driver::defaultConfigEntrypoints(config)
+                       ? defaults
                        : std::vector<std::string>{options.buildEntrypoint};
+      if (options.buildAll) {
+        names.clear();
+        for (const auto& entry : config.entrypoints) {
+          names.push_back(entry.name);
+        }
+      }
       sun::driver::buildConfigProducts(graph, config, names);
       if (options.buildEntrypoint.empty()) {
-        sun::driver::packageConfigProducts(graph, std::move(config), names);
+        sun::driver::packageConfigProducts(graph, std::move(config), defaults);
       }
     }
     if (!matched && (graph.skippedProjects.empty() ||
@@ -458,10 +465,17 @@ enum class ConfigAction { Build, Resolve, Describe, Install };
 static int runConfigCommand(const std::vector<std::string>& args,
                             ConfigAction action) {
   try {
-    bool dryRun = false, yes = false;
+    bool dryRun = false, yes = false, all = false;
     std::vector<std::string> compilerArgs;
     std::string package, entrypoint, configFile, dependency, field;
     for (size_t i = 0; i < args.size(); ++i) {
+      if (args[i] == "--all") {
+        if (action != ConfigAction::Build) {
+          sun::support::logAndThrowError("--all is only supported by sun build");
+        }
+        all = true;
+        continue;
+      }
       if (action == ConfigAction::Install && (args[i] == "--dry-run" || args[i] == "--yes")) {
         if (args[i] == "--dry-run") dryRun = true;
         else yes = true;
@@ -498,6 +512,9 @@ static int runConfigCommand(const std::vector<std::string>& args,
         compilerArgs.push_back(args[i]);
       }
     }
+    if (all && !entrypoint.empty()) {
+      sun::support::logAndThrowError("--all cannot be combined with --entrypoint");
+    }
     if (configFile.empty()) {
       auto directory = std::filesystem::current_path();
       for (;;) {
@@ -520,6 +537,7 @@ static int runConfigCommand(const std::vector<std::string>& args,
     }
     options.buildPackage = package;
     options.buildEntrypoint = entrypoint;
+    options.buildAll = all;
     applyBuildRunSettings(options);
     if (action == ConfigAction::Build) {
       return runConfigBuildCommand(options);

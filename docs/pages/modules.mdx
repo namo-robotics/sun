@@ -334,6 +334,7 @@ bundles, keep them beside the project or use `--lib-path`.
 
 ```sh
 sun build                         # Build exported products and their tests
+sun build --all                   # Also build internal tests, examples, and tools
 sun build --entrypoint viewer     # Build viewer and its prerequisites
 sun build --no-test               # Omit test binaries
 sun test sun-config.json
@@ -344,6 +345,8 @@ inputs. `requires` orders local products. It does not import them: the viewer's
 manifest still lists the libraries it uses. `package_id` identifies the project
 when another project depends on it. With a package ID, `sun build` selects
 exported products by default; unnamed projects default to all products.
+`--all` selects every enabled entrypoint without changing package exports. Use
+`--package` to limit it to one package. It cannot be combined with `--entrypoint`.
 
 Paths are relative to the declaring config. Sun discovers configs beside source
 files and in parent directories; `root: true` stops that upward search.
@@ -361,6 +364,8 @@ files and in parent directories; `root: true` stops that upward search.
 ```sh
 sun build
 sun build --package example/shapes
+sun build --all                    # Build all enabled entrypoints across projects
+sun build --package example/shapes --all
 sun build --package example/shapes --entrypoint viewer
 ```
 

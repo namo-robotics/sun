@@ -17,6 +17,7 @@ const char* const kUsageBody =
     "Commands:\n"
     "  build            Build the nearest sun-config.json and its projects\n"
     "                   --config <file> --package <id> --entrypoint <name>\n"
+    "                   --all builds every enabled entrypoint\n"
     "  resolve          Resolve --dependency <package-id> and print its root "
     "as JSON\n"
     "  dep install      Install dependencies (--dry-run previews changes)\n"
