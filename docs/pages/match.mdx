@@ -8,9 +8,9 @@ import { Callout } from 'nextra/components'
 
 ```sun
 match value {
-    pattern1 => result1,
-    pattern2 => result2,
-    _ => default_result
+  pattern1 => result1,
+  pattern2 => result2,
+  _ => default_result
 };
 ```
 
@@ -20,16 +20,16 @@ The `_` is a wildcard that matches any value not handled by previous arms.
 
 ```sun
 function describe(x: i32) i32 {
-    return match x {
-        1 => 100,
-        2 => 200,
-        3 => 300,
-        _ => 0
-    };
+  return match x {
+    1 => 100,
+    2 => 200,
+    3 => 300,
+    _ => 0
+  };
 }
 
 function main() i32 {
-    return describe(2);  // Returns 200
+  return describe(2);  // Returns 200
 }
 ```
 
@@ -39,13 +39,13 @@ Match is an expression, so it returns a value that can be used directly:
 
 ```sun
 function main() i32 {
-    var x = 2;
-    var result = match x {
-        1 => 10,
-        2 => 20,
-        _ => 0
-    };
-    return result;  // 20
+  var x = 2;
+  var result = match x {
+    1 => 10,
+    2 => 20,
+    _ => 0
+  };
+  return result;  // 20
 }
 ```
 
@@ -53,12 +53,13 @@ You can use match anywhere an expression is expected:
 
 ```sun
 function main() i32 {
-    var x = 1;
-    var y = 10 + match x {
-        1 => 5,
-        _ => 0
+  var x = 1;
+  var y = 10 +
+    match x {
+      1 => 5,
+      _ => 0
     };
-    return y;  // 15
+  return y;  // 15
 }
 ```
 
@@ -68,21 +69,21 @@ Use braces for multi-statement arm bodies:
 
 ```sun
 function main() i32 {
-    var x = 2;
-    match x {
-        1 => {
-            var a = 10;
-            return a + 5;
-        },
-        2 => {
-            var b = 20;
-            return b + 5;
-        },
-        _ => {
-            return 0;
-        }
-    };
-    return 0;
+  var x = 2;
+  match x {
+    1 => {
+      var a = 10;
+      return a + 5;
+    },
+    2 => {
+      var b = 20;
+      return b + 5;
+    },
+    _ => {
+      return 0;
+    }
+  };
+  return 0;
 }
 ```
 
@@ -90,12 +91,12 @@ function main() i32 {
 
 ```sun
 function main() i32 {
-    var flag = true;
-    return match flag {
-        true => 1,
-        false => 0,
-        _ => 99
-    };
+  var flag = true;
+  return match flag {
+    true => 1,
+    false => 0,
+    _ => 99
+  };
 }
 ```
 
@@ -107,17 +108,17 @@ Match works naturally with enum types:
 enum Color { Red, Green, Blue }
 
 function to_code(c: Color) i32 {
-    return match c {
-        Color.Red => 1,
-        Color.Green => 2,
-        Color.Blue => 3,
-        _ => 0
-    };
+  return match c {
+    Color.Red => 1,
+    Color.Green => 2,
+    Color.Blue => 3,
+    _ => 0
+  };
 }
 
 function main() i32 {
-    var c: Color = Color.Green;
-    return to_code(c);  // 2
+  var c: Color = Color.Green;
+  return to_code(c);  // 2
 }
 ```
 
@@ -127,14 +128,14 @@ Use match as a statement for side effects:
 
 ```sun
 function main() i32 {
-    var x = 2;
-    var result = 0;
-    match x {
-        1 => { result = 10; },
-        2 => { result = 20; },
-        _ => { result = 99; }
-    };
-    return result;  // 20
+  var x = 2;
+  var result = 0;
+  match x {
+    1 => { result = 10; },
+    2 => { result = 20; },
+    _ => { result = 99; }
+  };
+  return result;  // 20
 }
 ```
 
@@ -144,12 +145,12 @@ You can return from the enclosing function inside a match arm:
 
 ```sun
 function process(x: i32) i32 {
-    match x {
-        1 => { return 10; },
-        2 => { return 20; },
-        _ => { return 99; }
-    };
-    return 0;  // Never reached if all cases return
+  match x {
+    1 => { return 10; },
+    2 => { return 20; },
+    _ => { return 99; }
+  };
+  return 0;  // Never reached if all cases return
 }
 ```
 
@@ -159,17 +160,17 @@ Match expressions can be nested:
 
 ```sun
 function main() i32 {
-    var x = 1;
-    var y = 2;
-    return match x {
-        1 => match y {
-            1 => 11,
-            2 => 12,
-            _ => 10
-        },
-        2 => 20,
-        _ => 0
-    };  // Returns 12
+  var x = 1;
+  var y = 2;
+  return match x {
+    1 => match y {
+      1 => 11,
+      2 => 12,
+      _ => 10
+    },
+    2 => 20,
+    _ => 0
+  };  // Returns 12
 }
 ```
 
@@ -179,12 +180,12 @@ If no arm matches and there's no wildcard `_`, execution continues after the mat
 
 ```sun
 function main() i32 {
-    var x = 99;
-    match x {
-        1 => { return 10; },
-        2 => { return 20; }
-    };
-    return 0;  // Reached when x is neither 1 nor 2
+  var x = 99;
+  match x {
+    1 => { return 10; },
+    2 => { return 20; }
+  };
+  return 0;  // Reached when x is neither 1 nor 2
 }
 ```
 
@@ -198,9 +199,9 @@ Trailing commas are allowed:
 
 ```sun
 match x {
-    1 => 10,
-    2 => 20,
-    _ => 0,
+  1 => 10,
+  2 => 20,
+  _ => 0
 };
 ```
 
@@ -210,13 +211,13 @@ Match handles different integer sizes (i32, i64, etc.):
 
 ```sun
 function main() i32 {
-    var x: i64 = 2;
-    var result: i64 = match x {
-        1 => 100,
-        2 => 200,
-        _ => 0
-    };
-    return result;  // 200
+  var x: i64 = 2;
+  var result: i64 = match x {
+    1 => 100,
+    2 => 200,
+    _ => 0
+  };
+  return result;  // 200
 }
 ```
 
@@ -229,11 +230,11 @@ bindings; `_` skips a position:
 enum Shape { Circle(f64), Rect(f64, f64), Empty }
 
 function describe(s: ref Shape) f64 {
-    return match s {
-        Shape.Circle(r) => r,
-        Shape.Rect(w, _) => w,
-        Shape.Empty => 0.0
-    };
+  return match s {
+    Shape.Circle(r) => r,
+    Shape.Rect(w, _) => w,
+    Shape.Empty => 0.0
+  };
 }
 ```
 
@@ -265,9 +266,9 @@ A typed pattern uses the same `name: type` spelling as a function parameter:
 
 ```sun
 match error {
-    (e: ref RetryableError) => { /* Handle a retryable payload. */ },
-    (_: ref IError) => { /* Handle other error payloads. */ },
-    _ => { /* Handle remaining variants. */ }
+  (e: ref RetryableError) => { /* Handle a retryable payload. */ },
+  (_: ref IError) => { /* Handle other error payloads. */ },
+  _ => { /* Handle remaining variants. */ }
 };
 ```
 

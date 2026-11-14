@@ -28,9 +28,9 @@ the enum name to control its size and signedness:
 
 ```sun
 enum Color u8 {
-    RED = 1,
-    GREEN = 2,
-    BLUE = 3
+  RED = 1,
+  GREEN = 2,
+  BLUE = 3
 }
 ```
 
@@ -55,15 +55,15 @@ using std;
 
 /* Decode a protocol identifier, using zero for an unknown identifier. */
 function read_kind(value: u8) i32 {
-    return match _enum_from_int<Kind>(value) {
-        Option.Some(kind) => match kind {
-            Kind.Data => 1,
-            Kind.Next => 2,
-            Kind.Heartbeat => 3,
-            Kind.Unknown => 4
-        },
-        Option.None => 0
-    };
+  return match _enum_from_int<Kind>(value) {
+    Option.Some(kind) => match kind {
+      Kind.Data => 1,
+      Kind.Next => 2,
+      Kind.Heartbeat => 3,
+      Kind.Unknown => 4
+    },
+    Option.None => 0
+  };
 }
 ```
 
@@ -87,9 +87,9 @@ way a module's classes and functions can, or by its bare name after a `using`:
 ```sun
 using std;
 
-var mode = std.io.FileMode.Write;   // through the module path
+var mode = std.io.FileMode.Write;  // through the module path
 var file = std.io.File();
- file.open("notes.txt", mode);
+file.open("notes.txt", mode);
 ```
 
 The `try` call belongs inside a function returning a compatible result type.
@@ -100,15 +100,15 @@ Enum values can be compared with `==` and `!=`:
 
 ```sun
 function is_red(c: Color) bool {
-    return c == Color.Red;
+  return c == Color.Red;
 }
 
 function main() i32 {
-    var c: Color = Color.Blue;
-    if (c != Color.Red) {
-        return 1;
-    }
-    return 0;
+  var c: Color = Color.Blue;
+  if (c != Color.Red) {
+    return 1;
+  }
+  return 0;
 }
 ```
 
@@ -120,19 +120,19 @@ Enums can be passed to and returned from functions:
 enum Direction { Up, Down, Left, Right }
 
 function opposite(d: Direction) Direction {
-    if (d == Direction.Up) { return Direction.Down; }
-    if (d == Direction.Down) { return Direction.Up; }
-    if (d == Direction.Left) { return Direction.Right; }
-    return Direction.Left;
+  if (d == Direction.Up) { return Direction.Down; }
+  if (d == Direction.Down) { return Direction.Up; }
+  if (d == Direction.Left) { return Direction.Right; }
+  return Direction.Left;
 }
 
 function main() i32 {
-    var dir: Direction = Direction.Up;
-    var opp: Direction = opposite(dir);
-    if (opp == Direction.Down) {
-        return 1;
-    }
-    return 0;
+  var dir: Direction = Direction.Up;
+  var opp: Direction = opposite(dir);
+  if (opp == Direction.Down) {
+    return 1;
+  }
+  return 0;
 }
 ```
 
@@ -145,9 +145,9 @@ enum Status { Pending, Running, Completed }
 enum Priority { Low, Medium, High }
 
 function main() i32 {
-    var s: Status = Status.Running;
-    var p: Priority = Priority.High;
-    return 0;
+  var s: Status = Status.Running;
+  var p: Priority = Priority.High;
+  return 0;
 }
 ```
 
@@ -159,23 +159,23 @@ Enums can be used as field types in classes:
 enum TaskStatus { Pending, InProgress, Done }
 
 class Task {
-    var status: TaskStatus;
+  var status: TaskStatus;
 
-    init() {
-        this.status = TaskStatus.Pending;
-    }
+  init() {
+    this.status = TaskStatus.Pending;
+  }
 
-    method start() void {
-        this.status = TaskStatus.InProgress;
-    }
+  method start() void {
+    this.status = TaskStatus.InProgress;
+  }
 
-    method complete() void {
-        this.status = TaskStatus.Done;
-    }
+  method complete() void {
+    this.status = TaskStatus.Done;
+  }
 
-    method is_done() bool {
-        return this.status == TaskStatus.Done;
-    }
+  method is_done() bool {
+    return this.status == TaskStatus.Done;
+  }
 }
 ```
 
@@ -187,12 +187,12 @@ Combine enums with `match` expressions for clean branching:
 enum Color { Red, Green, Blue }
 
 function to_rgb(c: Color) i32 {
-    return match c {
-        Color.Red => 0xFF0000,
-        Color.Green => 0x00FF00,
-        Color.Blue => 0x0000FF,
-        _ => 0
-    };
+  return match c {
+    Color.Red => 0xFF0000,
+    Color.Green => 0x00FF00,
+    Color.Blue => 0x0000FF,
+    _ => 0
+  };
 }
 ```
 
@@ -204,9 +204,9 @@ Variants can carry data, turning an enum into a tagged union:
 
 ```sun
 enum Shape {
-    Circle(f64),          // radius
-    Rect(f64, f64),       // width, height
-    Empty
+  Circle(f64),  // radius
+  Rect(f64, f64),  // width, height
+  Empty
 }
 
 var c = Shape.Circle(2.5);
@@ -219,11 +219,11 @@ a position):
 
 ```sun
 function area(s: ref Shape) f64 {
-    return match s {
-        Shape.Circle(r) => 3.14 * r * r,
-        Shape.Rect(w, h) => w * h,
-        Shape.Empty => 0.0
-    };
+  return match s {
+    Shape.Circle(r) => 3.14 * r * r,
+    Shape.Rect(w, h) => w * h,
+    Shape.Empty => 0.0
+  };
 }
 ```
 
@@ -270,10 +270,10 @@ rule throughout:
   Scalar payloads are read by value.
 
 ```sun
-var maybe = Option.Some( String(alloc, "hello"));
+var maybe = Option.Some(String(alloc, "hello"));
 var text = match maybe {
-    Option.Some(s) => s,
-    Option.None =>  String(alloc, "fallback")
+  Option.Some(s) => s,
+  Option.None => String(alloc, "fallback")
 };
 // text now owns the string; maybe has been consumed.
 ```
@@ -282,10 +282,10 @@ To inspect without consuming:
 
 ```sun
 function length(maybe: const ref Option<String>) i64 {
-    return match maybe {
-        Option.Some(s) => s.length(),
-        Option.None => 0
-    };
+  return match maybe {
+    Option.Some(s) => s.length(),
+    Option.None => 0
+  };
 }
 ```
 
@@ -299,11 +299,11 @@ enum Option<T> { Some(T), None }
 // Recoverable failures use exceptions; Option represents absence.
 
 function find(x: i32) Option<i32> {
-    if (x > 0) { return Option.Some(x * 2); }  // T inferred from the argument
-    return Option.None;                        // T from the return type
+  if (x > 0) { return Option.Some(x * 2); }  // T inferred from the argument
+  return Option.None;  // T from the return type
 }
 
-var a = Option.Some(21);           // Option<i32>, inferred
+var a = Option.Some(21);  // Option<i32>, inferred
 var b: Option<f64> = Option.None;  // type arguments from the annotation
 ```
 
@@ -316,8 +316,8 @@ use the generic name in patterns:
 
 ```sun
 match a {
-    Option.Some(v) => v,
-    Option.None => 0
+  Option.Some(v) => v,
+  Option.None => 0
 };
 ```
 
@@ -333,12 +333,12 @@ Trailing commas are allowed in enum definitions:
 
 ```sun
 enum Days {
-    Monday,
-    Tuesday,
-    Wednesday,
-    Thursday,
-    Friday,
-    Saturday,
-    Sunday,
+  Monday,
+  Tuesday,
+  Wednesday,
+  Thursday,
+  Friday,
+  Saturday,
+  Sunday
 }
 ```

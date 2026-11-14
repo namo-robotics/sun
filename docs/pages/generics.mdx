@@ -10,13 +10,13 @@ Generic functions are declared with type parameters in angle brackets after the 
 
 ```sun
 function identity<T>(x: T) T {
-    return x;
+  return x;
 }
 
 function main() i32 {
-    var a = identity<i32>(42);     // T = i32, returns 42
-    var b = identity<f64>(3.14);   // T = f64, returns 3.14
-    return a;
+  var a = identity<i32>(42);  // T = i32, returns 42
+  var b = identity<f64>(3.14);  // T = f64, returns 3.14
+  return a;
 }
 ```
 
@@ -26,11 +26,11 @@ Functions can have multiple type parameters:
 
 ```sun
 function pair_sum<A, B>(a: A, b: B) A {
-    return a + b;
+  return a + b;
 }
 
 function main() i32 {
-    return pair_sum<i32, i32>(10, 20);  // 30
+  return pair_sum<i32, i32>(10, 20);  // 30
 }
 ```
 
@@ -46,10 +46,10 @@ function identity<T>(x: T) T { return x; }
 function narrow<T, U>(x: U) T { return _convert<T>(x); }
 
 function main() i32 {
-    var a = identity(42);          // T = i32, from the argument
-    var ms: i64 = 200;
-    var b = narrow<i32>(ms);       // T = i32 as written, U = i64 from ms
-    return a + b;
+  var a = identity(42);  // T = i32, from the argument
+  var ms: i64 = 200;
+  var b = narrow<i32>(ms);  // T = i32 as written, U = i64 from ms
+  return a + b;
 }
 ```
 
@@ -59,15 +59,15 @@ methods work the same way:
 
 ```sun
 class Box<T> {
-    var v: T;
-    init(v: T) { this.v = v; }
-    method twice<U>(x: U) U { return x + x; }
-    method as<R, U>(x: U) R { return _convert<R>(x); }
+  var v: T;
+  init(v: T) { this.v = v; }
+  method twice<U>(x: U) U { return x + x; }
+  method as<R, U>(x: U) R { return _convert<R>(x); }
 }
 
 var b = Box<i64>(1);
-var n = b.twice(21);      // U = i32
-var m = b.as<i32>(ms);    // R = i32 as written, U = i64 from ms
+var n = b.twice(21);  // U = i32
+var m = b.as<i32>(ms);  // R = i32 as written, U = i64 from ms
 ```
 
 ### Constraints
@@ -79,8 +79,8 @@ requirement after a colon:
 function twice<T: _Numeric>(x: T) T { return x + x; }
 
 function main() i32 {
-    return twice<i32>(21);   // 42
-    // twice<bool>(true) is rejected: bool is not numeric
+  return twice<i32>(21);  // 42
+  // twice<bool>(true) is rejected: bool is not numeric
 }
 ```
 
@@ -111,7 +111,7 @@ Constraints work on every generic declaration, not only functions:
 class Box<T: _Numeric> { var v: T; }
 enum Maybe<T: _Numeric> { Some(T), None }
 interface IStore<T: _Numeric> { public method get() T; }
-function run<F: _Lambda>(f: F) i32 { ... }
+function run<F: _Lambda>(f: F) i32 { /* ... */ }
 ```
 
 An interface constraint can include type arguments, including the constrained
@@ -119,16 +119,16 @@ parameter itself:
 
 ```sun
 interface IHandler<Self> {
-    /** Returns an explicit copy of the handler. */
-    public const method clone() Self;
+  /** Returns an explicit copy of the handler. */
+  public const method clone() Self;
 }
 
 class Server<H: IHandler<H>> {
-    var handler: H;
-    init(handler: H) { this.handler = handler; }
+  var handler: H;
+  init(handler: H) { this.handler = handler; }
 
-    /** Returns an explicit copy of the stored handler. */
-    public const method cloneHandler() H { return this.handler.clone(); }
+  /** Returns an explicit copy of the stored handler. */
+  public const method cloneHandler() H { return this.handler.clone(); }
 }
 ```
 
@@ -148,8 +148,8 @@ requirement in the signature, so a bad type argument is rejected at the call.
 
 ```sun
 function describe<T: _Numeric>(x: T) i32 {
-    if (_is<_Float>(x)) { return 2; }   // T is numeric for sure...
-    return 1;                            // ...but which kind is a body question
+  if (_is<_Float>(x)) { return 2; }  // T is numeric for sure...
+  return 1;  // ...but which kind is a body question
 }
 ```
 
@@ -161,18 +161,18 @@ fields are reachable on a value of type `T`:
 interface IShape { public method area() i32; }
 
 class Square implements IShape {
-    var side: i32;
-    init(s: i32) { this.side = s; }
-    public method area() i32 { return this.side * this.side; }
+  var side: i32;
+  init(s: i32) { this.side = s; }
+  public method area() i32 { return this.side * this.side; }
 }
 
 function measure<T: IShape>(s: ref T) i32 {
-    return s.area();      // IShape promised this method
+  return s.area();  // IShape promised this method
 }
 
 function main() i32 {
-    var sq = Square(6);
-    return measure(sq);   // 36
+  var sq = Square(6);
+  return measure(sq);  // 36
 }
 ```
 
@@ -188,10 +188,10 @@ arguments the call supplies. Write it as a name followed by `...`:
 
 ```sun
 function make<T>(args...: _params_of<T>) raw_ptr<T> {
-    var size: i64 = _sizeof<T>();
-    var memory: raw_ptr<u8> = unsafe { _aligned_malloc<T>(size); };
-    unsafe { _init<T>(memory, args...); };
-    return memory;
+  var size: i64 = _sizeof<T>();
+  var memory: raw_ptr<u8> = unsafe { _aligned_malloc<T>(size); };
+  unsafe { _init<T>(memory, args...); };
+  return memory;
 }
 ```
 
@@ -205,23 +205,23 @@ another pick a different one:
 
 ```sun
 class Point {
-    var x: i32;
-    var y: i32;
-    init(x: i32, y: i32) { this.x = x; this.y = y; }
-    init(v: i32) { this.x = v; this.y = v; }
+  var x: i32;
+  var y: i32;
+  init(x: i32, y: i32) { this.x = x; this.y = y; }
+  init(v: i32) { this.x = v; this.y = v; }
 }
 
-var a = make<Point>(3, 4);   // selects init(i32, i32)
-var b = make<Point>(9);      // selects init(i32) — a separate function
+var a = make<Point>(3, 4);  // selects init(i32, i32)
+var b = make<Point>(9);  // selects init(i32) — a separate function
 ```
 
 A pack must come last, and ordinary parameters may precede it. Everything past
 those parameters fills the pack:
 
 ```sun
-function scaled<T>(factor: i32, args...: _params_of<T>) i32 { ... }
+function scaled<T>(factor: i32, args...: _params_of<T>) i32 { /* ... */ }
 
-scaled<Point>(2, 3, 4);   // factor = 2, pack = (3, 4)
+scaled<Point>(2, 3, 4);  // factor = 2, pack = (3, 4)
 ```
 
 The annotation after the colon says what parameter list the pack stands for.
@@ -231,12 +231,12 @@ call's arguments are checked against it.
 
 ```sun
 function apply<F: _Lambda>(f: F, args...: _params_of<F>) i32 {
-    return f(args...);
+  return f(args...);
 }
 
 function main() i32 {
-    var add = (a: i32, b: i32) => i32 { return a + b; };
-    return apply(add, 3, 4);   // 7 — F is inferred from `add`
+  var add = (a: i32, b: i32) => i32 { return a + b; };
+  return apply(add, 3, 4);  // 7 — F is inferred from `add`
 }
 ```
 
@@ -246,8 +246,8 @@ returns, it lets one function forward any lambda and any arguments to a new
 thread:
 
 ```sun
-public function spawn<F: _Lambda>(fn: F, args...: _params_of<F>)
-    Thread<_return_type_of<F>>
+public function spawn<F: _Callable>(fn: F, args...: _params_of<F>)
+  Thread<_return_type_of<F>> throws
 ```
 
 The annotation is optional. `args...` on its own accepts whatever the call
@@ -256,14 +256,12 @@ lambda.
 
 A pack makes a declaration a template on its own, whether or not it also has
 type parameters — its arity comes from the call, so there is one compiled
-function per argument tuple either way. So a pack is fine wherever the type it
-names is in scope, including one borrowed from an enclosing generic:
+function per argument tuple either way. A pack can use a type parameter from
+its own function declaration:
 
 ```sun
-function outer<T>() i32 {
-    function build(args...: _params_of<T>) i32 { ... }
-    return build(3, 4) + build(9);
-}
+function build<T>(args...: _params_of<T>) T { return T(args...); }
+var point = build<Point>(3, 4);
 ```
 
 <Callout type="info">
@@ -278,19 +276,19 @@ Combine generic functions with `_is<T>` for type-specific behavior:
 
 ```sun
 function processValue<T>(x: T) i32 {
-    if (_is<_Integer>(x)) {
-        return 1;
-    }
-    if (_is<_Float>(x)) {
-        return 2;
-    }
-    return 0;
+  if (_is<_Integer>(x)) {
+    return 1;
+  }
+  if (_is<_Float>(x)) {
+    return 2;
+  }
+  return 0;
 }
 
 function main() i32 {
-    var a = processValue<i32>(42);    // Returns 1
-    var b = processValue<f64>(3.14);  // Returns 2
-    return a + b;  // 3
+  var a = processValue<i32>(42);  // Returns 1
+  var b = processValue<f64>(3.14);  // Returns 2
+  return a + b;  // 3
 }
 ```
 
@@ -330,9 +328,9 @@ class Box<T> {
 }
 
 function main() i32 {
-    var intBox = Box<i32>(42);
-    var floatBox = Box<f64>(3.14);
-    return intBox.get();  // 42
+  var intBox = Box<i32>(42);
+  var floatBox = Box<f64>(3.14);
+  return intBox.get();  // 42
 }
 ```
 
@@ -341,7 +339,7 @@ function main() i32 {
 Type parameters are specified in angle brackets after the class name. When instantiating a generic class, you must provide concrete types:
 
 ```sun
-var intBox = Box<i32>(42);      // T = i32
+var intBox = Box<i32>(42);  // T = i32
 var floatBox = Box<f64>(3.14);  // T = f64
 ```
 
@@ -351,26 +349,26 @@ Classes can have multiple type parameters:
 
 ```sun
 class Pair<A, B> {
-    var first: A;
-    var second: B;
+  var first: A;
+  var second: B;
 
-    init(a: A, b: B) {
-        this.first = a;
-        this.second = b;
-    }
+  init(a: A, b: B) {
+    this.first = a;
+    this.second = b;
+  }
 
-    method getFirst() A {
-        return this.first;
-    }
+  method getFirst() A {
+    return this.first;
+  }
 
-    method getSecond() B {
-        return this.second;
-    }
+  method getSecond() B {
+    return this.second;
+  }
 }
 
 function main() i32 {
-    var p = Pair<i32, f64>(42, 3.14);
-    return p.getFirst();  // 42
+  var p = Pair<i32, f64>(42, 3.14);
+  return p.getFirst();  // 42
 }
 ```
 
@@ -384,24 +382,24 @@ using std;
 // `items` views the caller's array, so a Container is a reference holder:
 // it borrows that array and cannot outlive its frame
 class Container<T> implements IIterator<T, Container<T>> {
-    var items: ref array<T>;
-    var index: i32;
-    var size: i32;
+  var items: ref array<T>;
+  var index: i32;
+  var size: i32;
 
-    init(arr: ref array<T>, sz: i32) {
-        this.items = arr;
-        this.index = 0;
-        this.size = sz;
-    }
+  init(arr: ref array<T>, sz: i32) {
+    this.items = arr;
+    this.index = 0;
+    this.size = sz;
+  }
 
-    method next(self: ref Container<T>) Option<T> {
-        if (this.index >= this.size) {
-            return Option.None;
-        }
-        var result = this.items[this.index];
-        this.index = this.index + 1;
-        return Option.Some(result);
+  method next(self: ref Container<T>) Option<T> {
+    if (this.index >= this.size) {
+      return Option.None;
     }
+    var result = this.items[this.index];
+    this.index = this.index + 1;
+    return Option.Some(result);
+  }
 }
 ```
 
@@ -413,6 +411,6 @@ class Container<T> implements IIterator<T, Container<T>> {
 
 ```sun
 // Using Box<i32> and Box<f64> generates two separate struct types:
-var a = Box<i32>(42);     // Generates Box_i32
-var b = Box<f64>(3.14);   // Generates Box_f64
+var a = Box<i32>(42);  // Generates Box_i32
+var b = Box<f64>(3.14);  // Generates Box_f64
 ```

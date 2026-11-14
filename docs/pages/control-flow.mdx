@@ -12,11 +12,11 @@ Use `if` and `else` for conditional execution:
 
 ```sun
 function abs(x: i32) i32 {
-    if (x < 0) {
-        return -x;
-    } else {
-        return x;
-    }
+  if (x < 0) {
+    return -x;
+  } else {
+    return x;
+  }
 }
 ```
 
@@ -24,10 +24,10 @@ The condition must be wrapped in parentheses. The else branch is optional:
 
 ```sun
 function clamp_positive(x: i32) i32 {
-    if (x < 0) {
-        return 0;
-    }
-    return x;
+  if (x < 0) {
+    return 0;
+  }
+  return x;
 }
 ```
 
@@ -37,13 +37,13 @@ Chain multiple conditions with `else if`:
 
 ```sun
 function sign(x: i32) i32 {
-    if (x > 0) {
-        return 1;
-    } else if (x < 0) {
-        return -1;
-    } else {
-        return 0;
-    }
+  if (x > 0) {
+    return 1;
+  } else if (x < 0) {
+    return -1;
+  } else {
+    return 0;
+  }
 }
 ```
 
@@ -55,7 +55,7 @@ The `for` loop uses traditional C-style syntax with initialization, condition, a
 
 ```sun
 for (initialization; condition; increment) {
-    // body
+  // body
 }
 ```
 
@@ -63,11 +63,11 @@ for (initialization; condition; increment) {
 
 ```sun
 function main() i32 {
-    var sum: i32 = 0;
-    for (var i: i32 = 0; i < 5; i = i + 1) {
-        sum = sum + i;
-    }
-    return sum;  // Returns 10
+  var sum: i32 = 0;
+  for (var i: i32 = 0; i < 5; i = i + 1) {
+    sum = sum + i;
+  }
+  return sum;  // Returns 10
 }
 ```
 
@@ -76,7 +76,7 @@ function main() i32 {
 ```sun
 var sum: i32 = 0;
 for (var i: i32 = 0; i < 10; i = i + 2) {
-    sum = sum + i;
+  sum = sum + i;
 }
 // sum = 0 + 2 + 4 + 6 + 8 = 20
 ```
@@ -87,7 +87,7 @@ for (var i: i32 = 0; i < 10; i = i + 2) {
 using std.io;
 
 for (var i: i32 = 5; i > 0; i = i - 1) {
-    println(i);
+  println(i);
 }
 // Prints: 5 4 3 2 1
 ```
@@ -96,13 +96,13 @@ for (var i: i32 = 5; i > 0; i = i - 1) {
 
 ```sun
 function main() i32 {
-    var count: i32 = 0;
-    for (var i: i32 = 0; i < 3; i = i + 1) {
-        for (var j: i32 = 0; j < 4; j = j + 1) {
-            count = count + 1;
-        }
+  var count: i32 = 0;
+  for (var i: i32 = 0; i < 3; i = i + 1) {
+    for (var j: i32 = 0; j < 4; j = j + 1) {
+      count = count + 1;
     }
-    return count;  // Returns 12 (3 * 4)
+  }
+  return count;  // Returns 12 (3 * 4)
 }
 ```
 
@@ -116,13 +116,13 @@ The `while` loop executes as long as its condition is true:
 
 ```sun
 function main() i32 {
-    var sum: i32 = 0;
-    var i: i32 = 0;
-    while (i < 5) {
-        sum = sum + i;
-        i = i + 1;
-    }
-    return sum;  // Returns 10
+  var sum: i32 = 0;
+  var i: i32 = 0;
+  while (i < 5) {
+    sum = sum + i;
+    i = i + 1;
+  }
+  return sum;  // Returns 10
 }
 ```
 
@@ -130,11 +130,11 @@ function main() i32 {
 
 ```sun
 function main() f64 {
-    var x: f64 = 1.0;
-    while (x > 0.01) {
-        x = x / 2.0;
-    }
-    return x;  // Returns a value <= 0.01
+  var x: f64 = 1.0;
+  while (x > 0.01) {
+    x = x / 2.0;
+  }
+  return x;  // Returns a value <= 0.01
 }
 ```
 
@@ -146,14 +146,14 @@ Exit a loop early using `break`:
 
 ```sun
 function find_first_multiple_of_7(limit: i32) i32 {
-    var result: i32 = -1;
-    for (var i: i32 = 1; i < limit; i = i + 1) {
-        if (i % 7 == 0) {
-            result = i;
-            break;
-        }
+  var result: i32 = -1;
+  for (var i: i32 = 1; i < limit; i = i + 1) {
+    if (i % 7 == 0) {
+      result = i;
+      break;
     }
-    return result;
+  }
+  return result;
 }
 ```
 
@@ -163,14 +163,14 @@ Skip to the next iteration using `continue`:
 
 ```sun
 function sum_even_numbers(limit: i32) i32 {
-    var sum: i32 = 0;
-    for (var i: i32 = 0; i < limit; i = i + 1) {
-        if (i % 2 != 0) {
-            continue;  // Skip odd numbers
-        }
-        sum = sum + i;
+  var sum: i32 = 0;
+  for (var i: i32 = 0; i < limit; i = i + 1) {
+    if (i % 2 != 0) {
+      continue;  // Skip odd numbers
     }
-    return sum;
+    sum = sum + i;
+  }
+  return sum;
 }
 ```
 
@@ -180,16 +180,16 @@ function sum_even_numbers(limit: i32) i32 {
 
 ```sun
 function main() i32 {
-    var count: i32 = 0;
-    for (var i: i32 = 0; i < 5; i = i + 1) {
-        for (var j: i32 = 0; j < 5; j = j + 1) {
-            if (j == 2) {
-                break;  // Only breaks inner loop
-            }
-            count = count + 1;
-        }
+  var count: i32 = 0;
+  for (var i: i32 = 0; i < 5; i = i + 1) {
+    for (var j: i32 = 0; j < 5; j = j + 1) {
+      if (j == 2) {
+        break;  // Only breaks inner loop
+      }
+      count = count + 1;
     }
-    return count;  // Returns 10 (5 outer * 2 inner iterations)
+  }
+  return count;  // Returns 10 (5 outer * 2 inner iterations)
 }
 ```
 
@@ -199,7 +199,7 @@ The `for-in` loop iterates over objects that implement `IIterator<T, Container>`
 
 ```sun
 for (var element: Type in iterable) {
-    // body
+  // body
 }
 ```
 
@@ -209,31 +209,31 @@ for (var element: Type in iterable) {
 using std;
 
 class RangeIterator implements IIterator<i32, RangeIterator> {
-    var current: i32;
-    var end: i32;
+  var current: i32;
+  var end: i32;
 
-    init(start: i32, stop: i32) {
-        this.current = start;
-        this.end = stop;
-    }
+  init(start: i32, stop: i32) {
+    this.current = start;
+    this.end = stop;
+  }
 
-    method next(self: ref RangeIterator) Option<i32> {
-        if (this.current >= this.end) {
-            return Option.None;
-        }
-        var result = this.current;
-        this.current = this.current + 1;
-        return Option.Some(result);
+  method next(self: ref RangeIterator) Option<i32> {
+    if (this.current >= this.end) {
+      return Option.None;
     }
+    var result = this.current;
+    this.current = this.current + 1;
+    return Option.Some(result);
+  }
 }
 
 function main() i32 {
-    var iter = RangeIterator(0, 5);
-    var sum: i32 = 0;
-    for (var x: i32 in iter) {
-        sum = sum + x;
-    }
-    return sum;  // Returns 10 (0+1+2+3+4)
+  var iter = RangeIterator(0, 5);
+  var sum: i32 = 0;
+  for (var x: i32 in iter) {
+    sum = sum + x;
+  }
+  return sum;  // Returns 10 (0+1+2+3+4)
 }
 ```
 
@@ -245,17 +245,17 @@ function main() i32 {
 
 ```sun
 function sum_until_five(iter: RangeIterator) i32 {
-    var sum: i32 = 0;
-    for (var x: i32 in iter) {
-        if (x == 5) {
-            break;  // Exit early
-        }
-        if (x == 3) {
-            continue;  // Skip 3
-        }
-        sum = sum + x;
+  var sum: i32 = 0;
+  for (var x: i32 in iter) {
+    if (x == 5) {
+      break;  // Exit early
     }
-    return sum;
+    if (x == 3) {
+      continue;  // Skip 3
+    }
+    sum = sum + x;
+  }
+  return sum;
 }
 ```
 
@@ -263,15 +263,15 @@ function sum_until_five(iter: RangeIterator) i32 {
 
 ```sun
 function main() i32 {
-    var sum: i32 = 0;
-    var outer = RangeIterator(1, 4);
-    for (var i: i32 in outer) {
-        var inner = RangeIterator(1, 4);
-        for (var j: i32 in inner) {
-            sum = sum + i * j;
-        }
+  var sum: i32 = 0;
+  var outer = RangeIterator(1, 4);
+  for (var i: i32 in outer) {
+    var inner = RangeIterator(1, 4);
+    for (var j: i32 in inner) {
+      sum = sum + i * j;
     }
-    return sum;  // (1*1+1*2+1*3) + (2*1+2*2+2*3) + (3*1+3*2+3*3) = 36
+  }
+  return sum;  // (1*1+1*2+1*3) + (2*1+2*2+2*3) + (3*1+3*2+3*3) = 36
 }
 ```
 

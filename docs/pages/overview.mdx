@@ -11,10 +11,9 @@ Sun uses a C-style syntax with explicit type annotations and modern features. Fu
 </Callout>
 
 ```sun
-function _helper() i32 { ... }  // ❌ ERROR: reserved identifier
+function _helper() i32 { /* ... */ }  // ❌ ERROR: reserved identifier
 var _count: i32 = 0;            // ❌ ERROR: reserved identifier
-
-function helper() i32 { ... }   // ✓ OK
+function helper() i32 { /* ... */ }   // ✓ OK
 var count: i32 = 0;             // ✓ OK
 ```
 
@@ -86,7 +85,7 @@ place. See [Constants](/memory-safety#constants).
 
 ```sun
 const MAX_RETRIES: i32 = 3;
-const greeting =  String(alloc, "hello");
+const greeting = String(alloc, "hello");
 ```
 
 ## Comments
@@ -99,7 +98,7 @@ var x: i32 = 42;  // Inline comment
 
 /* Block comment,
    possibly spanning multiple lines */
-var y: i32 = /* inline */ 7;
+var y: i32 = 7;  /* inline */
 ```
 
 Block comments do not nest.

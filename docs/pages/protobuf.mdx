@@ -10,26 +10,26 @@ libprotobuf dependency in the compiled program.
 
 ```sun filename="main.sun"
 manifest {
-    protos: ["schemas/telemetry.proto"]
-    libraries: ["stdlib.moon"]
+  protos: ["schemas/telemetry.proto"]
+  libraries: ["stdlib.moon"]
 }
 using std;
-using namo.telemetry;      // the proto `package`
+using namo.telemetry;  // the proto `package`
 
 function main() i32 throws {
-    var alloc = make_heap_allocator();
+  var alloc = make_heap_allocator();
 
-    var status = RobotStatus(alloc);      // zero-value init (proto3 defaults)
-    status.robot_id = 7;
-    status.name = String(alloc, "rover");
-    status.samples.push(300);
-    status.mode = Mode.FAULT;
+  var status = RobotStatus(alloc);  // zero-value init (proto3 defaults)
+  status.robot_id = 7;
+  status.name = String(alloc, "rover");
+  status.samples.push(300);
+  status.mode = Mode.FAULT;
 
-    var buf = Vec<u8>(alloc, 64);
-    status.encode(buf);                   // appends wire bytes
+  var buf = Vec<u8>(alloc, 64);
+  status.encode(buf);  // appends wire bytes
 
-    var back = RobotStatus_decode(alloc, buf);
-    return back.robot_id;
+  var back = RobotStatus_decode(alloc, buf);
+  return back.robot_id;
 }
 ```
 
@@ -115,15 +115,15 @@ bindings over `optional` and `oneof` payloads borrow in place:
 using std.io;
 
 match status.nickname {
-    Option.Some(s) => println(s.length()),   // s borrows the String
-    Option.None => { }
+  Option.Some(s) => println(s.length()),  // s borrows the String
+  Option.None => {}
 };
 match status.power {
-    RobotStatus_power.BatteryPct(pct) => { },
-    RobotStatus_power.StationId(id) => { },
-    RobotStatus_power.NotSet => { }
+  RobotStatus_power.BatteryPct(pct) => {},
+  RobotStatus_power.StationId(id) => {},
+  RobotStatus_power.NotSet => {}
 };
-status.power = RobotStatus_power.BatteryPct(80);   // drops the old payload
+status.power = RobotStatus_power.BatteryPct(80);  // drops the old payload
 ```
 
 ## Libraries

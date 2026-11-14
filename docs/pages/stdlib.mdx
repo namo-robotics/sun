@@ -6,11 +6,11 @@ The Sun standard library is distributed as a precompiled `stdlib.moon` file. Inc
 using std;
 
 function main() void {
-    // Use stdlib types...
+  // Use stdlib types...
 }
 
 manifest {
-    libraries: ["stdlib.moon"]
+  libraries: ["stdlib.moon"]
 }
 ```
 
@@ -56,9 +56,9 @@ available and do not allocate.
 
 ```sun
 function build_values() Vec<i32> throws {
-    var values =  Vec<i32>(global_allocator, 4);
-     values.push(42);
-    return values;
+  var values = Vec<i32>(global_allocator, 4);
+  values.push(42);
+  return values;
 }
 ```
 
@@ -90,7 +90,7 @@ consumed according to the usual ownership rules.
 
 ```sun
 function make_point() Unique<Point> throws {
-    return global_allocator.create_unique<Point>(3, 4);
+  return global_allocator.create_unique<Point>(3, 4);
 }
 ```
 
@@ -99,10 +99,10 @@ function make_point() Unique<Point> throws {
 A smart pointer that automatically frees its data when `deinit` is called (at scope exit). Provides safe access to heap-allocated objects without manual `unsafe` blocks.
 
 ```sun
-var p =  global_allocator.create_unique<Point>(3, 4);
-p.get().x;     // Safe access - returns ref T
-p.get_raw();   // Get raw pointer for low-level operations
-p.is_null();   // Check if null
+var p = global_allocator.create_unique<Point>(3, 4);
+p.get().x;  // Safe access - returns ref T
+p.get_raw();  // Get raw pointer for low-level operations
+p.is_null();  // Check if null
 // p.deinit() called automatically at scope exit
 ```
 
@@ -126,15 +126,15 @@ The value is reachable only through `lock()`, which waits for the lock and
 returns a guard that releases it when dropped.
 
 ```sun
-var s =  Shared<Counter>(global_allocator, Counter());
+var s = Shared<Counter>(global_allocator, Counter());
 
-var c = s.clone();        // two owners now
-s.count();                // 2
+var c = s.clone();  // two owners now
+s.count();  // 2
 
 if (true) {
-    var g = s.lock();     // g holds the lock
-    g.get().n = 42;       // the value, as a reference
-}                         // g is dropped here, which unlocks
+  var g = s.lock();  // g holds the lock
+  g.get().n = 42;  // the value, as a reference
+}  // g is dropped here, which unlocks
 ```
 
 | Method      | Signature           | Description                                     |
@@ -157,14 +157,14 @@ See [Threads](/threads) for sharing one value between several threads.
 A generic growable array backed by contiguous memory. Implements `IIterable<T, Vec<T>>` for use with for-in loops.
 
 ```sun
-var v =  Vec<i32>(global_allocator, 8);  // Initial capacity 8
- v.push(10);
- v.push(20);
- v.push(30);
- v.set(1, 25);         // Update index 1
-var last = v.pop();       // Option.Some(30) (removes last element)
-var len = v.size();       // 2
-var val =  v.get(0);   // Borrows 10; keep the Vec unchanged while using val
+var v = Vec<i32>(global_allocator, 8);  // Initial capacity 8
+v.push(10);
+v.push(20);
+v.push(30);
+v.set(1, 25);  // Update index 1
+var last = v.pop();  // Option.Some(30) (removes last element)
+var len = v.size();  // 2
+var val = v.get(0);  // Borrows 10; keep the Vec unchanged while using val
 ```
 
 | Method              | Signature                     | Description                                                                       |
@@ -187,8 +187,8 @@ var val =  v.get(0);   // Borrows 10; keep the Vec unchanged while using val
 `Vec<T>` supports bracket indexing syntax:
 
 ```sun
-v[0] = 42;       // Calls __setindex__
-var x = v[0];    // Calls __index__
+v[0] = 42;  // Calls __setindex__
+var x = v[0];  // Calls __index__
 ```
 
 ### Iteration
@@ -196,11 +196,13 @@ var x = v[0];    // Calls __index__
 ```sun
 using std.io;
 
-var v =  Vec<i32>(allocator, 4);
- v.push(1);  v.push(2);  v.push(3);
+var v = Vec<i32>(allocator, 4);
+v.push(1);
+v.push(2);
+v.push(3);
 
 for (var x: i32 in v) {
-    println(x);
+  println(x);
 }
 ```
 
@@ -209,10 +211,10 @@ for (var x: i32 in v) {
 A generic hash map using open addressing with linear probing. Implements `IIterable<V, Map<K, V>>` for iterating over values. Supports `i32`, `i64`, and `String` keys.
 
 ```sun
-var m =  Map<i64, i32>(global_allocator, 16);  // Initial capacity 16
- m.insert(42, 100);
+var m = Map<i64, i32>(global_allocator, 16);  // Initial capacity 16
+m.insert(42, 100);
 var fallback: i32 = 0;
-var val: i32 = m.get_or_default(42, fallback);   // 100
+var val: i32 = m.get_or_default(42, fallback);  // 100
 try { m.remove(42); } catch (error: NotFoundError) {}
 ```
 
@@ -238,12 +240,12 @@ from a function declared `throws`.
 ```sun
 using std.io;
 
-var m =  Map<i64, i32>(allocator, 16);
- m.insert(1, 10);
- m.insert(2, 20);
+var m = Map<i64, i32>(allocator, 16);
+m.insert(1, 10);
+m.insert(2, 20);
 
 for (var v: i32 in m) {
-    println(v);  // Iterates over values
+  println(v);  // Iterates over values
 }
 ```
 
@@ -258,12 +260,12 @@ A heap-allocated mutable string backed by `Matrix<u8>`. Supports slicing via the
 
 ```sun
 using std.io;
-var s =  String(global_allocator, "Hello");
-var t =  String("literal only");  // uses global_allocator
-println(s.length());   // 5
-var ch =  s.at(0);          // b'H'
- s.append_char(b'!');       // Append a byte
- s.push('😀');              // Append a char, UTF-8 encoded
+var s = String(global_allocator, "Hello");
+var t = String("literal only");  // uses global_allocator
+println(s.length());  // 5
+var ch = s.at(0);  // b'H'
+s.append_char(b'!');  // Append a byte
+s.push('😀');  // Append a char, UTF-8 encoded
 ```
 
 A `String` holds UTF-8 and is indexed by **byte**: `at`, `length` and the
@@ -316,9 +318,9 @@ NUL-terminated C string into an owned `String`, which is how `Env` and
 `read_dir` keep text returned by libc.
 
 ```sun
-var path =  String(alloc, "/tmp/");
- path.append_literal("out.txt");
-write_string( path.c_str(), body);
+var path = String(alloc, "/tmp/");
+path.append_literal("out.txt");
+write_string(path.c_str(), body);
 ```
 
 ### Text Manipulation
@@ -327,12 +329,11 @@ Methods that keep the same bytes, or fewer, edit the string in place. Methods
 that produce new strings take the allocator to build them with.
 
 ```sun
-var line =  String(allocator, "  name = Ada  ");
-line.trim();                              // "name = Ada"
-line.replace(" = ", "=");                 // "name=Ada"
-line.to_upper();                          // "NAME=ADA"
-
-var fields = line.split(allocator, 61);   // ['=' is 61] -> ["NAME", "ADA"]
+var line = String(allocator, "  name = Ada  ");
+line.trim();  // "name = Ada"
+line.replace(" = ", "=");  // "name=Ada"
+line.to_upper();  // "NAME=ADA"
+var fields = line.split(allocator, 61);  // ['=' is 61] -> ["NAME", "ADA"]
 var again = join(allocator, fields, "=");  // "NAME=ADA"
 ```
 
@@ -357,8 +358,8 @@ String slicing returns a `StringView` (non-owning view, no copy):
 ```sun
 using std.io;
 
-var s =  String(allocator, "Hello, World!");
-var view = s[0:5];   // StringView of "Hello"
+var s = String(allocator, "Hello, World!");
+var view = s[0:5];  // StringView of "Hello"
 println(view.length());  // 5
 ```
 
@@ -384,13 +385,13 @@ Obtained from `String.iterate_chars()`.
 ```sun
 using std.io;
 
-var s =  String(alloc, "héllo😀");
-s.length();       // 10 bytes
-s.count_chars();   // 6 scalar values
+var s = String(alloc, "héllo😀");
+s.length();  // 10 bytes
+s.count_chars();  // 6 scalar values
 
 var it = s.iterate_chars();
 for (var c: char in it) {
-    print(c);
+  print(c);
 }
 ```
 
@@ -435,7 +436,7 @@ N-dimensional matrices backed by contiguous heap memory. Supports bracket indexi
 
 ```sun
 using std.linalg;
-var m =  Matrix<i32>(global_allocator, [3, 3]);   // 3x3 matrix
+var m = Matrix<i32>(global_allocator, [3, 3]);  // 3x3 matrix
 m[0, 0] = 1;
 m[1, 1] = 5;
 var val = m[1, 1];  // 5
@@ -459,9 +460,8 @@ the scope that started it.
 
 ```sun
 using std.thread;
-
-var t =  spawn((n: i32) => i32 { return n * 2; }, 21);
-var answer = t.join();   // 42
+var t = spawn((n: i32) => i32 { return n * 2; }, 21);
+var answer = t.join();  // 42
 ```
 
 | Function  | Signature                                                                | Description                                              |
@@ -529,17 +529,17 @@ using std;
 using std.io;
 
 var f = File();
- f.open("notes.txt", FileMode.Write);
+f.open("notes.txt", FileMode.Write);
 f.write("Hello, World!");
 f.close();
 
 // Or in one step
-var text =  read_to_string(alloc, "notes.txt");
+var text = read_to_string(alloc, "notes.txt");
 
 // A runtime path
-var path =  String(alloc, "/tmp/");
- path.append_literal("report.csv");
- write_string(path, text);
+var path = String(alloc, "/tmp/");
+path.append_literal("report.csv");
+write_string(path, text);
 ```
 
 `FileMode` is `Read` (must exist), `Write` (create or truncate) or `Append`.
@@ -578,20 +578,19 @@ borrowed while the slice is in use. Slices expose `size()` and checked `get(inde
 
 ```sun
 using std.io;
-
 using std;
 
 /** Reads a bounded chunk from standard input. */
 function read_chunk(alloc: const ref HeapAllocator) void throws {
-    var buffer =  ContiguousBuffer<u8>(alloc, 4096);
-    var bytes = MutableByteSlice(buffer);
-    var input = std.io.stdin();
-    match input.read(bytes) {
-        std.io.ReadResult.Data(count) => println(count),
-        std.io.ReadResult.Eof => println("end of input"),
-        std.io.ReadResult.WouldBlock => println("try again when readable")
-    };
-    return;
+  var buffer = ContiguousBuffer<u8>(alloc, 4096);
+  var bytes = MutableByteSlice(buffer);
+  var input = std.io.stdin();
+  match input.read(bytes) {
+    std.io.ReadResult.Data(count) => println(count),
+    std.io.ReadResult.Eof => println("end of input"),
+    std.io.ReadResult.WouldBlock => println("try again when readable")
+  };
+  return;
 }
 ```
 
@@ -665,14 +664,14 @@ the reader is in use.
 using std.io;
 
 var file = File();
- file.open("recording.jsonl", FileMode.Read);
-var reader =  LineReader(alloc, file, 65536, 4096);
+file.open("recording.jsonl", FileMode.Read);
+var reader = LineReader(alloc, file, 65536, 4096);
 match reader.next() {
-    LineReadResult.Complete => println(reader.line()),
-    LineReadResult.Incomplete => println("unterminated final record"),
-    LineReadResult.TooLong => println("record exceeds the byte limit"),
-    LineReadResult.Eof => {},
-    LineReadResult.WouldBlock => {}
+  LineReadResult.Complete => println(reader.line()),
+  LineReadResult.Incomplete => println("unterminated final record"),
+  LineReadResult.TooLong => println("record exceeds the byte limit"),
+  LineReadResult.Eof => {},
+  LineReadResult.WouldBlock => {}
 };
 ```
 
@@ -698,14 +697,14 @@ parsing of `getdents64` output.
 ```sun
 using std.io;
 
-var entries =  read_dir(alloc, "/etc");
+var entries = read_dir(alloc, "/etc");
 for (var e: DirEntry in entries) {
-    if (e.is_dir()) {
-        print("dir  ");
-    } else {
-        print("file ");
-    }
-    println(e.name());
+  if (e.is_dir()) {
+    print("dir  ");
+  } else {
+    print("file ");
+  }
+  println(e.name());
 }
 ```
 
@@ -728,17 +727,17 @@ owns its queue and closes it on destruction. Registration changes can allocate
 through the supplied allocator; waits reuse storage reserved by the constructor.
 
 ```sun
-var loop = EventLoop(alloc, 64); // maximum native events per batch
- loop.open();
- loop.add(sock_fd, POLLIN, 42u64);
-var count =  loop.wait(std.time.create_duration_millis(250));
+var loop = EventLoop(alloc, 64);  // maximum native events per batch
+loop.open();
+loop.add(sock_fd, POLLIN, 42u64);
+var count = loop.wait(std.time.create_duration_millis(250));
 for (var i: i64 = 0; i < count; i = i + 1) {
-    var event =  loop.event_at(i);
-    if (event.is_readable()) { /* read from event.fd(); identify it by event.token() */ }
-    if (event.is_hup()) { /* drain buffered input before closing */ }
+  var event = loop.event_at(i);
+  if (event.is_readable()) { /* read from event.fd(); identify it by event.token() */ }
+  if (event.is_hup()) { /* drain buffered input before closing */ }
 }
- loop.modify(sock_fd, POLLIN | POLLOUT, 42u64);
- loop.remove(sock_fd);
+loop.modify(sock_fd, POLLIN | POLLOUT, 42u64);
+loop.remove(sock_fd);
 ```
 
 Interest accepts `POLLIN`, `POLLOUT`, both, or zero to suspend normal readiness.
@@ -774,7 +773,7 @@ var poller = Poller(alloc);
 poller.add_read(sock_fd);
 poller.add_read(pipe_fd);
 
-var ready =  poller.wait(1000);   // -1 blocks forever
+var ready = poller.wait(1000);  // -1 blocks forever
 if (poller.is_readable(0)) { /* sock_fd has data */ }
 if (poller.is_hup(1)) { /* pipe_fd's writer closed */ }
 ```
@@ -786,14 +785,14 @@ durations clamp to the largest `i32` timeout.
 ```sun
 using std.time;
 
-var events =  poller.wait(create_duration_millis(250));
+var events = poller.wait(create_duration_millis(250));
 for (var event: ref Event in events) {
-    if (event.is_readable()) { /* event.fd() has data */ }
-    if (event.is_hup()) { /* event.fd() reached end of stream */ }
+  if (event.is_readable()) { /* event.fd() has data */ }
+  if (event.is_hup()) { /* event.fd() reached end of stream */ }
 }
 
-poller.modify(sock_fd, POLLOUT); // replaces interest in every matching registration
-poller.remove(sock_fd);       // removes every registration for sock_fd
+poller.modify(sock_fd, POLLOUT);  // replaces interest in every matching registration
+poller.remove(sock_fd);  // removes every registration for sock_fd
 ```
 
 | Method                                                | Signature                                                | Description                                                          |
@@ -851,28 +850,28 @@ handler finishes writing after its pending bit was consumed.
 
 ```sun
 using std.net;
-
 using std;
 
 /** Wait for an interrupt or termination request, then restore both handlers. */
 function wait_for_shutdown() void throws {
-    var signals =  std.signal.SignalSubscription();
-    var loop = std.io.EventLoop(global_allocator, 4);
-     loop.open();
-     loop.add(signals.fd(), std.io.POLLIN, 1u64);
-    var stopping = false;
-    while (not stopping) {
-        try { var count = loop.wait(-1);
- } catch (error: Error) {
-                if (not is_interrupted(error.code())) { throw error; }
-                // EINTR: the signal may have interrupted the waiting thread.
-             }
-        var events =  signals.take_pending();
-        stopping = events.any();
+  var signals = std.signal.SignalSubscription();
+  var loop = std.io.EventLoop(global_allocator, 4);
+  loop.open();
+  loop.add(signals.fd(), std.io.POLLIN, 1u64);
+  var stopping = false;
+  while (not stopping) {
+    try {
+      var count = loop.wait(-1);
+    } catch (error: Error) {
+      if (not is_interrupted(error.code())) { throw error; }
+      // EINTR: the signal may have interrupted the waiting thread.
     }
-     loop.remove(signals.fd());
-     signals.restore();
-    return;
+    var events = signals.take_pending();
+    stopping = events.any();
+  }
+  loop.remove(signals.fd());
+  signals.restore();
+  return;
 }
 ```
 
@@ -909,15 +908,15 @@ using std.terminal;
 using std.time;
 
 if (is_terminal(STDIN_FD)) {
-    var mode =  TerminalMode(STDIN_FD, Mode.Raw, SignalPolicy.AsInput);
-    var size =  get_size(STDOUT_FD);
-    while (true) {
-        match  read_key(STDIN_FD, create_duration_millis(250)) {
-            Option.Some(key) => { if (key == 3 or key == b'q') { break; } },
-            Option.None => { size =  get_size(STDOUT_FD); }   // maybe resized
-        };
-    }
-}   // `mode` leaves scope here and the terminal is restored
+  var mode = TerminalMode(STDIN_FD, Mode.Raw, SignalPolicy.AsInput);
+  var size = get_size(STDOUT_FD);
+  while (true) {
+    match read_key(STDIN_FD, create_duration_millis(250)) {
+      Option.Some(key) => { if (key == 3 or key == b'q') { break; } },
+      Option.None => { size = get_size(STDOUT_FD); }  // maybe resized
+    };
+  }
+}  // `mode` leaves scope here and the terminal is restored
 ```
 
 `TerminalMode` saves the descriptor's settings when it is constructed and puts
@@ -995,22 +994,21 @@ with a `throws` declaration.
 
 ```sun
 using std.io;
-
 using std;
 using std.env;
 
-var environment =  Env(alloc);
+var environment = Env(alloc);
 match environment.get("HOME") {
-    Option.Some(value) => { println(value); },
-    Option.None => { }
+  Option.Some(value) => { println(value); },
+  Option.None => {}
 };
 
 for (var entry: ref EnvEntry in environment) {
-    println(entry.name());
+  println(entry.name());
 }
 
- environment.set("LANG", "C");
-var here =  environment.cwd();
+environment.set("LANG", "C");
+var here = environment.cwd();
 ```
 
 | Method              | Signature                                      | Description                             |
@@ -1034,11 +1032,11 @@ automatically.
 ```sun
 using std.io;
 
-function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
-    var environment = std.env.Env(global_allocator);
-    var cli = environment.args(argc, argv);
-    for (var s: ref String in cli) { println(s); }
-    return 0;
+function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 throws {
+  var environment = std.env.Env(global_allocator);
+  var cli = environment.args(argc, argv);
+  for (var s: ref String in cli) { println(s); }
+  return 0;
 }
 ```
 
@@ -1051,16 +1049,15 @@ propagates its code and message to a compatible caller result.
 
 ```sun
 using std.io;
-
 using std.process;
 
-var cmd =  Command(alloc, "/bin/sh");
+var cmd = Command(alloc, "/bin/sh");
 cmd.add_arg("-c");
 cmd.add_arg("printf hello");
-var out =  cmd.output();
+var out = cmd.output();
 
-println(out.status());     // 0
-println(out.stdout());     // hello
+println(out.status());  // 0
+println(out.stdout());  // hello
 ```
 
 ### Command
@@ -1139,11 +1136,11 @@ Physical memory is the system total, not a container or cgroup limit.
 ```sun
 using std.io;
 
-var observed =  process_identity(alloc, target_pid);
+var observed = process_identity(alloc, target_pid);
 var handle = ProcessHandle(alloc);
- handle.open(observed);
+handle.open(observed);
 println(handle.protection() == ProcessProtection.Atomic);
- handle.terminate();  // SIGTERM; kill() sends SIGKILL
+handle.terminate();  // SIGTERM; kill() sends SIGKILL
 handle.close();
 ```
 
@@ -1194,7 +1191,6 @@ written to that rule; hand-rolled forks have to be too.
 
 ```sun
 using std.io;
-
 using std.time;
 
 var start = now();
@@ -1235,30 +1231,29 @@ a `throws` declaration.
 
 ```sun
 using std.net;
-
 using std;
 
 // Client
 var stream = TcpStream();
-var host =  String(alloc, "example.com");
- stream.connect_host(host, 80);       // resolve a name, then connect
- stream.connect_ip(ip, 80);           // or an address already in hand
- stream.connect_local(8080);          // or 127.0.0.1
- stream.set_nonblocking(true);         // configure the chosen connection
+var host = String(alloc, "example.com");
+stream.connect_host(host, 80);  // resolve a name, then connect
+stream.connect_ip(ip, 80);  // or an address already in hand
+stream.connect_local(8080);  // or 127.0.0.1
+stream.set_nonblocking(true);  // configure the chosen connection
 
- stream.send_str("ping");
- stream.send_string(message);
-var buf =  ContiguousBuffer<u8>(alloc, 4096);
-var n =  stream.recv(buf);            // bytes read; 0 at end of stream
+stream.send_str("ping");
+stream.send_string(message);
+var buf = ContiguousBuffer<u8>(alloc, 4096);
+var n = stream.recv(buf);  // bytes read; 0 at end of stream
 stream.close();
 
 // Server
 var listener = TcpListener();
- listener.bind_port(8080);            // 0.0.0.0; bind_loopback for 127.0.0.1
- listener.set_nonblocking(true);       // configure after binding
- listener.listen(128);
-var client =  listener.accept();
- client.set_nonblocking(true);         // accepted streams configure themselves
+listener.bind_port(8080);  // 0.0.0.0; bind_loopback for 127.0.0.1
+listener.set_nonblocking(true);  // configure after binding
+listener.listen(128);
+var client = listener.accept();
+client.set_nonblocking(true);  // accepted streams configure themselves
 ```
 
 `resolve_host_ipv4` does name resolution on its own, returning the first A
@@ -1267,7 +1262,7 @@ record in network byte order — the form `connect_ip` takes:
 ```sun
 using std.net;
 
-var ip: i32 =  resolve_host_ipv4(host);
+var ip: i32 = resolve_host_ipv4(host);
 ```
 
 Resolution throws `Error` when the name does not resolve or has
@@ -1350,13 +1345,13 @@ returns.
 using std.net;
 using std.io;
 
-var lan = Ipv4Addr(192, 168, 1, 10);     // from octets
-var addr =  parse_ipv4(text);             // propagate an error if malformed
-var any = ipv4_any();                    // 0.0.0.0
-var home = ipv4_loopback();              // 127.0.0.1
-println(lan.to_string(alloc));           // "192.168.1.10"
- stream.connect_addr(lan, 80);            // TCP takes it too
- listener.bind_addr(any, 8080);
+var lan = Ipv4Addr(192, 168, 1, 10);  // from octets
+var addr = parse_ipv4(text);  // propagate an error if malformed
+var any = ipv4_any();  // 0.0.0.0
+var home = ipv4_loopback();  // 127.0.0.1
+println(lan.to_string(alloc));  // "192.168.1.10"
+stream.connect_addr(lan, 80);  // TCP takes it too
+listener.bind_addr(any, 8080);
 ```
 
 ### UDP
@@ -1373,23 +1368,22 @@ opt in; ordinary unicast listeners should keep the exclusive default.
 
 ```sun
 using std.net;
-
 using std;
 
 var socket = UdpSocket();
 var any = ipv4_any();
- socket.bind(any, 0);
-var port: i32 =  socket.local_port();
+socket.bind(any, 0);
+var port: i32 = socket.local_port();
 
 var dest = Ipv4Addr(192, 168, 1, 20);
- socket.send_str_to("ping", dest, 9000);      // a literal
- socket.send_to(data, len, dest, 9000);       // raw bytes
+socket.send_str_to("ping", dest, 9000);  // a literal
+socket.send_to(data, len, dest, 9000);  // raw bytes
 
-var buf =  ContiguousBuffer<u8>(alloc, 2048);
-var datagram =  socket.recv_from(buf);        // one datagram, cut to fit buf
-datagram.length();                           // bytes received
-datagram.addr();                             // sender's Ipv4Addr
-datagram.port();                             // sender's port
+var buf = ContiguousBuffer<u8>(alloc, 2048);
+var datagram = socket.recv_from(buf);  // one datagram, cut to fit buf
+datagram.length();  // bytes received
+datagram.addr();  // sender's Ipv4Addr
+datagram.port();  // sender's port
 socket.close();
 ```
 
@@ -1406,13 +1400,13 @@ sent to the group on its bound port:
 using std.net;
 
 var socket = UdpSocket();
- socket.bind(ipv4_any(), 9000, true);
+socket.bind(ipv4_any(), 9000, true);
 var group = Ipv4Addr(239, 255, 0, 1);
 var iface = ipv4_any();
- socket.join_multicast(group, iface);
- socket.set_multicast_ttl(1);        // how many router hops sends may cross
- socket.set_multicast_loop(true);    // hear this host's own sends
- socket.leave_multicast(group, iface);
+socket.join_multicast(group, iface);
+socket.set_multicast_ttl(1);  // how many router hops sends may cross
+socket.set_multicast_loop(true);  // hear this host's own sends
+socket.leave_multicast(group, iface);
 ```
 
 IPv4 is the only supported address family for now. TCP sockets have no
@@ -1428,16 +1422,18 @@ the response.
 using std.http;
 
 var server = HttpServer(global_allocator);
- server.bind_loopback(8080);
- server.serve((req: ref HttpRequest, resp: ref HttpResponse) => void throws {
+server.bind_loopback(8080);
+server.serve(
+  (req: ref HttpRequest, resp: ref HttpResponse) => void throws {
     if (req.path.equals_literal("/")) {
-         resp.set_body("<h1>Hello</h1>");
+      resp.set_body("<h1>Hello</h1>");
     } else {
-        resp.set_status(404);
-         resp.set_body("not found");
+      resp.set_status(404);
+      resp.set_body("not found");
     }
     return;
-});
+  }
+);
 ```
 
 It handles one connection at a time, parses request line and headers (not
@@ -1464,10 +1460,10 @@ The iteration protocol lives in `iterator.sun` and is what `for-in` drives:
 
 ```sun
 interface IIterator<T, Container> {
-    method next(container: ref Container) Option<T>;
+  method next(container: ref Container) Option<T>;
 }
 interface IIterable<T, Self> {
-    method iter() IIterator<T, Self>;
+  method iter() IIterator<T, Self>;
 }
 ```
 
@@ -1480,22 +1476,22 @@ and iterators stay cheap:
 
 ```sun
 class Countdown implements IIterator<i32, Countdown> {
-    var n: i32;
-    init(n: i32) { this.n = n; }
+  var n: i32;
+  init(n: i32) { this.n = n; }
 
-    method next(self: ref Countdown) Option<i32> {
-        if (this.n == 0) { return Option.None; }
-        this.n = this.n - 1;
-        return Option.Some(this.n + 1);
-    }
+  method next(self: ref Countdown) Option<i32> {
+    if (this.n == 0) { return Option.None; }
+    this.n = this.n - 1;
+    return Option.Some(this.n + 1);
+  }
 }
 
 function main() i32 {
-    var sum: i32 = 0;
-    for (var x: i32 in Countdown(5)) {
-        sum = sum + x;
-    }
-    return sum;  // 5 + 4 + 3 + 2 + 1 = 15
+  var sum: i32 = 0;
+  for (var x: i32 in Countdown(5)) {
+    sum = sum + x;
+  }
+  return sum;  // 5 + 4 + 3 + 2 + 1 = 15
 }
 ```
 
@@ -1507,10 +1503,10 @@ using std.io;
 var it = v.iter();
 var going = true;
 while (going) {
-    match it.next(v) {
-        Option.Some(x) => { println(x); },
-        Option.None => { going = false; }
-    };
+  match it.next(v) {
+    Option.Some(x) => { println(x); },
+    Option.None => { going = false; }
+  };
 }
 ```
 
@@ -1521,20 +1517,20 @@ it is what keeps the container access inside `next` memory-safe):
 
 ```sun
 class Range implements IIterable<i32, Range> {
-    var start: i32;
-    var end: i32;
-    init(s: i32, e: i32) { this.start = s; this.end = e; }
-    method iter() RangeIterator { return RangeIterator(this.start); }
+  var start: i32;
+  var end: i32;
+  init(s: i32, e: i32) { this.start = s; this.end = e; }
+  method iter() RangeIterator { return RangeIterator(this.start); }
 }
 
 class RangeIterator implements IIterator<i32, Range> {
-    var cur: i32;
-    init(s: i32) { this.cur = s; }
-    method next(r: ref Range) Option<i32> {
-        if (this.cur >= r.end) { return Option.None; }
-        this.cur = this.cur + 1;
-        return Option.Some(this.cur - 1);
-    }
+  var cur: i32;
+  init(s: i32) { this.cur = s; }
+  method next(r: ref Range) Option<i32> {
+    if (this.cur >= r.end) { return Option.None; }
+    this.cur = this.cur + 1;
+    return Option.Some(this.cur - 1);
+  }
 }
 ```
 
@@ -1555,10 +1551,10 @@ owned (`clone()` to copy); the by-`ref` argument of a binary operation is never
 modified.
 
 ```sun
-var n =  BigUint(alloc, 1);
-for (var i: u64 = 2; i <= 30; i = i + 1) { n.mul_small(i); }   // 30!
-var text =  String(alloc, "");
- n.append_decimal(text);   // 265252859812191058636308480000000
+var n = BigUint(alloc, 1);
+for (var i: u64 = 2; i <= 30; i = i + 1) { n.mul_small(i); }  // 30!
+var text = String(alloc, "");
+n.append_decimal(text);  // 265252859812191058636308480000000
 ```
 
 | Method                                                              | Signature                                                          | Description                                                                     |
@@ -1594,8 +1590,9 @@ function narrow(value: i64) u8 throws {
 
 /** Prints the converted number or the error message. */
 function show_conversion(value: i64) void throws {
-  try { var number = narrow(value);
-println(number); } catch (error: ConversionError) { println( error.message()); }
+  try {
+    var number = narrow(value);
+    println(number); } catch (error: ConversionError) { println(error.message()); }
   return;
 }
 ```
@@ -1631,7 +1628,7 @@ unconditionally:
 ```sun
 using std.byte_order;
 
-var swapped: u32 = swap_bytes_u32(305419896);   // 0x12345678 -> 0x78563412
+var swapped: u32 = swap_bytes_u32(305419896);  // 0x12345678 -> 0x78563412
 ```
 
 The `to_`/`from_` pairs name the order the wire uses, and do nothing when it
@@ -1640,10 +1637,10 @@ network byte order, so `to_big_endian_u16` is the `htons` of C, and
 `from_big_endian_u32` is its `ntohl`:
 
 ```sun
-var wire: u16 = to_big_endian_u16(port);      // host -> network order
-var port: u16 = from_big_endian_u16(wire);    // network -> host order
+var wire: u16 = to_big_endian_u16(port);  // host -> network order
+var port: u16 = from_big_endian_u16(wire);  // network -> host order
 
-var little: u32 = to_little_endian_u32(n);    // for a little-endian format
+var little: u32 = to_little_endian_u32(n);  // for a little-endian format
 var n: u32 = from_little_endian_u32(little);
 ```
 
@@ -1669,16 +1666,16 @@ using std.io;
 
 /** Parses and builds JSON while propagating concrete JSON errors. */
 function json_example() void throws {
-  var doc =  parse_json(global_allocator, "{\"name\": \"sun\", \"tags\": [1, 2.5]}");
-  var tags =  doc.get("tags");
-  var second: f64 =  ( tags.at(1)).as_f64();
+  var doc = parse_json(global_allocator, "{\"name\": \"sun\", \"tags\": [1, 2.5]}");
+  var tags = doc.get("tags");
+  var second: f64 = (tags.at(1)).as_f64();
 
-  var obj =  create_json_object(global_allocator);
-   obj.set( String(global_allocator, "ok"), Json(true));
-   obj.set( String(global_allocator, "tags"),  create_json_array(global_allocator));
-   ( obj.get("tags")).push(Json(42));
-  println( obj.to_string(global_allocator));            // {"ok":true,"tags":[42]}
-  println( obj.to_pretty_string(global_allocator, 2));
+  var obj = create_json_object(global_allocator);
+  obj.set(String(global_allocator, "ok"), Json(true));
+  obj.set(String(global_allocator, "tags"), create_json_array(global_allocator));
+  (obj.get("tags")).push(Json(42));
+  println(obj.to_string(global_allocator));  // {"ok":true,"tags":[42]}
+  println(obj.to_pretty_string(global_allocator, 2));
   return;
 }
 ```
@@ -1687,7 +1684,6 @@ The tree node is `class Json` wrapping a `public var value: JsonValue`:
 
 ```sun
 using std.json;
-
 enum JsonValue { Null, Bool(bool), Int(i64), Float(f64), String(String), Array(Vec<Json>), Object(Vec<JsonMember>) }
 class JsonMember { var key: String; var value: Json; }
 ```
@@ -1704,11 +1700,11 @@ store a copy instead. `create_json_string(alloc, ref s)` does that for a `String
 using std.json;
 
 // cfg.model is still needed later, so the document gets a copy
- req.set( String(alloc, "model"),  create_json_string(alloc, cfg.model));
+req.set(String(alloc, "model"), create_json_string(alloc, cfg.model));
 // Equivalent to an explicit clone:
- req.set( String(alloc, "model"), Json( cfg.model.clone(alloc)));
+req.set(String(alloc, "model"), Json(cfg.model.clone(alloc)));
 // Moves cfg.model into the document; using it again is a compile error
- req.set( String(alloc, "model"), Json(cfg.model));
+req.set(String(alloc, "model"), Json(cfg.model));
 ```
 
 | Function / Method                                                                                             | Signature                                                                          | Description                                                                                                                                                           |
@@ -1777,8 +1773,9 @@ object itself.
 ```sun
 /** Returns the first value or an owned empty-container error. */
 function first(v: ref Vec<i32>) i32 throws {
-    try { var value = v.get(0);
-return value; } catch (ignored_error: IndexOutOfBoundsError) { throw EmptyError(); }
+  try {
+    var value = v.get(0);
+    return value; } catch (ignored_error: IndexOutOfBoundsError) { throw EmptyError(); }
 }
 ```
 
@@ -1792,15 +1789,15 @@ using std.io;
 
 /** Creates an owned error message from a runtime path. */
 function failure(path: const ref String) void throws {
-    throw  Error(errno(), path);
+  throw Error(errno(), path);
 }
 
 // At the caller:
 try {
-    failure(path);
+  failure(path);
 } catch (error: Error) {
-    var message = error.message();
-    eprintln(message);
+  var message = error.message();
+  eprintln(message);
 }
 ```
 
@@ -1824,7 +1821,7 @@ Interpolated strings can be passed directly:
 using std.io;
 
 var x: i32 = 42;
-println(`x = ${x}`);   // prints "x = 42\n"
+println(`x = ${x}`);  // prints "x = 42\n"
 print("no newline");
 println();
 ```
@@ -1858,8 +1855,8 @@ XML processor or a complete implementation of every XML encoding requirement.
 ```sun
 using std.xml;
 using std.io;
-var document =  parse_xml(global_allocator, "<p>Hello <b>Sun</b>!</p>");
-var bold =  ( document.root().child(1)).element();
+var document = parse_xml(global_allocator, "<p>Hello <b>Sun</b>!</p>");
+var bold = (document.root().child(1)).element();
 println(bold.name().local());
 ```
 
@@ -1925,8 +1922,8 @@ The maximum element depth is 256, including edits through borrowed descendants.
 ### Writing
 
 ```sun
-var output =  String(alloc, "");
- document.write(alloc, output);
+var output = String(alloc, "");
+document.write(alloc, output);
 ```
 
 `document.write(alloc, output)` appends an XML declaration and the complete

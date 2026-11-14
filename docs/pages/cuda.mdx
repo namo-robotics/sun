@@ -79,13 +79,13 @@ The calling thread's previous CUDA device is restored.
 Inside a function declared `throws`, call operations directly to propagate failures:
 
 ```sun
-var a =  device.upload(host_a);
-var b =  device.upload(host_b);
-var c =  a.matmul(b);
-var d =  (a * b);
-var sum =  (c + d);
- a.matmul_into(b, c);
- sum.copy_to_host(host_output);
+var a = device.upload(host_a);
+var b = device.upload(host_b);
+var c = a.matmul(b);
+var d = (a * b);
+var sum = (c + d);
+a.matmul_into(b, c);
+sum.copy_to_host(host_output);
 ```
 
 | Method | Behavior |

@@ -66,7 +66,7 @@ Primitive types (`i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `f32`, `f
 ```sun
 var x: i32 = 42;
 var y: i32 = x;  // y gets a copy of x
-x = 100;         // x is now 100, y is still 42
+x = 100;  // x is now 100, y is still 42
 ```
 
 ### Classes
@@ -75,21 +75,21 @@ Classes are **value types** that use **move semantics**. When you assign a class
 
 ```sun
 class Point {
-    var x: i32;
-    var y: i32;
+  var x: i32;
+  var y: i32;
 
-    init(px: i32, py: i32) {
-        this.x = px;
-        this.y = py;
-    }
+  init(px: i32, py: i32) {
+    this.x = px;
+    this.y = py;
+  }
 }
 
 function main() i32 {
-    var p1 = Point(3, 4);  // p1 owns the Point
-    var p2 = p1;           // Ownership moves to p2
+  var p1 = Point(3, 4);  // p1 owns the Point
+  var p2 = p1;  // Ownership moves to p2
 
-    // p1.x;               // ❌ ERROR: use of moved value 'p1'
-    return p2.x;           // ✓ OK: p2 now owns the Point
+  // p1.x;               // ❌ ERROR: use of moved value 'p1'
+  return p2.x;  // ✓ OK: p2 now owns the Point
 }
 ```
 
@@ -109,15 +109,15 @@ there is nothing to release and nothing is dropped.
 
 ```sun
 class Holder {
-    var res: Res;
+  var res: Res;
 
-    init() {
-        this.res = Res(1);   // starts the field's life — nothing dropped
-    }
+  init() {
+    this.res = Res(1);  // starts the field's life — nothing dropped
+  }
 
-    method replace(r: Res) void {
-        this.res = r;        // replaces what the field holds, dropping it
-    }
+  method replace(r: Res) void {
+    this.res = r;  // replaces what the field holds, dropping it
+  }
 }
 ```
 
@@ -127,8 +127,8 @@ certainly holds a value by then, because what it replaces is known:
 
 ```sun
 init() {
-    this.res = Res(1);   // starts its life
-    this.res = Res(2);   // certainly replaces Res(1), which is dropped
+  this.res = Res(1);  // starts its life
+  this.res = Res(2);  // certainly replaces Res(1), which is dropped
 }
 ```
 
@@ -137,8 +137,8 @@ reaching it assigned the field and some did not:
 
 ```sun
 init(flag: bool) {
-    if (flag) { this.res = Res(1); }
-    this.res = Res(2);   // ❌ did the branch already assign it?
+  if (flag) { this.res = Res(1); }
+  this.res = Res(2);  // ❌ did the branch already assign it?
 }
 ```
 
@@ -147,7 +147,7 @@ and every path arrives in the same state:
 
 ```sun
 init(flag: bool) {
-    if (flag) { this.res = Res(1); } else { this.res = Res(2); }
+  if (flag) { this.res = Res(1); } else { this.res = Res(2); }
 }
 ```
 
@@ -161,9 +161,9 @@ assigned once.
 
 ```sun
 init(n: i32) {
-    var chosen = Res(0);
-    for (var i: i32 = 1; i < n; i = i + 1) { chosen = Res(i); }
-    this.res = chosen;   // one assignment, whatever the loop did
+  var chosen = Res(0);
+  for (var i: i32 = 1; i < n; i = i + 1) { chosen = Res(i); }
+  this.res = chosen;  // one assignment, whatever the loop did
 }
 ```
 
@@ -214,9 +214,9 @@ that did not move it still own it, so it is dropped where they end.
 
 ```sun
 function maybe(take: bool) void {
-    var r = Res(1);
-    if (take) { sink(r); }   // moved here, still owned on the other path
-}                            // dropped here when `take` was false
+  var r = Res(1);
+  if (take) { sink(r); }  // moved here, still owned on the other path
+}  // dropped here when `take` was false
 ```
 
 Either way exactly one owner is left, so `deinit` runs exactly once. After the
@@ -239,12 +239,12 @@ Functions can return class instances, transferring ownership to the caller:
 
 ```sun
 function create_point(x: i32, y: i32) Point {
-    return Point(x, y);  // Ownership transfers to caller
+  return Point(x, y);  // Ownership transfers to caller
 }
 
 function main() i32 {
-    var p = create_point(5, 10);
-    return p.x + p.y;  // Returns 15
+  var p = create_point(5, 10);
+  return p.x + p.y;  // Returns 15
 }
 ```
 
@@ -263,15 +263,15 @@ borrowed with `const ref`, copied if it is a scalar, and — for a local — mov
 as a whole, which ends the binding.
 
 ```sun
-const LIMIT: i32 = 100;           // a constant global
+const LIMIT: i32 = 100;  // a constant global
 
 function main() i32 {
-    const p = Point(3, 4);
-    const n = p.x + LIMIT;        // ✓ reads are fine
-    var q = p;                    // ✓ a whole-value move ends `p`
-    // p.x = 5;                   // ❌ ERROR: cannot assign to field 'x' of constant 'p'
-    // LIMIT = 1;                 // ❌ ERROR: cannot assign to constant 'LIMIT'
-    return n;
+  const p = Point(3, 4);
+  const n = p.x + LIMIT;  // ✓ reads are fine
+  var q = p;  // ✓ a whole-value move ends `p`
+  // p.x = 5;                   // ❌ ERROR: cannot assign to field 'x' of constant 'p'
+  // LIMIT = 1;                 // ❌ ERROR: cannot assign to constant 'LIMIT'
+  return n;
 }
 ```
 
@@ -292,7 +292,7 @@ a global initialized at startup whose initializer reads one that startup
 initializes later, because it would still be zero.
 
 ```sun
-const DOUBLE: i64 = BASE * 2;     // ✓ BASE is declared below
+const DOUBLE: i64 = BASE * 2;  // ✓ BASE is declared below
 const BASE: i64 = 10;
 // const A: i64 = B;  const B: i64 = A;   // ❌ ERROR: 'A' depends on itself: A -> B -> A
 ```
@@ -305,10 +305,10 @@ References provide temporary, scoped access to variables without transferring ow
 
 ```sun
 function main() i32 {
-    var x: i32 = 42;
-    ref r = x;      // r references x (mutable borrow)
-    r = 100;        // Modifying through r changes x
-    return x;       // Returns 100
+  var x: i32 = 42;
+  ref r = x;  // r references x (mutable borrow)
+  r = 100;  // Modifying through r changes x
+  return x;  // Returns 100
 }
 ```
 
@@ -316,14 +316,14 @@ References allow you to access and modify variables without copying or moving:
 
 ```sun
 function increment(x: ref i32) void {
-    x = x + 1;
+  x = x + 1;
 }
 
 function main() i32 {
-    var count: i32 = 0;
-    increment(count);  // count is now 1
-    increment(count);  // count is now 2
-    return count;      // Returns 2
+  var count: i32 = 0;
+  increment(count);  // count is now 1
+  increment(count);  // count is now 2
+  return count;  // Returns 2
 }
 ```
 
@@ -332,10 +332,10 @@ an explicit type or come from a call that returns one:
 
 ```sun
 function main() i32 {
-    var p = Point(1, 2);
-    var r: ref i32 = p.x;   // borrows the field, same as `ref r = p.x`
-    r = 5;
-    return p.x;             // Returns 5
+  var p = Point(1, 2);
+  var r: ref i32 = p.x;  // borrows the field, same as `ref r = p.x`
+  r = 5;
+  return p.x;  // Returns 5
 }
 ```
 
@@ -359,16 +359,16 @@ constant, a variable, or a field:
 
 ```sun
 function total(v: const ref Vec<i32>) i64 {
-    return v.size();              // ✓ size() is a const method
-    // v.push(1);                 // ❌ ERROR: cannot call non-const method 'push'
+  return v.size();  // ✓ size() is a const method
+  // v.push(1);                 // ❌ ERROR: cannot call non-const method 'push'
 }
 
 function main() i32 {
-    var x: i32 = 1;
-    const ref r = x;              // shared borrow: x may still be read and assigned
-    var s: const ref i32 = x;     // same, with an annotation
-    // r = 2;                     // ❌ ERROR: cannot assign through const reference 'r'
-    return r + s;
+  var x: i32 = 1;
+  const ref r = x;  // shared borrow: x may still be read and assigned
+  var s: const ref i32 = x;  // same, with an annotation
+  // r = 2;                     // ❌ ERROR: cannot assign through const reference 'r'
+  return r + s;
 }
 ```
 
@@ -393,11 +393,11 @@ You can create a reference from another reference. The borrow kind may be downgr
 
 ```sun
 function main() i32 {
-    var x: i32 = 10;
-    ref r1 = x;       // Mutable borrow of x
-    ref r2 = r1;      // ❌ ERROR: x is already borrowed
-    const ref r3 = r1;  // ✓ OK: downgrade to a shared borrow
-    return x;
+  var x: i32 = 10;
+  ref r1 = x;  // Mutable borrow of x
+  ref r2 = r1;  // ❌ ERROR: x is already borrowed
+  const ref r3 = r1;  // ✓ OK: downgrade to a shared borrow
+  return x;
 }
 ```
 
@@ -564,10 +564,10 @@ At any program point, a variable can have at most **one mutable borrow**:
 
 ```sun
 function main() i32 {
-    var x: i32 = 10;
-    ref r1 = x;
-    ref r2 = x;  // ❌ ERROR: x is already borrowed
-    return r1;
+  var x: i32 = 10;
+  ref r1 = x;
+  ref r2 = x;  // ❌ ERROR: x is already borrowed
+  return r1;
 }
 ```
 
@@ -584,16 +584,16 @@ When a reference goes out of scope, the borrow ends. You can then create a new r
 
 ```sun
 function main() i32 {
-    var x: i32 = 10;
+  var x: i32 = 10;
 
-    if (true) {
-        ref r1 = x;
-        r1 = 20;
-    }  // r1 goes out of scope, borrow ends
+  if (true) {
+    ref r1 = x;
+    r1 = 20;
+  }  // r1 goes out of scope, borrow ends
 
-    ref r2 = x;  // ✓ OK: x is no longer borrowed
-    r2 = 30;
-    return x;    // Returns 30
+  ref r2 = x;  // ✓ OK: x is no longer borrowed
+  r2 = 30;
+  return x;  // Returns 30
 }
 ```
 
@@ -611,17 +611,17 @@ a reference into:
 using std.io;
 
 function longest(a: ref String, b: ref String) ref String {
-    if (a.length() > b.length()) { return a; } else { return b; }
+  if (a.length() > b.length()) { return a; } else { return b; }
 }
 
 function main() void {
-    var a: String = `.`;
-    var b: String = `..`;
-    var c: ref String = longest(a, b);  // both a and b are borrowed
-    // a = `x`;                         // ❌ ERROR: 'a' is borrowed
-    // b = `y`;                         // ❌ ERROR: 'b' is borrowed
-    c = `z`;                            // ✓ replaces whichever c points at
-    println(c);
+  var a: String = `.`;
+  var b: String = `..`;
+  var c: ref String = longest(a, b);  // both a and b are borrowed
+  // a = `x`;                         // ❌ ERROR: 'a' is borrowed
+  // b = `y`;                         // ❌ ERROR: 'b' is borrowed
+  c = `z`;  // ✓ replaces whichever c points at
+  println(c);
 }
 ```
 
@@ -640,10 +640,10 @@ value in:
 
 ```sun
 function main() void {
-    var b: String = `..`;
-    var c: ref String = b;
-    // b = `new`;    // ❌ ERROR: cannot assign to 'b' because it is borrowed
-    c = `new`;       // ✓ replaces b through the borrow
+  var b: String = `..`;
+  var c: ref String = b;
+  // b = `new`;    // ❌ ERROR: cannot assign to 'b' because it is borrowed
+  c = `new`;  // ✓ replaces b through the borrow
 }
 ```
 
@@ -652,7 +652,7 @@ its body could replace the backing allocation. For example, inside a function
 with `using std;` and a heap allocator named `alloc`:
 
 ```sun
-var buffer =  ContiguousBuffer<u8>(alloc, 4);
+var buffer = ContiguousBuffer<u8>(alloc, 4);
 var bytes = ByteSlice(buffer);
 buffer.resize_to(1);
 return _convert<i32>(bytes.size());
@@ -669,10 +669,10 @@ the new value:
 
 ```sun
 function main() i32 {
-    var x: i32 = 10;
-    ref r = x;
-    x = 20;      // ✓ scalar write; nothing is dropped
-    return r;    // Returns 20
+  var x: i32 = 10;
+  ref r = x;
+  x = 20;  // ✓ scalar write; nothing is dropped
+  return r;  // Returns 20
 }
 ```
 
@@ -687,10 +687,10 @@ borrowed storage's address past its death:
 
 ```sun
 var a = Inner(1);
-var h = Holder(a);       // ✓ h and a live equally long
+var h = Holder(a);  // ✓ h and a live equally long
 if (true) {
-    var b = Inner(2);
-    h = Holder(b);       // ❌ ERROR: h outlives b, the stored ref would dangle
+  var b = Inner(2);
+  h = Holder(b);  // ❌ ERROR: h outlives b, the stored ref would dangle
 }
 ```
 
@@ -701,17 +701,17 @@ may move outward exactly as far as the outermost variable it borrows.
 using std.io;
 
 class Holder {
-    public var x: ref String;
-    init(x: ref String) { this.x = x; }
+  public var x: ref String;
+  init(x: ref String) { this.x = x; }
 }
 
 function main() void {
-    var a: String = `a`;
-    var b: String = `b`;
-    var t = Holder(a);   // t stores a ref into a: a is borrowed
-    // b = a;            // ❌ ERROR: cannot move out of 'a' because it is borrowed
-    // ref r = a;        // ❌ ERROR: 'a' is already borrowed
-    println(t.x);        // ✓ reads through the stored ref
+  var a: String = `a`;
+  var b: String = `b`;
+  var t = Holder(a);  // t stores a ref into a: a is borrowed
+  // b = a;            // ❌ ERROR: cannot move out of 'a' because it is borrowed
+  // ref r = a;        // ❌ ERROR: 'a' is already borrowed
+  println(t.x);  // ✓ reads through the stored ref
 }
 ```
 
@@ -720,8 +720,8 @@ that built it — what its refs point into dies when the function returns:
 
 ```sun
 function make() Holder {
-    var a: String = `dies here`;
-    return Holder(a);   // ❌ ERROR: cannot return a value that stores references
+  var a: String = `dies here`;
+  return Holder(a);  // ❌ ERROR: cannot return a value that stores references
 }
 ```
 
@@ -739,24 +739,24 @@ is a reference field, so the class is a holder under Rule 5; a
 
 ```sun
 class Holder {
-    var xs: const ref array<i64>;                     // a view: Holder is a holder
-    init(xs: const ref array<i64>) { this.xs = xs; }
+  var xs: const ref array<i64>;  // a view: Holder is a holder
+  init(xs: const ref array<i64>) { this.xs = xs; }
 }
 
 function make() Holder {
-    var local: array<i64, 3> = [10, 20, 30];
-    return Holder(local);   // ❌ ERROR: cannot return a value that stores references
+  var local: array<i64, 3> = [10, 20, 30];
+  return Holder(local);  // ❌ ERROR: cannot return a value that stores references
 }
 
-function first(xs: const ref array<i64>) array<i64> {   // ❌ ERROR: array<T> may only
-    return xs;                                          //    be used behind ref
+function first(xs: const ref array<i64>) array<i64> {  // ❌ ERROR: array<T> may only
+  return xs;  //    be used behind ref
 }
 
 function main() i32 {
-    var a: array<i64, 3> = [10, 20, 30];
-    var h = Holder(a);       // ✓ h borrows a until the end of main
-    var b = a;               // ❌ ERROR: cannot move out of 'a' because it is borrowed
-    return 0;
+  var a: array<i64, 3> = [10, 20, 30];
+  var h = Holder(a);  // ✓ h borrows a until the end of main
+  var b = a;  // ❌ ERROR: cannot move out of 'a' because it is borrowed
+  return 0;
 }
 ```
 
@@ -770,8 +770,8 @@ parameter, never the reverse). Because the type says the value may point into
 a stack frame, the compiler bars it from everything that outlives one:
 
 ```sun
-function make() <'_>() => i32 { ... }   // ❌ ERROR: <'_> cannot be a return type
-var g: <'_>() => i32 = ...;             // ❌ ERROR: a global would outlive the frame
+function make() <'_>() => i32 { /* ... */ }   // ❌ ERROR: <'_> cannot be a return type
+var g: <'_>() => i32 = () => i32 { return 0; };  // ❌ ERROR: a global would outlive the frame
 ```
 
 The property is transitive, exactly like Rule 5: a class with a `<'_>`
@@ -788,19 +788,19 @@ into storage that may outlive the call:
 
 ```sun
 class Bus {
-    var cb: <'_>() => i32;
+  var cb: <'_>() => i32;
 
-    public method invoke(cb: <'_>() => i32) i32 {
-        return cb();       // ✓ calling does not retain the callback
-    }
+  public method invoke(cb: <'_>() => i32) i32 {
+    return cb();  // ✓ calling does not retain the callback
+  }
 
-    public method badSubscribe(cb: <'_>() => i32) void {
-        this.cb = cb;      // ❌ nothing says cb outlives this object
-    }
+  public method badSubscribe(cb: <'_>() => i32) void {
+    this.cb = cb;  // ❌ nothing says cb outlives this object
+  }
 
-    public method subscribe(cb: <'this>() => i32) void {
-        this.cb = cb;      // ✓ the signature promises cb outlives this
-    }
+  public method subscribe(cb: <'this>() => i32) void {
+    this.cb = cb;  // ✓ the signature promises cb outlives this
+  }
 }
 ```
 
@@ -817,8 +817,8 @@ brace, while the destination lives on:
 ```sun
 var bus = Bus();
 if (true) {
-    var n = Node();
-    bus.subscribe(n.onMsg);   // ❌ ERROR: bus outlives n
+  var n = Node();
+  bus.subscribe(n.onMsg);  // ❌ ERROR: bus outlives n
 }
 // ✓ legal when bus and n are declared in the same scope
 ```
@@ -840,25 +840,25 @@ lifetime and needs no declaration:
 
 ```sun
 class Bus<'a> {
-    var cb: <'a>(i32) => i32;    // stored callbacks must outlive 'a
-    public method subscribe(cb: <'a>(i32) => i32) void { this.cb = cb; }
-    public method publish(x: i32) i32 { var f = this.cb; return f(x); }
+  var cb: <'a>(i32) => i32;  // stored callbacks must outlive 'a
+  public method subscribe(cb: <'a>(i32) => i32) void { this.cb = cb; }
+  public method publish(x: i32) i32 { var f = this.cb; return f(x); }
 }
 
 class Node {
-    public method onMsg(x: i32) i32 { ... }
-    /* Bus<'this> binds the bus's slot to this node's lifetime: the bus may
+  public method onMsg(x: i32) i32 { /* ... */ }
+  /* Bus<'this> binds the bus's slot to this node's lifetime: the bus may
        only store things this node outlives */
-    public method attach(bus: ref Bus<'this>) void {
-        bus.subscribe(this.onMsg);   // ✓ the signature carries the proof
-    }
+  public method attach(bus: ref Bus<'this>) void {
+    bus.subscribe(this.onMsg);  // ✓ the signature carries the proof
+  }
 }
 
 var bus = Bus();
 if (true) {
-    var n = Node();
-    n.attach(bus);      // ❌ ERROR: n dies before bus, and attach's
-}                       //    signature says the bus may keep n's method
+  var n = Node();
+  n.attach(bus);  // ❌ ERROR: n dies before bus, and attach's
+}  //    signature says the bus may keep n's method
 bus.publish(1);
 ```
 
@@ -888,10 +888,10 @@ When a class-typed variable is assigned to another variable, the original is mar
 
 ```sun
 function main() i32 {
-    var p1 = Point(1, 2);
-    var p2 = p1;          // p1 is moved
+  var p1 = Point(1, 2);
+  var p2 = p1;  // p1 is moved
 
-    return p1.x;          // ❌ ERROR: use of moved variable
+  return p1.x;  // ❌ ERROR: use of moved variable
 }
 ```
 
@@ -906,10 +906,10 @@ that says neither gives the value to the closure:
 
 ```sun
 function main() i32 {
-    var p = Point(1, 2);
-    var f = [p]() => i32 { return p.x; };   // p moves into the closure
+  var p = Point(1, 2);
+  var f = [p]() => i32 { return p.x; };  // p moves into the closure
 
-    return p.x;           // ❌ ERROR: use of moved variable
+  return p.x;  // ❌ ERROR: use of moved variable
 }
 ```
 
@@ -928,16 +928,16 @@ borrows. Each loop iteration therefore creates a fresh borrow:
 
 ```sun
 function main() i32 {
-    var sum: i32 = 0;
-    var i: i32 = 0;
+  var sum: i32 = 0;
+  var i: i32 = 0;
 
-    while (i < 5) {
-        ref r = sum;  // New borrow each iteration
-        r = r + i;
-        i = i + 1;
-    }                 // Borrow ends each iteration
+  while (i < 5) {
+    ref r = sum;  // New borrow each iteration
+    r = r + i;
+    i = i + 1;
+  }  // Borrow ends each iteration
 
-    return sum;       // Returns 10 (0+1+2+3+4)
+  return sum;  // Returns 10 (0+1+2+3+4)
 }
 ```
 
@@ -949,17 +949,17 @@ References can be passed to functions that accept `ref` parameters:
 
 ```sun
 function swap(a: ref i32, b: ref i32) void {
-    var temp: i32 = a;
-    a = b;
-    b = temp;
+  var temp: i32 = a;
+  a = b;
+  b = temp;
 }
 
 function main() i32 {
-    var x: i32 = 1;
-    var y: i32 = 2;
-    swap(x, y);
-    // x is now 2, y is now 1
-    return x;
+  var x: i32 = 1;
+  var y: i32 = 2;
+  swap(x, y);
+  // x is now 2, y is now 1
+  return x;
 }
 ```
 
@@ -994,9 +994,9 @@ expression can, and **every statement inside the braces keeps its own
 semicolon**. This is the part that is easy to get wrong:
 
 ```sun
-unsafe { _free(mem); };            // statement: ends the call, then the statement
+unsafe { _free(mem); };  // statement: ends the call, then the statement
 var mem = unsafe { _malloc(n); };  // value: the block is the last expression
-var mem = unsafe { _malloc(n) };   // ❌ ERROR: expected ';' after expression statement
+var mem = unsafe { _malloc(n) };  // ❌ ERROR: expected ';' after expression statement
 ```
 
 A block may hold several statements; the last one is its value. Names declared
@@ -1009,10 +1009,10 @@ usual way to wrap a C call. It also means a block that always leaves the
 function never produces a value, so binding one is rejected:
 
 ```sun
-var x = unsafe { return 0; };   // ❌ ERROR: the block never produces a value
+var x = unsafe { return 0; };  // ❌ ERROR: the block never produces a value
 var y = unsafe {
-    if (tooBig) { return 0; }   // ✓ conditional early exit; y binds otherwise
-    c_abs(n);
+  if (tooBig) { return 0; }  // ✓ conditional early exit; y binds otherwise
+  c_abs(n);
 };
 ```
 
@@ -1047,10 +1047,10 @@ for raw memory access.
 
 ```sun
 class ByteReader {
-    /* Read a byte from a live, initialized buffer at a valid index. */
-    public const unsafe method read(data: raw_ptr<u8>, index: i64) u8 {
-        return unsafe { _load<u8>(data, index); };
-    }
+  /* Read a byte from a live, initialized buffer at a valid index. */
+  public const unsafe method read(data: raw_ptr<u8>, index: i64) u8 {
+    return unsafe { _load<u8>(data, index); };
+  }
 }
 ```
 
@@ -1079,9 +1079,9 @@ are unchanged:
 ```sun
 var b = Box(1);
 unsafe {
-    var r: ref Box = b;
-    var r2: ref Box = b;   // ❌ ERROR: cannot borrow 'b' as mutable
-};                         //    because it is already borrowed
+  var r: ref Box = b;
+  var r2: ref Box = b;  // ❌ ERROR: cannot borrow 'b' as mutable
+};  //    because it is already borrowed
 ```
 
 It is also lexical: calling a safe Sun function from inside a block does not
@@ -1117,7 +1117,7 @@ BorrowCheckResult BorrowState::addBorrow(const std::string& borrowedVar,
                                          const std::string& refName,
                                          BorrowKind kind,
                                          size_t scopeDepth,
-                                         const SourceLoc& loc) {
+                                         const sun::support::Position& loc) {
   auto& varLoans = loans_[borrowedVar];
 
   // Check existing borrows
@@ -1160,10 +1160,10 @@ When assigning a class-typed variable:
 
 ```cpp
 void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
-  if (var.get_value() &&
-      var.get_value()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
-    const auto& srcRef = static_cast<const VariableReferenceAST&>(*var.get_value());
-    auto srcType = var.get_value()->getResolvedType();
+  if (var.getValue() &&
+      var.getValue()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
+    const auto& srcRef = static_cast<const VariableReferenceAST&>(*var.getValue());
+    auto srcType = var.getValue()->getResolvedType();
 
     if (srcType && srcType->isClass()) {
       movedVariables_.insert(srcRef.getName());  // Mark as moved
@@ -1230,10 +1230,10 @@ These restrictions handle ~80% of common use cases while being significantly eas
 ### Do: Use References for In-Place Modification
 
 ```sun
-function double_array(arr: ref matrix<i32, 10>) void {
-    for (var i: i32 = 0; i < 10; i = i + 1) {
-        arr[i] = arr[i] * 2;
-    }
+function double_array(arr: ref array<i32, 10>) void {
+  for (var i: i32 = 0; i < 10; i = i + 1) {
+    arr[i] = arr[i] * 2;
+  }
 }
 ```
 
@@ -1241,9 +1241,9 @@ function double_array(arr: ref matrix<i32, 10>) void {
 
 ```sun
 function process(data: ref i32) void {
-    // Use data immediately
-    var result = data * 2;
-    // Don't hold onto the reference longer than needed
+  // Use data immediately
+  var result = data * 2;
+  // Don't hold onto the reference longer than needed
 }
 ```
 
@@ -1251,16 +1251,16 @@ function process(data: ref i32) void {
 
 ```sun
 function main() i32 {
-    var x: i32 = 0;
+  var x: i32 = 0;
 
-    // Scope limits the borrow
-    if (true) {
-        ref r = x;
-        r = 42;
-    }
+  // Scope limits the borrow
+  if (true) {
+    ref r = x;
+    r = 42;
+  }
 
-    // x is free to use again
-    return x;
+  // x is free to use again
+  return x;
 }
 ```
 
@@ -1273,12 +1273,12 @@ returned. Store the value unless you really want a view:
 ```sun
 // Locks its constructor argument for the scope, cannot be returned
 class Cache {
-    var cached: ref i32;
+  var cached: ref i32;
 }
 
 // ✓ Owns its data, moves freely
 class Cache {
-    var cached: i32;
+  var cached: i32;
 }
 ```
 
@@ -1287,15 +1287,15 @@ class Cache {
 ```sun
 // ❌ This won't compile
 function main() i32 {
-    var p1 = Point(1, 2);
-    var p2 = p1;
-    return p1.x;  // Error: p1 was moved
+  var p1 = Point(1, 2);
+  var p2 = p1;
+  return p1.x;  // Error: p1 was moved
 }
 
 // ✓ Use the new owner
 function main() i32 {
-    var p1 = Point(1, 2);
-    var p2 = p1;
-    return p2.x;  // OK: p2 owns the value
+  var p1 = Point(1, 2);
+  var p2 = p1;
+  return p2.x;  // OK: p2 owns the value
 }
 ```

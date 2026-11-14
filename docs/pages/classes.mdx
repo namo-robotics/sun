@@ -8,17 +8,17 @@ import { Callout } from 'nextra/components'
 
 ```sun
 class Point {
-    var x: i32;
-    var y: i32;
+  var x: i32;
+  var y: i32;
 
-    init(px: i32, py: i32) {
-        this.x = px;
-        this.y = py;
-    }
+  init(px: i32, py: i32) {
+    this.x = px;
+    this.y = py;
+  }
 
-    method magnitude_squared() i32 {
-        return this.x * this.x + this.y * this.y;
-    }
+  method magnitude_squared() i32 {
+    return this.x * this.x + this.y * this.y;
+  }
 }
 ```
 
@@ -43,11 +43,10 @@ Fields can supply values that run before the constructor body:
 
 ```sun
 class Point {
-    var x: i32 = 10;
-    var y: i32 = this.x + 2;
-
-    init() {}
-    init(x: i32) { this.x = x; }
+  var x: i32 = 10;
+  var y: i32 = this.x + 2;
+  init() {}
+  init(x: i32) { this.x = x; }
 }
 ```
 
@@ -81,15 +80,16 @@ and from nowhere outside it.
 
 ```sun
 public module bank {
-    public class Account {
-        var balance: i64;                       // private
-        public var owner: i32;                  // public field
-        init(owner: i32) {                      // always public
-            this.owner = owner; this.balance = 0;
-        }
-        public method deposit(n: i64) void { this.balance = this.balance + n; }
-        method audit() bool { return this.balance >= 0; }   // private
+  public class Account {
+    var balance: i64;  // private
+    public var owner: i32;  // public field
+    init(owner: i32) {  // always public
+      this.owner = owner;
+      this.balance = 0;
     }
+    public method deposit(n: i64) void { this.balance = this.balance + n; }
+    method audit() bool { return this.balance >= 0; }  // private
+  }
 }
 ```
 
@@ -115,11 +115,10 @@ against a C struct declared `__attribute__((packed))`:
 
 ```sun
 packed_class Header {
-    var magic: u8;
-    var length: i32;
-    var flags: u8;
-
-    init() {}
+  var magic: u8;
+  var length: i32;
+  var flags: u8;
+  init() {}
 }
 ```
 
@@ -144,11 +143,11 @@ references to packed members:
 ```sun
 var h: Header = Header();
 
-ref r = h.length;   // ERROR: not aligned enough to be borrowed
+ref r = h.length;  // ERROR: not aligned enough to be borrowed
 takes_a_ref(h.length);  // ERROR: same reason
 
 var len: i32 = h.length;  // OK: copy the value out
-takes_a_ref(h);           // OK: the object itself is fine to borrow
+takes_a_ref(h);  // OK: the object itself is fine to borrow
 ```
 
 Field types are restricted to what can actually be packed:
@@ -168,13 +167,13 @@ already has. Methods on either side can call each other through `this`.
 
 ```sun
 class Point {
-    var x: i32;
-    var y: i32;
-    init(x: i32, y: i32) { this.x = x; this.y = y; }
+  var x: i32;
+  var y: i32;
+  init(x: i32, y: i32) { this.x = x; this.y = y; }
 }
 
 partial class Point {
-    method sum() i32 { return this.x + this.y; }
+  method sum() i32 { return this.x + this.y; }
 }
 ```
 
@@ -186,22 +185,22 @@ Classes can implement interfaces using the `implements` keyword:
 using std.io;
 
 interface Printable {
-    method print() void;
+  method print() void;
 }
 
 class Point implements Printable {
-    var x: i32;
-    var y: i32;
+  var x: i32;
+  var y: i32;
 
-    init(px: i32, py: i32) {
-        this.x = px;
-        this.y = py;
-    }
+  init(px: i32, py: i32) {
+    this.x = px;
+    this.y = py;
+  }
 
-    method print() void {
-        println(this.x);
-        println(this.y);
-    }
+  method print() void {
+    println(this.x);
+    println(this.y);
+  }
 }
 ```
 
@@ -213,23 +212,23 @@ Separate multiple interfaces with commas:
 using std.io;
 
 interface Named {
-    var name: i32;
+  var name: i32;
 }
 
 interface Runnable {
-    method run() void;
+  method run() void;
 }
 
 class Task implements Named, Runnable {
-    // 'name' field comes from Named interface
+  // 'name' field comes from Named interface
 
-    init(n: i32) {
-        this.name = n;
-    }
+  init(n: i32) {
+    this.name = n;
+  }
 
-    method run() void {
-        println(this.name);
-    }
+  method run() void {
+    println(this.name);
+  }
 }
 ```
 
@@ -241,21 +240,21 @@ Generic classes can implement generic interfaces with matching type parameters:
 using std;
 
 class Box<T> implements IIterator<T, Box<T>> {
-    var value: T;
-    var returned: bool;
+  var value: T;
+  var returned: bool;
 
-    init(v: T) {
-        this.value = v;
-        this.returned = false;
-    }
+  init(v: T) {
+    this.value = v;
+    this.returned = false;
+  }
 
-    method next(self: ref Box<T>) Option<T> {
-        if (this.returned) {
-            return Option.None;
-        }
-        this.returned = true;
-        return Option.Some(this.value);
+  method next(self: ref Box<T>) Option<T> {
+    if (this.returned) {
+      return Option.None;
     }
+    this.returned = true;
+    return Option.Some(this.value);
+  }
 }
 ```
 
@@ -271,16 +270,15 @@ every field is assigned, and the body may do anything a method can.
 
 ```sun
 class Account {
-    var owner: i32;
-    var balance: i64;
+  var owner: i32;
+  var balance: i64;
 
-    init(owner: i32) {
-        this.owner = owner;
-        this.balance = 0;
-        this.audit();       // fine: every field has a value by here
-    }
-
-    method audit() void { ... }
+  init(owner: i32) {
+    this.owner = owner;
+    this.balance = 0;
+    this.audit();  // fine: every field has a value by here
+  }
+  method audit() void { /* ... */ }
 }
 ```
 
@@ -291,13 +289,13 @@ is exactly the bug the rule exists to prevent:
 
 ```sun
 class Broken {
-    var owner: i32;
-    var balance: i64;
+  var owner: i32;
+  var balance: i64;
 
-    init(owner: i32) {
-        this.owner = owner;
-    }   // ❌ ERROR: constructor of 'Broken' can finish with field 'balance'
-        //    unassigned
+  init(owner: i32) {
+    this.owner = owner;
+  }  // ❌ ERROR: constructor of 'Broken' can finish with field 'balance'
+  //    unassigned
 }
 ```
 
@@ -307,17 +305,17 @@ already have a value:
 
 ```sun
 class Buffer {
-    var data: Vec<u8>;
-    var length: i64;
+  var data: Vec<u8>;
+  var length: i64;
 
-    init(alloc: ref HeapAllocator) {
-        this.fill(alloc);   // assigns both fields, so the object is whole
-    }
+  init(alloc: ref HeapAllocator) {
+    this.fill(alloc);  // assigns both fields, so the object is whole
+  }
 
-    method fill(alloc: ref HeapAllocator) void {
-        this.data =  Vec<u8>(alloc, 16);
-        this.length = 0;
-    }
+  method fill(alloc: ref HeapAllocator) void {
+    this.data = Vec<u8>(alloc, 16);
+    this.length = 0;
+  }
 }
 ```
 
@@ -329,8 +327,8 @@ Classes are **value types** in Sun. Create instances by calling the class name w
 
 ```sun
 function main() i32 {
-    var p = Point(3, 4);  // Create a Point on the stack
-    return p.magnitude_squared();  // 25
+  var p = Point(3, 4);  // Create a Point on the stack
+  return p.magnitude_squared();  // 25
 }
 ```
 
@@ -338,8 +336,8 @@ With explicit type annotation:
 
 ```sun
 function main() i32 {
-    var p: Point = Point(3, 4);
-    return p.x + p.y;  // 7
+  var p: Point = Point(3, 4);
+  return p.x + p.y;  // 7
 }
 ```
 
@@ -354,13 +352,13 @@ every field:
 
 ```sun
 class Car {
-    var color: static_ptr<u8>;
-    var speed: i32;
+  var color: static_ptr<u8>;
+  var speed: i32;
 }
 
 function main() i32 {
-    var car: Car = { color: "red", speed: 120 };
-    return car.speed;
+  var car: Car = { color: "red", speed: 120 };
+  return car.speed;
 }
 ```
 
@@ -372,7 +370,6 @@ Field order does not matter, and a class-typed field takes a nested literal:
 ```sun
 class Inner { var a: i32; var b: i32; }
 class Outer { var inner: Inner; var tag: i32; }
-
 var o: Outer = { tag: 12, inner: { a: 10, b: 20 } };
 ```
 
@@ -392,18 +389,15 @@ zero — that silence is exactly the bug this syntax exists to prevent.
 For heap-allocated objects, use an allocator from the standard library:
 
 ```sun
+function main() i32 throws {
+  // Create a Point on the heap
+  var p: raw_ptr<Point> = global_allocator.create<Point>(3, 4);
+  var result = unsafe { _to_ref<Point>(p).magnitude_squared(); };  // 25
 
-function main() i32 {
+  // A raw allocation needs both destruction and deallocation.
+  unsafe { _deinit<Point>(p); _free(p); };
 
-    // Create a Point on the heap
-    var p: raw_ptr<Point> = global_allocator.create<Point>(3, 4);
-
-    var result = unsafe { _to_ref<Point>(p).magnitude_squared(); };  // 25
-
-    // A raw allocation needs both destruction and deallocation.
-    unsafe { _deinit<Point>(p); _free(p); };
-
-    return result;
+  return result;
 }
 ```
 
@@ -412,11 +406,10 @@ function main() i32 {
 For automatic memory management, wrap the raw pointer in `Unique<T>`:
 
 ```sun
+function main() i32 throws {
+  var p = Unique<Point>(global_allocator.create<Point>(3, 4));
 
-function main() i32 {
-    var p = Unique<Point>(global_allocator.create<Point>(3, 4));
-
-    return p.get().magnitude_squared();  // 25
+  return p.get().magnitude_squared();  // 25
 }  // p.deinit() called automatically, memory freed
 ```
 
@@ -432,17 +425,17 @@ function main() i32 {
 
 ### By Value
 
-By default, objects are passed by value (copied):
+Passing an owning object by value moves it into the function:
 
 ```sun
-function modify_point(p: Point) void {
-    p.x = 100;  // Modifies the copy
+function modify_point(p: Point) i32 {
+  p.x = 100;
+  return p.x;
 }
 
 function main() i32 {
-    var p = Point(1, 2);
-    modify_point(p);
-    return p.x;  // Still 1 - original unchanged
+  var p = Point(1, 2);
+  return modify_point(p);  // 100; p is moved into the function
 }
 ```
 
@@ -452,12 +445,12 @@ Use `ref` to pass a reference that allows reading without copying:
 
 ```sun
 function read_point(p: ref Point) i32 {
-    return p.x + p.y;
+  return p.x + p.y;
 }
 
 function main() i32 {
-    var p = Point(3, 4);
-    return read_point(p);  // 7
+  var p = Point(3, 4);
+  return read_point(p);  // 7
 }
 ```
 
@@ -467,8 +460,8 @@ A method accessed without parentheses (`obj.method`) is a first-class value of l
 
 ```sun
 var c = Counter();
-var tick = c.increment;   // type: <'_>() => void
-tick();                   // increments c
+var tick = c.increment;  // type: <'_>() => void
+tick();  // increments c
 ```
 
 ## Lifetime Parameters
@@ -481,18 +474,18 @@ slot with a type application:
 
 ```sun
 class Bus<'a> {
-    var cb: <'a>(i32) => i32;    // stored callbacks must outlive 'a
-    public method subscribe(cb: <'a>(i32) => i32) void { this.cb = cb; }
+  var cb: <'a>(i32) => i32;  // stored callbacks must outlive 'a
+  public method subscribe(cb: <'a>(i32) => i32) void { this.cb = cb; }
 }
 
 class Node {
-    /** Handles a message without retaining it. */
-    public method onMsg(value: i32) i32 { return value; }
+  /** Handles a message without retaining it. */
+  public method onMsg(value: i32) i32 { return value; }
 
-    /* a bus whose slot is bound to this node's lifetime */
-    public method attach(bus: ref Bus<'this>) void {
-        bus.subscribe(this.onMsg);
-    }
+  /* a bus whose slot is bound to this node's lifetime */
+  public method attach(bus: ref Bus<'this>) void {
+    bus.subscribe(this.onMsg);
+  }
 }
 ```
 
@@ -513,10 +506,10 @@ pass one to a `ref` parameter, or call a non-const method on `this`.
 
 ```sun
 class Counter {
-    var n: i32;
-    init() { this.n = 0; }
-    public const method get() i32 { return this.n; }
-    public method increment() void { this.n = this.n + 1; }
+  var n: i32;
+  init() { this.n = 0; }
+  public const method get() i32 { return this.n; }
+  public method increment() void { this.n = this.n + 1; }
 }
 ```
 
@@ -525,8 +518,8 @@ a `const ref`, or `this` inside another const method:
 
 ```sun
 const c = Counter();
-c.get();          // ✓ OK
-c.increment();    // ❌ ERROR: cannot call non-const method 'increment' on constant 'c'
+c.get();  // ✓ OK
+c.increment();  // ❌ ERROR: cannot call non-const method 'increment' on constant 'c'
 ```
 
 A const method may still hand out a borrow of its object (`method get(i) ref T`,
@@ -547,12 +540,12 @@ Functions can return class instances by value:
 
 ```sun
 function make_point(x: i32, y: i32) Point {
-    return Point(x, y);
+  return Point(x, y);
 }
 
 function main() i32 {
-    var p = make_point(5, 6);
-    return p.magnitude_squared();  // 61
+  var p = make_point(5, 6);
+  return p.magnitude_squared();  // 61
 }
 ```
 
@@ -560,32 +553,32 @@ function main() i32 {
 
 ```sun
 class Counter {
-    var value: i32;
+  var value: i32;
 
-    init(start: i32) {
-        this.value = start;
-    }
+  init(start: i32) {
+    this.value = start;
+  }
 
-    method increment() void {
-        this.value = this.value + 1;
-    }
+  method increment() void {
+    this.value = this.value + 1;
+  }
 
-    method get() i32 {
-        return this.value;
-    }
+  method get() i32 {
+    return this.value;
+  }
 }
 
 function main() i32 {
-    var c1 = Counter(10);
-    c1.increment();
-    c1.increment();
-    var result1 = c1.get();  // 12
+  var c1 = Counter(10);
+  c1.increment();
+  c1.increment();
+  var result1 = c1.get();  // 12
 
-    var c2 = Counter(0);
-    c2.increment();
-    var result2 = c2.get();  // 1
+  var c2 = Counter(0);
+  c2.increment();
+  var result2 = c2.get();  // 1
 
-    return result1 + result2;  // 13
+  return result1 + result2;  // 13
 }
 ```
 
@@ -600,13 +593,13 @@ once, left to right. Primitive arithmetic and operator precedence are unchanged.
 ```sun
 /** Stores an integer operand. */
 class Number {
-    var value: i32;
-    /** Initializes the operand. */
-    init(value: i32) { this.value = value; }
-    /** Borrows the receiver and adds a scalar. */
-    public const method __add__(other: i32) i32 { return this.value + other; }
-    /** Borrows the receiver and multiplies by a scalar. */
-    public const method __multiply__(other: i32) i32 { return this.value * other; }
+  var value: i32;
+  /** Initializes the operand. */
+  init(value: i32) { this.value = value; }
+  /** Borrows the receiver and adds a scalar. */
+  public const method __add__(other: i32) i32 { return this.value + other; }
+  /** Borrows the receiver and multiplies by a scalar. */
+  public const method __multiply__(other: i32) i32 { return this.value * other; }
 }
 ```
 
@@ -622,12 +615,11 @@ A class can request a minimum byte alignment with metadata in its body:
 ```sun
 /** Four floats stored at a SIMD-friendly boundary. */
 class Vector {
-    alignment: 16
-
-    var x: f32;
-    var y: f32;
-    var z: f32;
-    var w: f32;
+  alignment: 16
+  var x: f32;
+  var y: f32;
+  var z: f32;
+  var w: f32;
 }
 ```
 

@@ -9,12 +9,12 @@ using std;
 
 /** Scales four samples, adds a bias, and stores the result without allocation. */
 function process(samples: ref ContiguousBuffer<f32>) void throws {
-    var input =  std.simd.load(samples, 0);
-    var gain = std.simd.splat(2.0f32);
-    var bias = std.simd.splat(0.5f32);
-    var output = input.fma(gain, bias);
-     output.store(samples, 0);
-    return;
+  var input = std.simd.load(samples, 0);
+  var gain = std.simd.splat(2.0f32);
+  var bias = std.simd.splat(0.5f32);
+  var output = input.fma(gain, bias);
+  output.store(samples, 0);
+  return;
 }
 ```
 
@@ -70,11 +70,11 @@ but still require only ordinary `f32` alignment for external memory.
 ```sun
 /** Doubles eight initialized samples through checked buffer operations. */
 function process8(samples: ref ContiguousBuffer<f32>) void throws {
-    var input =  std.simd.load8(samples, 0);
-    var gain = std.simd.F32x8(2.0f32);
-    var output = input * gain;
-     output.store(samples, 0);
-    return;
+  var input = std.simd.load8(samples, 0);
+  var gain = std.simd.F32x8(2.0f32);
+  var output = input * gain;
+  output.store(samples, 0);
+  return;
 }
 ```
 

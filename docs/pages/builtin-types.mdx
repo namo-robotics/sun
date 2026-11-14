@@ -79,17 +79,17 @@ type is a suffix: `i8` through `i64`, `u8` through `u64` on integer literals,
 and `f32`/`f64` on float literals.
 
 ```sun
-var sa = SockAddrIn(0u32, 7400u16);   // without suffixes, each argument
-                                      // would need a typed variable
+var sa = SockAddrIn(0u32, 7400u16);  // without suffixes, each argument
+// would need a typed variable
 var flag: u8 = 128u8;
-var offset = -128i8;                  // the minus folds into the literal
+var offset = -128i8;  // the minus folds into the literal
 var ratio = 1.5f32;
 ```
 
 A value that does not fit its suffix is a compile error, not a silent wrap:
 
 ```sun
-var b = 300u8;    // Error: Integer literal 300 cannot be represented as 'u8'
+var b = 300u8;  // Error: Integer literal 300 cannot be represented as 'u8'
 ```
 
 A suffixed literal is an ordinary typed value from then on: it widens where
@@ -107,8 +107,7 @@ integer: it compares with another `char` and takes no part in arithmetic.
 var letter: char = 'a';
 var accented: char = 'é';
 var emoji: char = '😀';
-
-if (letter < accented) { ... }   // ordered by scalar value
+if (letter < accented) { /* ... */ }  // ordered by scalar value
 ```
 
 Text in Sun is UTF-8 and `String` is indexed by byte, so code that scans bytes
@@ -148,8 +147,8 @@ insert raw bytes, so the result is not necessarily valid UTF-8.
 `bool`. Not every `u32` is a scalar value, so `char_of` is the checked form:
 
 ```sun
-var n: i64 = _convert<i64>('a');       // 97
-var c: char = _convert<char>(b'a');    // 'a'
+var n: i64 = _convert<i64>('a');  // 97
+var c: char = _convert<char>(b'a');  // 'a'
 
 // None for a surrogate or anything above U+10FFFF
 var maybe: Option<char> = char_of(128512);
@@ -162,15 +161,15 @@ var maybe: Option<char> = char_of(128512);
 ```sun
 using std.io;
 
-var s =  String(alloc, "héllo😀");
-s.length();      // 10 bytes
+var s = String(alloc, "héllo😀");
+s.length();  // 10 bytes
 s.count_chars();  // 6 scalar values
 
 var it = s.iterate_chars();
 for (var c: char in it) { print(c); }
 
- s.push('!');            // appends the UTF-8 encoding
-s.find('😀');           // byte index, or None
+s.push('!');  // appends the UTF-8 encoding
+s.find('😀');  // byte index, or None
 ```
 
 Bytes that are not valid UTF-8 decode as `U+FFFD` and advance one byte, so
@@ -227,7 +226,7 @@ startup because it reads 'counter', which is a 'var'
 
 ```sun
 var arr = [10, 20, 30, 40, 50];
-var first = arr[0];   // 10
+var first = arr[0];  // 10
 arr[2] = 33;
 
 // Multidimensional indexing
@@ -248,7 +247,7 @@ array is borrowed in place with `ref` or `const ref`; it cannot be moved out.
 
 ```sun
 var a: array<i32, 3> = [1, 2, 3];
-var b = a;        // a moves into b
+var b = a;  // a moves into b
 // a[0]           // ERROR: use of moved variable 'a'
 ```
 
@@ -262,13 +261,12 @@ indexing work through it.
 
 ```sun
 function sum(xs: const ref array<i32>) i32 {
-    var total = 0;
-    for (var i: i64 = 0; i < xs.dim(0); i = i + 1) { total = total + xs[i]; }
-    return total;
+  var total = 0;
+  for (var i: i64 = 0; i < xs.dim(0); i = i + 1) { total = total + xs[i]; }
+  return total;
 }
-
 var a: array<i32, 4> = [1, 2, 3, 4];
-sum(a);   // a is borrowed, not moved
+sum(a);  // a is borrowed, not moved
 ```
 
 A bare `array<T>` cannot be a field, local, global, by-value parameter or
@@ -313,7 +311,7 @@ Two methods take the fat pointer apart; they are the supported way to read a `st
 
 ```sun
 var s: static_ptr<u8> = "hello world";
-var n: i64 = s.length();        // 11
+var n: i64 = s.length();  // 11
 var bytes: raw_ptr<u8> = s.raw();
 _print_bytes(bytes, n);
 ```
@@ -333,15 +331,15 @@ original. Only one `ref` to a value may be alive at a time.
 
 ```sun
 function increment(x: ref i32) void {
-    x = x + 1;
+  x = x + 1;
 }
 
 function main() i32 {
-    var count: i32 = 0;
-    increment(count);          // count is now 1
-    ref r = count;             // statement form, no annotation needed
-    var s: ref i32 = count;    // ❌ ERROR: count is already borrowed
-    return r;
+  var count: i32 = 0;
+  increment(count);  // count is now 1
+  ref r = count;  // statement form, no annotation needed
+  var s: ref i32 = count;  // ❌ ERROR: count is already borrowed
+  return r;
 }
 ```
 
@@ -353,8 +351,8 @@ be assigned and only `const` methods can be called.
 
 ```sun
 function total(v: const ref Vec<i32>) i64 {
-    return v.size();     // ✓ size() is a const method
-    // v.push(1);        // ❌ ERROR: cannot call non-const method 'push'
+  return v.size();  // ✓ size() is a const method
+  // v.push(1);        // ❌ ERROR: cannot call non-const method 'push'
 }
 ```
 
