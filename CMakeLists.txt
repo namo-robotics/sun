@@ -200,8 +200,12 @@ add_library(sun_exception_runtime STATIC src/runtime/exceptions.cpp src/runtime/
 target_include_directories(sun_exception_runtime PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 # Native propagation must unwind through sun_eh_raise even without C++ exceptions.
 # Darwin Clang otherwise omits the runtime's unwind tables in optimized builds.
-target_compile_options(sun_exception_runtime PRIVATE -fno-exceptions -fno-rtti -funwind-tables)
-set_target_properties(sun_exception_runtime PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# This archive is embedded and linked by the consumer's toolchain. Keep native
+# objects even when packaging injects LTO flags or enables CMake IPO globally.
+target_compile_options(sun_exception_runtime PRIVATE
+    -fno-exceptions -fno-rtti -funwind-tables -fno-lto)
+set_target_properties(sun_exception_runtime PROPERTIES
+    POSITION_INDEPENDENT_CODE ON INTERPROCEDURAL_OPTIMIZATION OFF)
 
 # Compiler-side JIT support is separate from the runtime linked into Sun programs.
 add_library(sun_jit_support STATIC src/driver/jit/unwind_registration.cpp)
