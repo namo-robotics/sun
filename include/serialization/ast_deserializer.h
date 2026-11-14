@@ -69,7 +69,7 @@ class ASTDeserializer {
   DeserializerConfig config_;
 
   /**
-   * Restore parameters from current metadata or the legacy names-only field.
+   * Restore generic parameter names and constraints from serialized metadata.
    */
   template <typename Owner>
   std::vector<sun::ast::TypeParameter> deserializeTypeParameters(

@@ -380,6 +380,27 @@ std::string linkSimpleDebugBinary(const std::string& name,
 
 }  // namespace
 
+/** Collects runtime debug symbols before removing the archive used by the linker. */
+TEST(Tooling_Backend_DebugInfo, dsym_collection_keeps_runtime_archive_alive) {
+  if (!llvm::Triple(llvm::sys::getDefaultTargetTriple()).isOSDarwin() ||
+      !haveTool("dsymutil")) {
+    GTEST_SKIP() << "Darwin and dsymutil are required";
+  }
+  std::filesystem::remove_all(::testing::TempDir() +
+                              "sun_dbg_runtime_archive_bin.dSYM");
+  std::string skipReason;
+  ::testing::internal::CaptureStderr();
+  const auto binary = linkSimpleDebugBinary("sun_dbg_runtime_archive", skipReason);
+  const auto diagnostics = ::testing::internal::GetCapturedStderr();
+  ASSERT_FALSE(binary.empty()) << skipReason;
+  EXPECT_EQ(diagnostics.find("warning:"), std::string::npos) << diagnostics;
+  const auto dwarf = std::filesystem::path(binary + ".dSYM") / "Contents" /
+                     "Resources" / "DWARF" /
+                     std::filesystem::path(binary).filename();
+  ASSERT_TRUE(std::filesystem::is_regular_file(dwarf));
+  EXPECT_GT(std::filesystem::file_size(dwarf), 0u);
+}
+
 TEST(Tooling_Backend_DebugInfo, gdb_breaks_reads_args_and_steps) {
   if (!haveTool("gdb")) {
     GTEST_SKIP() << "gdb not installed";

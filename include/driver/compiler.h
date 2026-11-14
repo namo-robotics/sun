@@ -317,13 +317,15 @@ inline bool emitObjectFile(llvm::Module& module, const std::string& outputPath,
 }
 
 /**
- * Links the object file to create an executable
+ * Links the object file to create an executable. When requested, collects
+ * Darwin debug symbols before deleting the extracted runtime archive.
  * Uses the explicitly selected driver, or the target-appropriate default
  * Returns true on success, false on failure
  */
 inline bool linkExecutable(const std::string& objectPath,
                            const std::string& outputPath, std::string& errorMsg,
-                           const LinkOptions& linkOpts = {}) {
+                           const LinkOptions& linkOpts = {},
+                           bool collectDebugSymbols = false) {
   llvm::Triple triple = effectiveLinkTriple(linkOpts.targetTriple);
   bool isDarwin = triple.isOSDarwin();
 
@@ -412,8 +414,8 @@ inline bool linkExecutable(const std::string& objectPath,
   for (const auto& argument : linkOpts.arguments) {
     cmd += " " + shellQuote(argument);
   }
-  // Keep the extracted runtime alive until the linker finishes. Cross links
-  // compile the embedded source with the selected driver and sysroot.
+  // Keep the extracted runtime alive through linking and debug-symbol collection.
+  // Cross links compile the embedded source with the selected driver and sysroot.
   llvm::FileRemover runtimeCleanup;
   const llvm::Triple host(llvm::sys::getDefaultTargetTriple());
   const bool useHostRuntime = triple.getArch() == host.getArch() &&
@@ -479,6 +481,10 @@ inline bool linkExecutable(const std::string& objectPath,
     return false;
   }
 
+  if (collectDebugSymbols && isDarwin && haveTool("dsymutil")) {
+    std::system(("dsymutil " + shellQuote(outputPath)).c_str());
+  }
+
   return true;
 }
 
@@ -501,21 +507,15 @@ inline bool compileToExecutable(llvm::Module& module,
   }
 
   // Step 2: Link to create executable
-  if (!linkExecutable(objectPath, outputPath, errorMsg, linkOpts)) {
+  const bool hasDebugInfo = module.getModuleFlag("Debug Info Version") != nullptr;
+  if (!linkExecutable(objectPath, outputPath, errorMsg, linkOpts, hasDebugInfo)) {
     return false;
   }
 
-  // On Mach-O the linker leaves debug info in the object file, writing only
-  // a debug map that points back at it. Keep the object, so a debugger's
-  // debug-map path always works, and bundle a .dSYM besides when dsymutil
-  // is available — deleting the object would leave the executable with a
-  // map pointing at nothing.
-  bool hasDebugInfo = module.getModuleFlag("Debug Info Version") != nullptr;
+  // Preserve the Mach-O debug map's main object, including when dsymutil is
+  // unavailable. linkExecutable collects the .dSYM before removing the runtime.
   if (hasDebugInfo && effectiveLinkTriple(linkOpts.targetTriple).isOSDarwin()) {
     keepObjectFile = true;
-    if (haveTool("dsymutil")) {
-      std::system(("dsymutil " + shellQuote(outputPath)).c_str());
-    }
   }
 
   // Step 3: Clean up object file if not keeping it

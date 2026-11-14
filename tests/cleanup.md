@@ -119,3 +119,10 @@ whole-suite speedup is claimed from those measurements.
 Local inventories, discovery snapshots, and measurement logs are under
 `tmp/test-cleanup/`. The cleanup reduces repeated compilation work and removes
 confirmed duplicate executions without setting a test-count reduction quota.
+
+## Legacy generic-parameter metadata
+
+Removed the newly added `LegacyGenericParameters` and
+`ModernGenericParametersOverrideLegacy` tests because old generic-parameter
+metadata is no longer supported. `GenericInterfaceConstraintRoundtrip` retains
+coverage of current parameters and constraints for all four declaration kinds.

@@ -234,8 +234,7 @@ void checkFunction(const sun::proto::ast::FunctionDef& declaration,
                    bool method = false) {
   const auto& proto = declaration.proto();
   if (declaration.is_c_extern() || declaration.is_test() ||
-      proto.type_params_size() || proto.type_parameters_size() ||
-      proto.has_variadic_param_name() ||
+      proto.type_params_size() || proto.has_variadic_param_name() ||
       proto.declaration_identity().key().empty()) {
     return;
   }
@@ -284,7 +283,7 @@ void validatePayloadDeclarations(
       checkFunction(function, module, layouts);
     }
     for (const auto& cls : metadata->classes()) {
-      if (cls.type_params_size() || cls.type_parameters_size()) {
+      if (cls.type_params_size()) {
         continue;
       }
       const auto& identity = cls.declaration_identity().key();

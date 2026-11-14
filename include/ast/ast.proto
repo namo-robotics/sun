@@ -464,9 +464,6 @@ message TypeParameter {
 message Prototype {
   DeclarationIdentity declaration_identity = 102;
   string name = 1;
-  // Superseded by type_params; still read so bundles built before
-  // constraints existed keep loading.
-  repeated string type_parameters = 2 [deprecated = true];
   repeated FunctionArg args = 3;
   optional TypeAnnotation return_type = 4;
   reserved 5;  // Computed captures belong to analysis, not source syntax.
@@ -645,7 +642,6 @@ message ClassDef {
   DeclarationIdentity declaration_identity = 102;
   uint64 source_file_id = 100;
   string name = 1;
-  repeated string type_parameters = 2 [deprecated = true];  // see type_params
   repeated ImplementedInterface implemented_interfaces = 3;
   repeated ClassField fields = 4;
   repeated ClassMethod methods = 5;
@@ -689,7 +685,6 @@ message InterfaceDef {
   DeclarationIdentity declaration_identity = 102;
   uint64 source_file_id = 100;
   string name = 1;
-  repeated string type_parameters = 2 [deprecated = true];  // see type_params
   repeated InterfaceField fields = 3;
   repeated InterfaceMethod methods = 4;
   Visibility visibility = 5;
@@ -719,7 +714,6 @@ message EnumDef {
   uint64 source_file_id = 100;
   string name = 1;
   repeated EnumVariant variants = 2;
-  repeated string type_parameters = 3 [deprecated = true];  // see type_params
   Visibility visibility = 4;
   string doc = 5;  // Comment written above the enum
   optional Position location = 6;  // Declaration span (bundle exports only)

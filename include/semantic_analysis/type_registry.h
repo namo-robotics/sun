@@ -92,9 +92,8 @@ class TypeRegistry {
    * Movable
    */
   TypeRegistry(TypeRegistry&&) = default;
-  /** Transfers the stored state from another instance during move assignment.
-   */
-  TypeRegistry& operator=(TypeRegistry&&) = default;
+  /** Disallows move assignment because the declaration table cannot be rebound. */
+  TypeRegistry& operator=(TypeRegistry&&) = delete;
 
   /** Get a source class before its source name has been assigned. */
   std::shared_ptr<sun::types::ClassType> getClass(DeclarationId id) {
