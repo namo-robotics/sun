@@ -193,7 +193,8 @@ TEST(Errors_Arithmetic, success_keeps_owners_alive) {
             1);
 }
 
-/** Primitive arithmetic failures cross libraries without a stdlib dependency. */
+/** Primitive arithmetic failures cross libraries without a stdlib dependency.
+ */
 TEST(Errors_Arithmetic, library_exception_without_stdlib_handled_with_stdlib) {
   const auto directory =
       std::filesystem::path("tmp") /
@@ -236,7 +237,8 @@ TEST(Errors_Arithmetic, library_exception_without_stdlib_handled_with_stdlib) {
             0);
 }
 
-/** Standard checked arithmetic uses interface matching and preserves literal coercion. */
+/** Standard checked arithmetic uses interface matching and preserves literal
+ * coercion. */
 TEST(Errors_Arithmetic, stdlib_checked_promotion_and_interface) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
     using std;
@@ -260,14 +262,16 @@ TEST(Errors_Arithmetic, stdlib_checked_promotion_and_interface) {
       }
       return -1;
     }
-  )"), 15);
+  )"),
+            15);
 }
 
 /** Explicit panics abort without releasing live owners. */
 TEST(Errors_Arithmetic, explicit_panic_skips_cleanup) {
-  EXPECT_EXIT({
-    disableExpectedCoreDump();
-    executeString(R"(
+  EXPECT_EXIT(
+      {
+        disableExpectedCoreDump();
+        executeString(R"(
       /** Makes cleanup observable on stderr. */
       class Owner {
         /** Creates a resource for the panic test. */
@@ -282,25 +286,30 @@ TEST(Errors_Arithmetic, explicit_panic_skips_cleanup) {
         return 0;
       }
     )");
-    _exit(0);
-  }, ::testing::KilledBySignal(SIGABRT), "^panic: requested failure\n$");
+        _exit(0);
+      },
+      ::testing::KilledBySignal(SIGABRT), "^panic: requested failure\n$");
 }
 
 /** The public panic wrapper uses the same abort path as compiler checks. */
 TEST(Errors_Arithmetic, stdlib_panic_aborts) {
-  EXPECT_EXIT({
-    disableExpectedCoreDump();
-    sun::driver::executeStringWithStdlib(R"(
+  EXPECT_EXIT(
+      {
+        disableExpectedCoreDump();
+        sun::driver::executeStringWithStdlib(R"(
       /** Reports an explicit unrecoverable failure. */
       function main() i32 { std.panic("public failure"); return 0; }
     )");
-    _exit(0);
-  }, ::testing::KilledBySignal(SIGABRT), "^panic: public failure\n$");
+        _exit(0);
+      },
+      ::testing::KilledBySignal(SIGABRT), "^panic: public failure\n$");
 }
 
-/** Public error identity and interface methods survive a compiled-library boundary. */
+/** Public error identity and interface methods survive a compiled-library
+ * boundary. */
 TEST(Errors_Arithmetic, library_stdlib_error_implements_interface) {
-  const auto directory = std::filesystem::path("tmp") /
+  const auto directory =
+      std::filesystem::path("tmp") /
       ("stdlib_arithmetic_library_" + std::to_string(getpid()));
   std::filesystem::create_directories(directory);
   const auto source = directory / "library.sun";
@@ -314,9 +323,10 @@ TEST(Errors_Arithmetic, library_stdlib_error_implements_interface) {
       }
     }
   )";
-  const std::string command = "build/sun --moon build/stdlib.moon --emit-moon -o " +
-      library.string() + " " + source.string() + " > " +
-      (directory / "build.log").string() + " 2>&1";
+  const std::string command =
+      "build/sun --moon build/stdlib.moon --emit-moon -o " + library.string() +
+      " " + source.string() + " > " + (directory / "build.log").string() +
+      " 2>&1";
   ASSERT_EQ(std::system(command.c_str()), 0);
   auto driver = sun::driver::Driver::createForJIT("stdlib_arithmetic_import");
   auto imports = sun::driver::getStdlibMoonImports();
@@ -334,12 +344,14 @@ TEST(Errors_Arithmetic, library_stdlib_error_implements_interface) {
       }
       return -1;
     }
-  )"), 4);
+  )"),
+            4);
 }
 
 /** Native arithmetic checks emit diagnostics and abort just like JIT checks. */
 TEST(Errors_Arithmetic, native_panic_diagnostic) {
-  const auto directory = std::filesystem::path("tmp") /
+  const auto directory =
+      std::filesystem::path("tmp") /
       ("native_arithmetic_panic_" + std::to_string(getpid()));
   std::filesystem::create_directories(directory);
   const auto source = directory / "main.sun";
@@ -350,14 +362,18 @@ TEST(Errors_Arithmetic, native_panic_diagnostic) {
     /** Exercises the native diagnostic abort path. */
     function main() i32 { return divide(42, 0); }
   )";
-  const std::string command = "build/sun -O0 -c -o " + binary.string() +
-      " " + source.string() + " > " + (directory / "build.log").string() + " 2>&1";
+  const std::string command = "build/sun -O0 -c -o " + binary.string() + " " +
+                              source.string() + " > " +
+                              (directory / "build.log").string() + " 2>&1";
   ASSERT_EQ(std::system(command.c_str()), 0);
-  EXPECT_EXIT({
-    disableExpectedCoreDump();
-    execl(binary.c_str(), binary.c_str(), nullptr);
-    _exit(125);
-  }, ::testing::KilledBySignal(SIGABRT), "^panic: integer division by zero\n$");
+  EXPECT_EXIT(
+      {
+        disableExpectedCoreDump();
+        execl(binary.c_str(), binary.c_str(), nullptr);
+        _exit(125);
+      },
+      ::testing::KilledBySignal(SIGABRT),
+      "^panic: integer division by zero\n$");
 }
 
 /** Integer promotion retains mixed signedness and operand-order rules. */
@@ -376,10 +392,12 @@ TEST(Errors_Arithmetic, stdlib_mixed_signedness) {
       total += _convert<i32>(third);
       return total;
     }
-  )"), 11);
+  )"),
+            11);
 }
 
-/** Promotion queries and primitive checked operations reject floating-point inputs. */
+/** Promotion queries and primitive checked operations reject floating-point
+ * inputs. */
 TEST(Errors_Arithmetic, rejects_non_integer_checked_operands) {
   EXPECT_ANY_THROW(sun::driver::analyzeString(R"(
     /** Attempts to use a floating-point type in integer promotion. */

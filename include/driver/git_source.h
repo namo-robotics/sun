@@ -2,6 +2,7 @@
 
 #include <string>
 
+#include "abi/exception_layout.h"
 #include "driver/sun_config.h"
 #include "moon_bundling/moon_builder.h"
 #include "support/save_and_restore.h"
@@ -14,8 +15,10 @@ namespace sun::driver {
 class GitDependencyBuildScope {
  public:
   /** Selects settings and shares source refreshes within one command. */
-  GitDependencyBuildScope(bool debugInfo, bool optimize,
-                          bool forceRebuild = false, bool refresh = false);
+  GitDependencyBuildScope(
+      bool debugInfo, bool optimize, bool forceRebuild = false,
+      bool refresh = false,
+      unsigned exceptionTraceDepth = sun::abi::exceptions::defaultTraceDepth);
   /** Restores the enclosing build's settings. */
   ~GitDependencyBuildScope();
   /** Prevents copying ownership of build settings. */

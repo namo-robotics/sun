@@ -45,7 +45,11 @@ test_function arithmetic() {
 
 Both sequential and parallel runners handle exceptions. Assertion failures
 carry bounded diagnostic text. Other uncaught exceptions fail the test even
-when no diagnostic is available.
+when no diagnostic is available. At that terminal catch, the runner writes the
+exception type and readable original stack trace to standard error once.
+Incomplete or disabled traces include their capture status. Reporting does not call user message formatters or consume
+the retained exception. An explicit trace printed by the test before rethrowing
+can intentionally appear in addition to the runner's report.
 
 Tests are module-level declarations. They cannot appear inside classes,
 interfaces or function bodies, cannot be `public` (they are never

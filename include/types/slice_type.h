@@ -19,6 +19,7 @@ class SliceType : public Type {
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::Slice;
+
   /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
 

@@ -45,12 +45,14 @@ thread_local std::map<std::string, fs::path> resolvedProducts;
 /** Removes a build from the cycle detector on success or failure. */
 struct BuildGuard {
   std::string key;
+
   /** Registers a project and rejects recursive dependency graphs. */
   explicit BuildGuard(std::string value) : key(std::move(value)) {
     if (!active.insert(key).second) {
       fail("dependency cycle at " + key);
     }
   }
+
   /** Restores the graph after a build attempt. */
   ~BuildGuard() { active.erase(key); }
 };
@@ -189,9 +191,8 @@ void runSteps(const SunConfig& config, const ConfigEntrypoint& entry,
     }
     fs::current_path(working);
     std::vector<llvm::StringRef> refs(arguments.begin(), arguments.end());
-    const std::string project = config.packageId.empty()
-                                    ? config.configDir.string()
-                                    : config.packageId;
+    const std::string project =
+        config.packageId.empty() ? config.configDir.string() : config.packageId;
     sun::support::messageStream("info")
         << "Building " << artifact.filename().string() << ": step " << name
         << "\n";
@@ -328,6 +329,7 @@ ConfigGraphScope::ConfigGraphScope(const ConfigGraph& graph)
   }
   currentGraph = &graph;
 }
+
 ConfigGraphScope::~ConfigGraphScope() { currentGraph = previous_; }
 
 fs::path configWorkspaceRoot(const SunConfig& config) {
@@ -517,6 +519,7 @@ fs::path productOutput(const SunConfig& config, const ConfigEntrypoint& entry) {
   }
   return output;
 }
+
 /** Runs preparation and compilation; returns false for a test-only product. */
 bool compileProduct(const SunConfig& config, const ConfigEntrypoint& entry,
                     const fs::path& artifact) {

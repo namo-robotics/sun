@@ -41,6 +41,7 @@ struct EnumVariantDecl {
 
   /** Reports whether this object has payload. */
   bool hasPayload() const { return !payloadTypes.empty(); }
+
   mutable sun::semantic_analysis::DeclarationIdentity declaration{};
 };
 
@@ -61,12 +62,16 @@ class EnumDefinitionAST : public ExprAST {
 
  public:
   QualifiedName qualifiedName;
+
   /** The original declaration name, retained by imported enums. */
   const QualifiedName& getQualifiedName() const { return qualifiedName; }
+
   /** Whether this enum already carries its defining name. */
   bool hasQualifiedName() const { return !qualifiedName.baseName.empty(); }
+
   /** Record the defining name independently of visible aliases. */
   void setQualifiedName(QualifiedName name) { qualifiedName = std::move(name); }
+
   /** Creates this syntax node and takes ownership of any supplied child
    * expressions. */
   EnumDefinitionAST(std::string name, std::vector<EnumVariantDecl> variants,
@@ -82,10 +87,12 @@ class EnumDefinitionAST : public ExprAST {
 
   /** Return the written integer type, or an empty string for the default. */
   const std::string& getUnderlyingType() const { return underlyingType; }
+
   /** Return the integer representation used for this enum. */
   std::string getUnderlyingTypeName() const {
     return underlyingType.empty() ? "i32" : underlyingType;
   }
+
   /** Format a tag according to the enum's signedness. */
   std::string getValueText(const EnumVariantDecl& variant) const {
     return !underlyingType.empty() && underlyingType[0] == 'u'
@@ -97,10 +104,12 @@ class EnumDefinitionAST : public ExprAST {
   const std::vector<TypeParameter>& getTypeParameters() const {
     return typeParameters;
   }
+
   /** Returns the names used to bind generic arguments during specialization. */
   std::vector<std::string> getTypeParameterNames() const {
     return typeParameterNames(typeParameters);
   }
+
   /** Reports whether this declaration still has unbound type parameters. */
   bool isGeneric() const { return !typeParameters.empty(); }
 
@@ -116,6 +125,7 @@ class EnumDefinitionAST : public ExprAST {
       std::shared_ptr<sun::types::EnumType> specialized) const {
     specializations_[id] = std::move(specialized);
   }
+
   const std::map<DeclarationId, std::shared_ptr<sun::types::EnumType>>&
   /** Provides the concrete instances created from this generic declaration. */
   getSpecializations() const {
@@ -136,6 +146,7 @@ class EnumDefinitionAST : public ExprAST {
 
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::ENUM_DEFINITION; }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string result =
@@ -178,8 +189,10 @@ class EnumDefinitionAST : public ExprAST {
 
   /** Returns the declared name used to identify this object. */
   const std::string& getName() const { return name; }
+
   /** Provides the alternatives declared by this enum. */
   const std::vector<EnumVariantDecl>& getVariants() const { return variants; }
+
   /** Returns the modifiable enum alternatives. */
   std::vector<EnumVariantDecl>& getMutableVariants() { return variants; }
 
@@ -187,6 +200,7 @@ class EnumDefinitionAST : public ExprAST {
    * Comment written above the enum (see doc_comments.h)
    */
   const std::string& getDoc() const { return doc_; }
+
   /** Stores the source documentation comment for this declaration. */
   void setDoc(std::string doc) { doc_ = std::move(doc); }
 
@@ -206,6 +220,7 @@ class EnumDefinitionAST : public ExprAST {
    * Get the number of variants
    */
   size_t getNumVariants() const { return variants.size(); }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "Enum\n" + name; }
 };

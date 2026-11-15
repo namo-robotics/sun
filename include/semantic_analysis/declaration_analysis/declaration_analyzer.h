@@ -6,9 +6,11 @@
 #include <vector>
 
 #include "semantic_analysis/semantic_context.h"
+
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 class SemanticAnalyzer;
+
 /** Checks declarations and signatures and tracks global initializer
  * dependencies. */
 class DeclarationAnalyzer {
@@ -16,6 +18,7 @@ class DeclarationAnalyzer {
   /** Borrows the session context and the cooperating analysis services. */
   DeclarationAnalyzer(SemanticContext &context, SemanticAnalyzer &analyzer)
       : ctx_(context), sema_(analyzer) {}
+
   /**
    * Extract function signature info (param types, captures, explicit return
    * type). Sets captures on the prototype and handles auto-ref conversion for

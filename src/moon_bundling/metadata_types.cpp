@@ -61,8 +61,9 @@ void bindDeclarationTypes(google::protobuf::Message& message,
         !sun::types::Types::fromString(name) &&
         !sun::semantic_analysis::type_analysis::isTypeTrait(name) &&
         name != "_return_type_of" && name != "_promoted_integer" &&
-        name != "_params_of" && name != "ref" && name != "raw_ptr" && name != "static_ptr" &&
-        name != "array" && name != "fn" && name != "lambda") {
+        name != "_params_of" && name != "ref" && name != "raw_ptr" &&
+        name != "static_ptr" && name != "array" && name != "fn" &&
+        name != "lambda") {
       sun::semantic_analysis::DeclarationId ref;
       if (auto* generic = ctx.lookupGenericClass(name)) {
         ref = generic->AST->getDeclarationId();

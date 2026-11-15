@@ -35,9 +35,9 @@ inline std::string messagePrefix(const std::string& level,
   return terminalStyledText("[sun][" + level + "]:", level, stream) + " ";
 }
 
-/** Filters progress and warnings using SUN_LOG_LEVEL (debug, info, warn, or error).
- * Missing or unrecognized values use info; errors and diagnostic notes remain
- * visible at every level.
+/** Filters progress and warnings using SUN_LOG_LEVEL (debug, info, warn, or
+ * error). Missing or unrecognized values use info; errors and diagnostic notes
+ * remain visible at every level.
  */
 inline bool messageEnabled(const std::string& level) {
   const char* configured = std::getenv("SUN_LOG_LEVEL");

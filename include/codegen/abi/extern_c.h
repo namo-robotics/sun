@@ -22,6 +22,7 @@
 namespace sun::ast {
 class PrototypeAST;
 }
+
 /** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 class VariableCreationAST;
@@ -46,6 +47,7 @@ class VariableCreationAST;
 namespace sun::codegen::abi {
 using sun::types::TypePtr;
 }
+
 /** Adapts Sun values and calls to the target C calling convention. */
 namespace sun::codegen::abi {}
 

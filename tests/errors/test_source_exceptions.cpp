@@ -1,22 +1,15 @@
-/** Exercises source exception lowering through the ordinary compiler and JIT. */
+/** Exercises source exception lowering through the ordinary compiler and JIT.
+ */
 #include <gtest/gtest.h>
+#include <unistd.h>
+
 #include <filesystem>
 #include <fstream>
-#include <unistd.h>
-#include "driver/driver.h"
-#include "moon_bundling/moon_builder.h"
-#include "moon_bundling/moon.h"
-#include "support/error.h"
 
-/** Runs each source scenario with both backend optimization settings. */
-class Errors_SourceExceptions : public testing::TestWithParam<bool> {
- protected:
-  /** Compiles and executes one source program using the real driver. */
-  sun::driver::SunValue run(const std::string& source) {
-    auto driver = sun::driver::Driver::createForJIT("exceptions", false, GetParam());
-    return driver->executeString(source);
-  }
-};
+#include "moon_bundling/moon.h"
+#include "moon_bundling/moon_builder.h"
+#include "source_exception_test.h"
+#include "support/error.h"
 
 /** Module calls to later definitions must unwind through the caller's catch. */
 TEST_P(Errors_SourceExceptions, forward_module_call) {
@@ -36,10 +29,12 @@ TEST_P(Errors_SourceExceptions, forward_module_call) {
         throw error;
       }
     }
-  )"), 42);
+  )"),
+            42);
 }
 
-/** Nested lambda emission restores the enclosing semantic exception contract. */
+/** Nested lambda emission restores the enclosing semantic exception contract.
+ */
 TEST_P(Errors_SourceExceptions, nested_lambda_exception_contract) {
   EXPECT_EQ(run(R"(
     /** Carries the propagated value. */
@@ -56,10 +51,12 @@ TEST_P(Errors_SourceExceptions, nested_lambda_exception_contract) {
       try { fail(); } catch (error: Failure) { return error.code; }
       return 0;
     }
-  )"), 42);
+  )"),
+            42);
 }
 
-/** A concrete throw transfers its scalar payload into a matching local catch. */
+/** A concrete throw transfers its scalar payload into a matching local catch.
+ */
 TEST_P(Errors_SourceExceptions, scalar_payload) {
   EXPECT_EQ(run(R"(
     /** Carries a numeric failure. */
@@ -71,7 +68,8 @@ TEST_P(Errors_SourceExceptions, scalar_payload) {
       try { fail(); } catch (e: Failure) { return e.code; }
       return 0;
     }
-  )"), 42);
+  )"),
+            42);
 }
 
 /** A family catch retains the concrete type across another handled failure. */
@@ -97,10 +95,12 @@ TEST_P(Errors_SourceExceptions, family_rethrow) {
       try { forward(); } catch (e: Original) { return e.code; }
       return 0;
     }
-  )"), 42);
+  )"),
+            42);
 }
 
-/** Exceptional cleanup may throw and handle a nested value without corrupting A. */
+/** Exceptional cleanup may throw and handle a nested value without corrupting
+ * A. */
 TEST_P(Errors_SourceExceptions, nested_cleanup) {
   EXPECT_EQ(run(R"(
     var dropped: i32 = 0;
@@ -127,7 +127,8 @@ TEST_P(Errors_SourceExceptions, nested_cleanup) {
       try { fail(); } catch (a: Failure) { return a.code + dropped; }
       return 0;
     }
-  )"), 30);
+  )"),
+            30);
 }
 
 /** A bare rethrow preserves edits made through the catch binding. */
@@ -145,10 +146,12 @@ TEST_P(Errors_SourceExceptions, mutated_bare_rethrow) {
       try { forward(); } catch (e: Failure) { return e.code; }
       return 0;
     }
-  )"), 42);
+  )"),
+            42);
 }
 
-/** Unrelated inner catches allow a matching outer catch to receive the value. */
+/** Unrelated inner catches allow a matching outer catch to receive the value.
+ */
 TEST_P(Errors_SourceExceptions, outer_handler) {
   EXPECT_EQ(run(R"(
     /** Identifies the thrown family. */
@@ -162,19 +165,23 @@ TEST_P(Errors_SourceExceptions, outer_handler) {
       } catch (e: A) { return 42; }
       return 0;
     }
-  )"), 42);
+  )"),
+            42);
 }
 
 /** Owning and borrowed payloads cannot bypass the bounded scalar contract. */
 TEST_P(Errors_SourceExceptions, rejects_non_scalar_payload) {
-  for (const auto* type : {"ptr<i32>", "raw_ptr<i32>", "ref i32", "array<i32, 33>"}) {
+  for (const auto* type :
+       {"ptr<i32>", "raw_ptr<i32>", "ref i32", "array<i32, 33>"}) {
     SCOPED_TRACE(type);
     EXPECT_THROW(run(std::string("exception E { var value: ") + type +
-                     "; } function main() i32 { return 0; }"), sun::support::SunError);
+                     "; } function main() i32 { return 0; }"),
+                 sun::support::SunError);
   }
 }
 
-/** Fixed arrays and enum fields retain their values across exception transport. */
+/** Fixed arrays and enum fields retain their values across exception transport.
+ */
 TEST_P(Errors_SourceExceptions, bounded_array_and_enum_payload) {
   EXPECT_EQ(run(R"(
     /** Identifies a diagnostic category. */
@@ -197,7 +204,8 @@ TEST_P(Errors_SourceExceptions, bounded_array_and_enum_payload) {
       }
       return 0;
     }
-  )"), 42);
+  )"),
+            42);
 }
 
 /** Interface fields cannot introduce pointers into an exception payload. */
@@ -209,7 +217,8 @@ TEST_P(Errors_SourceExceptions, rejects_inherited_owning_field) {
     exception Failure implements Storage {}
     /** Forces declaration validation. */
     function main() i32 { return 0; }
-  )"), sun::support::SunError);
+  )"),
+               sun::support::SunError);
 }
 
 /** Throwing functions require an explicit propagation or handling boundary. */
@@ -218,10 +227,12 @@ TEST_P(Errors_SourceExceptions, rejects_unhandled_effect) {
     exception E {}
     function fail() void throws { var e: E = {}; throw e; }
     function main() i32 { fail(); return 0; }
-  )"), sun::support::SunError);
+  )"),
+               sun::support::SunError);
 }
 
-/** Consuming a caught value prevents a later bare rethrow from duplicating it. */
+/** Consuming a caught value prevents a later bare rethrow from duplicating it.
+ */
 TEST_P(Errors_SourceExceptions, rejects_rethrow_after_move) {
   EXPECT_THROW(run(R"(
     exception E {}
@@ -230,7 +241,8 @@ TEST_P(Errors_SourceExceptions, rejects_rethrow_after_move) {
       catch (e: E) { var moved = e; throw; }
     }
     function main() i32 { try { fail(); } catch {} return 0; }
-  )"), sun::support::SunError);
+  )"),
+               sun::support::SunError);
 }
 
 /** Only initialized fields are destroyed when construction throws. */
@@ -260,10 +272,12 @@ TEST_P(Errors_SourceExceptions, partial_construction) {
       try { var value = Object(); } catch (e: Failure) { return dropped; }
       return 0;
     }
-  )"), 1);
+  )"),
+            1);
 }
 
-/** A cleanup failure must terminate before a stack propagation record expires. */
+/** A cleanup failure must terminate before a stack propagation record expires.
+ */
 TEST_P(Errors_SourceExceptions, escaping_destructor_terminates) {
   EXPECT_DEATH(run(R"(
     /** Identifies the original failure. */
@@ -281,13 +295,16 @@ TEST_P(Errors_SourceExceptions, escaping_destructor_terminates) {
     function fail() void throws { var r = Resource(); var a: A = {}; throw a; }
     /** Must not catch the destructor's escaped value. */
     function main() i32 { try { fail(); } catch {} return 0; }
-  )"), "panic: Sun exception escaped");
+  )"),
+               "panic: Sun exception escaped");
 }
 
-/** Imported family metadata and concrete payloads survive an independent build. */
+/** Imported family metadata and concrete payloads survive an independent build.
+ */
 TEST_P(Errors_SourceExceptions, moon_family_rethrow) {
   const auto directory = std::filesystem::path("tmp") /
-      ("source_exception_moon_" + std::to_string(getpid()) + (GetParam() ? "_opt" : "_plain"));
+                         ("source_exception_moon_" + std::to_string(getpid()) +
+                          (GetParam() ? "_opt" : "_plain"));
   std::filesystem::create_directories(directory);
   const auto source = directory / "library.sun";
   const auto bundle = directory / "library.moon";
@@ -303,8 +320,10 @@ TEST_P(Errors_SourceExceptions, moon_family_rethrow) {
     }
   )";
   sun::moon_bundling::MoonBuilder::build(source.string(), bundle);
-  auto driver = sun::driver::Driver::createForJIT("moon_exceptions", false, GetParam());
-  driver->setMoonImports({sun::moon_bundling::MoonImport(std::filesystem::absolute(bundle).string())});
+  auto driver =
+      sun::driver::Driver::createForJIT("moon_exceptions", false, GetParam());
+  driver->setMoonImports({sun::moon_bundling::MoonImport(
+      std::filesystem::absolute(bundle).string())});
   EXPECT_EQ(driver->executeString(R"(
     /** Rethrows an imported value through its family. */
     function forward() void throws {
@@ -315,14 +334,17 @@ TEST_P(Errors_SourceExceptions, moon_family_rethrow) {
       try { forward(); } catch (e: failures.Concrete) { return e.code; }
       return 0;
     }
-  )"), 42);
+  )"),
+            42);
   std::filesystem::remove_all(directory);
 }
 
-/** A retained generic throwing function requires the ABI before instantiation. */
+/** A retained generic throwing function requires the ABI before instantiation.
+ */
 TEST_P(Errors_SourceExceptions, retained_generic_requires_exception_abi) {
   const auto directory = std::filesystem::path("tmp") /
-      ("generic_exception_moon_" + std::to_string(getpid()) + (GetParam() ? "_opt" : "_plain"));
+                         ("generic_exception_moon_" + std::to_string(getpid()) +
+                          (GetParam() ? "_opt" : "_plain"));
   std::filesystem::create_directories(directory);
   const auto source = directory / "library.sun";
   const auto bundle = directory / "library.moon";
@@ -337,12 +359,15 @@ TEST_P(Errors_SourceExceptions, retained_generic_requires_exception_abi) {
   auto reader = sun::moon_bundling::MoonReader::open(bundle);
   ASSERT_NE(reader, nullptr);
   bool requiresExceptionABI = false;
-  for (const auto& rule : reader->getLibrary().bundle_contract().requirements()) {
+  for (const auto& rule :
+       reader->getLibrary().bundle_contract().requirements()) {
     requiresExceptionABI |= rule.name() == "sun.exceptions.bounded";
   }
   EXPECT_TRUE(requiresExceptionABI);
-  auto driver = sun::driver::Driver::createForJIT("generic_exceptions", false, GetParam());
-  driver->setMoonImports({sun::moon_bundling::MoonImport(std::filesystem::absolute(bundle).string())});
+  auto driver = sun::driver::Driver::createForJIT("generic_exceptions", false,
+                                                  GetParam());
+  driver->setMoonImports({sun::moon_bundling::MoonImport(
+      std::filesystem::absolute(bundle).string())});
   EXPECT_EQ(driver->executeString(R"(
     /** Carries a payload through retained generic code. */
     exception Failure { var code: i32; }
@@ -355,8 +380,65 @@ TEST_P(Errors_SourceExceptions, retained_generic_requires_exception_abi) {
       } catch (error: Failure) { return error.code; }
       return 0;
     }
-  )"), 42);
+  )"),
+            42);
   std::filesystem::remove_all(directory);
 }
 
-INSTANTIATE_TEST_SUITE_P(Optimization, Errors_SourceExceptions, testing::Bool());
+INSTANTIATE_TEST_SUITE_P(Optimization, Errors_SourceExceptions,
+                         testing::Bool());
+
+/** Normal destruction handles an exception and restores its target after an
+ * early return. */
+TEST_P(Errors_SourceExceptions, normal_destructor_initializes_nested_storage) {
+  EXPECT_EQ(run(R"(
+    /** Carries a locally handled destructor failure. */
+    exception Failure { var code: i32; }
+    var result: i32 = 0;
+    /** Initiates an exception during normal destruction and returns early. */
+    class Resource {
+      /** Constructs an empty owner. */
+      init() {}
+      /** Handles its own failure before leaving through an explicit return. */
+      deinit() {
+        try { var error: Failure = {code: 42}; throw error; }
+        catch (error: Failure) { result = error.code; return; }
+      }
+    }
+    /** Destroys a resource on an ordinary return. */
+    function release() void { var owner = Resource(); }
+    /** Reads the result after normal destruction. */
+    function main() i32 { release(); return result; }
+  )"),
+            42);
+}
+
+/** Imported optimized destructors can contain several independently paired
+ * records. */
+TEST(Errors_SourceExceptions_IR, removes_all_inlined_record_pairs) {
+  sun::codegen::CodegenContext context("inlined_destructor", nullptr);
+  auto analysis = std::make_shared<sun::semantic_analysis::AnalysisResults>();
+  sun::codegen::CodegenVisitor visitor(context, analysis);
+  auto& module = *context.mainModule;
+  llvm::IRBuilder<> builder(context.getContext());
+  auto* function = llvm::Function::Create(
+      llvm::FunctionType::get(builder.getVoidTy(), false),
+      llvm::GlobalValue::ExternalLinkage, "destructor", module);
+  function->addFnAttr("sun.destructor");
+  builder.SetInsertPoint(
+      llvm::BasicBlock::Create(context.getContext(), "entry", function));
+  auto push = module.getOrInsertFunction("sun_eh_push", builder.getPtrTy(),
+                                         builder.getPtrTy());
+  auto pop = module.getOrInsertFunction("sun_eh_pop", builder.getVoidTy(),
+                                        builder.getPtrTy());
+  auto* outer =
+      builder.CreateCall(push, {builder.CreateAlloca(builder.getInt8Ty())});
+  auto* inner =
+      builder.CreateCall(push, {builder.CreateAlloca(builder.getInt8Ty())});
+  builder.CreateCall(pop, {inner});
+  builder.CreateCall(pop, {outer});
+  builder.CreateRetVoid();
+  visitor.exceptionGenerator().omitInfallibleDestructorStorage();
+  ASSERT_EQ(function->getEntryBlock().size(), 1u);
+  EXPECT_TRUE(llvm::isa<llvm::ReturnInst>(function->getEntryBlock().front()));
+}

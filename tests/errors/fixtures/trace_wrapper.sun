@@ -1,0 +1,24 @@
+using std;
+
+/** Carries a test failure. */
+exception Failure {
+  var code: i32;
+}
+
+/** Passes the borrowed trace through an ordinary helper. */
+function show(trace: const ref ExceptionTrace) void {
+  print_exception_trace(trace);
+}
+
+/** Extracts metadata only at the active catch binding. */
+function main() i32 {
+  try {
+    var error: Failure = { code: 42 };
+    throw error;
+  } catch (error: Failure) {
+    var trace = ExceptionTrace(_exception_trace_frames(error), _exception_trace_status(error));
+    show(trace);
+    return error.code;
+  }
+  return 0;
+}

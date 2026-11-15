@@ -696,6 +696,7 @@ TEST(MemorySafety_Drops_ScopeCleanup, bool_leading_return_field_drops_once) {
   )");
   EXPECT_EQ(value, 42);
 }
+
 TEST(MemorySafety_Drops_ScopeCleanup, moved_local_can_be_initialized_again) {
   auto value = executeString(withPreamble(R"(
     function run() void {
@@ -740,6 +741,7 @@ TEST(MemorySafety_Drops_ScopeCleanup, moved_field_can_be_initialized_again) {
   )"));
   EXPECT_EQ(value, 6);
 }
+
 TEST(MemorySafety_Drops_ScopeCleanup, returned_field_transfers_ownership) {
   auto value = executeString(withPreamble(R"(
     class Pair {
@@ -785,6 +787,7 @@ TEST(MemorySafety_Drops_ScopeCleanup,
   )")),
                std::exception);
 }
+
 TEST(MemorySafety_Drops_ScopeCleanup, reassignment_preserves_moved_value) {
   auto value = executeString(R"(
     class Value {

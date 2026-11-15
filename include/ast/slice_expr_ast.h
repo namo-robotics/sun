@@ -44,6 +44,7 @@ class SliceExprAST : public ExprAST {
     fn(start_);
     fn(end_);
   }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     if (!isRange_) {
@@ -59,14 +60,19 @@ class SliceExprAST : public ExprAST {
 
   /** Returns the start stored by this object. */
   const ExprAST* getStart() const { return start_.get(); }
+
   /** Returns the end stored by this object. */
   const ExprAST* getEnd() const { return end_.get(); }
+
   /** Reports whether this syntax node represents a slice range. */
   bool isRange() const { return isRange_; }
+
   /** Reports whether this object has start. */
   bool hasStart() const { return start_ != nullptr; }
+
   /** Reports whether this object has end. */
   bool hasEnd() const { return end_ != nullptr; }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "Slice\n" + toString(); }
 };

@@ -2,6 +2,7 @@
 
 #include "cli/option_parser.h"
 
+#include "abi/exception_layout.h"
 #include "abi/support_inventory.h"
 #include "cli/command_support.h"
 #include "cli/usage.h"
@@ -32,8 +33,10 @@ class ArgumentCursor {
 
   /** Reports whether all command-line arguments have been consumed. */
   bool atEnd() const { return index_ >= args_.size(); }
+
   /** Returns the current command-line argument without advancing. */
   const std::string& current() const { return args_[index_]; }
+
   /** Moves the cursor to the next command-line argument. */
   void advance() { ++index_; }
 
@@ -80,6 +83,28 @@ bool parseSharedOption(ArgumentCursor& cursor, SharedOptions& shared,
     shared.debugInfo = true;
   } else if (arg == "--emit-ir") {
     shared.emitIR = true;
+  } else if (arg.starts_with("--exception-trace-depth=") ||
+             cursor.takeValueOf("--exception-trace-depth", value)) {
+    if (arg.starts_with("--exception-trace-depth=")) {
+      value = arg.substr(std::string("--exception-trace-depth=").size());
+    }
+    unsigned depth = 0;
+    bool valid = !value.empty();
+    for (char digit : value) {
+      if (digit < '0' || digit > '9' ||
+          depth > sun::abi::exceptions::maximumTraceDepth) {
+        valid = false;
+        break;
+      }
+      depth = depth * 10 + unsigned(digit - '0');
+    }
+    if (!valid || depth > sun::abi::exceptions::maximumTraceDepth) {
+      failure = makeFailure(
+          "--exception-trace-depth must be an integer between 0 and " +
+          std::to_string(sun::abi::exceptions::maximumTraceDepth) + "\n");
+    } else {
+      shared.exceptionTraceDepth = depth;
+    }
   } else if (cursor.takeValueOf("--lib-path", value)) {
     shared.libPaths.push_back(value);
   } else if (cursor.takeValueOf("--moon", value)) {

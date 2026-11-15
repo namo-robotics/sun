@@ -4,18 +4,22 @@
 namespace sun::codegen {
 class CodegenVisitor;
 }
+
 /** Provides the generator for class storage and method operations. */
 namespace sun::codegen::classes {
 class ClassGenerator;
 }
+
 /** Provides the registry of generated functions and their metadata. */
 namespace sun::codegen::functions {
 class FunctionGenerator;
 }
+
 /** Provides the registry of generated functions and their metadata. */
 namespace sun::codegen::functions {
 class FunctionRegistry;
 }
+
 /** Provides the scope manager responsible for variable storage and cleanup. */
 namespace sun::codegen::scopes {
 class ScopeManager;

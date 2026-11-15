@@ -49,8 +49,10 @@ class InterpolatedStringAST : public ExprAST {
 
   /** Returns the unprocessed source contents. */
   const std::string& getRawContent() const { return rawContent_; }
+
   /** Returns the interpolated string segments. */
   const std::vector<Segment>& getSegments() const { return segments_; }
+
   /** Returns the modifiable interpolated string segments. */
   std::vector<Segment>& getSegmentsMutable() { return segments_; }
 
@@ -66,6 +68,7 @@ class InterpolatedStringAST : public ExprAST {
 
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override { return "`" + rawContent_ + "`"; }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "InterpolatedString"; }
 };

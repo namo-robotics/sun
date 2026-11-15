@@ -48,8 +48,10 @@ class CallExprAST : public ExprAST {
   CallExprAST(std::unique_ptr<ExprAST> Callee,
               std::vector<std::unique_ptr<ExprAST>> Args)
       : Callee(std::move(Callee)), Args(std::move(Args)) {}
+
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::CALL; }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string result = Callee->toString() + "(";
@@ -61,8 +63,10 @@ class CallExprAST : public ExprAST {
     }
     return result + ")";
   }
+
   /** Returns the callee stored by this object. */
   const ExprAST* getCallee() const { return Callee.get(); }
+
   /** Provides the ordered arguments associated with this expression. */
   const std::vector<std::unique_ptr<ExprAST>>& getArgs() const { return Args; }
 
@@ -80,10 +84,12 @@ class CallExprAST : public ExprAST {
       std::vector<sun::semantic_analysis::ArgConversion> conversions) const {
     callAnalysis().argConversions = std::move(conversions);
   }
+
   /** Records fields initialized by a constructor's call to its own helper. */
   void setInitializedFields(std::vector<DeclarationId> fields) const {
     callAnalysis().initializedFields = std::move(fields);
   }
+
   /** Returns fields whose initialization is guaranteed when this call returns.
    */
   const std::vector<DeclarationId>& getInitializedFields() const {

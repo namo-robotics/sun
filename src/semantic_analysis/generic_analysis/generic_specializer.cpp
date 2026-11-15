@@ -481,16 +481,20 @@ void GenericSpecializer::analyzePendingBodies() {
       auto job = std::move(pendingBodies_.front());
       pendingBodies_.pop_front();
       SemanticContext::ScopeSwitchGuard scope(ctx_, job.scope);
+
       /** Restore the caller's class even if a queued body throws. */
       struct ClassGuard {
         SemanticContext& context;
         std::shared_ptr<ClassType> saved;
+
         /** Retain the caller's class while checking a prepared body. */
         explicit ClassGuard(SemanticContext& ctx)
             : context(ctx), saved(ctx.getCurrentClass()) {}
+
         /** Restore the caller's class after body checking. */
         ~ClassGuard() { context.setCurrentClass(saved); }
       } restoreClass(ctx_);
+
       ctx_.setCurrentClass(job.ownerClass);
       std::visit(
           [&](const auto& ast) {

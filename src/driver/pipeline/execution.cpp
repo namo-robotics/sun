@@ -46,7 +46,8 @@ namespace sun::driver {
 static llvm::ExitOnError ExitOnErr;
 using llvm::orc::ThreadSafeModule;
 
-/** Retains the exception ABI requirement even for uninstantiated generic bodies. */
+/** Retains the exception ABI requirement even for uninstantiated generic
+ * bodies. */
 static bool requiresNativeExceptions(const sun::ast::ExprAST& expression) {
   using sun::ast::ASTNodeType;
   if (expression.getType() == ASTNodeType::THROW ||
@@ -54,17 +55,22 @@ static bool requiresNativeExceptions(const sun::ast::ExprAST& expression) {
     return true;
   }
   if (expression.getType() == ASTNodeType::CLASS_DEFINITION &&
-      static_cast<const sun::ast::ClassDefinitionAST&>(expression).isException()) {
+      static_cast<const sun::ast::ClassDefinitionAST&>(expression)
+          .isException()) {
     return true;
   }
   if (expression.getType() == ASTNodeType::FUNCTION &&
-      static_cast<const sun::ast::FunctionAST&>(expression).getProto().canThrow()) {
+      static_cast<const sun::ast::FunctionAST&>(expression)
+          .getProto()
+          .canThrow()) {
     return true;
   }
   bool required = false;
   /** Includes retained bodies that have not yet produced LLVM functions. */
   sun::ast::forEachChild(expression, [&](const sun::ast::ExprAST& child) {
-    if (!required) required = requiresNativeExceptions(child);
+    if (!required) {
+      required = requiresNativeExceptions(child);
+    }
   });
   return required;
 }
@@ -292,15 +298,19 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
     ScopedStage stage("codegen");
     if (requiresNativeExceptions(*blockAst)) {
       ctx->mainModule->addModuleFlag(llvm::Module::Max,
-                                    "sun.exceptions.bounded", 1);
+                                     "sun.exceptions.bounded", 1);
     }
+    ctx->mainModule->addModuleFlag(llvm::Module::Error,
+                                   "sun.exceptions.trace_depth",
+                                   ctx->exceptionTraceDepth);
     codegenVisitor->codegen(*blockAst);
     if (mainAdapter) {
       auto* adapter = codegenVisitor->functionRegistry().lookupFunctionById(
           mainAdapter->getProto().getDeclarationId());
       auto* original = ctx->mainModule->getFunction("main");
       if (!adapter || !original) {
-        sun::support::logAndThrowError("Failed to generate the main result adapter");
+        sun::support::logAndThrowError(
+            "Failed to generate the main result adapter");
       }
       original->setName("__sun_main_result_body");
       adapter->setName("main");
@@ -324,7 +334,7 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
                      "Failed to link precompiled module: " + linker.getError());
     }
     // Strip imported debug info when the current build does not request it.
-    if (!ctx->debugInfoEnabled()) {
+    if (!ctx->debugInfoEnabled() && ctx->exceptionTraceDepth == 0) {
       sun::codegen::DebugInfoBuilder::stripFromModule(*ctx->mainModule);
     }
   }
@@ -335,9 +345,23 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
   collectNativeArchives(hasMoonImports ? linker.getLinkedModules()
                                        : std::set<std::string>{});
 
+  codegenVisitor->exceptionGenerator().omitInfallibleDestructorStorage();
+
   // All codegen is done (including static init); emit the DI finalization
   // before any module verification.
   codegenVisitor->finalizeDebugInfo();
+  if (!ctx->debugInfoEnabled() && ctx->exceptionTraceDepth > 0) {
+    llvm::stripNonLineTableDebugInfo(*ctx->mainModule);
+  }
+
+  if (!ctx->debugInfoEnabled()) {
+    const std::filesystem::path entrypoint(
+        ctx->mainModule->getSourceFileName());
+    const auto sourceDirectory =
+        entrypoint.is_absolute() ? entrypoint.parent_path().string() : baseDir;
+    sun::codegen::DebugInfoBuilder::relativizeSourcePaths(*ctx->mainModule,
+                                                          sourceDirectory);
+  }
 
   // Discard unused library definitions before running expensive LLVM passes.
   // Library and object compilation must retain their externally visible API.
@@ -448,9 +472,10 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
   size_t mainArgCount = func->arg_size();
 
   auto* returnStruct = llvm::dyn_cast<llvm::StructType>(returnType);
-  const bool stringReturn = returnStruct && returnStruct->getNumElements() == 2 &&
-      returnStruct->getElementType(0)->isPointerTy() &&
-      returnStruct->getElementType(1)->isIntegerTy(64);
+  const bool stringReturn = returnStruct &&
+                            returnStruct->getNumElements() == 2 &&
+                            returnStruct->getElementType(0)->isPointerTy() &&
+                            returnStruct->getElementType(1)->isIntegerTy(64);
   if (!returnType->isVoidTy() && !returnType->isPointerTy() &&
       !returnType->isFloatTy() && !returnType->isDoubleTy() &&
       !(returnType->isIntegerTy() && returnType->getIntegerBitWidth() <= 64) &&
@@ -608,6 +633,7 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
         const char* data;
         int64_t len;
       };
+
       StaticPtr spResult;
       if (mainHasArgs) {
         StaticPtr (*FP)(int, char**) =

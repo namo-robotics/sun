@@ -23,6 +23,7 @@ struct Position {
   /** Creates a source coordinate with its optional file path and byte offset.
    */
   Position() = default;
+
   /** Creates a source coordinate with its optional file path and byte offset.
    */
   Position(int l, int c, int o = 0,

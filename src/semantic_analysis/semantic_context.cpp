@@ -683,8 +683,8 @@ std::optional<FunctionInfo> SemanticContext::lookupFunction(
 
 void SemanticContext::registerBuiltinFunctions() {
   for (const auto* proto : sun::codegen::intrinsics::intrinsicDeclarations()) {
-    // Generic intrinsics retain their dedicated argument and result rules.
     if (!proto->getTypeParameters().empty()) {
+      currentScope().declareGenericIntrinsic(*proto);
       continue;
     }
     std::vector<TypePtr> parameters;

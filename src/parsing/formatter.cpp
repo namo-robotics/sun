@@ -111,7 +111,8 @@ class Formatter {
     return false;
   }
 
-  /** Expands manifest blocks and lists without changing literals or comments. */
+  /** Expands manifest blocks and lists without changing literals or comments.
+   */
   static std::string expandManifestLayout(const std::string& source) {
     std::istringstream input(source);
     Lexer lexer(input);
@@ -580,7 +581,9 @@ class Formatter {
           p.getReturnType()->span.endOffset.has_value()) {
         out_ += ' ';
         printType(*p.getReturnType());
-        if (p.canThrow()) out_ += " throws";
+        if (p.canThrow()) {
+          out_ += " throws";
+        }
       } else if (includeReturnType && p.getReturnType().has_value() &&
                  p.getReturnType()->canError) {
         // A throwing constructor spells only the error part:
@@ -1063,7 +1066,9 @@ class Formatter {
     printProtoSig(l.getProto(), false, false);
     out_ += " => ";
     printType(*l.getProto().getReturnType());
-    if (l.getProto().canThrow()) out_ += " throws";
+    if (l.getProto().canThrow()) {
+      out_ += " throws";
+    }
     out_ += ' ';
     printBlockAuto(l.getBody());
   }
@@ -1398,7 +1403,10 @@ class Formatter {
       case ASTNodeType::THROW: {
         const auto& statement = static_cast<const sun::ast::ThrowAST&>(e);
         out_ += "throw";
-        if (statement.value) { out_ += ' '; printExpr(*statement.value); }
+        if (statement.value) {
+          out_ += ' ';
+          printExpr(*statement.value);
+        }
         break;
       }
       case ASTNodeType::TRY_CATCH: {
@@ -1408,7 +1416,9 @@ class Formatter {
         for (const auto& handler : statement.handlers) {
           out_ += " catch";
           if (handler.binding) {
-            const auto& binding = static_cast<const sun::ast::VariableCreationAST&>(*handler.binding);
+            const auto& binding =
+                static_cast<const sun::ast::VariableCreationAST&>(
+                    *handler.binding);
             out_ += " (" + binding.getName() + ": ";
             printType(*binding.getTypeAnnotation());
             out_ += ')';
@@ -1427,8 +1437,6 @@ class Formatter {
         }
         break;
       }
-
-
 
       case ASTNodeType::BREAK_STMT:
         out_ += "break";

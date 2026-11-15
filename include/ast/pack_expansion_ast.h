@@ -21,12 +21,16 @@ class PackExpansionAST : public ExprAST {
   /** Creates this syntax node and takes ownership of any supplied child
    * expressions. */
   explicit PackExpansionAST(std::string name) : packName(std::move(name)) {}
+
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::PACK_EXPANSION; }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override { return packName + "..."; }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "PackExpand\n..."; }
+
   /** Returns the pack name stored by this object. */
   const std::string& getPackName() const { return packName; }
 };

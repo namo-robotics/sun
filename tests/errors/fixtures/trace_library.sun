@@ -1,0 +1,14 @@
+/** Supplies a separately compiled failure. */
+public module failures {
+
+  /** Carries the original failure. */
+  public exception Failure {
+    var code: i32;
+  }
+
+  /** Propagates into the importing module. */
+  public function fail() void throws {
+    var error: Failure = { code: 42 };
+    throw error;
+  }
+}

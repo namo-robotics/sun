@@ -21,6 +21,7 @@ class DeclarationIdentityPass {
 
   /** Use the declaration table owned by the analysis session. */
   explicit DeclarationIdentityPass(DeclarationTable& table) : table_(table) {}
+
   /** Register source or generated declarations, retaining assigned identities.
    * Imported declaration records must already be registered by import
    * preparation before attaching their syntax.

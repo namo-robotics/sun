@@ -120,8 +120,8 @@ public module library {
         arguments.find("--emit-moon") != std::string::npos
             ? dependencyPath.lexically_relative(fs::current_path())
             : dependencyPath;
-    EXPECT_NE(readFile(dir / "log").find("Moon import: " +
-                                        displayedDependency.string()),
+    EXPECT_NE(readFile(dir / "log")
+                  .find("Moon import: " + displayedDependency.string()),
               std::string::npos)
         << readFile(dir / "log");
   }
@@ -367,8 +367,9 @@ TEST_P(MoonSearchPath, config_target_selects_outputs_and_dependencies) {
   EXPECT_TRUE(
       fs::exists(configuredOutput("aarch64-linux-gnu") / "cross-library.moon"));
   EXPECT_FALSE(fs::exists(configuredOutput() / "native-library.moon"));
-  EXPECT_NE(readFile(dir / "log").find("Moon import: " + dependencyPath.string()),
-            std::string::npos)
+  EXPECT_NE(
+      readFile(dir / "log").find("Moon import: " + dependencyPath.string()),
+      std::string::npos)
       << readFile(dir / "log");
 }
 

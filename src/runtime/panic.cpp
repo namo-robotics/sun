@@ -1,8 +1,9 @@
 /** Reports unrecoverable failures without requiring a functioning allocator. */
 #include "runtime/panic.h"
 
-#include <cstdlib>
 #include <unistd.h>
+
+#include <cstdlib>
 
 void sun_panic(const char* message, std::size_t length) noexcept {
   constexpr char prefix[] = "panic: ";

@@ -42,6 +42,7 @@ namespace {
 struct DottedName {
   std::string modulePath;
   std::string symbol;
+
   /** Reports whether this lookup result refers to a declaration. */
   explicit operator bool() const { return !modulePath.empty(); }
 };

@@ -125,9 +125,10 @@ TEST_F(Modules_GenericRegressions, RawByteStringLiterals) {
 return value; } catch { std.panic("unexpected test error");return 1; }
     }
   )";
-  write("direct.sun", "/** Checks literal bytes. */\nfunction test_main() i32 throws {" +
-                          body +
-                          "}" + boundary + "\nmanifest { libraries: [\"stdlib.moon\"] }");
+  write("direct.sun",
+        "/** Checks literal bytes. */\nfunction test_main() i32 throws {" +
+            body + "}" + boundary +
+            "\nmanifest { libraries: [\"stdlib.moon\"] }");
   ASSERT_NO_FATAL_FAILURE(buildLibrary(
       "/** Exports a template containing byte literals. */\npublic module lib {"
       "/** Checks bytes after template deserialization. */\n"
@@ -537,7 +538,8 @@ TEST_P(Modules_NestedTypeArguments, DirectAndImported) {
         }
       };
       replace("Option<T>", "Vec<T>");
-      replace("var none: Vec<T> = Option.None;", "var none = Vec<T>(global_allocator, 1);");
+      replace("var none: Vec<T> = Option.None;",
+              "var none = Vec<T>(global_allocator, 1);");
       replace("out.push(Sample<T>(Info(), Option.Some(v)));",
               "var some = Vec<T>(global_allocator, 1); some.push(v); "
               "out.push(Sample<T>(Info(), some));");
@@ -761,7 +763,8 @@ var values: Vec<i64> = initialize_values();
   ASSERT_NO_FATAL_FAILURE(checkProgram("consumer.sun"));
 }
 
-/** Carries implementation metadata recursively without exporting dependency names. */
+/** Carries implementation metadata recursively without exporting dependency
+ * names. */
 TEST_F(Modules_GenericRegressions, EmbeddedDependencyMetadata) {
   write("backend.sun", R"(
     /** Supplies an internal value type. */
@@ -776,8 +779,9 @@ TEST_F(Modules_GenericRegressions, EmbeddedDependencyMetadata) {
       }
     }
   )");
-  ASSERT_TRUE(run("build/sun --emit-moon -o " + (dir / "backend.moon").string() +
-                  " " + (dir / "backend.sun").string()));
+  ASSERT_TRUE(run("build/sun --emit-moon -o " +
+                  (dir / "backend.moon").string() + " " +
+                  (dir / "backend.sun").string()));
   write("middle.sun", R"(
     /** Wraps backend storage without exposing its field. */
     public module middle {
@@ -835,7 +839,8 @@ TEST_F(Modules_GenericRegressions, EmbeddedDependencyMetadata) {
   ASSERT_NO_FATAL_FAILURE(checkProgram("explicit.sun"));
 }
 
-/** Specializes carried generic bodies without locating their dependency bundle. */
+/** Specializes carried generic bodies without locating their dependency bundle.
+ */
 TEST_F(Modules_GenericRegressions, EmbeddedGenericDependencyMetadata) {
   write("backend.sun", R"(
     /** Supplies a generic implementation type. */
@@ -850,8 +855,9 @@ TEST_F(Modules_GenericRegressions, EmbeddedGenericDependencyMetadata) {
       }
     }
   )");
-  ASSERT_TRUE(run("build/sun --emit-moon -o " + (dir / "backend.moon").string() +
-                  " " + (dir / "backend.sun").string()));
+  ASSERT_TRUE(run("build/sun --emit-moon -o " +
+                  (dir / "backend.moon").string() + " " +
+                  (dir / "backend.sun").string()));
   ASSERT_NO_FATAL_FAILURE(buildLibrary(R"(
     /** Exposes an operation with a hidden generic implementation. */
     public module lib {

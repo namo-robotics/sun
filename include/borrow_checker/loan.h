@@ -36,6 +36,7 @@ struct Loan {
 
   /** Records a borrow, its reference binding, access mode, and lifetime. */
   Loan() = default;
+
   /** Records a borrow, its reference binding, access mode, and lifetime. */
   Loan(std::string borrowed, std::string ref, BorrowKind k, size_t depth,
        sun::support::Position loc, Lifetime lt = Lifetime())
@@ -48,6 +49,7 @@ struct Loan {
 
   /** Reports whether the loan grants exclusive write access to its target. */
   bool isMutable() const { return kind == BorrowKind::Mutable; }
+
   /** Reports whether the loan permits shared read access to its target. */
   bool isShared() const { return kind == BorrowKind::Shared; }
 };

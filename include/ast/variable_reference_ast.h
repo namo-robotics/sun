@@ -39,14 +39,18 @@ class VariableReferenceAST : public ExprAST {
   /** Creates this syntax node and takes ownership of any supplied child
    * expressions. */
   explicit VariableReferenceAST(std::string Name) : Name(std::move(Name)) {}
+
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override {
     return ASTNodeType::VARIABLE_REFERENCE;
   }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override { return Name; }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "VarRef\n" + Name; }
+
   /** Returns the declared name used to identify this object. */
   const std::string& getName() const { return Name; }
 
@@ -56,10 +60,12 @@ class VariableReferenceAST : public ExprAST {
   const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
     return varAnalysis().qualifiedName;
   }
+
   /** Records the declaration name together with its enclosing scopes. */
   void setQualifiedName(sun::semantic_analysis::QualifiedName qname) {
     varAnalysis().qualifiedName = std::move(qname);
   }
+
   /** Reports whether a name including the enclosing scopes has been assigned.
    */
   bool hasQualifiedName() const {

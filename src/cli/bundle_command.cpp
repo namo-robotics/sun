@@ -45,27 +45,34 @@ int buildMoonBundle(const std::string& entrypoint,
 
 /** Runs the bundle command and returns its process exit status. */
 int runBundleCommand(const BuildRunOptions& options) {
-  sun::driver::GitDependencyBuildScope dependencyScope(
-      options.shared.debugInfo, options.shared.optimize, options.forceRebuild,
-      options.refreshSources);
-  const std::string& entrypoint = options.inputFiles[0];
-  std::filesystem::path outputPath =
-      options.outputFile.empty()
-          ? sun::moon_bundling::MoonBuilder::defaultOutputPath(entrypoint)
-          : std::filesystem::path(options.outputFile);
+  try {
+    const std::string& entrypoint = options.inputFiles.at(0);
+    const auto traceDepth = resolveExceptionTraceDepth(
+        options.shared, entrypoint, options.targetTriple);
+    sun::driver::GitDependencyBuildScope dependencyScope(
+        options.shared.debugInfo, options.shared.optimize, options.forceRebuild,
+        options.refreshSources, traceDepth);
+    std::filesystem::path outputPath =
+        options.outputFile.empty()
+            ? sun::moon_bundling::MoonBuilder::defaultOutputPath(entrypoint)
+            : std::filesystem::path(options.outputFile);
 
-  MoonBuildOptions buildOptions;
-  buildOptions.targetTriple = options.targetTriple;
-  buildOptions.debugMode = options.shared.debugMode;
-  buildOptions.debugInfo = options.shared.debugInfo;
-  buildOptions.optimize = options.shared.optimize;
-  buildOptions.dumpProtoSun = options.dumpProtoSun;
-  buildOptions.extraMoons = options.shared.moonImports;
-  buildOptions.forceRebuild = options.forceRebuild;
-  buildOptions.versionName = options.versionName;
-  buildOptions.artifactId = options.artifactId;
+    MoonBuildOptions buildOptions;
+    buildOptions.targetTriple = options.targetTriple;
+    buildOptions.debugMode = options.shared.debugMode;
+    buildOptions.debugInfo = options.shared.debugInfo;
+    buildOptions.optimize = options.shared.optimize;
+    buildOptions.exceptionTraceDepth = traceDepth;
+    buildOptions.dumpProtoSun = options.dumpProtoSun;
+    buildOptions.extraMoons = options.shared.moonImports;
+    buildOptions.forceRebuild = options.forceRebuild;
+    buildOptions.versionName = options.versionName;
+    buildOptions.artifactId = options.artifactId;
 
-  return buildMoonBundle(entrypoint, outputPath, buildOptions);
+    return buildMoonBundle(entrypoint, outputPath, buildOptions);
+  } catch (const sun::support::SunError& error) {
+    return reportSunError(error);
+  }
 }
 
 }  // namespace sun::cli

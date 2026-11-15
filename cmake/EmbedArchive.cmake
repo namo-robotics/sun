@@ -4,7 +4,9 @@ string(REGEX REPLACE "(..)" "0x\\1," bytes "${bytes}")
 # Keep cross linking self-contained without shipping target-specific archives.
 set(runtime_source "")
 foreach(path IN ITEMS include/abi/exception_layout.h include/runtime/exceptions.h
-        include/runtime/panic.h src/runtime/exceptions.cpp src/runtime/panic.cpp)
+        include/runtime/panic.h include/runtime/exception_trace.h include/runtime/exception_sources.h
+        src/runtime/exceptions.cpp src/runtime/exception_trace.cpp src/runtime/exception_sources.cpp
+        src/runtime/exception_report.cpp src/runtime/exception_personality.cpp src/runtime/panic.cpp)
     file(READ "${SOURCE_DIR}/${path}" part)
     string(REGEX REPLACE "#pragma once\n|#include \"[^\"]+\"\n" "" part "${part}")
     string(APPEND runtime_source "${part}\n")

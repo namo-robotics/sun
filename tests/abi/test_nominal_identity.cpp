@@ -131,18 +131,22 @@ TEST(ABI_NominalIdentity, ManifestIdentityIsRejected) {
  */
 TEST(ABI_NominalIdentity, PackagePrefixesBuildIdentity) {
   sun::driver::SunConfig config;
+
   /** Restores the source configuration even if identity validation throws. */
   struct ConfigScope {
     const sun::driver::SunConfig* previous;
+
     /** Installs the fixture's project configuration. */
     explicit ConfigScope(const sun::driver::SunConfig& value)
         : previous(
               sun::driver::ManifestProcessor::exchangeSourceConfig(&value)) {}
+
     /** Restores the previous project configuration. */
     ~ConfigScope() {
       sun::driver::ManifestProcessor::exchangeSourceConfig(previous);
     }
   } scope(config);
+
   EXPECT_EQ(sun::driver::ManifestProcessor::artifactIdentity("source.sun"),
             "source");
   config.packageId = "namo-robotics/sun";

@@ -95,6 +95,7 @@ TEST(EndToEnd_ProcessInspection, UnsupportedPidfdSignal) {
 TEST(EndToEnd_ProcessInspection, PermissionDenied) {
   expectProcessError(SYS_pidfd_send_signal, EPERM);
 }
+
 /** Descriptor zero remains owned and is released when the handle closes. */
 TEST(EndToEnd_ProcessInspection, OwnsDescriptorZero) {
   const auto result = sun::driver::executeStringWithStdlib(R"(

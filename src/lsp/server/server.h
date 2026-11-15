@@ -12,6 +12,7 @@
 #include "driver/driver.h"
 #include "driver/sun_config.h"
 #include "lsp/text_positions.h"
+
 /** Implements the Sun language server. */
 namespace sun::lsp {
 
@@ -35,6 +36,7 @@ extern std::vector<std::string> configuredSunConfigs;
 extern std::vector<std::string> explicitEntrypoints;
 extern std::map<std::string, sun::driver::ConfigEntrypoint>
     configEntrypointInfo;
+
 /**
  * Configuration for a single entrypoint file with its manifest data
  */

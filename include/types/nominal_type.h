@@ -41,8 +41,10 @@ class NominalType : public Type {
  public:
   /** Return the declaration identity within this analysis session. */
   DeclarationId getDeclarationId() const { return declarationId_; }
+
   /** Return the original template, or this declaration for a source type. */
   DeclarationId sourceDeclaration(const DeclarationTable& table) const;
+
   /** Check that a boundary is using this nominal type's owning session. */
   bool belongsTo(const DeclarationTable& table) const {
     return declarationSession_ == table.session();

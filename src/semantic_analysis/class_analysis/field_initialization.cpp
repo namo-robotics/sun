@@ -178,8 +178,10 @@ class ClassInitInfo {
 
   /** Returns the class whose field initialization is being checked. */
   const ClassType& classType() const { return classType_; }
+
   /** Returns the fields tracked by constructor initialization analysis. */
   const std::set<std::string>& allFields() const { return allFields_; }
+
   /** Reports whether a name denotes a field in the class being checked. */
   bool isField(const std::string& name) const {
     return allFields_.count(name) != 0;
@@ -496,8 +498,6 @@ void BodyWalk::walkBranches(const std::vector<const ExprAST*>& branches) {
   states_ = after ? std::move(*after) : std::move(before);
 }
 
-
-
 void BodyWalk::walkLoop(const std::vector<const ExprAST*>& once,
                         const ExprAST* body, const ExprAST* then) {
   for (const ExprAST* expr : once) {
@@ -636,7 +636,9 @@ void BodyWalk::walk(const ExprAST& expr) {
     case ASTNodeType::TRY_CATCH: {
       const auto& statement = static_cast<const sun::ast::TryCatchAST&>(expr);
       std::vector<const ExprAST*> branches{statement.body.get()};
-      for (const auto& handler : statement.handlers) branches.push_back(handler.body.get());
+      for (const auto& handler : statement.handlers) {
+        branches.push_back(handler.body.get());
+      }
       walkBranches(branches);
       return;
     }

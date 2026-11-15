@@ -259,7 +259,8 @@ Value* CodegenVisitor::emitMarshalledExternCall(
       func, preparedArgs,
       [&](llvm::FunctionType* fnTy, Value* callee,
           llvm::ArrayRef<Value*> callArgs) {
-        return errors.emitPossiblyThrowingCall(
+        debugInfo.attachExpressionLocation(*ctx.builder, expr.getLocation());
+        return exceptions.emitPossiblyThrowingCall(
             fnTy, callee, std::vector<Value*>(callArgs.begin(), callArgs.end()),
             signature.canThrow(), "calltmp");
       });
@@ -530,9 +531,10 @@ Value* CodegenVisitor::codegenModuleFunctionCall(
     return nullptr;
   }
 
-  Value* result = errors.emitPossiblyThrowingCall(
-      func->getFunctionType(), func, argValues,
-      signature.canThrow(), "calltmp");
+  debugInfo.attachExpressionLocation(*ctx.builder, expr.getLocation());
+  Value* result = exceptions.emitPossiblyThrowingCall(
+      func->getFunctionType(), func, argValues, signature.canThrow(),
+      "calltmp");
   return materializeStructReturn(result);
 }
 
@@ -597,7 +599,8 @@ Value* CodegenVisitor::codegenInterfaceMethodCall(
     return nullptr;
   }
 
-  Value* result = errors.emitPossiblyThrowingCall(
+  debugInfo.attachExpressionLocation(*ctx.builder, expr.getLocation());
+  Value* result = exceptions.emitPossiblyThrowingCall(
       funcType, funcPtr, argValues, signature.canThrow(), "iface.call");
   return materializeStructReturn(result);
 }
@@ -627,7 +630,8 @@ Value* CodegenVisitor::codegenClassMethodCall(
   if (methodName == "deinit") {
     scopes.markClassAllocationAsDeinited(objectPtr);
   }
-  Value* result = errors.emitPossiblyThrowingCall(
+  debugInfo.attachExpressionLocation(*ctx.builder, expr.getLocation());
+  Value* result = exceptions.emitPossiblyThrowingCall(
       methodFunc->getFunctionType(), methodFunc, argValues,
       signature.canThrow(), "method.call");
   if (!expr.getInitializedFields().empty()) {
@@ -747,6 +751,9 @@ Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
 // -------------------------------------------------------------------
 
 Value* CodegenVisitor::codegen(const CallExprAST& expr) {
+  if (auto trace = exceptions.emitTraceOperation(expr, expr.getArgs())) {
+    return *trace;
+  }
   std::string calleeName = "<call-expression>";
 
   // Check if this is a method call (MemberAccessAST as callee)
@@ -780,22 +787,30 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
       return nullptr;
     }
 
-    if (!varRef->getTargetDeclarationId() && calleeName == "_division_overflows") {
-      const auto& signature =
-          static_cast<const sun::types::FunctionType&>(*expr.getCallee()->getResolvedType());
+    if (!varRef->getTargetDeclarationId() &&
+        calleeName == "_division_overflows") {
+      const auto& signature = static_cast<const sun::types::FunctionType&>(
+          *expr.getCallee()->getResolvedType());
       const auto& valueType = signature.getParamTypes().front();
       Value* left = codegen(*expr.getArgs()[0]);
       Value* right = codegen(*expr.getArgs()[1]);
-      left = support::widenNumericIfNeeded(*ctx.builder, typeResolver, left,
-                                           valueType, expr.getArgs()[0]->getResolvedType());
-      right = support::widenNumericIfNeeded(*ctx.builder, typeResolver, right,
-                                            valueType, expr.getArgs()[1]->getResolvedType());
-      if (valueType->isUnsigned()) return ctx.builder->getFalse();
+      left = support::widenNumericIfNeeded(
+          *ctx.builder, typeResolver, left, valueType,
+          expr.getArgs()[0]->getResolvedType());
+      right = support::widenNumericIfNeeded(
+          *ctx.builder, typeResolver, right, valueType,
+          expr.getArgs()[1]->getResolvedType());
+      if (valueType->isUnsigned()) {
+        return ctx.builder->getFalse();
+      }
       const auto width = left->getType()->getIntegerBitWidth();
-      auto* minimum = ConstantInt::get(ctx.getContext(), APInt::getSignedMinValue(width));
-      auto* negativeOne = ConstantInt::get(ctx.getContext(), APInt::getAllOnes(width));
-      return ctx.builder->CreateAnd(ctx.builder->CreateICmpEQ(left, minimum),
-                                   ctx.builder->CreateICmpEQ(right, negativeOne));
+      auto* minimum =
+          ConstantInt::get(ctx.getContext(), APInt::getSignedMinValue(width));
+      auto* negativeOne =
+          ConstantInt::get(ctx.getContext(), APInt::getAllOnes(width));
+      return ctx.builder->CreateAnd(
+          ctx.builder->CreateICmpEQ(left, minimum),
+          ctx.builder->CreateICmpEQ(right, negativeOne));
     }
 
     // Check for built-in functions (bypass type system)
@@ -1045,46 +1060,21 @@ bool CodegenVisitor::emitExternArguments(
     const CallExprAST& expr, const std::vector<TypePtr>& paramTypes,
     std::vector<sun::codegen::abi::PreparedArg>& out) {
   const auto& args = expr.getArgs();
-  const auto& conversions = expr.getArgConversions();
-  if (conversions.size() != args.size()) {
-    logAndThrowError(
-        "Argument conversions not resolved by semantic analysis for extern "
-        "call");
+  auto conversions = expr.getArgConversions();
+  // The C ABI emitter applies variadic promotions after preparing Sun values.
+  for (auto& conversion : conversions) {
+    if (conversion == ArgConversion::CVararg) {
+      conversion = ArgConversion::PassValue;
+    }
+  }
+  std::vector<Value*> values;
+  if (!emitCallArguments(args, conversions, paramTypes, nullptr, values,
+                         "extern C")) {
     return false;
   }
-
   for (size_t i = 0; i < args.size(); ++i) {
-    const ExprAST* argExpr = args[i].get();
-    TypePtr paramType = i < paramTypes.size() ? paramTypes[i] : nullptr;
-    TypePtr argSunType = argExpr->getResolvedType();
-
-    Value* argVal = nullptr;
-    switch (conversions[i]) {
-      case ArgConversion::Borrow:
-        // `ref T` is C's `T*`: pass the address.
-        argVal = prepareRefArgument(argExpr, argSunType);
-        break;
-      case ArgConversion::WidenNumeric:
-        argVal = codegen(*argExpr);
-        if (argVal) {
-          argVal = widenNumericIfNeeded(argVal, paramType, argSunType);
-        }
-        break;
-      case ArgConversion::StaticToRawPtr:
-        argVal = codegen(*argExpr);
-        if (argVal) {
-          argVal = coerceStaticPtrToRawPtr(argVal, argSunType, paramType);
-        }
-        break;
-      default:
-        argVal = codegen(*argExpr);
-        break;
-    }
-    if (!argVal) {
-      return false;
-    }
-
-    out.push_back({argVal, argSunType, paramType});
+    out.push_back({values[i], args[i]->getResolvedType(),
+                   i < paramTypes.size() ? paramTypes[i] : nullptr});
   }
   return true;
 }
@@ -1127,8 +1117,9 @@ Value* CodegenVisitor::codegenFunctionCall(
     }
 
     // Indirect call through function pointer
-    return errors.emitPossiblyThrowingCall(llvmFuncType, funcPtrVal, argValues,
-                                           funcType.canThrow(), "calltmp");
+    debugInfo.attachExpressionLocation(*ctx.builder, expr.getLocation());
+    return exceptions.emitPossiblyThrowingCall(
+        llvmFuncType, funcPtrVal, argValues, funcType.canThrow(), "calltmp");
   }
 
   // Direct call to known function
@@ -1149,7 +1140,8 @@ Value* CodegenVisitor::codegenFunctionCall(
     return nullptr;
   }
 
-  Value* callResult = errors.emitPossiblyThrowingCall(
+  debugInfo.attachExpressionLocation(*ctx.builder, expr.getLocation());
+  Value* callResult = exceptions.emitPossiblyThrowingCall(
       func->getFunctionType(), func, argValues, funcType.canThrow(), "calltmp");
 
   // Handle struct return values (classes returned by value)
@@ -1224,7 +1216,8 @@ Value* CodegenVisitor::codegenLambdaCall(
   // Indirect call through the extracted function pointer. Throwing lambdas
   // ('throws') are invoked so exceptions route to a local landing pad
   // inside try blocks.
-  Value* result = errors.emitPossiblyThrowingCall(
+  debugInfo.attachExpressionLocation(*ctx.builder, expr.getLocation());
+  Value* result = exceptions.emitPossiblyThrowingCall(
       llvmFuncType, funcPtr, argValues, lambdaType.canThrow(), "calltmp");
 
   // Materialize struct return values for addressability

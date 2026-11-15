@@ -51,6 +51,7 @@ class ReferenceCreationAST : public ExprAST {
         name(std::move(name)),
         target(std::move(target)),
         mutable_(isMutable) {}
+
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override {
     return ASTNodeType::REFERENCE_CREATION;
@@ -59,17 +60,22 @@ class ReferenceCreationAST : public ExprAST {
   /** Visits replaceable child expressions so tree passes can rewrite them in
    * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override { fn(target); }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     return std::string(mutable_ ? "ref " : "const ref ") + name + " = " +
            target->toString();
   }
+
   /** Returns the declared name used to identify this object. */
   const std::string& getName() const { return name; }
+
   /** Returns the target stored by this object. */
   const ExprAST* getTarget() const { return target.get(); }
+
   /** Reports whether the loan grants exclusive write access to its target. */
   bool isMutable() const { return mutable_; }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "RefCreate\n" + name; }
 
@@ -79,10 +85,12 @@ class ReferenceCreationAST : public ExprAST {
   const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
     return varAnalysis().qualifiedName;
   }
+
   /** Records the declaration name together with its enclosing scopes. */
   void setQualifiedName(sun::semantic_analysis::QualifiedName qname) {
     varAnalysis().qualifiedName = std::move(qname);
   }
+
   /** Reports whether a name including the enclosing scopes has been assigned.
    */
   bool hasQualifiedName() const {

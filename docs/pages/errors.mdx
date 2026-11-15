@@ -1,79 +1,269 @@
+import { ExceptionMemory, ExceptionStorageTypes } from '../components/exception-memory'
+
 # Error Handling
 
-Sun reports recoverable failures with exceptions. A throwing function returns its
-ordinary success value and declares `throws`. Callers either propagate the
-exception with their own `throws` declaration or handle it in a `try` block.
-There are no result wrappers or prefix `try` expressions.
+Sun uses exceptions for recoverable errors: functions declare `throws`, return
+ordinary success values, and handle failures with `try`/`catch`. Unlike Rust's
+`Result` and Zig's error unions, errors propagate through stack unwinding rather
+than return values. Unlike C++ exceptions, Sun requires bounded payloads stored
+in reserved thread-local and stack memory, avoiding heap allocation for exception
+storage, and makes propagation explicit in function signatures.
 
-## Declaring and handling exceptions
+## Minimal example
+
+`read_value()` returns an integer when its source is ready and throws `ReadError`
+otherwise. `main()` catches that exception and returns an exit status of 1.
 
 ```sun
-/** Groups failures from storage operations. */
-exception StorageFailure { }
+/** Reports a failed read. */
+exception ReadError {}
 
-/** Carries the failing device's numeric status. */
-exception DeviceFailure extends StorageFailure {
-  var code: i32;
-}
-
-/** Returns a value or propagates a bounded exception. */
+/** Returns a value or throws when the source is unavailable. */
 function read_value(ready: bool) i32 throws {
   if (not ready) {
-    var error: DeviceFailure = { code: 7 };
-    throw error;
+    throw ReadError();
   }
   return 42;
 }
 
-/** Handles every exception in the storage family. */
+/** Handles a failed read. */
 function main() i32 {
   try {
     return read_value(false);
-  } catch (error: StorageFailure) {
+  } catch (error: ReadError) {
     return 1;
   }
 }
 ```
 
-Catch clauses are considered in source order. A concrete catch can access that
-exception's fields. A family catch accepts every descendant, and `catch { ... }`
-accepts any Sun exception. Exception parents must be fieldless.
-
-Inside a handler, `throw;` rethrows the active exception. `throw error;` also
-preserves its concrete type, including through a family catch. Catch bindings
-can be inspected, borrowed, and have individual fields changed. They cannot be
-moved into another variable or replaced as a whole: a family binding may refer
-to a larger concrete value.
+`catch { ... }` catches any Sun exception. `extends` defines exception families;
+the first matching catch wins. Inside a catch, `throw;` or `throw error;`
+rethrows the original concrete exception.
 
 ## Exception storage
 
-Every exception fits in a fixed inline payload of at most 128 bytes, including
-field padding. Numeric values, booleans, characters, plain enums, and fixed-size
-arrays of these types are supported. References, pointers, owning objects,
-variable-sized arrays, generic exception declarations, and exception destructors
-are rejected. Constructors, methods, and interfaces are supported; fields
-inherited from an interface must satisfy the same storage restrictions.
+Exception payloads fit in 128 bytes, including padding. They support numeric
+values, booleans, characters, plain enums, and fixed-size arrays of these types;
+references, pointers, owning objects, generics, and exception destructors are
+not allowed. Propagation uses reserved thread-local and stack records.
 
-The transport reserves equally sized records regardless of the concrete payload.
-Throwing copies the bounded payload into this storage without heap allocation.
-Objects in unwound scopes are destroyed. If a constructor throws, its initialized
-fields are destroyed, but the incomplete object's destructor is not called.
-Destructors may catch exceptions internally; they cannot propagate exceptions.
+Exception values now retain bounded physical stack traces. Destructors reserve
+independent nested records in their own frames when they may initiate an
+exception; caller cleanup does not reserve a duplicate record. There is no TLS
+pool.
 
-## Standard-library errors
+<ExceptionStorageTypes />
 
-Standard-library operations return ordinary values and throw concrete exceptions.
-For example, checked indexing throws `IndexOutOfBoundsError`; allocation failure
-throws `AllocationError`. `Error` carries a numeric code and up to 96 bytes of
-inline diagnostic text. Text supplied by a literal or a `String` is copied and
-truncated without allocating. The original string can then be destroyed safely.
-TLS errors use the same bounded diagnostic strategy. XML errors reserve separate
-bounded storage for a message and filename alongside location information.
+Embedded values occupy storage inside their parent. A catch receives the
+`ExceptionValue`, including its trace; the native unwind header stays in place.
+The default trace depth is 16, with one extra frame inspected to detect
+truncation. Rethrows preserve the original trace.
 
-`IError` provides borrowed access to `code()` and `message()`. It is an interface,
-not an exception family: catch a concrete exception or a declared exception
-parent. Calling `message()` explicitly creates an owned `String` and can throw
-on allocation failure. Diagnostic allocation is separate from throwing.
+Uncaught main exceptions and detected non-throwing boundary violations print
+`Unhandled exception: Type`, followed by calls from outermost to innermost and
+the original throw statement. Tree connectors use two spaces per nesting level.
+Explicit reports use `Exception: Type` instead. Release builds record source
+paths relative to the directory containing the entrypoint. Imported Moon paths retain the originating library’s entrypoint
+base, including generic bodies. Terminal call names expose these locations on
+hover through `sun-source:ENTRYPOINT/path:line:column` link targets. `ENTRYPOINT` means the
+originating program or library’s entrypoint directory, not the runtime working
+directory; these targets describe a location rather than an installed file.
+Redirected output shows `ENTRYPOINT/path:line:column` directly. Builds with `-g`
+retain absolute source paths and link directly to those files; VS Code terminals
+use editor links. Complete traces have no status footer.
+
+Capture stores only addresses. During reporting, the runtime resolves them using
+source indexes prepared by the compiler, including inlined calls. This works
+without `-g`, external debug files, or a standard-library import. Optimized tail
+calls may be absent, and unknown frames within the Sun call chain fall back to
+addresses. Reporting does not call `IError.message()`.
+
+The reporter shares a locked 32 KiB buffer between threads, truncates long names,
+and marks reports that exceed the buffer. Source indexes are separate program
+metadata. Lookup and formatting do not allocate. Capture failure is reported as
+unavailable or partial and does not replace the exception. Stack walking also
+depends on the platform unwinder: allocation-denial tests cover indexed native
+frames and prepared Sun JIT modules on supported Darwin and glibc hosts. Unindexed foreign frames and static musl builds still need
+additional work before claiming an unconditional allocation-free trace guarantee.
+
+At the default depth on supported 64-bit layouts, an exception value occupies
+288 bytes and a propagation record occupies 320 bytes. The payload still has
+128 bytes of capacity. Catch storage and destructor records can reserve stack
+space even on paths that do not throw. Destructors proven unable to initiate an
+exception omit their nested record. Rebuild Moon libraries and native runtime
+archives when adopting this exception layout.
+
+## Printing the current stack
+
+Call `_report_stack_trace()` from ordinary code to print the current call stack.
+No active exception, `throws` annotation, or standard-library import is required.
+The report uses the same tree layout, source links, and capture depth configured
+by `--exception-trace-depth`. Its heading is `Stack trace`, and it has no throw row.
+It does not change any retained exception or its original trace.
+
+```sun
+/** Reports the call chain at this point. */
+function diagnose() void {
+  _report_stack_trace();
+}
+```
+
+## Printing a caught trace
+
+The compiler intrinsics `_exception_trace_frames(error)` and
+`_exception_trace_status(error)` read metadata from a direct active catch binding,
+including a family catch. An ordinary unthrown exception has no trace metadata.
+The frames are a borrowed `const ref array<u64>`; they cannot outlive the catch
+or remain live while the exception is consumed by rethrowing it.
+
+With the standard library imported, an ordinary `ExceptionTrace` value holds
+that borrow and its status. Pass it to helpers using `const ref`:
+
+```sun
+catch (error: ReadError) {
+  var trace = std.ExceptionTrace(
+    _exception_trace_frames(error), _exception_trace_status(error));
+  std.print_exception_trace(trace);
+}
+```
+
+`std.print_exception_trace` writes the same source-resolved calls and capture status to standard
+error without allocating, throwing, or consuming the exception. It calls the native runtime through an ordinary borrowed-array C boundary. A nested catch does not change an explicit view of the outer exception.
+The test runner reports retained traces once when it catches a test failure.
+
+## Configuring trace depth
+
+Use `--exception-trace-depth=N`, where `N` is an integer from 0 through 256.
+The default is 16. Zero disables stack walking and removes the address array
+from exception records; payload capacity remains 128 bytes at every depth.
+
+A project can set `"exception_trace_depth": 0` in `sun-config.json`. The nearest
+project setting wins; an explicit command-line value overrides it. The setting
+applies to JIT execution, native compilation, tests, and Moon builds. Build hashes
+include it, so changing depth rebuilds artifacts and source dependencies.
+
+Every imported Moon library must use the same depth, including the standard
+library. Incompatible depths and old exception modules without depth metadata
+are rejected. Rebuild libraries with the chosen flag before importing them.
+Native links compile the embedded runtime for nondefault depths. Nondefault JIT
+execution also requires `clang++` or `c++` on `PATH`: it builds a matching local
+runtime before program execution and keeps it loaded until the JIT is destroyed.
+This preparation may allocate; the throw, capture, and reporting paths do not
+use it. Cross-compilation uses the selected target toolchain for the runtime.
+
+| Depth | Exception value | Propagation record |
+| --- | --- | --- |
+| 0 | 160 bytes | 192 bytes |
+| 16 | 288 bytes | 320 bytes |
+| 256 | 2,208 bytes | 2,240 bytes |
+
+Allocation-denial checks currently validate the implementation on the Darwin
+host; Linux and the complete platform matrix still require validation.
+
+## Nested exceptions and stack traces
+
+An exception can trigger cleanup that throws another exception. Here, `foo()`
+owns `bar` and throws A. While A unwinds the stack, `bar`'s destructor throws and
+catches B. Both exceptions are briefly alive: B must have separate storage so
+handling it does not overwrite A. Once cleanup finishes, A reaches `main()`'s catch.
+
+The tables below follow each transfer between stack and thread-local storage.
+The runnable example is `examples/30-error_handling/main.sun`; it exits with status 1.
+
+```sun
+/** Demonstrates a handled exception during cleanup of another exception. */
+
+/** Reports the original failure. */
+exception A {
+}
+
+/** Reports a failure during cleanup. */
+exception B {
+}
+
+/** Performs cleanup that handles its own failure. */
+class Bar {
+  /** Creates the resource. */
+  init() {}
+
+  /** Handles B before allowing the original unwind to continue. */
+  deinit() {
+    try {
+      throw B();
+    } catch (error: B) {
+      // B is handled here.
+    }
+  }
+}
+
+/** Throws A while owning a resource that requires cleanup. */
+function foo() void throws {
+  var bar = Bar();
+  throw A();
+}
+
+/** Handles A after foo's resource has been destroyed. */
+function main() i32 {
+  try {
+    foo();
+  } catch (error: A) {
+    return 1;
+  }
+  return 0;
+}
+```
+
+Each color identifies a function frame or thread-local storage. Callers appear
+above callees. Rows show logical storage, not byte sizes: an empty `error` row
+is reserved catch storage, and each exception includes its trace. Runtime names
+and pointer types are illustrative internals, not user-facing Sun declarations.
+
+### Step 1: foo throws A
+
+A enters the thread-local base record. `foo()` needs no separate trace storage.
+
+<ExceptionMemory step={1} />
+
+### Step 2: unwinding enters Bar.deinit
+
+The destructor selects its own stack record for nested throws, saving the
+previous target. A stays in thread-local storage.
+
+<ExceptionMemory step={2} />
+
+### Step 3: the destructor throws B
+
+B enters the destructor's selected record. A and B retain independent traces.
+
+<ExceptionMemory step={3} />
+
+### Step 4: the destructor catches B
+
+B moves into catch storage, freeing the nested record for reuse. If B escapes
+the destructor instead, Sun terminates.
+
+<ExceptionMemory step={4} />
+
+### Step 5: the destructor returns and A resumes
+
+The destructor restores the previous throw target and its frame expires.
+A resumes unwinding with its original trace.
+
+<ExceptionMemory step={5} />
+
+### Step 6: main catches A
+
+A moves into `main()`'s catch storage, freeing the TLS base record.
+The catch returns 1.
+
+<ExceptionMemory step={6} />
+
+## Standard-library exceptions
+
+Standard-library operations throw concrete exceptions such as
+`IndexOutOfBoundsError` and `AllocationError`. `IError` exposes `code()` and
+`message()`; it is an interface, not an exception family. Calling `message()`
+creates an owned `String` and can itself throw.
 
 ```sun
 using std;
@@ -90,109 +280,8 @@ function report() void throws {
 }
 ```
 
-Readiness and absence remain ordinary values. For example, `Option<T>` represents
-an optional value, and nonblocking I/O distinguishes completion from “would block.”
-A failed write throws `std.io.WriteError`; its `transferred()` method reports bytes
-already written, so a retry can start at the remaining suffix.
-
-Tests return `void` and can throw by default. Assertion failures are exceptions.
-A throwing `main` can propagate exceptions to the process boundary, which prints
-a fixed diagnostic and exits with status 1 after stack cleanup. Worker threads
-must handle their exceptions before returning from the thread body.
-
-## Migrating from returned errors
-
-- Change `Result<T>` and other error-wrapper return types to `T throws`.
-- Replace `return Result.Ok(value)` with `return value` and error variants with
-  `throw error`.
-- Replace `try operation()` with an ordinary call in a throwing function, or a
-  block-form `try` with catches.
-- Replace matches on error variants with catches around the operation itself.
-- Replace `ignore_error(operation())` with `try { operation(); } catch {}` only
-  when deliberately discarding every failure.
-- Give fallible constructors `init(...) throws`; successful construction needs
-  no returned status.
-
-`_Result`, standard-library error-wrapper enums, and prefix `try` are removed.
-Ordinary user enums and typed enum matching remain available.
-
-## Native transport and JIT registration
-
-Exception declarations and handler bodies survive Moon serialization. Bundles
-using this transport declare the `sun.exceptions.bounded` ABI rule. Concrete
-identities include declaration identity and layout; matching does not depend on
-descriptor addresses across modules. Rebuild bundles compiled with returned-error
-APIs before importing them into migrated code.
-
-The implementation uses the Itanium base unwinder with a Sun personality and
-Sun-owned bounded storage. It does not call the C++ exception allocator.
-Each thread initializes a base propagation record. Exceptional cleanup selects
-a separate record in its own stack frame for internally handled failures,
-then restores the previous throw target before resuming the original unwind.
-A termination handler prevents a nested exception from outliving that stack
-record. Native unwind headers remain at their original addresses.
-
-Build and run the exception checks from the repository root:
-
-```sh
-cmake -S . -B build
-cmake --build build --target sun sun_source_exception_tests sun_exception_tests sun_exception_allocation_probe -j$(($(nproc)/2))
-SUN_PATH=$PWD ctest --test-dir build -R '^Errors_(NativeExceptions|SourceExceptions)\.' --output-on-failure -j$(($(nproc)/2))
-```
-
-On macOS, use half the logical CPU count reported by `sysctl -n hw.logicalcpu`
-instead of `nproc`.
-
-**AOT exception transport must not allocate**, including on its first throw
-after explicit thread initialization. The AOT probe rejects allocations and
-fails if any are attempted, even when propagation still completes.
-
-**JIT registration eagerly prepares unwind lookup indexes.** After JITLink
-relocates a module's frame descriptions, the registrar parses every frame and
-calls the platform's `_Unwind_Find_FDE` lookup before the module becomes
-callable. Preparation may allocate; it does not execute a warm-up throw.
-Missing lookup support, malformed frame data, or a failed frame lookup rejects
-materialization. Failed lookup also removes the new frame registration.
-
-The JIT probes now reject allocations during transport too. They cover first
-throws, independently loaded modules, removal and reloading, and concurrent
-throws after registration. Compiler-generated `DW.ref` personality pointer
-cells remain local to each module so unloading one does not invalidate another
-module's unwind metadata. Native frame deregistration releases indexes before
-the code is unmapped. Exception values retain fixed thread-local and stack
-storage in both execution modes.
-
-There are limits to the JIT guarantee. `_Unwind_Find_FDE` is a platform extension,
-and libgcc can silently fall back to linear lookup when preparation runs out of
-memory. Successful lookup alone cannot certify that its index allocation
-succeeded. Registration racing with an unwind in another thread is also outside
-the allocation-free probes: the platform may expose newly registered tables
-before eager indexing completes. JIT throw-time allocations remain permitted
-in these cases; the strict AOT requirement is unchanged.
-
-The compiler embeds the runtime archive for its host architecture and operating
-system. Native linking extracts a temporary copy and removes it when linking
-finishes; compiler installations need no separate Sun runtime archive.
-Cross-target Moon bundles and object files support x86-64 and AArch64 Linux and Darwin.
-For a different architecture or operating system, the compiler extracts embedded
-runtime source and compiles it with the selected link driver and sysroot. The
-cross toolchain must provide C++20 support and the target's C++ headers (for
-example, `g++-aarch64-linux-gnu` for AArch64 GNU/Linux). Temporary runtime files
-are removed after linking, including on failure.
-Linux x86-64 has been validated locally; macOS
-Apple Silicon validation has not been run locally. Passing the probes does not replace
-auditing the selected unwinder and platform.
-
-The helpers are currently implemented in C++ and compiled without C++ exception
-handling or RTTI. The intended follow-up is to generate all Sun-owned exception
-helpers as LLVM IR, including the personality function and panic integration;
-only the platform unwinder remains external. JIT frame indexing stays in the
-compiler. Generated throws initialize the statically reserved thread record
-before first use; this selects storage without allocating it.
-
-The libraries have separate responsibilities: `sun_exception_runtime` contains
-the transport used by generated programs, while `sun_jit_support` contains
-compiler-side frame registration and indexing. The runtime library does not
-depend on LLVM or the JIT support library. Test fixtures and allocation
-instrumentation live under `tests/`; production JIT interfaces expose no
-test-only registrar or lookup injection hooks.
+`Error` stores a numeric code and up to 96 bytes of inline diagnostic text.
+`Option<T>` still represents absence. Tests can throw by default; failed
+assertions throw exceptions. Unhandled exceptions from `main()` currently print
+a fixed diagnostic and exit with status 1 after cleanup; worker threads must
+handle exceptions before returning.

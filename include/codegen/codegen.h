@@ -1,5 +1,7 @@
 #pragma once
 
+#include "abi/exception_layout.h"
+
 /** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 class PrototypeAST;
@@ -9,9 +11,9 @@ class PrototypeAST;
 #include <stdexcept>
 
 #include "driver/sun_jit.h"
-#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -67,6 +69,8 @@ class CodegenContext {
   bool optimize_ = true;
 
  public:
+  unsigned exceptionTraceDepth = sun::abi::exceptions::defaultTraceDepth;
+
   /** Creates the LLVM generation context for the requested module and target.
    */
   explicit CodegenContext(std::string moduleName,
@@ -140,7 +144,8 @@ class CodegenContext {
     // Sun exposes allocation failure as a value. LLVM's libc allocation
     // elision is allowed to assume success, so disable that model here.
     const std::string allocationTriple =
-        targetTriple_.empty() ? llvm::sys::getDefaultTargetTriple() : targetTriple_;
+        targetTriple_.empty() ? llvm::sys::getDefaultTargetTriple()
+                              : targetTriple_;
     fam->registerPass([allocationTriple] {
       llvm::TargetLibraryInfoImpl info{llvm::Triple(allocationTriple)};
       info.setUnavailable(llvm::LibFunc_malloc);

@@ -2,6 +2,7 @@
 
 #include "cli/usage.h"
 
+#include "abi/exception_layout.h"
 #include "generated/sun_build_timestamp.h"
 #include "generated/sun_version.h"
 
@@ -13,7 +14,7 @@ namespace sun::cli {
 namespace {
 
 // Everything in the help text below its first line, which names the program.
-const char* const kUsageBody =
+const std::string kUsageBody =
     "Commands:\n"
     "  build            Build the nearest sun-config.json and its projects\n"
     "                   --config <file> --package <id> --entrypoint <name>\n"
@@ -52,6 +53,10 @@ const char* const kUsageBody =
     "  --dynamic         Link against shared libraries instead (needed for "
     ".so-only libs)\n"
     "  --emit-ir         Print LLVM IR to stdout\n"
+    "  --exception-trace-depth=N  Store up to N exception frames (0.." +
+    std::to_string(sun::abi::exceptions::maximumTraceDepth) + "; default " +
+    std::to_string(sun::abi::exceptions::defaultTraceDepth) +
+    ")\n"
     "  --dump-proto-sun  Print the Sun source synthesized from manifest "
     "protos\n"
     "  -g                Emit DWARF debug info (keeps optimization level)\n"

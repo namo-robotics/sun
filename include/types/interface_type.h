@@ -82,6 +82,7 @@ class InterfaceType : public NominalType {
   const sun::semantic_analysis::QualifiedName& getGenericQualifiedName() const {
     return genericQualifiedName_;
   }
+
   /** Record the template that produced this type. */
   void setGenericQualifiedName(sun::semantic_analysis::QualifiedName name) {
     genericQualifiedName_ = std::move(name);
@@ -94,6 +95,7 @@ class InterfaceType : public NominalType {
   const std::vector<std::string>& getLifetimeParams() const {
     return lifetimeParams_;
   }
+
   /** Stores the lifetime parameters associated with this declaration. */
   void setLifetimeParams(std::vector<std::string> names) {
     lifetimeParams_ = std::move(names);
@@ -108,6 +110,7 @@ class InterfaceType : public NominalType {
   const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
     return qualifiedName_;
   }
+
   /** Records the declaration name together with its enclosing scopes. */
   void setQualifiedName(sun::semantic_analysis::QualifiedName qn) {
     qualifiedName_ = std::move(qn);
@@ -130,8 +133,10 @@ class InterfaceType : public NominalType {
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::Interface;
+
   /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
+
   /** Returns the declared name used to identify this object. */
   const std::string& getName() const { return name; }
 
@@ -141,9 +146,11 @@ class InterfaceType : public NominalType {
   const std::string& getBaseName() const {
     return baseName_.empty() ? name : baseName_;
   }
+
   /** Sets the unqualified declaration name without changing its enclosing
    * scopes. */
   void setBaseName(std::string bn) { baseName_ = std::move(bn); }
+
   /** Reports whether the unqualified declaration name is available. */
   bool hasBaseName() const { return !baseName_.empty(); }
 
@@ -151,23 +158,30 @@ class InterfaceType : public NominalType {
   const std::vector<std::string>& getTypeParameters() const {
     return typeParameters;
   }
+
   /** Provides the concrete types supplied for generic specialization. */
   const std::vector<TypePtr>& getTypeArguments() const { return typeArguments; }
+
   /** Returns the original generic name used to identify this specialization. */
   const std::string& getBaseGenericName() const { return baseGenericName; }
+
   /** Reports whether this is a generic declaration rather than a concrete
    * instance. */
   bool isGenericDefinition() const { return !typeParameters.empty(); }
+
   /** Reports whether this type was instantiated with concrete type arguments.
    */
   bool isSpecialized() const { return !typeArguments.empty(); }
+
   /** Provides the field declarations belonging to this type. */
   const std::vector<InterfaceField>& getFields() const { return fields; }
+
   /** Provides the method declarations belonging to this type. */
   const std::vector<InterfaceMethod>& getMethods() const { return methods; }
 
   /** Returns the resolved direct parent, or null for a root interface. */
   const InterfaceTypePtr& getParent() const { return parent_; }
+
   /** Records the resolved parent and its effective members. */
   void setInheritedShape(InterfaceTypePtr parent,
                          std::vector<InterfaceField> effectiveFields,
@@ -176,10 +190,12 @@ class InterfaceType : public NominalType {
     fields = std::move(effectiveFields);
     methods = std::move(effectiveMethods);
   }
+
   /** Reports nominal conformance to this interface or one of its ancestors. */
   bool extendsInterface(const InterfaceType& target) const {
     return equals(target) || (parent_ && parent_->extendsInterface(target));
   }
+
   /** Returns the number of dynamically dispatchable methods.
    */
   unsigned getMethodCount() const {
@@ -191,6 +207,7 @@ class InterfaceType : public NominalType {
     }
     return result;
   }
+
   /** Returns the direct parent's dispatch-table slot. */
   unsigned getParentIndex() const { return getMethodCount(); }
 

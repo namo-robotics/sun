@@ -20,8 +20,10 @@ class IfExprAST : public ExprAST {
   IfExprAST(std::unique_ptr<ExprAST> Cond, std::unique_ptr<ExprAST> Then,
             std::unique_ptr<ExprAST> Else)
       : Cond(std::move(Cond)), Then(std::move(Then)), Else(std::move(Else)) {}
+
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::IF; }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string result = "if (" + Cond->toString() + ") " + Then->toString();
@@ -30,10 +32,13 @@ class IfExprAST : public ExprAST {
     }
     return result;
   }
+
   /** Returns the condition expression. */
   ExprAST* getCond() const { return Cond.get(); }
+
   /** Returns the branch taken when the condition is true. */
   ExprAST* getThen() const { return Then.get(); }
+
   /** Returns the alternative branch. */
   ExprAST* getElse() const { return Else.get(); }
 
@@ -41,6 +46,7 @@ class IfExprAST : public ExprAST {
    * Mutable body slots for LoweringPass block normalization
    */
   std::unique_ptr<ExprAST>& thenSlot() { return Then; }
+
   /** Provides the replaceable slot for the alternative branch. */
   std::unique_ptr<ExprAST>& elseSlot() { return Else; }
 
@@ -51,6 +57,7 @@ class IfExprAST : public ExprAST {
     fn(Then);
     fn(Else);
   }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "If"; }
 };

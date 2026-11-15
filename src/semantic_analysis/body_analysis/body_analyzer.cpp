@@ -107,14 +107,16 @@ void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
         sema_.typeResolver().typeAnnotationToType(*proto.getReturnType());
   }
 
-  if (ctx_.getCurrentClass() && proto.getName() == "init" &&
-      scopeReturnType && !scopeReturnType->isVoid()) {
-    logAndThrowError("Constructors cannot return values; use throws for failures",
-                     func.getLocation());
+  if (ctx_.getCurrentClass() && proto.getName() == "init" && scopeReturnType &&
+      !scopeReturnType->isVoid()) {
+    logAndThrowError(
+        "Constructors cannot return values; use throws for failures",
+        func.getLocation());
   }
   if (func.isTest() && (!scopeReturnType || !scopeReturnType->isVoid())) {
-    logAndThrowError("Test functions return void and report failures by throwing",
-                     func.getLocation());
+    logAndThrowError(
+        "Test functions return void and report failures by throwing",
+        func.getLocation());
   }
 
   // Enter the function scope with its diagnostic signature.
@@ -202,7 +204,6 @@ void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
   // No implicit returns: a non-void signature must be met by an explicit
   // return (or throw) on every path. Moon stubs carry no body to check.
   if (!ctx_.isInMoonScope()) {
-
     checkAllPathsReturn(proto, func.getBody(), scopeReturnType,
                         func.getLocation());
   }
@@ -251,7 +252,6 @@ void BodyAnalyzer::analyzeLambda(sun::ast::LambdaAST& lambda) {
     }
     analyzeBlock(const_cast<BlockExprAST&>(lambda.getBody()));
   }
-
 
   // Same rule as named functions: no implicit returns
   checkAllPathsReturn(proto, lambda.getBody(), proto.getResolvedReturnType(),
@@ -330,8 +330,9 @@ void BodyAnalyzer::analyzeMethodWithBindings(
 
   if (proto.getName() == "init" && methodReturnType &&
       !methodReturnType->isVoid()) {
-    logAndThrowError("Constructors cannot return values; use throws for failures",
-                     methodFunc.getLocation());
+    logAndThrowError(
+        "Constructors cannot return values; use throws for failures",
+        methodFunc.getLocation());
   }
 
   // Analyze the source body after its parameters are in scope.
@@ -350,7 +351,6 @@ void BodyAnalyzer::analyzeMethodWithBindings(
           .addExpression(std::move(success));
     }
   }
-
 
   // Step 7: Pop scopes and restore context
   ctx_.exitScope();  // method scope

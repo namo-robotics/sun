@@ -139,8 +139,9 @@ llvm::Function* ExternCEmitter::declare(
   // Calls and function addresses are redirected to the native symbol only
   // after every call has received its own signature and ABI attributes.
   auto* existing = module_->getFunction(symbol);
-  llvm::Function* func = llvm::Function::Create(
-      funcType, llvm::Function::ExternalLinkage, existing ? "" : symbol, module_);
+  llvm::Function* func =
+      llvm::Function::Create(funcType, llvm::Function::ExternalLinkage,
+                             existing ? "" : symbol, module_);
 
   declarations_[&proto] = func;
   if (existing) {

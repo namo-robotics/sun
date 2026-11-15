@@ -238,12 +238,14 @@ public module std.test {
       fn();
       return TestResult(name, true, Option.None);
     } catch (error: AssertionError) {
+      _report_unhandled_exception();
       try {
         return TestResult(name, false, Option.Some(error.message()));
       } catch {
         return TestResult(name, false, Option.None);
       }
     } catch {
+      _report_unhandled_exception();
       return TestResult(name, false, Option.None);
     }
   }

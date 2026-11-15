@@ -555,8 +555,7 @@ void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc) {
       codegen(static_cast<const ExprAST&>(assignment));
       const auto* field =
           currentClass->getField(assignment.getTargetDeclarationId());
-      if (field && sun::types::typeNeedsDrop(field->type) &&
-          !canError) {
+      if (field && sun::types::typeNeedsDrop(field->type) && !canError) {
         auto* address = sun::codegen::support::fieldPtr(
             *ctx.builder, currentClass.get(), thisPtr, *field,
             field->name + ".initialized");
@@ -585,6 +584,10 @@ void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc) {
   }
 
   scopes().pop();
+
+  if (proto.getName() == "deinit") {
+    gen_.exceptionGenerator().protectDestructor(func);
+  }
 
   debugInfo.exitFunction(func);
 
@@ -781,8 +784,8 @@ Value* ClassGenerator::codegenStackClassInstance(
         ctorFunc, alloca, expr.getArgs(), expr.getArgConversions(), paramTypes);
     // A throwing constructor unwinds like any other call: inside a try it
     // must be invoked so the exception reaches the landing pad.
-    gen_.errorGenerator().emitPossiblyThrowingCall(
-        ctorFunc, ctorArgs, ctor->canThrow, "");
+    gen_.exceptionGenerator().emitPossiblyThrowingCall(ctorFunc, ctorArgs,
+                                                       ctor->canThrow, "");
   }
 
   // Track the temporary for deinit ONLY if not moved (ownership
@@ -1000,6 +1003,10 @@ Value* ClassGenerator::codegen(const sun::ast::InterfaceDefinitionAST& expr) {
 // -------------------------------------------------------------------
 
 Value* ClassGenerator::codegen(const sun::ast::GenericCallAST& expr) {
+  if (auto trace =
+          gen_.exceptionGenerator().emitTraceOperation(expr, expr.getArgs())) {
+    return *trace;
+  }
   const std::string& funcName = expr.getFunctionName();
   const auto& typeArgs = expr.getTypeArguments();
 
@@ -1103,7 +1110,7 @@ Value* ClassGenerator::codegen(const sun::ast::GenericCallAST& expr) {
       return nullptr;
     }
 
-    Value* result = gen_.errorGenerator().emitPossiblyThrowingCall(
+    Value* result = gen_.exceptionGenerator().emitPossiblyThrowingCall(
         specializedFunc->getFunctionType(), specializedFunc, argValues,
         canThrow, "generic.call");
     result = gen_.materializeStructReturn(result);
@@ -1168,8 +1175,8 @@ Value* ClassGenerator::codegen(const sun::ast::GenericCallAST& expr) {
                            expr.getArgConversions(), paramTypes);
       // See codegenStackClassInstance: a throwing constructor must be
       // invoked so its exception reaches the enclosing try's landing pad.
-      gen_.errorGenerator().emitPossiblyThrowingCall(
-          ctorFunc, ctorArgs, ctor->canThrow, "");
+      gen_.exceptionGenerator().emitPossiblyThrowingCall(ctorFunc, ctorArgs,
+                                                         ctor->canThrow, "");
     } else if (argCount > 0) {
       // Zeroed storage fully describes a class with no constructor, so an
       // argument-free miss is fine. Arguments that reach no constructor

@@ -6,8 +6,8 @@
 #include <filesystem>
 #include <fstream>
 
-#include "driver/manifest_processor.h"
 #include "driver/build_graph.h"
+#include "driver/manifest_processor.h"
 #include "driver/package.h"
 #include "driver/sun_config.h"
 #include "moon_bundling/moon_builder.h"
@@ -33,6 +33,7 @@ class Packages : public testing::Test {
   fs::path dir;
   std::string previousCache;
   bool hadCache = false;
+
   /** Creates fixtures beneath the workspace temporary directory. */
   void SetUp() override {
     dir = fs::current_path() / "tmp/package-tests" /
@@ -46,6 +47,7 @@ class Packages : public testing::Test {
     setenv("SUN_DEPENDENCY_CACHE", (dir / "cache").c_str(), 1);
     ManifestProcessor::clearPathVariables();
   }
+
   /** Restores process settings after every test, including failed assertions.
    */
   void TearDown() override {
@@ -56,6 +58,7 @@ class Packages : public testing::Test {
     }
     ManifestProcessor::clearPathVariables();
   }
+
   /** Parses a fixture configuration for an explicit target. */
   SunConfig config(const std::string& text,
                    const std::string& target = "x86_64-linux-gnu") {
@@ -143,11 +146,14 @@ TEST_F(Packages, MoonCacheAndCollision) {
     "target":{"x86_64-linux-gnu":{"path":"x64.moon"},
               "aarch64-linux-gnu":{"path":"arm.moon"}}
   }]})");
-  EXPECT_EQ(ManifestProcessor::expandPathVariables("$IMAGE_CORE/lib/image_core.moon", &typed), x64);
+  EXPECT_EQ(ManifestProcessor::expandPathVariables(
+                "$IMAGE_CORE/lib/image_core.moon", &typed),
+            x64);
   auto wrongTarget = config(R"({"dependencies":[{
     "type":"moon","package":"IMAGE_CORE","library":"image_core","path":"arm.moon"
   }]})");
-  EXPECT_THROW(sun::driver::resolveConfigDependency(wrongTarget, "IMAGE_CORE"), SunError);
+  EXPECT_THROW(sun::driver::resolveConfigDependency(wrongTarget, "IMAGE_CORE"),
+               SunError);
   ManifestProcessor::setPathVariable("IMAGE_CORE", "/override");
   EXPECT_THROW(ManifestProcessor::expandPathVariables(
                    "$IMAGE_CORE/lib/image_core.moon", &cfg),
@@ -161,8 +167,9 @@ TEST_F(Packages, LazyDependencyTargetAndHash) {
   EXPECT_THROW(sun::driver::resolveConfigDependency(cfg, "LIB"), SunError);
   EXPECT_NO_THROW(config(
       R"({"dependencies":[{"package":"LIB","library":"lib","url":"https://example.com/lib.moon"}]})"));
-  EXPECT_THROW(config(
-      R"({"dependencies":[{"package":"LIB","library":"lib","url":"https://example.com/lib.moon","hash":"invalid"}]})"),
+  EXPECT_THROW(
+      config(
+          R"({"dependencies":[{"package":"LIB","library":"lib","url":"https://example.com/lib.moon","hash":"invalid"}]})"),
       SunError);
   EXPECT_THROW(
       config(
@@ -186,9 +193,9 @@ TEST_F(Packages, RoundTripAndResourceRebuild) {
       {"helpers", (dir / "helpers.moon").string(), true}};
   auto plans = sun::driver::planPackages(cfg, artifacts);
   ASSERT_EQ(plans.size(), 1u);
-  EXPECT_EQ(plans[0].output,
-            dir / ".sun/build/x86_64-unknown-linux-gnu/release" /
-                dir.filename() / "packages/tools");
+  EXPECT_EQ(plans[0].output, dir /
+                                 ".sun/build/x86_64-unknown-linux-gnu/release" /
+                                 dir.filename() / "packages/tools");
   cfg.pathVariables["SUN_BUILD"] = (dir / "custom-build").string();
   plans = sun::driver::planPackages(cfg, artifacts);
   EXPECT_EQ(plans[0].output, dir / "custom-build/packages/tools");
@@ -198,7 +205,8 @@ TEST_F(Packages, RoundTripAndResourceRebuild) {
   auto modified = fs::last_write_time(archive);
   sun::driver::buildPackages(cfg, plans);
   EXPECT_EQ(fs::last_write_time(archive), modified);
-  // A staged file can change without its inventory, size, or timestamp changing.
+  // A staged file can change without its inventory, size, or timestamp
+  // changing.
   const auto stagedBinary = plans[0].output / "bin/app";
   const auto binaryTime = fs::last_write_time(stagedBinary);
   put(stagedBinary, "broken");
@@ -241,8 +249,8 @@ TEST_F(Packages, UnpinnedUrlRefreshesAndRejectsInvalidReleases) {
   const auto archive = fs::path(plans[0].output.string() + ".tar.gz");
   const auto originalHash = sun::driver::packageFileHash(archive);
   const auto url = "file://" + fs::absolute(archive).string();
-  auto consumer = config("{\"dependencies\":[{\"package\":\"TOOLS\",\"url\":\"" +
-                         url + "\"}]}");
+  auto consumer = config(
+      "{\"dependencies\":[{\"package\":\"TOOLS\",\"url\":\"" + url + "\"}]}");
   const auto first = sun::driver::resolveConfigDependency(consumer, "TOOLS");
   put(dir / "app", "updated release");
   sun::driver::buildPackages(producer, plans);
@@ -255,12 +263,15 @@ TEST_F(Packages, UnpinnedUrlRefreshesAndRejectsInvalidReleases) {
                        url + "\",\"hash\":\"" + originalHash + "\"}]}");
   EXPECT_THROW(sun::driver::resolveConfigDependency(pinned, "TOOLS"), SunError);
   consumer.targetTriple = "aarch64-linux-gnu";
-  EXPECT_THROW(sun::driver::resolveConfigDependency(consumer, "TOOLS"), SunError);
+  EXPECT_THROW(sun::driver::resolveConfigDependency(consumer, "TOOLS"),
+               SunError);
   consumer.targetTriple = "x86_64-linux-gnu";
   put(archive, "not a package");
-  EXPECT_THROW(sun::driver::resolveConfigDependency(consumer, "TOOLS"), SunError);
+  EXPECT_THROW(sun::driver::resolveConfigDependency(consumer, "TOOLS"),
+               SunError);
   fs::remove(archive);
-  EXPECT_THROW(sun::driver::resolveConfigDependency(consumer, "TOOLS"), SunError);
+  EXPECT_THROW(sun::driver::resolveConfigDependency(consumer, "TOOLS"),
+               SunError);
   EXPECT_TRUE(fs::exists(updated / "bin/app"));
 }
 
@@ -311,7 +322,6 @@ TEST_F(Packages, InheritsRuntimeResources) {
   sun::driver::buildPackages(cfg, plans);
   EXPECT_TRUE(fs::is_regular_file(plans[0].output / "bin/app.asset"));
   EXPECT_TRUE(fs::is_regular_file(plans[0].output / "share/shared"));
-
 }
 
 /** Generated library resources already beside their product need no build copy.
@@ -342,8 +352,7 @@ TEST_F(Packages, RejectsUnsafeBuildResources) {
   cfg.pathVariables["SUN_BUILD"] = (dir / "output").string();
   auto plans =
       sun::driver::planPackages(cfg, {{"app", (dir / "app").string(), false}});
-  for (const auto& destination :
-       {"app", "app_test", ".contexts/data"}) {
+  for (const auto& destination : {"app", "app_test", ".contexts/data"}) {
     cfg.entrypoints[0].resources[0].destination = destination;
     EXPECT_THROW(sun::driver::buildPackages(cfg, plans), SunError)
         << destination;
@@ -396,6 +405,7 @@ TEST_F(Packages, UnsafeArchives) {
   EXPECT_THROW(sun::driver::resolveConfigDependency(cfg, "BAD"), SunError);
   EXPECT_FALSE(fs::exists(dir / "escaped"));
 }
+
 /** Default caches follow the selected workspace while explicit overrides win.
  */
 TEST_F(Packages, WorkspaceDependencyCache) {

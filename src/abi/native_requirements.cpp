@@ -26,6 +26,7 @@ namespace {
   sun::support::logAndThrowError(
       "Native archive compatibility cannot be established: " + reason);
 }
+
 /** Recognizes supported desktop Apple target profiles, including OS versions.
  */
 bool isMacOS(const TargetProfile& profile) {

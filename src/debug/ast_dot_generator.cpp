@@ -348,7 +348,6 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       break;
     }
 
-
     case ASTNodeType::UNSAFE_BLOCK: {
       const auto* ub = static_cast<const sun::ast::UnsafeBlockAST*>(node);
       int bodyId = visitNode(&ub->getBody());

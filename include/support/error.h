@@ -134,10 +134,13 @@ class SunError : public std::exception {
 
   /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const { return kind_; }
+
   /** Returns the message stored by this object. */
   const std::string& getMessage() const { return message_; }
+
   /** Returns the source position used for diagnostics. */
   const std::optional<Position>& getLocation() const { return location_; }
+
   /** Returns the source line stored by this object. */
   const std::string& getSourceLine() const { return sourceLine_; }
 
@@ -150,6 +153,7 @@ class SunError : public std::exception {
     related_.push_back({message, location, level});
     buildFullMessage();
   }
+
   /** Adds the operation being performed without discarding diagnostic notes. */
   void addContext(const std::string& context) {
     message_ += " (" + context + ")";

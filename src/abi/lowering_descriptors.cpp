@@ -22,10 +22,12 @@ std::string integer(uint64_t value) {
   }
   return result;
 }
+
 /** Frames an attribute's index and value without delimiter ambiguity. */
 std::string field(uint64_t tag, const std::string& value) {
   return integer(tag) + integer(value.size()) + value;
 }
+
 /** Selects attributes that must agree between declarations and call sites. */
 bool abiAttribute(llvm::Attribute attribute) {
   if (attribute.isStringAttribute()) {
@@ -214,6 +216,7 @@ std::string machineTypeName(llvm::Type* type) {
   type->print(stream, false, true);
   return result;
 }
+
 void recordClassLayout(llvm::Module& module, const std::string& identity,
                        llvm::StructType* storage) {
   if (identity.empty() || !storage->isSized()) {

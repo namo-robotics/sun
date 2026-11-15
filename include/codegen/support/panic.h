@@ -6,7 +6,8 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Value.h>
 
-/** Provides panic emission shared by runtime checks and explicit panic calls. */
+/** Provides panic emission shared by runtime checks and explicit panic calls.
+ */
 namespace sun::codegen::support {
 
 /** Writes a diagnostic and aborts without allocating or unwinding. */

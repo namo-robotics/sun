@@ -132,6 +132,7 @@ class ExprAST {
    * into them instead of exposing their slot.
    */
   using ChildSlotFn = std::function<void(std::unique_ptr<ExprAST>&)>;
+
   /** Visits replaceable child expressions so tree passes can rewrite them in
    * place. */
   virtual void forEachChildSlot(const ChildSlotFn&) {}
@@ -140,8 +141,10 @@ class ExprAST {
    * Declaration visibility (meaningful on declaration nodes only)
    */
   Visibility getVisibility() const { return visibility_; }
+
   /** Sets which scopes may access this declaration. */
   void setVisibility(Visibility v) { visibility_ = v; }
+
   /** Reports whether this declaration is accessible outside its defining scope.
    */
   bool isPublic() const { return visibility_ == Visibility::Public; }
@@ -149,27 +152,33 @@ class ExprAST {
   // Analysis data access
   /** Reports whether this object has analysis. */
   bool hasAnalysis() const { return analysis_ != nullptr; }
+
   /** Read the declaration identity without allocating computed analysis. */
   virtual DeclarationId getDeclarationId() const {
     return analysis_ ? analysis_->declaration.id : DeclarationId{};
   }
+
   /** Assign the identity allocated by the owning analysis session. */
   virtual void setDeclarationId(DeclarationId id) const {
     analysis().declaration.id = id;
   }
+
   /** Access declaration and parameter identities retained within a session. */
   virtual sun::semantic_analysis::DeclarationIdentity& declarationIdentity()
       const {
     return analysis().declaration;
   }
+
   /** Return the declaration selected by semantic resolution. */
   DeclarationId getTargetDeclarationId() const {
     return analysis_ ? analysis_->targetDeclaration : DeclarationId{};
   }
+
   /** Record a resolved reference without changing the source spelling. */
   void setTargetDeclarationId(DeclarationId id) const {
     analysis().targetDeclaration = id;
   }
+
   /** Discard computed results while preserving this session's identities. */
   virtual void clearComputedAnalysis() const {
     if (!analysis_) {
@@ -180,6 +189,7 @@ class ExprAST {
     ensureAnalysis();
     analysis_->declaration = std::move(identity);
   }
+
   /** Discard all annotations when the owning analysis session is discarded. */
   virtual void resetAnalysisSession() const {
     if (!analysis_) {
@@ -198,14 +208,17 @@ class ExprAST {
   void setResolvedType(sun::types::TypePtr type) const {
     analysis().resolvedType = std::move(type);
   }
+
   /** Returns the type assigned by semantic analysis, if available. */
   sun::types::TypePtr getResolvedType() const {
     return analysis_ ? analysis_->resolvedType : nullptr;
   }
+
   /** Reports whether semantic analysis has assigned a type. */
   bool hasResolvedType() const {
     return analysis_ && analysis_->resolvedType != nullptr;
   }
+
   /** Discards the cached type so analysis can resolve it again. */
   void clearResolvedType() const {
     if (analysis_) {
@@ -217,25 +230,32 @@ class ExprAST {
    * Source location tracking
    */
   void setLocation(sun::support::Position loc) { location_ = loc; }
+
   /** Sets the source position used for diagnostics. */
   void setLocation(int line, int column) {
     location_.line = line;
     location_.column = column;
   }
+
   /** Returns the source position used for diagnostics. */
   const sun::support::Position& getLocation() const { return location_; }
+
   /** Returns the source line used to report this node in diagnostics. */
   int getLine() const { return location_.line; }
+
   /** Returns the source column used to report this node in diagnostics. */
   int getColumn() const { return location_.column; }
 
   // Convenience type checks
   /** Reports whether this syntax node represents a function definition. */
   bool isFunction() const { return getType() == ASTNodeType::FUNCTION; }
+
   /** Reports whether this syntax node represents a lambda expression. */
   bool isLambda() const { return getType() == ASTNodeType::LAMBDA; }
+
   /** Reports whether this syntax node represents a lexical block. */
   bool isBlock() const { return getType() == ASTNodeType::BLOCK; }
+
   /** Reports whether this syntax node represents a return statement. */
   bool isReturn() const { return getType() == ASTNodeType::RETURN; }
 
@@ -272,6 +292,7 @@ class ExprAST {
    * Precompiled flag (for definitions loaded from .moon files)
    */
   bool isPrecompiled() const { return precompiled_; }
+
   /** Marks whether this node came from an already compiled library. */
   void setPrecompiled(bool value) { precompiled_ = value; }
 
@@ -279,6 +300,7 @@ class ExprAST {
    * Skip codegen flag (set by semantic analyzer for diamond import duplicates)
    */
   bool shouldSkipCodegen() const { return skipCodegen_; }
+
   /** Controls whether code generation omits this declaration. */
   void setSkipCodegen(bool value) { skipCodegen_ = value; }
 
@@ -286,6 +308,7 @@ class ExprAST {
    * Symbol prefix for moon library isolation (content hash)
    */
   const std::string& getSymbolPrefix() const { return symbolPrefix_; }
+
   /** Sets the prefix used to keep generated library symbols distinct. */
   void setSymbolPrefix(const std::string& prefix) { symbolPrefix_ = prefix; }
 
@@ -295,6 +318,7 @@ class ExprAST {
    * should not have deinit called - the destination owns the data.
    */
   bool isMoved() const { return analysis_ && analysis_->moved; }
+
   /** Records whether ownership of this expression has already been transferred.
    */
   void setMoved(bool value) const { analysis().moved = value; }
@@ -303,6 +327,7 @@ class ExprAST {
   /** Creates a base syntax node without a source position or analysis
    * annotations. */
   ExprAST() = default;
+
   /** Creates a base syntax node at the supplied source position. */
   explicit ExprAST(sun::support::Position loc) : location_(loc) {}
 };

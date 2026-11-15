@@ -59,8 +59,10 @@ class ProtoProject {
 
   /** Returns the temporary project directory. */
   const fs::path& dir() const { return dir_; }
+
   /** Returns the directory holding the fixture's protobuf schemas. */
   fs::path schemasDir() const { return dir_ / "schemas"; }
+
   /** Returns a path relative to the temporary project directory. */
   fs::path file(const std::string& rel) const { return dir_ / rel; }
 
@@ -207,6 +209,7 @@ class LibprotobufSchema {
 #endif
     std::string messages;
   };
+
   google::protobuf::compiler::DiskSourceTree tree_;
   Collector errors_;
   std::unique_ptr<google::protobuf::compiler::Importer> importer_;

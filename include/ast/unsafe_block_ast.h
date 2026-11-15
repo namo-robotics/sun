@@ -36,15 +36,18 @@ class UnsafeBlockAST : public ExprAST {
       body->forEachChildSlot(fn);
     }
   }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     return expressionForm ? "unsafe ..." : "unsafe { ... }";
   }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "Unsafe"; }
 
   /** Provides access to the expressions that make up the body. */
   const BlockExprAST& getBody() const { return *body; }
+
   /** Provides access to the expressions that make up the body. */
   BlockExprAST& getBody() { return *body; }
 };

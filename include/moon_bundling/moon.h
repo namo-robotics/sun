@@ -140,12 +140,14 @@ class MoonWriter {
   std::unordered_map<const llvm::Module*, size_t> blobIndexByModule_;
 
   std::vector<ModuleData> modules_;
+
   /** An archive queued for inclusion in the compiled library. */
   struct PendingArchive {
     std::string archiveSetHash;
     std::string name;
     std::string data;
   };
+
   std::vector<PendingArchive> nativeArchives_;
   abi::BundleContract contract_;
   std::string bundleHash_;

@@ -4,6 +4,7 @@
 /** Pure type computations; no semantic session is available here. */
 namespace sun::type_inference {
 using namespace sun::semantic_analysis;
+
 /** Helpers used only by the inference operations in this file. */
 namespace {
 /** Return an integer type's width, or zero for other types. */
@@ -25,11 +26,13 @@ int integerWidth(const TypePtr& type) {
       return 0;
   }
 }
+
 /** Construct a missing-input failure without consulting external state. */
 InferenceFailure missing() {
   return {InferenceFailure::Kind::MissingType, {}, {}, {}};
 }
 }  // namespace
+
 TypeResult TypeInferer::number(bool integer, uint64_t magnitude, bool negative,
                                TypePtr suffix) {
   if (suffix) {
@@ -46,6 +49,7 @@ TypeResult TypeInferer::number(bool integer, uint64_t magnitude, bool negative,
   }
   return Types::UInt64();
 }
+
 TypeResult TypeInferer::numeric(const TypePtr& left, const TypePtr& right) {
   auto lhs = unwrapRef(left), rhs = unwrapRef(right);
   if (!lhs || !rhs) {
@@ -63,12 +67,14 @@ TypeResult TypeInferer::numeric(const TypePtr& left, const TypePtr& right) {
   }
   return lhs;
 }
+
 TypeResult TypeInferer::unary(const TypePtr& operand, bool logicalNot) {
   if (!operand) {
     return missing();
   }
   return logicalNot ? Types::Bool() : unwrapRef(operand);
 }
+
 TypeResult TypeInferer::reference(const TypePtr& target,
                                   bool mutableReference) {
   if (!target) {
@@ -76,6 +82,7 @@ TypeResult TypeInferer::reference(const TypePtr& target,
   }
   return Types::Reference(unwrapRef(target), mutableReference);
 }
+
 TypeResult TypeInferer::array(const TypePtr& firstElement, size_t count,
                               TypePtr expectedElement,
                               bool useExpectedElement) {
@@ -98,6 +105,7 @@ TypeResult TypeInferer::array(const TypePtr& firstElement, size_t count,
   }
   return Types::Array(element, std::move(dimensions));
 }
+
 TypeResult TypeInferer::index(const TypePtr& target, size_t count) {
   auto type = unwrapRef(target);
   if (!type || !type->isArray()) {
@@ -110,6 +118,7 @@ TypeResult TypeInferer::index(const TypePtr& target, size_t count) {
   }
   return array.getElementType();
 }
+
 TypeResult TypeInferer::branches(const TypePtr& left, const TypePtr& right,
                                  bool leftToRight, bool rightToLeft) {
   if (!left || !right) {
@@ -136,6 +145,7 @@ TypeResult TypeInferer::branches(const TypePtr& left, const TypePtr& right,
   return InferenceFailure{
       InferenceFailure::Kind::BranchMismatch, left, right, {}};
 }
+
 TypeResult TypeInferer::call(const TypePtr& callable) {
   if (!callable) {
     return missing();

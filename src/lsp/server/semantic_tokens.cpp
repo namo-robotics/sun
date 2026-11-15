@@ -92,10 +92,12 @@ static int tokenKindToLSPType(TokenKind kind) {
   }
 }
 
-/** Distinguish generic calls from comparisons after an opening angle bracket. */
+/** Distinguish generic calls from comparisons after an opening angle bracket.
+ */
 static bool startsGenericCall(sun::parsing::Lexer& lexer) {
   const auto saved = lexer.getPosition();
-  /** Require a balanced argument list followed by a call, stopping at expressions. */
+  /** Require a balanced argument list followed by a call, stopping at
+   * expressions. */
   const bool result = [&] {
     int depth = 1;
     while (true) {
@@ -179,6 +181,7 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
     int tokenType;
     int modifiers = 0;
   };
+
   std::vector<SemanticToken> tokens;
 
   /**
@@ -239,7 +242,8 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
     // Try the simple mapping first
     int tokenType = tokenKindToLSPType(tok.kind);
 
-    const bool opensGeneric = tok.kind == TokenKind::LESS &&
+    const bool opensGeneric =
+        tok.kind == TokenKind::LESS &&
         (angleBracketDepth > 0 || previousTokenType == Type ||
          previousTokenType == Class || previousTokenType == Interface ||
          previousTokenType == Enum || startsGenericCall(lexer));

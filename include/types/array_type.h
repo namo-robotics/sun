@@ -34,10 +34,13 @@ class ArrayType : public Type {
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::Array;
+
   /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
+
   /** Returns the element type stored by this object. */
   const TypePtr& getElementType() const { return elementType; }
+
   /** Returns the array dimension sizes. */
   const std::vector<size_t>& getDimensions() const { return dimensions; }
 

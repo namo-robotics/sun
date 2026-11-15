@@ -54,6 +54,7 @@ class EnumType : public NominalType {
   const sun::semantic_analysis::QualifiedName& getGenericQualifiedName() const {
     return genericQualifiedName_;
   }
+
   /** Record the template that produced this type. */
   void setGenericQualifiedName(sun::semantic_analysis::QualifiedName name) {
     genericQualifiedName_ = std::move(name);
@@ -68,6 +69,7 @@ class EnumType : public NominalType {
   const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
     return qualifiedName_;
   }
+
   /** Records the declaration name together with its enclosing scopes. */
   void setQualifiedName(sun::semantic_analysis::QualifiedName qn) {
     qualifiedName_ = std::move(qn);
@@ -86,6 +88,7 @@ class EnumType : public NominalType {
 
   /** Return the integer type used to store the enum tag. */
   const TypePtr& getUnderlyingType() const { return underlyingType_; }
+
   /** Set the integer representation before generating enum storage. */
   void setUnderlyingType(TypePtr type) {
     assert(type && type->isIntegral());
@@ -94,10 +97,13 @@ class EnumType : public NominalType {
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::Enum;
+
   /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
+
   /** Returns the declared name used to identify this object. */
   const std::string& getName() const { return name_; }
+
   /** Provides the alternatives declared by this enum. */
   const std::vector<EnumVariant>& getVariants() const { return variants; }
 
@@ -107,8 +113,10 @@ class EnumType : public NominalType {
   const std::string& getBaseName() const {
     return baseName_.empty() ? name_ : baseName_;
   }
+
   /** Reports whether the unqualified declaration name is available. */
   bool hasBaseName() const { return !baseName_.empty(); }
+
   /** Sets the unqualified declaration name without changing its enclosing
    * scopes. */
   void setBaseName(std::string baseName) { baseName_ = std::move(baseName); }
@@ -121,10 +129,13 @@ class EnumType : public NominalType {
     genericBase_ = std::move(base);
     genericArgs_ = std::move(args);
   }
+
   /** Returns the original generic declaration. */
   const std::string& getGenericBase() const { return genericBase_; }
+
   /** Returns the generic type arguments. */
   const std::vector<TypePtr>& getGenericArgs() const { return genericArgs_; }
+
   /** Reports whether this type represents generic specialization values. */
   bool isGenericSpecialization() const { return !genericBase_.empty(); }
 

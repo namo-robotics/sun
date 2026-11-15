@@ -882,6 +882,7 @@ function main() i32 throws {
   // 5 + 2 drained, Vec left empty
   EXPECT_EQ(value, 7);
 }
+
 TEST(MemorySafety_Drops_Containers,
      replacement_cannot_move_its_borrowed_target) {
   EXPECT_THROW(executeStringWithStdlib(withPreamble(R"(

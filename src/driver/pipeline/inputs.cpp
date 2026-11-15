@@ -46,6 +46,8 @@ SunValue Driver::executeString(const std::string& source, int argc, char** argv,
     effectivePath = SourceManager::instance().addAnonymousSource(source);
   }
 
+  ctx->mainModule->setSourceFileName(effectivePath);
+
   // Register source for error reporting
   if (!filePath.empty()) {
     SourceManager::instance().addSource(effectivePath, source);
@@ -129,6 +131,8 @@ Parser Driver::prepareStringParser(const std::string& source,
     // Anonymous source
     effectivePath = SourceManager::instance().addAnonymousSource(source);
   }
+
+  ctx->mainModule->setSourceFileName(effectivePath);
 
   // Register source for error reporting
   SourceManager::instance().addSource(effectivePath, source);
@@ -379,6 +383,8 @@ std::unique_ptr<BlockExprAST> Driver::parseAndMergeFiles(
     throw SunError(SunError::Kind::Parse, "No source files specified");
   }
 
+  ctx->mainModule->setSourceFileName(
+      std::filesystem::canonical(sourceFiles.front()).string());
   generateCBindings(
       std::filesystem::absolute(sourceFiles.front()).parent_path().string(),
       ctx->mainModule->getTargetTriple());

@@ -50,9 +50,10 @@ Value* CodegenVisitor::codegen(const ExprAST& expr) {
 Value* CodegenVisitor::codegenExpression(const ExprAST& expr) {
   switch (expr.getType()) {
     case ASTNodeType::THROW:
-      return errors.codegen(static_cast<const sun::ast::ThrowAST&>(expr));
+      return exceptions.codegen(static_cast<const sun::ast::ThrowAST&>(expr));
     case ASTNodeType::TRY_CATCH:
-      return errors.codegen(static_cast<const sun::ast::TryCatchAST&>(expr));
+      return exceptions.codegen(
+          static_cast<const sun::ast::TryCatchAST&>(expr));
     case ASTNodeType::NUMBER:
       return codegen(static_cast<const sun::ast::NumberExprAST&>(expr));
     case ASTNodeType::CHAR_LITERAL:
@@ -151,7 +152,8 @@ Value* CodegenVisitor::codegenExpression(const ExprAST& expr) {
       return classes.codegen(
           static_cast<const sun::ast::MemberAssignmentAST&>(expr));
     case ASTNodeType::UNSAFE_BLOCK:
-      return errors.codegen(static_cast<const sun::ast::UnsafeBlockAST&>(expr));
+      return exceptions.codegen(
+          static_cast<const sun::ast::UnsafeBlockAST&>(expr));
     case ASTNodeType::GENERIC_CALL:
       return classes.codegen(
           static_cast<const sun::ast::GenericCallAST&>(expr));

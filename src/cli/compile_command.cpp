@@ -89,6 +89,7 @@ std::string computeJobInputHash(const CompileJob& job, bool forTests) {
   // Tests always carry debug info
   inputs.debugInfo = forTests || job.debugInfo;
   inputs.optimize = job.optimize;
+  inputs.exceptionTraceDepth = job.exceptionTraceDepth;
 
   inputs.moonImports = job.moonImports;
   for (auto& moon : inputs.moonImports) {
@@ -190,6 +191,8 @@ CompileJob makeCompileJob(const BuildRunOptions& options) {
   job.debugMode = options.shared.debugMode;
   job.debugInfo = options.shared.debugInfo;
   job.optimize = options.shared.optimize;
+  job.exceptionTraceDepth = resolveExceptionTraceDepth(
+      options.shared, options.inputFiles.front(), options.targetTriple);
   job.dumpProtoSun = options.dumpProtoSun;
   job.noTest = options.noTest;
   job.forceRebuild = options.forceRebuild;
@@ -201,8 +204,11 @@ CompileJob makeCompileJob(const BuildRunOptions& options) {
 /** Builds the executable used to run the selected Sun tests. */
 int compileTestBinary(const CompileJob& job, bool hasExecutable) {
   sun::abi::AbiValidationScope compatibility(
-      {job.targetTriple, sun::abi::NativeExecution::NativeLink, true,
-       job.optimize});
+      {.targetTriple = job.targetTriple,
+       .execution = sun::abi::NativeExecution::NativeLink,
+       .debugInfo = true,
+       .optimize = job.optimize,
+       .exceptionTraceDepth = job.exceptionTraceDepth});
   const std::string& inputFile = job.inputFiles[0];
   const std::string testOutput = getTestOutputName(job);
   const std::string inputHash = computeJobInputHash(job, /*forTests=*/true);
@@ -212,12 +218,12 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
     return 0;
   }
 
-  sun::support::logBuildProgress(
-      "Building tests: ", testOutput, inputFile);
+  sun::support::logBuildProgress("Building tests: ", testOutput, inputFile);
 
   // Tests inherit production optimization and always carry debug info.
   auto testDriver = Driver::createForAOT("test_module", job.targetTriple,
-                                         /*debugInfo=*/true, job.optimize);
+                                         /*debugInfo=*/true, job.optimize,
+                                         job.exceptionTraceDepth);
   if (job.debugMode) {
     // Separate folder (<input>_test_debug/) so the production build's
     // artifacts survive; this one also carries test_runner.sun.
@@ -257,8 +263,11 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
 /** Compiles and links a program entrypoint using the prepared job settings. */
 int compileEntrypoint(const CompileJob& job) {
   sun::abi::AbiValidationScope compatibility(
-      {job.targetTriple, sun::abi::NativeExecution::NativeLink, job.debugInfo,
-       job.optimize});
+      {.targetTriple = job.targetTriple,
+       .execution = sun::abi::NativeExecution::NativeLink,
+       .debugInfo = job.debugInfo,
+       .optimize = job.optimize,
+       .exceptionTraceDepth = job.exceptionTraceDepth});
   const std::string& inputFile = job.inputFiles[0];
 
   try {
@@ -287,17 +296,16 @@ int compileEntrypoint(const CompileJob& job) {
           sun::support::logAndThrowError(
               "packaged entrypoint has no production executable: " + inputFile);
         }
-        sun::support::logBuildProgress(
-            "Up to date: ", getTestOutputName(job));
+        sun::support::logBuildProgress("Up to date: ", getTestOutputName(job));
         return 0;
       }
     }
 
-    sun::support::logBuildProgress(
-        "Building ", job.outputFile, inputFile);
+    sun::support::logBuildProgress("Building ", job.outputFile, inputFile);
 
-    auto driver = Driver::createForAOT("main_module", job.targetTriple,
-                                       job.debugInfo, job.optimize);
+    auto driver =
+        Driver::createForAOT("main_module", job.targetTriple, job.debugInfo,
+                             job.optimize, job.exceptionTraceDepth);
     if (job.debugMode) {
       driver->setDebugMode(true, inputFile);
     }
@@ -334,8 +342,8 @@ int compileEntrypoint(const CompileJob& job) {
       sun::support::messageStream("info")
           << "No main() found; emitting only the test binary\n";
     } else if (job.emitLLVMOnly) {
-      sun::support::logPathMessage(
-          "debug", "Writing LLVM IR: ", job.outputFile);
+      sun::support::logPathMessage("debug",
+                                   "Writing LLVM IR: ", job.outputFile);
       std::error_code ec;
       llvm::raw_fd_ostream output(job.outputFile, ec);
       if (ec) {
@@ -354,8 +362,8 @@ int compileEntrypoint(const CompileJob& job) {
       success = sun::driver::emitObjectFile(driver->getModule(), job.outputFile,
                                             errorMsg, job.optimize);
     } else {
-      sun::support::logPathMessage(
-          "debug", "Linking executable: ", job.outputFile);
+      sun::support::logPathMessage("debug",
+                                   "Linking executable: ", job.outputFile);
       success = sun::driver::compileToExecutable(
           driver->getModule(), job.outputFile, errorMsg,
           /*keepObjectFile=*/false, makeLinkOptions(job, *driver),
@@ -386,17 +394,21 @@ int compileEntrypoint(const CompileJob& job) {
 
 /** Runs the compile command and returns its process exit status. */
 int runCompileCommand(const BuildRunOptions& options) {
-  sun::driver::GitDependencyBuildScope dependencyScope(
-      options.shared.debugInfo, options.shared.optimize, options.forceRebuild,
-      options.refreshSources);
-  CompileJob job = makeCompileJob(options);
-  if (job.outputFile.empty()) {
-    job.outputFile = deriveOutputName(job.inputFiles[0]);
-    if (job.emitObjOnly) {
-      job.outputFile += job.emitLLVMOnly ? ".ll" : ".o";
+  try {
+    CompileJob job = makeCompileJob(options);
+    sun::driver::GitDependencyBuildScope dependencyScope(
+        options.shared.debugInfo, options.shared.optimize, options.forceRebuild,
+        options.refreshSources, job.exceptionTraceDepth);
+    if (job.outputFile.empty()) {
+      job.outputFile = deriveOutputName(job.inputFiles[0]);
+      if (job.emitObjOnly) {
+        job.outputFile += job.emitLLVMOnly ? ".ll" : ".o";
+      }
     }
+    return compileEntrypoint(job);
+  } catch (const sun::support::SunError& error) {
+    return reportSunError(error);
   }
-  return compileEntrypoint(job);
 }
 
 }  // namespace sun::cli

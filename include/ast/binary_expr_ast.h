@@ -32,10 +32,12 @@ class BinaryExprAST : public CallExprAST {
         RHS(std::move(RHS)) {
     setLocation(Op.start);
   }
+
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override {
     return Callee ? ASTNodeType::CALL : ASTNodeType::BINARY;
   }
+
   /** Converts class arithmetic to an ordinary call so all later passes use
    * the same ownership, lifetime, serialization, and execution rules. */
   void lowerToMethod(const std::string& name) {
@@ -44,6 +46,7 @@ class BinaryExprAST : public CallExprAST {
     Args.push_back(std::move(RHS));
     inheritSourceFile(getSourceFileId());
   }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     if (Callee) {
@@ -51,10 +54,13 @@ class BinaryExprAST : public CallExprAST {
     }
     return "(" + LHS->toString() + " " + op.text + " " + RHS->toString() + ")";
   }
+
   /** Returns the operator applied by this expression. */
   Token getOp() const { return op; }
+
   /** Returns the left operand. */
   const ExprAST* getLHS() const { return LHS.get(); }
+
   /** Returns the right operand. */
   const ExprAST* getRHS() const { return RHS.get(); }
 
@@ -68,6 +74,7 @@ class BinaryExprAST : public CallExprAST {
     fn(LHS);
     fn(RHS);
   }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override {
     return Callee ? CallExprAST::dotLabel() : "Binary\n" + op.text;

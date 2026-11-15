@@ -39,9 +39,9 @@ struct ClassMethod {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;  // Excludes implicit 'this' parameter
   bool isConstructor;               // true if this is the 'init' method
-  bool canThrow = false;  // declared with 'throws' — may unwind
-  bool isUnsafe = false;  // Calls require an unsafe block.
-  bool isConst = false;   // `const function`: does not change `this`
+  bool canThrow = false;            // declared with 'throws' — may unwind
+  bool isUnsafe = false;            // Calls require an unsafe block.
+  bool isConst = false;             // `const function`: does not change `this`
   sun::semantic_analysis::Visibility visibility =
       sun::semantic_analysis::Visibility::Private;
   bool isSynthesizedConstructor = false;
@@ -86,7 +86,7 @@ class ClassType : public NominalType {
   uint64_t alignment_ = 0;   // Zero means natural alignment.
   bool isException_ = false;
   std::shared_ptr<ClassType> exceptionParent_;
-  bool isPacked_ = false;    // "packed class": lay fields out with no padding
+  bool isPacked_ = false;  // "packed class": lay fields out with no padding
   // Lifetime names the class DECLARES ('class Bus<'a>'). Declarations only,
   // never bindings, so sharing one ClassType per class stays sound; the
   // borrow checker uses them to entangle a method's named parameters with
@@ -97,16 +97,20 @@ class ClassType : public NominalType {
  public:
   /** Marks a nominal type as eligible for bounded exception transport. */
   void setException(bool value) { isException_ = value; }
+
   /** Reports whether this is a declared exception type. */
   bool isException() const { return isException_; }
+
   /** Records the parent used for family matching. */
   void setExceptionParent(std::shared_ptr<ClassType> parent) {
     exceptionParent_ = std::move(parent);
   }
+
   /** Returns the parent used for family matching. */
   const std::shared_ptr<ClassType>& getExceptionParent() const {
     return exceptionParent_;
   }
+
   sun::semantic_analysis::Visibility visibility =
       sun::semantic_analysis::Visibility::Private;
 
@@ -114,6 +118,7 @@ class ClassType : public NominalType {
   const std::vector<std::string>& getLifetimeParams() const {
     return lifetimeParams_;
   }
+
   /** Stores the lifetime parameters associated with this declaration. */
   void setLifetimeParams(std::vector<std::string> names) {
     lifetimeParams_ = std::move(names);
@@ -139,6 +144,7 @@ class ClassType : public NominalType {
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::Class;
+
   /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
 
@@ -148,9 +154,11 @@ class ClassType : public NominalType {
   const std::string& getBaseName() const {
     return baseName_.empty() ? name_ : baseName_;
   }
+
   /** Sets the unqualified declaration name without changing its enclosing
    * scopes. */
   void setBaseName(std::string bn) { baseName_ = std::move(bn); }
+
   /** Reports whether the unqualified declaration name is available. */
   bool hasBaseName() const { return !baseName_.empty(); }
 
@@ -160,10 +168,12 @@ class ClassType : public NominalType {
   const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
     return qualifiedName_;
   }
+
   /** Records the declaration name together with its enclosing scopes. */
   void setQualifiedName(sun::semantic_analysis::QualifiedName qn) {
     qualifiedName_ = std::move(qn);
   }
+
   /** Reports whether a name including the enclosing scopes has been assigned.
    */
   bool hasQualifiedName() const { return !qualifiedName_.baseName.empty(); }
@@ -205,10 +215,13 @@ class ClassType : public NominalType {
   const std::vector<std::string>& getTypeParameters() const {
     return typeParameters;
   }
+
   /** Provides the concrete types supplied for generic specialization. */
   const std::vector<TypePtr>& getTypeArguments() const { return typeArguments; }
+
   /** Returns the original generic name used to identify this specialization. */
   const std::string& getBaseGenericName() const { return baseGenericName; }
+
   /**
    * Qualified name of the generic this specialization was instantiated from
    * (scope path + plain base name), for scope-tree lookups
@@ -216,18 +229,23 @@ class ClassType : public NominalType {
   const sun::semantic_analysis::QualifiedName& getGenericQualifiedName() const {
     return genericQualifiedName_;
   }
+
   /** Updates the generic qualified name stored by this object. */
   void setGenericQualifiedName(sun::semantic_analysis::QualifiedName qn) {
     genericQualifiedName_ = std::move(qn);
   }
+
   /** Reports whether this is a generic declaration rather than a concrete
    * instance. */
   bool isGenericDefinition() const { return !typeParameters.empty(); }
+
   /** Reports whether this type was instantiated with concrete type arguments.
    */
   bool isSpecialized() const { return !typeArguments.empty(); }
+
   /** Provides the field declarations belonging to this type. */
   const std::vector<ClassField>& getFields() const { return fields; }
+
   /** The selected cleanup method, if this class defines one. */
   DeclarationId deinitializer;
 
@@ -248,6 +266,7 @@ class ClassType : public NominalType {
     }
     return found->second;
   }
+
   /** Provides the interfaces implemented by this class. */
   const std::vector<DeclarationId>& getImplementedInterfaces() const {
     return implementedInterfaces;
@@ -461,6 +480,7 @@ class ClassType : public NominalType {
   /** Returns the explicit minimum byte alignment, or zero for natural layout.
    */
   uint64_t getAlignment() const { return alignment_; }
+
   /** Sets the minimum alignment before the class layout is materialized. */
   void setAlignment(uint64_t alignment) {
     if (alignment &&
@@ -473,6 +493,7 @@ class ClassType : public NominalType {
 
   /** Returns whether the class has no inter-field padding and alignment 1. */
   bool isPacked() const { return isPacked_; }
+
   /** Sets packing before the class layout is materialized. */
   void setPacked(bool v) { isPacked_ = v; }
 };

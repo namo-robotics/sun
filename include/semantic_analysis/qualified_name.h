@@ -18,9 +18,11 @@ struct QualifiedName {
   std::string baseName;  // "my_func" (the original identifier, may contain _)
   /** Creates a declaration name from its enclosing path and local spelling. */
   QualifiedName() = default;
+
   /** Creates a declaration name from its enclosing path and local spelling. */
   QualifiedName(std::vector<std::string> path, std::string name)
       : scopePath(std::move(path)), baseName(std::move(name)) {}
+
   /**
    * Display form for error messages, "A.B.my_func", with library hash
    * segments left out.

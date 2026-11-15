@@ -166,6 +166,20 @@ void SemanticScopeBase::declareFunction(const std::string& name,
   functions[sig] = info;
 }
 
+void SemanticScopeBase::declareGenericIntrinsic(
+    const sun::ast::PrototypeAST& proto) {
+  GenericFunctionInfo info;
+  info.intrinsicPrototype = &proto;
+  info.typeParameters = proto.getTypeParameters();
+  if (proto.hasReturnType()) {
+    info.returnType = *proto.getReturnType();
+  }
+  info.params = proto.getArgs();
+  info.qualifiedName = QualifiedName({}, proto.getName());
+  info.definitionScope = shared_from_this();
+  genericFunctions.emplace(proto.getName(), std::move(info));
+}
+
 void SemanticScopeBase::declareGenericFunction(sun::ast::FunctionAST& func) {
   const sun::ast::PrototypeAST& proto = func.getProto();
   assert(proto.hasQualifiedName() && "Generic declaration must be named first");

@@ -440,6 +440,7 @@ TEST(Functions, returning_a_void_call_stops_the_function) {
   )");
   EXPECT_EQ(value, 1);
 }
+
 // -------------------------------------------------------------------
 // First-class function pointers
 // -------------------------------------------------------------------

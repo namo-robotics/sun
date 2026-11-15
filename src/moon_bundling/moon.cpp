@@ -259,6 +259,7 @@ bool MoonWriter::write(const std::filesystem::path& outputPath) {
     uint64_t size = 0;
     bool written = false;
   };
+
   std::vector<BlobLocation> blobLocations(blobs_.size());
 
   for (auto& mod : modules_) {
@@ -385,12 +386,14 @@ std::unique_ptr<MoonReader> MoonReader::open(
       library.native_archives_size() > 1000000) {
     malformed();
   }
+
   /** Records regions so unrelated overlapping records cannot be accepted. */
   struct Region {
     uint64_t start;
     uint64_t size;
     bool bitcode;
   };
+
   std::vector<Region> regions;
   /** Validates offsets with subtraction to avoid integer overflow. */
   auto region = [&](uint64_t offset, uint64_t length, bool bitcode) {

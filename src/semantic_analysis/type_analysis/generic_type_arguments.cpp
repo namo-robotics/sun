@@ -336,6 +336,7 @@ InferenceResult<std::vector<TypePtr>> deduce(
   }
   return completeTypeArguments(parameters, bindings, explicitArguments);
 }
+
 InferenceResult<std::vector<TypePtr>> inferTypeArguments(
     const std::vector<std::string>& parameters,
     const std::vector<sun::ast::TypeAnnotation>& shapes,
@@ -343,6 +344,7 @@ InferenceResult<std::vector<TypePtr>> inferTypeArguments(
     const std::vector<TypePtr>& explicitArguments) {
   return deduce(parameters, shapes, arguments, explicitArguments);
 }
+
 InferenceResult<std::vector<TypePtr>> inferTypeArguments(
     const std::vector<std::string>& parameters,
     const std::vector<TypePtr>& shapes, const std::vector<TypePtr>& arguments,

@@ -1,7 +1,7 @@
+#include "abi/exception_layout.h"
 #include "semantic_analysis/call_analysis/method_signature_set.h"
 #include "semantic_analysis/class_analysis/packed_layout.h"
 #include "semantic_analysis/passes/import_traversal.h"
-#include "abi/exception_layout.h"
 // declaration_collection_pass.cpp — The declaration pre-pass (see
 // declaration_collection_pass.h)
 
@@ -32,7 +32,8 @@ namespace sun::semantic_analysis::passes {
 
 using sun::semantic_analysis::methodVisibility;
 
-/** Calculates bounded, trivially movable exception storage without owned pointers. */
+/** Calculates bounded, trivially movable exception storage without owned
+ * pointers. */
 static std::pair<std::size_t, std::size_t> exceptionFieldLayout(
     const TypePtr& type, const sun::support::Position& location) {
   if (auto enumeration = std::dynamic_pointer_cast<sun::types::EnumType>(type);
@@ -40,20 +41,30 @@ static std::pair<std::size_t, std::size_t> exceptionFieldLayout(
     return exceptionFieldLayout(enumeration->getUnderlyingType(), location);
   }
   if (auto array = std::dynamic_pointer_cast<sun::types::ArrayType>(type)) {
-    if (array->isUnsized())
+    if (array->isUnsized()) {
       logAndThrowError("Exception arrays must have fixed dimensions", location);
-    auto [size, alignment] = exceptionFieldLayout(array->getElementType(), location);
+    }
+    auto [size, alignment] =
+        exceptionFieldLayout(array->getElementType(), location);
     for (auto dimension : array->getDimensions()) {
-      if (dimension && size > sun::abi::exceptions::payloadCapacity / dimension)
-        logAndThrowError("Exception payload exceeds the bounded capacity", location);
+      if (dimension &&
+          size > sun::abi::exceptions::payloadCapacity / dimension) {
+        logAndThrowError("Exception payload exceeds the bounded capacity",
+                         location);
+      }
       size *= dimension;
     }
     return {size, alignment};
   }
-  if (!(type->isIntegral() || type->isFloatingPoint() || type->isBool() || type->isChar()))
-    logAndThrowError("Exception payload fields must be scalar numbers, bool, char, or fixed arrays of them", location);
-  const std::size_t size = type->isBool() ? 1 :
-      (type->isChar() ? 4 : type->numericBitWidth() / 8);
+  if (!(type->isIntegral() || type->isFloatingPoint() || type->isBool() ||
+        type->isChar())) {
+    logAndThrowError(
+        "Exception payload fields must be scalar numbers, bool, char, or fixed "
+        "arrays of them",
+        location);
+  }
+  const std::size_t size =
+      type->isBool() ? 1 : (type->isChar() ? 4 : type->numericBitWidth() / 8);
   return {size, size};
 }
 
@@ -212,7 +223,8 @@ void DeclarationCollectionPass::collectFunctionSignature(FunctionAST& func) {
  */
 static bool compatibleNativeTypes(
     const TypePtr& first, const TypePtr& second,
-    std::vector<std::pair<const sun::types::Type*, const sun::types::Type*>>& seen) {
+    std::vector<std::pair<const sun::types::Type*, const sun::types::Type*>>&
+        seen) {
   if (first->equals(*second)) {
     return true;
   }
@@ -230,7 +242,8 @@ static bool compatibleNativeTypes(
     const auto& a = static_cast<const sun::types::ReferenceType&>(*first);
     const auto& b = static_cast<const sun::types::ReferenceType&>(*second);
     return a.isMutable() == b.isMutable() &&
-           compatibleNativeTypes(a.getReferencedType(), b.getReferencedType(), seen);
+           compatibleNativeTypes(a.getReferencedType(), b.getReferencedType(),
+                                 seen);
   }
   if (first->isRawPointer()) {
     const auto& a = static_cast<const sun::types::RawPointerType&>(*first);
@@ -245,7 +258,8 @@ static bool compatibleNativeTypes(
       return false;
     }
     for (size_t i = 0; i < a.getFields().size(); ++i) {
-      if (!compatibleNativeTypes(a.getFields()[i].type, b.getFields()[i].type, seen)) {
+      if (!compatibleNativeTypes(a.getFields()[i].type, b.getFields()[i].type,
+                                 seen)) {
         return false;
       }
     }
@@ -260,13 +274,15 @@ static bool compatibleNativeTypes(
   if (first->isFunction()) {
     const auto& a = static_cast<const sun::types::FunctionType&>(*first);
     const auto& b = static_cast<const sun::types::FunctionType&>(*second);
-    if (a.canThrow() != b.canThrow() || a.requiresUnsafe() != b.requiresUnsafe() ||
+    if (a.canThrow() != b.canThrow() ||
+        a.requiresUnsafe() != b.requiresUnsafe() ||
         a.getParamTypes().size() != b.getParamTypes().size() ||
         !compatibleNativeTypes(a.getReturnType(), b.getReturnType(), seen)) {
       return false;
     }
     for (size_t i = 0; i < a.getParamTypes().size(); ++i) {
-      if (!compatibleNativeTypes(a.getParamTypes()[i], b.getParamTypes()[i], seen)) {
+      if (!compatibleNativeTypes(a.getParamTypes()[i], b.getParamTypes()[i],
+                                 seen)) {
         return false;
       }
     }
@@ -299,15 +315,15 @@ void DeclarationCollectionPass::registerNativeFunction(
     return;
   }
 
-  sun::support::logWarning("Conflicting signatures for native symbol '" +
-                       proto.getLinkName() + "': declaration '" +
-                       proto.getName() + "' (" + type->toDisplayString() +
-                       (proto.isCVariadic() ? ", variadic" : "") +
-                       ") conflicts with declaration '" + previous.name +
-                       "' at " + previous.location.toString() + " (" +
-                       previous.type->toDisplayString() +
-                       (previous.variadic ? ", variadic" : "") + ")",
-                   proto.getLocation());
+  sun::support::logWarning(
+      "Conflicting signatures for native symbol '" + proto.getLinkName() +
+          "': declaration '" + proto.getName() + "' (" +
+          type->toDisplayString() + (proto.isCVariadic() ? ", variadic" : "") +
+          ") conflicts with declaration '" + previous.name + "' at " +
+          previous.location.toString() + " (" +
+          previous.type->toDisplayString() +
+          (previous.variadic ? ", variadic" : "") + ")",
+      proto.getLocation());
 }
 
 void DeclarationCollectionPass::collectExternVariable(
@@ -454,18 +470,31 @@ void DeclarationCollectionPass::registerClassShape(
   }
 
   if (classDef.isException() && classDef.getExceptionParent()) {
-    auto resolved = sema_.typeResolver().typeAnnotationToType(*classDef.getExceptionParent());
-    if (!resolved->isClass() || !static_cast<sun::types::ClassType*>(resolved.get())->isException())
-      logAndThrowError("An exception can only extend another exception", classDef.getLocation());
-    auto parent = std::static_pointer_cast<sun::types::ClassType>(resolved);
-    for (auto ancestor = parent; ancestor; ancestor = ancestor->getExceptionParent()) {
-      if (ancestor == classType)
-        logAndThrowError("Exception family inheritance cannot contain a cycle", classDef.getLocation());
+    auto resolved = sema_.typeResolver().typeAnnotationToType(
+        *classDef.getExceptionParent());
+    if (!resolved->isClass() ||
+        !static_cast<sun::types::ClassType*>(resolved.get())->isException()) {
+      logAndThrowError("An exception can only extend another exception",
+                       classDef.getLocation());
     }
-    const auto definition = ctx_.classDefinitions.find(parent->getDeclarationId());
+    auto parent = std::static_pointer_cast<sun::types::ClassType>(resolved);
+    for (auto ancestor = parent; ancestor;
+         ancestor = ancestor->getExceptionParent()) {
+      if (ancestor == classType) {
+        logAndThrowError("Exception family inheritance cannot contain a cycle",
+                         classDef.getLocation());
+      }
+    }
+    const auto definition =
+        ctx_.classDefinitions.find(parent->getDeclarationId());
     if (!parent->getFields().empty() ||
-        (definition != ctx_.classDefinitions.end() && !definition->second.node->getFields().empty()))
-      logAndThrowError("The initial exception prototype requires parent families without fields", classDef.getLocation());
+        (definition != ctx_.classDefinitions.end() &&
+         !definition->second.node->getFields().empty())) {
+      logAndThrowError(
+          "The initial exception prototype requires parent families without "
+          "fields",
+          classDef.getLocation());
+    }
     classType->setExceptionParent(parent);
   }
   // Fields
@@ -488,7 +517,9 @@ void DeclarationCollectionPass::registerClassShape(
       }
     }
 
-    if (classDef.isException()) exceptionFieldLayout(fieldType, field.location);
+    if (classDef.isException()) {
+      exceptionFieldLayout(fieldType, field.location);
+    }
     checkPackedFieldType(classDef, field, fieldType);
     classType->addField(field.name, fieldType, field.declaration.id)
         .visibility = field.visibility;
@@ -501,13 +532,17 @@ void DeclarationCollectionPass::registerClassShape(
     std::size_t bytes = 0;
     std::size_t maximumAlignment = 1;
     for (const auto& field : classType->getFields()) {
-      auto [size, alignment] = exceptionFieldLayout(field.type, classDef.getLocation());
+      auto [size, alignment] =
+          exceptionFieldLayout(field.type, classDef.getLocation());
       bytes = (bytes + alignment - 1) / alignment * alignment + size;
       maximumAlignment = std::max(maximumAlignment, alignment);
     }
-    bytes = (bytes + maximumAlignment - 1) / maximumAlignment * maximumAlignment;
-    if (bytes > sun::abi::exceptions::payloadCapacity)
-      logAndThrowError("Exception payload exceeds the bounded capacity", classDef.getLocation());
+    bytes =
+        (bytes + maximumAlignment - 1) / maximumAlignment * maximumAlignment;
+    if (bytes > sun::abi::exceptions::payloadCapacity) {
+      logAndThrowError("Exception payload exceeds the bounded capacity",
+                       classDef.getLocation());
+    }
   }
 
   // Method signatures ('this' resolves against the class being shaped)
@@ -540,8 +575,6 @@ void DeclarationCollectionPass::registerClassShape(
         methodDecl.function->isSynthesizedConstructor();
   }
   ctx_.setCurrentClass(savedClass);
-
-
 }
 
 void DeclarationCollectionPass::run(

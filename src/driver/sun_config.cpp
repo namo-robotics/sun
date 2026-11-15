@@ -6,10 +6,11 @@
 #include <algorithm>
 #include <cctype>
 #include <fstream>
-#include <set>
 #include <regex>
+#include <set>
 #include <sstream>
 
+#include "abi/exception_layout.h"
 #include "driver/git_source.h"
 #include "support/error.h"
 #include "support/target_os.h"
@@ -119,7 +120,8 @@ bool wrapped(const llvm::json::Value& value) {
   return obj && (obj->get("default") || obj->get("target"));
 }
 
-/** Validates an exact target triple and returns its normalized selection key. */
+/** Validates an exact target triple and returns its normalized selection key.
+ */
 std::string checkedTargetKey(const std::string& name) {
   const auto triple = sun::support::resolvedTargetTriple(name);
   if (name.empty() || triple.getArch() == llvm::Triple::UnknownArch ||
@@ -139,7 +141,8 @@ void targetKeys(const Object& targets) {
   }
 }
 
-/** Validates every target in the list, then checks whether it includes the target. */
+/** Validates every target in the list, then checks whether it includes the
+ * target. */
 bool supportsTarget(const llvm::json::Value& value, const std::string& target) {
   stringsValue(value);
   std::set<std::string> targets;
@@ -437,14 +440,17 @@ void dependencyCheckValue(const llvm::json::Value& value) {
   if (!type || (*type != "pkg-config" && *type != "executable")) {
     invalid("check.type must be pkg-config or executable");
   }
-  if (!name || !std::regex_match(name->str(), std::regex("[A-Za-z0-9][A-Za-z0-9+._-]*"))) {
+  if (!name || !std::regex_match(name->str(),
+                                 std::regex("[A-Za-z0-9][A-Za-z0-9+._-]*"))) {
     invalid("check.name must be a module or executable name");
   }
   if (auto version = check.getString("version")) {
     if (*type != "pkg-config") {
       invalid("check.version is only supported for pkg-config checks");
     }
-    if (!std::regex_match(version->str(), std::regex("(>=|<=|=|>|<)?[ ]*[0-9][A-Za-z0-9.+_~-]*"))) {
+    if (!std::regex_match(
+            version->str(),
+            std::regex("(>=|<=|=|>|<)?[ ]*[0-9][A-Za-z0-9.+_~-]*"))) {
       invalid("check.version must be a version comparison");
     }
   }
@@ -463,7 +469,8 @@ void systemDependencyValue(const Object& obj, bool deb) {
       }
       for (const auto& package : *value.getAsArray()) {
         const auto text = package.getAsString()->str();
-        if (!std::regex_match(text, std::regex("[A-Za-z0-9][A-Za-z0-9+._/@:-]*"))) {
+        if (!std::regex_match(text,
+                              std::regex("[A-Za-z0-9][A-Za-z0-9+._/@:-]*"))) {
           invalid("invalid system package name: " + text);
         }
       }
@@ -490,13 +497,15 @@ void systemDependencyValue(const Object& obj, bool deb) {
     }
   }
   if (auto hash = obj.getString("sha256")) {
-    if (hash->size() != 64 || hash->find_first_not_of("0123456789abcdef") != llvm::StringRef::npos) {
+    if (hash->size() != 64 ||
+        hash->find_first_not_of("0123456789abcdef") != llvm::StringRef::npos) {
       invalid("sha256 must be a lowercase SHA-256 digest");
     }
   }
 }
 
-/** Validates and normalizes an explicit provider into the existing resolver shape. */
+/** Validates and normalizes an explicit provider into the existing resolver
+ * shape. */
 llvm::json::Value typedDependency(Object obj) {
   auto type = obj.getString("type");
   if (!type) {
@@ -509,7 +518,8 @@ llvm::json::Value typedDependency(Object obj) {
     obj["type"] = provider;
     return llvm::json::Value(std::move(obj));
   }
-  if (provider != "git" && provider != "moon" && provider != "package" && provider != "binary") {
+  if (provider != "git" && provider != "moon" && provider != "package" &&
+      provider != "binary") {
     invalid("unknown dependency type: " + provider);
   }
   if (provider == "git") {
@@ -556,13 +566,15 @@ llvm::json::Value typedDependency(Object obj) {
   return result;
 }
 
-/** Validates dependencies and selects allowed targets, preferring exact branches. */
-std::optional<llvm::json::Value> selectDependency(const llvm::json::Value& value,
-                                                const std::string& target) {
+/** Validates dependencies and selects allowed targets, preferring exact
+ * branches. */
+std::optional<llvm::json::Value> selectDependency(
+    const llvm::json::Value& value, const std::string& target) {
   const auto& obj = object(value);
   if (!obj.get("type")) {
     const auto* selected = select(value, target, dependencyValue, false);
-    return selected ? std::optional<llvm::json::Value>(*selected) : std::nullopt;
+    return selected ? std::optional<llvm::json::Value>(*selected)
+                    : std::nullopt;
   }
   const auto* supported = obj.get("supported_targets");
   const bool enabled = !supported || supportsTarget(*supported, target);
@@ -595,8 +607,11 @@ std::optional<llvm::json::Value> selectDependency(const llvm::json::Value& value
     }
     Object merged = common;
     for (const auto& [field, item] : object(branch)) {
-      if (field == "type" || field == "target" || field == "supported_targets") {
-        invalid("target branch cannot change dependency type or target restrictions");
+      if (field == "type" || field == "target" ||
+          field == "supported_targets") {
+        invalid(
+            "target branch cannot change dependency type or target "
+            "restrictions");
       }
       merged[field] = item;
     }
@@ -641,15 +656,26 @@ bool containsWrapper(const llvm::json::Value& value) {
 /** Converts a validated, target-selected root object into build settings. */
 SunConfig parse(const Object& root, const std::filesystem::path& file,
                 const std::string& target) {
-  keys(root, {"package_id", "root", "sun_path", "path_variables", "entrypoints",
-              "packages", "dependencies", "target", "c_bindings", "sun_fmt",
-              "steps", "exports", "projects", "supported_targets"});
+  keys(root,
+       {"package_id", "root", "sun_path", "path_variables", "entrypoints",
+        "packages", "dependencies", "target", "c_bindings", "sun_fmt", "steps",
+        "exports", "projects", "supported_targets", "exception_trace_depth"});
   SunConfig config;
   config.configDir = std::filesystem::weakly_canonical(
       std::filesystem::absolute(file).parent_path());
   if (auto* value = root.get("package_id")) {
     identityValue(*value);
     config.packageId = value->getAsString()->str();
+  }
+  if (auto* value = root.get("exception_trace_depth")) {
+    auto depth = value->getAsInteger();
+    if (!depth || *depth < 0 ||
+        *depth > sun::abi::exceptions::maximumTraceDepth) {
+      sun::support::logAndThrowError(
+          "exception_trace_depth must be an integer between 0 and " +
+          std::to_string(sun::abi::exceptions::maximumTraceDepth));
+    }
+    config.exceptionTraceDepth = static_cast<unsigned>(*depth);
   }
   if (auto* value = root.get("root")) {
     boolValue(*value);
@@ -833,11 +859,15 @@ SunConfig parse(const Object& root, const std::filesystem::path& file,
         }
         dep.url = obj.getString("url").value_or("").str();
         dep.hash = obj.getString("sha256").value_or("").str();
-        if (auto path = obj.getString("path")) dep.path = anchor(path->str(), config.configDir);
+        if (auto path = obj.getString("path")) {
+          dep.path = anchor(path->str(), config.configDir);
+        }
         for (const auto& key : {"apt", "brew"}) {
           if (const auto* packages = obj.getArray(key)) {
-            for (const auto& package : *packages)
-              (std::string(key) == "apt" ? dep.apt : dep.brew).push_back(package.getAsString()->str());
+            for (const auto& package : *packages) {
+              (std::string(key) == "apt" ? dep.apt : dep.brew)
+                  .push_back(package.getAsString()->str());
+            }
           }
         }
         config.systemDependencies.push_back(std::move(dep));
@@ -1080,6 +1110,9 @@ std::optional<SunConfig> SunConfig::findFrom(
       if (!merged) {
         merged = std::move(config);
       } else {
+        if (!merged->exceptionTraceDepth) {
+          merged->exceptionTraceDepth = config.exceptionTraceDepth;
+        }
         merged->fmtIgnore.insert(merged->fmtIgnore.begin(),
                                  config.fmtIgnore.begin(),
                                  config.fmtIgnore.end());
@@ -1087,7 +1120,8 @@ std::optional<SunConfig> SunConfig::findFrom(
           merged->pathVariables.emplace(name, value);
         }
         merged->systemDependencies.insert(merged->systemDependencies.end(),
-                                          config.systemDependencies.begin(), config.systemDependencies.end());
+                                          config.systemDependencies.begin(),
+                                          config.systemDependencies.end());
         for (const auto& [name, value] : config.dependencies) {
           merged->dependencies.emplace(name, value);
         }

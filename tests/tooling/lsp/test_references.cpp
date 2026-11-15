@@ -445,15 +445,13 @@ function main() i32 {
     try { return risky(1); } catch (err: Oops) { return err.code() + err.code(); }
 }
 )";
-  EXPECT_TRUE(
-      refersTo(source, "err.code() +", true,
-               {{"err: Oops"}, {"err.code() +"}, {"err.code();"}}));
+  EXPECT_TRUE(refersTo(source, "err.code() +", true,
+                       {{"err: Oops"}, {"err.code() +"}, {"err.code();"}}));
   // The cursor on the binding's own declaration
+  EXPECT_TRUE(refersTo(source, "err: Oops", true,
+                       {{"err: Oops"}, {"err.code() +"}, {"err.code();"}}));
   EXPECT_TRUE(
-      refersTo(source, "err: Oops", true,
-               {{"err: Oops"}, {"err.code() +"}, {"err.code();"}}));
-  EXPECT_TRUE(refersTo(source, "Oops();", true,
-               {{"Oops {"}, {"Oops)"}, {"Oops();"}}));
+      refersTo(source, "Oops();", true, {{"Oops {"}, {"Oops)"}, {"Oops();"}}));
 }
 
 TEST(Tooling_Lsp_References, MergedFiles) {
@@ -589,5 +587,5 @@ TEST(Tooling_Lsp_References, ExceptionParent) {
     function main() i32 { return 0; }
 )";
   EXPECT_TRUE(refersTo(source, "Failure {}", true,
-                      {{"Failure {}", 0}, {"Failure {}", 1}}));
+                       {{"Failure {}", 0}, {"Failure {}", 1}}));
 }

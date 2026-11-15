@@ -4,10 +4,12 @@
 namespace sun::codegen {
 class CodegenVisitor;
 }
+
 /** Provides the generator for class storage and method operations. */
 namespace sun::codegen::classes {
 class ClassGenerator;
 }
+
 /** Provides the scope manager responsible for variable storage and cleanup. */
 namespace sun::codegen::scopes {
 class ScopeManager;

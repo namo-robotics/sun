@@ -31,6 +31,7 @@ class UsingAST : public ExprAST {
 
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::USING; }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     if (target == "*") {
@@ -43,10 +44,13 @@ class UsingAST : public ExprAST {
   const std::vector<std::string>& getNamespacePath() const {
     return namespacePath;
   }
+
   /** Returns the target stored by this object. */
   const std::string& getTarget() const { return target; }
+
   /** Reports whether this syntax node represents a module import. */
   bool isModuleImport() const { return isModuleImport_; }
+
   /** Record whether semantic binding identified a whole-module import. */
   void setModuleImport(bool value) { isModuleImport_ = value; }
 
@@ -63,6 +67,7 @@ class UsingAST : public ExprAST {
     }
     return result;
   }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override {
     if (target == "*") {

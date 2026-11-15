@@ -4,14 +4,17 @@
 namespace sun::codegen {
 class CodegenVisitor;
 }
+
 /** Provides the registry of generated functions and their metadata. */
 namespace sun::codegen::functions {
 class FunctionRegistry;
 }
+
 /** Provides the generator for built-in operations. */
 namespace sun::codegen::intrinsics {
 class IntrinsicsGenerator;
 }
+
 /** Provides the scope manager responsible for variable storage and cleanup. */
 namespace sun::codegen::scopes {
 class ScopeManager;
@@ -144,8 +147,6 @@ class ClassGenerator {
    */
   llvm::Value* codegenStackClassInstance(const sun::ast::CallExprAST& expr,
                                          ClassType& classType);
-
-
 
   // ---------------------------------------------------------------
   // Generic instantiation

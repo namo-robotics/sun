@@ -66,6 +66,7 @@ void write(const fs::path& path, const std::string& contents) {
 /** Owns a unique temporary directory and removes it on every exit path. */
 struct Temporary {
   fs::path path;
+
   /** Creates a private temporary directory beside the eventual output. */
   explicit Temporary(const fs::path& parent) {
     fs::create_directories(parent);
@@ -75,6 +76,7 @@ struct Temporary {
     }
     path = pattern;
   }
+
   /** Removes unpublished temporary files without throwing. */
   ~Temporary() {
     std::error_code ec;
@@ -99,6 +101,7 @@ class FileLock {
       fail("cannot lock " + path.string());
     }
   }
+
   /** Releases the lock when work or error recovery finishes. */
   ~FileLock() { close(descriptor_); }
 };
@@ -180,6 +183,7 @@ struct Payload {
   bool exec = false;
   bool artifact = false;
 };
+
 /** Maps archive paths to their unique payload entries in sorted order. */
 using Inventory = std::map<std::string, Payload>;
 

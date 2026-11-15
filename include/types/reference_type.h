@@ -30,8 +30,10 @@ class ReferenceType : public Type {
 
   /** Returns the named lifetime associated with the borrowed value. */
   const std::string& getLifetimeName() const { return lifetimeName_; }
+
   /** Assigns the named lifetime associated with the borrowed value. */
   void setLifetimeName(std::string name) { lifetimeName_ = std::move(name); }
+
   /**
    * Lifetime arguments applied to the referent's class ('ref Bus<'this>'):
    * positionally binding the class's declared lifetimes. Metadata like
@@ -40,6 +42,7 @@ class ReferenceType : public Type {
   const std::vector<std::string>& getClassLifetimeArgs() const {
     return classLifetimeArgs_;
   }
+
   /** Updates the lifetime arguments for the referenced class. */
   void setClassLifetimeArgs(std::vector<std::string> args) {
     classLifetimeArgs_ = std::move(args);
@@ -47,10 +50,13 @@ class ReferenceType : public Type {
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::Reference;
+
   /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
+
   /** Returns the referenced type stored by this object. */
   const TypePtr& getReferencedType() const { return referencedType; }
+
   /** Reports whether the loan grants exclusive write access to its target. */
   bool isMutable() const { return mutable_; }
 

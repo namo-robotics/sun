@@ -177,9 +177,11 @@ std::string resolveGitEntrypoint(const ConfigEntrypoint& entry, bool refresh) {
   }
   return source.string();
 }
+
 GitDependencyBuildScope::GitDependencyBuildScope(bool debugInfo, bool optimize,
                                                  bool forceRebuild,
-                                                 bool refresh)
+                                                 bool refresh,
+                                                 unsigned exceptionTraceDepth)
     : settings_(dependencyOptions),
       refresh_(refreshDependencies, refresh || refreshDependencies) {
   if (buildDepth++ == 0) {
@@ -188,6 +190,7 @@ GitDependencyBuildScope::GitDependencyBuildScope(bool debugInfo, bool optimize,
   }
   dependencyOptions.debugInfo = debugInfo;
   dependencyOptions.optimize = optimize;
+  dependencyOptions.exceptionTraceDepth = exceptionTraceDepth;
   dependencyOptions.forceRebuild = forceRebuild;
 }
 
@@ -221,6 +224,7 @@ class DependencyBuildGuard {
     }
     activeDependencies.insert(key_);
   }
+
   /** Releases cycle membership and the outer graph lock on every exit path. */
   ~DependencyBuildGuard() {
     activeDependencies.erase(key_);
@@ -241,6 +245,7 @@ class SourceConfigScope {
   explicit SourceConfigScope(const SunConfig& config)
       : previous_(ManifestProcessor::exchangeSourceConfig(&config)),
         variables_(ManifestProcessor::exchangeDependencyPathVariables({})) {}
+
   /** Restores the enclosing library's configuration, including after errors. */
   ~SourceConfigScope() {
     ManifestProcessor::exchangeSourceConfig(previous_);
@@ -325,7 +330,8 @@ std::filesystem::path resolveGitDependency(const SunConfig& consumer,
   }
   const auto settings =
       std::string(dependencyOptions.debugInfo ? "debug" : "release") +
-      (dependencyOptions.optimize ? "-optimized" : "-unoptimized");
+      (dependencyOptions.optimize ? "-optimized" : "-unoptimized") + "-trace-" +
+      std::to_string(dependencyOptions.exceptionTraceDepth);
   const auto output = cacheDirectory() / "builds" /
                       sun::moon_bundling::computeSha256Hex(buildIdentity) /
                       configTargetKey(consumer.targetTriple) / settings;

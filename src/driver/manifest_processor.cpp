@@ -34,6 +34,7 @@ std::map<std::string, std::string>& pathVariables() {
   static std::map<std::string, std::string> vars;
   return vars;
 }
+
 /** Holds consuming-project values while a Git entrypoint is being built. */
 std::map<std::string, std::string>& dependencyPathVariables() {
   static std::map<std::string, std::string> vars;

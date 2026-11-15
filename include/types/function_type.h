@@ -30,19 +30,24 @@ class FunctionType : public Type {
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::Function;
+
   /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
+
   /** Returns the semantic type of the function result. */
   const TypePtr& getReturnType() const { return returnType; }
+
   /** Provides the ordered semantic types of the function parameters. */
   const std::vector<TypePtr>& getParamTypes() const { return paramTypes; }
 
   /** Whether calling this value requires an unsafe block. */
   bool requiresUnsafe() const { return requiresUnsafe_; }
+
   /**
    * Whether calls through this pointer may throw.
    */
   bool canThrow() const { return canThrow_; }
+
   /** Records whether calls through this signature may throw an error. */
   void setCanThrow(bool v) { canThrow_ = v; }
 

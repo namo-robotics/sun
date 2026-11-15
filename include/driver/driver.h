@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "abi/exception_layout.h"
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
 #include "driver/sun_value.h"
@@ -55,6 +56,8 @@ class Driver {
   };
 
  private:
+  // Loaded runtime outlives the JIT and its generated code.
+  std::shared_ptr<void> exceptionRuntime_;
   // Owned components
   std::unique_ptr<sun::codegen::CodegenContext> ctx;
   std::shared_ptr<AnalysisResults> analysisResults;
@@ -229,7 +232,8 @@ class Driver {
    */
   static std::unique_ptr<Driver> createForJIT(
       const std::string& moduleName = "sun", bool debugInfo = false,
-      bool optimize = true);
+      bool optimize = true,
+      unsigned exceptionTraceDepth = sun::abi::exceptions::defaultTraceDepth);
 
   /**
    * Create a Driver for AOT compilation (no JIT). A non-empty targetTriple
@@ -240,7 +244,8 @@ class Driver {
   static std::unique_ptr<Driver> createForAOT(
       const std::string& moduleName = "module",
       const std::string& targetTriple = "", bool debugInfo = false,
-      bool optimize = true);
+      bool optimize = true,
+      unsigned exceptionTraceDepth = sun::abi::exceptions::defaultTraceDepth);
 
   /**
    * Execute a source string with optional command-line arguments

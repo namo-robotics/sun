@@ -54,7 +54,6 @@ struct FunctionFrame {
   // True while emitting a function declared to return `ref T`; reference
   // returns must hand back the referent's address
   bool returnsRef = false;
-
 };
 
 /**
@@ -78,7 +77,8 @@ class CodegenState {
   // sun::types::Type -> llvm::Type conversion, with its own cache
   LLVMTypeResolver typeResolver;
 
-  // DWARF metadata emission; no-op unless -g
+  // Source locations support traces; -g additionally includes variables and
+  // types.
   sun::codegen::DebugInfoBuilder debugInfo;
 
   // Where the emitter currently is
@@ -93,7 +93,7 @@ class CodegenState {
         typeRegistry(analysis->types),
         typeResolver(ctx.getContext(), &ctx.mainModule->getDataLayout()),
         debugInfo(ctx.mainModule.get(), ctx.debugInfoEnabled(),
-                  ctx.optimizationEnabled()) {}
+                  ctx.optimizationEnabled(), ctx.exceptionTraceDepth > 0) {}
 
   /** Connects LLVM generation state to the semantic type registry. */
   CodegenState(const CodegenState&) = delete;
@@ -117,6 +117,7 @@ class CodegenState {
 
   /** Provides the LLVM instruction builder used by the active generator. */
   llvm::IRBuilder<>& builder() { return *ctx.builder; }
+
   /** Provides the LLVM context that owns generated types and constants. */
   llvm::LLVMContext& llvmContext() { return ctx.getContext(); }
 
@@ -135,11 +136,13 @@ class CodegenState {
         : state(s),
           savedThisPtr(s.frame.thisPtr),
           savedClass(s.frame.currentClass) {}
+
     /** Restores the previous method receiver when the guard leaves scope. */
     ~ReceiverGuard() {
       state.frame.thisPtr = savedThisPtr;
       state.frame.currentClass = savedClass;
     }
+
     /** Saves the active method receiver for restoration when the guard leaves
      * scope. */
     ReceiverGuard(const ReceiverGuard&) = delete;
@@ -163,12 +166,14 @@ class CodegenState {
         : state(s),
           savedCanError(s.frame.canError),
           savedReturnsRef(s.frame.returnsRef) {}
+
     /** Restores the previous function return state when the guard leaves scope.
      */
     ~ReturnGuard() {
       state.frame.canError = savedCanError;
       state.frame.returnsRef = savedReturnsRef;
     }
+
     /** Saves the active function return state for restoration when the guard
      * leaves scope. */
     ReturnGuard(const ReturnGuard&) = delete;
@@ -194,12 +199,14 @@ class CodegenState {
         point = s.ctx.builder->GetInsertPoint();
       }
     }
+
     /** Restores the previous LLVM instruction insertion point. */
     ~InsertPointGuard() {
       if (block) {
         state.ctx.builder->SetInsertPoint(block, point);
       }
     }
+
     /** Saves the current LLVM insertion point for later restoration. */
     InsertPointGuard(const InsertPointGuard&) = delete;
     /** Disallows assignment so ownership and object identity cannot be

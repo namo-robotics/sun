@@ -4,8 +4,8 @@
 
 #include <filesystem>
 #include <fstream>
-#include <string>
 #include <sstream>
+#include <string>
 
 #include "cli/fmt_command.h"
 #include "parsing/formatter.h"
@@ -589,11 +589,10 @@ TEST(Tooling_Fmt, MatchExpression) {
 }
 
 TEST(Tooling_Fmt, TryCatchThrow) {
-  EXPECT_EQ(
-      fmt("function f(x:i32) i32 throws{return div(10,x);}"),
-      "function f(x: i32) i32 throws {\n"
-      "  return div(10, x);\n"
-      "}\n");
+  EXPECT_EQ(fmt("function f(x:i32) i32 throws{return div(10,x);}"),
+            "function f(x: i32) i32 throws {\n"
+            "  return div(10, x);\n"
+            "}\n");
 }
 
 TEST(Tooling_Fmt, DottedModule) {
@@ -1393,7 +1392,8 @@ function process(first_parameter_name: i32, second_parameter_name: i32, third_pa
 /** Wrapping leaves indivisible literal contents unchanged. */
 TEST(Tooling_Fmt, PreservesLongLiteralContents) {
   const std::string literal = "\"" + std::string(150, 'x') + "\"";
-  const auto formatted = fmt("function f() void { var text = " + literal + "; }");
+  const auto formatted =
+      fmt("function f() void { var text = " + literal + "; }");
   EXPECT_NE(formatted.find(literal), std::string::npos);
   EXPECT_EQ(fmt(formatted), formatted);
 }
@@ -1415,7 +1415,8 @@ function f() i32 {
   }
 }
 
-/** Inline manifest blocks expand around their fields and nested target blocks. */
+/** Inline manifest blocks expand around their fields and nested target blocks.
+ */
 TEST(Tooling_Fmt, ExpandsInlineManifestBraces) {
   const std::string expected = R"(manifest {
   libraries: [
@@ -1429,10 +1430,11 @@ TEST(Tooling_Fmt, ExpandsInlineManifestBraces) {
   EXPECT_EQ(fmt(R"(manifest { libraries: [
     "stdlib.moon",
     "cuda.moon"
-  ] })"), expected);
+  ] })"),
+            expected);
   EXPECT_EQ(fmt(expected), expected);
-  const auto nested = fmt(
-      R"(manifest { target: { linux: { libraries: ["stdlib.moon"] } } })");
+  const auto nested =
+      fmt(R"(manifest { target: { linux: { libraries: ["stdlib.moon"] } } })");
   EXPECT_EQ(nested, R"(manifest {
   target: {
     linux: {

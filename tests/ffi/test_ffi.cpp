@@ -1422,8 +1422,7 @@ TEST(Ffi, conflicting_native_signatures_report_both_declarations) {
     EXPECT_NE(warning.find("native_conflict"), std::string::npos);
     EXPECT_NE(warning.find("first"), std::string::npos);
     EXPECT_NE(warning.find("second"), std::string::npos);
-    EXPECT_NE(warning.find("Conflicting signatures"),
-              std::string::npos);
+    EXPECT_NE(warning.find("Conflicting signatures"), std::string::npos);
     EXPECT_NE(warning.find("[sun][warning]"), std::string::npos);
   }
 }
@@ -1518,7 +1517,8 @@ TEST(Ffi, native_aliases_with_independent_reference_types) {
     }
     /** Both bindings must link to and call the same native symbol. */
     function main() i32 { return first.run() + second.run(); }
-  )"), 0);
+  )"),
+            0);
 }
 
 /** Warn on changed reference, pointer, scalar, and array-view parameters. */
@@ -1527,12 +1527,13 @@ TEST(Ffi, native_reference_aliases_preserve_signature_checks) {
        {"raw_ptr<u8>", "const ref i64", "i64", "ref array<i32>"}) {
     auto driver = Driver::createForAOT("native_reference_aliases");
     testing::internal::CaptureStderr();
-    auto analyzed = driver->analyzeString(R"(
+    auto analyzed =
+        driver->analyzeString(R"(
       /** Bind a native address. */
       extern "C" function first(value: ref i32) void as "native_address";
       /** Declare an alternative view of the parameter. */
-      extern "C" function second(value: )" + parameter +
-        ") void as \"native_address\";");
+      extern "C" function second(value: )" +
+                              parameter + ") void as \"native_address\";");
     const auto warning = testing::internal::GetCapturedStderr();
     EXPECT_FALSE(analyzed.error.has_value());
     EXPECT_NE(warning.find("Conflicting signatures"), std::string::npos);
@@ -1622,8 +1623,7 @@ TEST(Ffi, conflicting_native_signature_from_moon) {
   auto analyzed = driver->analyzeString(client);
   const auto warning = testing::internal::GetCapturedStderr();
   ASSERT_FALSE(analyzed.error.has_value());
-  EXPECT_NE(warning.find("Conflicting signatures"),
-            std::string::npos);
+  EXPECT_NE(warning.find("Conflicting signatures"), std::string::npos);
   EXPECT_NE(warning.find("signal"), std::string::npos);
   EXPECT_NE(warning.find("original"), std::string::npos);
   EXPECT_NE(warning.find("typed"), std::string::npos);
@@ -1657,12 +1657,9 @@ TEST(Ffi, native_callback_conflicts_during_analysis) {
   )");
   const auto warning = testing::internal::GetCapturedStderr();
   ASSERT_FALSE(analyzed.error.has_value());
-  EXPECT_NE(warning.find("Conflicting signatures"),
-            std::string::npos);
-  EXPECT_NE(warning.find("function (i32) void"),
-            std::string::npos);
-  EXPECT_NE(warning.find("function (i64) void"),
-            std::string::npos);
+  EXPECT_NE(warning.find("Conflicting signatures"), std::string::npos);
+  EXPECT_NE(warning.find("function (i32) void"), std::string::npos);
+  EXPECT_NE(warning.find("function (i64) void"), std::string::npos);
 
   // A fresh editor analysis must not retain declarations from the previous run.
   auto next = driver->analyzeString(R"(
@@ -1672,7 +1669,8 @@ TEST(Ffi, native_callback_conflicts_during_analysis) {
   EXPECT_FALSE(next.error.has_value());
 }
 
-/** Recursive record mirrors and callbacks compare structurally at the boundary. */
+/** Recursive record mirrors and callbacks compare structurally at the boundary.
+ */
 TEST(Ffi, native_record_alias_structure) {
   for (const std::string& field : {"i32", "i64"}) {
     auto driver = Driver::createForAOT("native_record_structure");
@@ -1681,7 +1679,8 @@ TEST(Ffi, native_record_alias_structure) {
       /** First independently declared linked record. */
       class First { var next: raw_ptr<First>; var value: i32; }
       /** Second independently declared linked record. */
-      class Second { var next: raw_ptr<Second>; var value: )" + field + R"(; }
+      class Second { var next: raw_ptr<Second>; var value: )" +
+                                          field + R"(; }
       /** Register a callback over the first native record. */
       extern "C" function first(callback: function (ref First) void) void as "visit_record";
       /** Register a callback over the second native record. */
@@ -1742,10 +1741,11 @@ TEST(Ffi, conflicting_native_calls_preserve_declared_signatures) {
   EXPECT_EQ(variadicCalls, 1u);
 }
 
-/** Aliases retain distinct Darwin integer extensions despite equal LLVM types. */
+/** Aliases retain distinct Darwin integer extensions despite equal LLVM types.
+ */
 TEST(Ffi, conflicting_native_calls_preserve_extension_attributes) {
   auto driver = Driver::createForAOT("native_extensions", "arm64-apple-darwin",
-                                      false, false);
+                                     false, false);
   testing::internal::CaptureStderr();
   EXPECT_NO_THROW(driver->compileString(R"(
     /** Signed narrow binding. */
@@ -1789,10 +1789,12 @@ TEST(Ffi, conflicting_native_calls_preserve_extension_attributes) {
   EXPECT_EQ(unsignedCalls, 1u);
 }
 
-/** Aggregate and scalar aliases keep independent argument and result lowering. */
+/** Aggregate and scalar aliases keep independent argument and result lowering.
+ */
 TEST(Ffi, conflicting_native_calls_preserve_aggregate_lowering) {
   for (const std::string& target : {"x86_64-linux-gnu", "arm64-apple-darwin"}) {
-    auto driver = Driver::createForAOT("native_aggregate", target, false, false);
+    auto driver =
+        Driver::createForAOT("native_aggregate", target, false, false);
     testing::internal::CaptureStderr();
     EXPECT_NO_THROW(driver->compileString(R"(
       /** A record large enough to use indirect C argument and result storage. */
@@ -1817,7 +1819,8 @@ TEST(Ffi, conflicting_native_calls_preserve_aggregate_lowering) {
       for (auto& block : function) {
         for (auto& instruction : block) {
           auto* call = llvm::dyn_cast<llvm::CallBase>(&instruction);
-          if (!call || call->getCalledOperand()->stripPointerCasts() != native) {
+          if (!call ||
+              call->getCalledOperand()->stripPointerCasts() != native) {
             continue;
           }
           if (call->getType()->isVoidTy()) {

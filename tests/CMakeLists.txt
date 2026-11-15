@@ -122,7 +122,7 @@ if(SUN_TEST_SHARDS GREATER 1)
     # holding up an entire shard.
     set(sun_isolated_tests
         "ABI_Compatibility.*" "ABI_LibraryAbiSnapshot.*"
-        "*Modules_NestedTypeArguments*.*" "*Errors_Arithmetic*.*"
+        "*Modules_NestedTypeArguments*.*" "*Errors_*.*"
         "EndToEnd_*.*" "Modules_GenericRegressions.*" "Tooling_Bindgen.*"
         "Ffi_Link.*" "Tooling_Backend_InputHash.*" "Modules_ProtoImport.*"
         "Tooling_Backend_DebugInfo.*" "Ffi_Abi_StaticLink.*"

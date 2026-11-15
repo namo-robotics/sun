@@ -113,6 +113,7 @@ TEST(Functions_Generic, module_helper_receives_outer_value_explicitly) {
   )");
   EXPECT_EQ(value, 8);
 }
+
 // ============================================================================
 // Integer-literal arguments to explicit instantiations
 // ============================================================================
@@ -711,5 +712,6 @@ TEST(Functions_Generic, public_overload_precedes_private_generic) {
     }
     /** Calls the accessible ordinary overload. */
     function main() i32 { return example.value(20, 22); }
-  )"), 42);
+  )"),
+            42);
 }

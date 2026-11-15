@@ -49,6 +49,7 @@ class DeclareTypeAST : public ExprAST {
 
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::DECLARE_TYPE; }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string prefix = isPublic() ? "public " : "";
@@ -61,8 +62,10 @@ class DeclareTypeAST : public ExprAST {
 
   /** Reports whether this object has alias. */
   bool hasAlias() const { return aliasName.has_value(); }
+
   /** Returns the alias name stored by this object. */
   const std::string& getAliasName() const { return *aliasName; }
+
   /** Returns the type annotation stored by this object. */
   const TypeAnnotation& getTypeAnnotation() const { return typeAnnotation; }
 
@@ -72,12 +75,14 @@ class DeclareTypeAST : public ExprAST {
   void setResolvedDeclaredType(sun::types::TypePtr type) const {
     declAnalysis().resolvedDeclaredType = std::move(type);
   }
+
   /** Returns the resolved declared type stored by this object. */
   sun::types::TypePtr getResolvedDeclaredType() const {
     return analysis_ ? static_cast<DeclareTypeAnalysis&>(*analysis_)
                            .resolvedDeclaredType
                      : nullptr;
   }
+
   /** Reports whether this object has resolved declared type. */
   bool hasResolvedDeclaredType() const {
     return analysis_ &&

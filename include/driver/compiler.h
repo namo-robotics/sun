@@ -1,6 +1,8 @@
 #pragma once
 
 #include <llvm/ADT/StringRef.h>
+#include <llvm/IR/Constants.h>
+#include <llvm/IR/DebugInfoMetadata.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
 #include <llvm/MC/TargetRegistry.h>
@@ -23,6 +25,9 @@
 #include <system_error>
 #include <vector>
 
+#include "abi/exception_layout.h"
+#include "driver/exception_runtime.h"
+#include "driver/exception_sources.h"
 #include "support/terminal.h"
 
 /** Coordinates compilation, dependency loading, linking, and program execution.
@@ -32,7 +37,8 @@ namespace sun::driver {
 /** Returns the host runtime archive embedded in this compiler. */
 llvm::StringRef embeddedExceptionRuntime();
 
-/** Returns self-contained runtime source for compilation by a cross toolchain. */
+/** Returns self-contained runtime source for compilation by a cross toolchain.
+ */
 llvm::StringRef embeddedExceptionRuntimeSource();
 
 /**
@@ -261,6 +267,9 @@ inline NativeLibraries loadNativeLibraries(const LinkOptions& opts) {
  */
 inline bool emitObjectFile(llvm::Module& module, const std::string& outputPath,
                            std::string& errorMsg, bool optimize = true) {
+  if (!defineExceptionRuntimeStorage(module, errorMsg)) {
+    return false;
+  }
   // Honor a triple codegen already chose (set by --target); default to the
   // host otherwise.
   std::string targetTriple = module.getTargetTriple();
@@ -291,7 +300,12 @@ inline bool emitObjectFile(llvm::Module& module, const std::string& outputPath,
     return false;
   }
 
+  // Preserve values live into native landing pads on AArch64 at O0.
+  targetMachine->setGlobalISel(false);
+
   module.setDataLayout(targetMachine->createDataLayout());
+
+  prepareExceptionSources(module, false);
 
   // Open output file
   std::error_code ec;
@@ -312,7 +326,29 @@ inline bool emitObjectFile(llvm::Module& module, const std::string& outputPath,
 
   pass.run(module);
   dest.flush();
-
+  dest.close();
+  auto original = llvm::MemoryBuffer::getFile(outputPath);
+  if (!original) {
+    errorMsg = original.getError().message();
+    return false;
+  }
+  auto indexed = indexExceptionSources(module, (*original)->getMemBufferRef());
+  if (!indexed) {
+    errorMsg = llvm::toString(indexed.takeError());
+    return false;
+  }
+  llvm::raw_fd_ostream patched(outputPath, ec, llvm::sys::fs::OF_None);
+  if (ec) {
+    errorMsg = ec.message();
+    return false;
+  }
+  patched << (*indexed)->getBuffer();
+  patched.close();
+  if (patched.has_error()) {
+    errorMsg = patched.error().message();
+    patched.clear_error();
+    return false;
+  }
   return true;
 }
 
@@ -414,8 +450,9 @@ inline bool linkExecutable(const std::string& objectPath,
   for (const auto& argument : linkOpts.arguments) {
     cmd += " " + shellQuote(argument);
   }
-  // Keep the extracted runtime alive through linking and debug-symbol collection.
-  // Cross links compile the embedded source with the selected driver and sysroot.
+  // Keep the extracted runtime alive through linking and debug-symbol
+  // collection. Cross links compile the embedded source with the selected
+  // driver and sysroot.
   llvm::FileRemover runtimeCleanup;
   const llvm::Triple host(llvm::sys::getDefaultTargetTriple());
   const bool useHostRuntime = triple.getArch() == host.getArch() &&
@@ -483,8 +520,8 @@ inline bool linkExecutable(const std::string& objectPath,
 
   if (collectDebugSymbols && isDarwin && haveTool("dsymutil")) {
     if (std::system(("dsymutil " + shellQuote(outputPath)).c_str()) != 0) {
-      sun::support::logMessage("warning",
-                               "Could not collect debug symbols for " + outputPath);
+      sun::support::logMessage(
+          "warning", "Could not collect debug symbols for " + outputPath);
     }
   }
 
@@ -510,8 +547,16 @@ inline bool compileToExecutable(llvm::Module& module,
   }
 
   // Step 2: Link to create executable
-  const bool hasDebugInfo = module.getModuleFlag("Debug Info Version") != nullptr;
-  if (!linkExecutable(objectPath, outputPath, errorMsg, linkOpts, hasDebugInfo)) {
+  bool hasDebugInfo = false;
+  if (auto* units = module.getNamedMetadata("llvm.dbg.cu")) {
+    for (auto* operand : units->operands()) {
+      hasDebugInfo |=
+          llvm::cast<llvm::DICompileUnit>(operand)->getEmissionKind() ==
+          llvm::DICompileUnit::FullDebug;
+    }
+  }
+  if (!linkExecutable(objectPath, outputPath, errorMsg, linkOpts,
+                      hasDebugInfo)) {
     return false;
   }
 

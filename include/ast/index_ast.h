@@ -31,8 +31,10 @@ class IndexAST : public ExprAST {
   IndexAST(std::unique_ptr<ExprAST> target,
            std::vector<std::unique_ptr<SliceExprAST>> idxs)
       : target(std::move(target)), indices(std::move(idxs)) {}
+
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::INDEX; }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string result = target->toString() + "[";
@@ -44,8 +46,10 @@ class IndexAST : public ExprAST {
     }
     return result + "]";
   }
+
   /** Returns the target stored by this object. */
   const ExprAST* getTarget() const { return target.get(); }
+
   /** Provides the index expressions used to select array elements. */
   const std::vector<std::unique_ptr<SliceExprAST>>& getIndices() const {
     return indices;
@@ -61,6 +65,7 @@ class IndexAST : public ExprAST {
       }
     }
   }
+
   /** Returns the number of index expressions in this access. */
   size_t numIndices() const { return indices.size(); }
 
@@ -75,6 +80,7 @@ class IndexAST : public ExprAST {
     }
     return false;
   }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "Index"; }
 };

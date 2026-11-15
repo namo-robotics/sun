@@ -83,6 +83,7 @@ struct StageTimingsReporter {
   /** Prints the collected compiler-stage timings when reporting finishes. */
   ~StageTimingsReporter() { StageTimings::report(); }
 };
+
 inline const StageTimingsReporter stageTimingsReporter;
 
 /**

@@ -25,8 +25,10 @@ class ArrayIndexAST : public ExprAST {
   ArrayIndexAST(std::unique_ptr<ExprAST> arr,
                 std::vector<std::unique_ptr<ExprAST>> idxs)
       : array(std::move(arr)), indices(std::move(idxs)) {}
+
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::ARRAY_INDEX; }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string result = array->toString() + "[";
@@ -38,14 +40,18 @@ class ArrayIndexAST : public ExprAST {
     }
     return result + "]";
   }
+
   /** Returns the array expression. */
   const ExprAST* getArray() const { return array.get(); }
+
   /** Provides the index expressions used to select array elements. */
   const std::vector<std::unique_ptr<ExprAST>>& getIndices() const {
     return indices;
   }
+
   /** Returns the number of index expressions in this access. */
   size_t numIndices() const { return indices.size(); }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "ArrayIndex"; }
 };

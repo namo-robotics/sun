@@ -17,6 +17,7 @@
 
 #include "abi/boundary_requirements.h"
 #include "abi/cpu_requirements.h"
+#include "abi/exception_layout.h"
 #include "abi/library_abi_snapshot.h"
 #include "abi/lowering_descriptors.h"
 #include "abi/support_inventory.h"
@@ -52,6 +53,7 @@ std::string computeSha256Hex(llvm::StringRef bytes) {
   }
   return result;
 }
+
 /** Encodes an unsigned integer without host layout or byte-order dependencies.
  */
 std::string integer(uint64_t value) {
@@ -61,10 +63,12 @@ std::string integer(uint64_t value) {
   }
   return result;
 }
+
 /** Frames a tagged field so arbitrary byte strings remain unambiguous. */
 std::string field(uint64_t tag, const std::string& value) {
   return integer(tag) + integer(value.size()) + value;
 }
+
 /** Canonically encodes sets while preserving order within each entry. */
 template <typename Range>
 std::string sortedFields(uint64_t tag, const Range& values) {
@@ -75,6 +79,7 @@ std::string sortedFields(uint64_t tag, const Range& values) {
   }
   return result;
 }
+
 /** Encodes effective target properties rather than a triple's spelling. */
 std::string encodeTarget(const TargetProfile& target) {
   return field(1, target.architecture()) + field(2, target.platform_abi()) +
@@ -83,6 +88,7 @@ std::string encodeTarget(const TargetProfile& target) {
          field(5, integer(target.little_endian())) +
          sortedFields(6, target.cpu_features());
 }
+
 /** Records a required rule with its independently identifiable implementation.
  */
 void require(BundleContract& contract, const std::string& name,
@@ -91,10 +97,12 @@ void require(BundleContract& contract, const std::string& name,
     if (rule.name() != name) {
       continue;
     }
-    if (!compatibleRuleImplementations(name, rule.implementation(), implementation)) {
+    if (!compatibleRuleImplementations(name, rule.implementation(),
+                                       implementation)) {
       sun::support::logAndThrowError("Conflicting bundle requirement: " + name);
     }
-    // Advisory fingerprints retain a deterministic representative across merges.
+    // Advisory fingerprints retain a deterministic representative across
+    // merges.
     rule.set_implementation(std::min(rule.implementation(), implementation));
     return;
   }
@@ -102,6 +110,7 @@ void require(BundleContract& contract, const std::string& name,
   rule->set_name(name);
   rule->set_implementation(implementation);
 }
+
 /** Identifies compiler runtimes without including unrelated preloaded
  * libraries. */
 bool isCompilerRuntimeLibrary(llvm::StringRef path) {
@@ -126,6 +135,7 @@ int collectLibraries(dl_phdr_info* info, size_t, void* opaque) {
   }
   return 0;
 }
+
 /** Capture compiler dependencies before JIT code can load application
  * libraries. */
 const std::set<std::string> implementationLibraries = [] {
@@ -182,7 +192,8 @@ const std::set<std::string> implementationLibraryDigests = [] {
 #endif
 }  // namespace
 
-std::string hashBitcodeReaderContract(const proto::BitcodeReaderContract& contract) {
+std::string hashBitcodeReaderContract(
+    const proto::BitcodeReaderContract& contract) {
   if (!contract.GetReflection()->GetUnknownFields(contract).empty()) {
     sun::support::logAndThrowError("Unknown bitcode reader contract fields");
   }
@@ -381,14 +392,25 @@ BundleContract describeContract(const llvm::Module& module) {
   require(contract, "llvm.bitcode", emissionImplementation("llvm.bitcode"));
   require(contract, "sun.experimental.semantics",
           emissionImplementation("sun.experimental.semantics"));
+  if (auto* depth = module.getModuleFlag("sun.exceptions.trace_depth")) {
+    auto* value = llvm::mdconst::dyn_extract<llvm::ConstantInt>(depth);
+    if (!value ||
+        value->getZExtValue() > sun::abi::exceptions::maximumTraceDepth) {
+      sun::support::logAndThrowError("Invalid exception trace depth metadata");
+    }
+    require(contract, "sun.exceptions.trace_depth",
+            std::to_string(value->getZExtValue()));
+  }
   if (module.getModuleFlag("sun.exceptions.bounded")) {
     require(contract, "sun.exceptions.bounded",
             emissionImplementation("sun.exceptions.bounded"));
   }
   for (const auto& function : module) {
-    if (function.getName().starts_with("sun_eh_") || function.getName() == "sun_panic")
+    if (function.getName().starts_with("sun_eh_") ||
+        function.getName() == "sun_panic") {
       require(contract, "sun.exceptions.bounded",
               emissionImplementation("sun.exceptions.bounded"));
+    }
     const bool guarded = hasGuardedCPURequirements(function);
     const auto features = function.getFnAttribute("target-features");
     if (features.isValid() && !guarded) {

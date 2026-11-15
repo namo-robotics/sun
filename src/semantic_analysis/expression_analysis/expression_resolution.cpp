@@ -10,6 +10,7 @@ using sun::ast::ASTNodeType;
 using sun::ast::MemberAccessAST;
 using sun::ast::VariableReferenceAST;
 using sun::support::logAndThrowError;
+
 /** Resolves names, members, and the semantic facts needed by inference. */
 namespace sun::semantic_analysis {
 using sun::types::ClassMethod;

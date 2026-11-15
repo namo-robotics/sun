@@ -4,6 +4,7 @@
 namespace sun::ast {
 class BlockExprAST;
 }
+
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 class SemanticAnalyzer;

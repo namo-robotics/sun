@@ -1,6 +1,4 @@
-#include "abi/lowering_descriptors.h"
-// Unsafe scopes and call cleanup.
-
+/** Emits unsafe scopes and calls that may unwind through ownership cleanup. */
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
@@ -9,13 +7,14 @@
 #include <optional>
 #include <string>
 
+#include "abi/lowering_descriptors.h"
 #include "codegen/codegen_visitor.h"
-#include "codegen/errors/error_generator.h"
+#include "codegen/exceptions/exception_generator.h"
 
 using namespace llvm;
 
 /** Generates unsafe scopes and call cleanup. */
-namespace sun::codegen::errors {
+namespace sun::codegen::exceptions {
 
 // Codegen for unsafe block: unsafe { ... }
 // The body is a scope like any other block body, so names declared inside stay
@@ -27,7 +26,7 @@ namespace sun::codegen::errors {
 // A consumer such as `var s = unsafe { make(); };` adopts the slot from
 // there; a discarded value is dropped when the enclosing scope ends, exactly
 // like any other unconsumed call temporary.
-Value* ErrorGenerator::codegen(const sun::ast::UnsafeBlockAST& expr) {
+Value* ExceptionGenerator::codegen(const sun::ast::UnsafeBlockAST& expr) {
   scopes().push(expr.getBody().getLocation());
   Value* result = codegen(expr.getBody());
   std::optional<std::string> name = scopes().releaseBlockResult(result);
@@ -45,7 +44,7 @@ Value* ErrorGenerator::codegen(const sun::ast::UnsafeBlockAST& expr) {
 
 // Get the personality function for exception handling.
 // The platform unwinder delegates Sun handler selection to this function.
-Constant* ErrorGenerator::getPersonalityFunction() {
+Constant* ExceptionGenerator::getPersonalityFunction() {
   auto* i32Ty = llvm::Type::getInt32Ty(ctx.getContext());
   auto* i64Ty = llvm::Type::getInt64Ty(ctx.getContext());
   auto* ptrTy = PointerType::getUnqual(ctx.getContext());
@@ -59,7 +58,7 @@ Constant* ErrorGenerator::getPersonalityFunction() {
 
 // Ensure a function has a personality function (required once it contains an
 // invoke/landingpad). Idempotent.
-void ErrorGenerator::ensurePersonality(Function* fn) {
+void ExceptionGenerator::ensurePersonality(Function* fn) {
   if (!fn->hasPersonalityFn()) {
     fn->setPersonalityFn(getPersonalityFunction());
   }
@@ -68,24 +67,26 @@ void ErrorGenerator::ensurePersonality(Function* fn) {
 // A call that can unwind needs a cleanup pad when live owners would be skipped.
 // Each exceptional edge selects a handler and releases the owners it leaves.
 // Each pad records the owners that are live at its particular call site.
-Value* ErrorGenerator::emitPossiblyThrowingCall(llvm::FunctionType* fnTy,
-                                                Value* callee,
-                                                ArrayRef<Value*> args,
-                                                bool canThrow,
-                                                const Twine& name) {
-  if (canThrow) return emitNativeCall(fnTy, callee, args, name);
+Value* ExceptionGenerator::emitPossiblyThrowingCall(llvm::FunctionType* fnTy,
+                                                    Value* callee,
+                                                    ArrayRef<Value*> args,
+                                                    bool canThrow,
+                                                    const Twine& name) {
+  if (canThrow) {
+    return emitNativeCall(fnTy, callee, args, name);
+  }
   auto* call = ctx.builder->CreateCall(
       fnTy, callee, args, fnTy->getReturnType()->isVoidTy() ? "" : name);
   sun::abi::CallDescriptor::forCall(fnTy, callee).apply(*call);
   return call;
 }
 
-Value* ErrorGenerator::emitPossiblyThrowingCall(FunctionCallee callee,
-                                                ArrayRef<Value*> args,
-                                                bool canThrow,
-                                                const Twine& name) {
+Value* ExceptionGenerator::emitPossiblyThrowingCall(FunctionCallee callee,
+                                                    ArrayRef<Value*> args,
+                                                    bool canThrow,
+                                                    const Twine& name) {
   return emitPossiblyThrowingCall(callee.getFunctionType(), callee.getCallee(),
                                   args, canThrow, name);
 }
 
-}  // namespace sun::codegen::errors
+}  // namespace sun::codegen::exceptions

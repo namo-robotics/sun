@@ -28,6 +28,7 @@ static std::vector<TypePtr> requireArguments(
           "<i32>(...).",
       loc);
 }
+
 std::vector<TypePtr> resolveGenericTypeArguments(
     const GenericFunctionInfo& genericInfo,
     const std::vector<TypePtr>& argTypes, const std::string& displayName,
@@ -43,6 +44,7 @@ std::vector<TypePtr> resolveGenericTypeArguments(
           argTypes, explicitTypeArgs),
       "generic function", displayName, loc);
 }
+
 std::vector<TypePtr> resolveMethodTypeArguments(
     const ClassMethod& method, const std::vector<TypePtr>& argTypes,
     const std::string& displayName, std::optional<sun::support::Position> loc,
@@ -52,6 +54,7 @@ std::vector<TypePtr> resolveMethodTypeArguments(
           method.typeParameters, method.paramTypes, argTypes, explicitTypeArgs),
       "generic method", displayName, loc);
 }
+
 /** Everything after the fixed parameters belongs to the pack. */
 std::optional<std::vector<TypePtr>> splitPackArgTypes(
     const sun::ast::PrototypeAST& proto, const std::vector<TypePtr>& argTypes,

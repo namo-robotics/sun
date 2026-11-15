@@ -14,9 +14,14 @@ bool exprDiverges(const ExprAST& expr) {
   switch (expr.getType()) {
     case ASTNodeType::TRY_CATCH: {
       const auto& statement = static_cast<const TryCatchAST&>(expr);
-      if (!exprDiverges(*statement.body)) return false;
-      for (const auto& handler : statement.handlers)
-        if (!exprDiverges(*handler.body)) return false;
+      if (!exprDiverges(*statement.body)) {
+        return false;
+      }
+      for (const auto& handler : statement.handlers) {
+        if (!exprDiverges(*handler.body)) {
+          return false;
+        }
+      }
       return true;
     }
     case ASTNodeType::THROW:

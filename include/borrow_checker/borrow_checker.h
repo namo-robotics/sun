@@ -94,7 +94,7 @@ class BorrowChecker {
    * variable the call could hand back a reference into: the receiver and
    * each argument bound to a ref parameter.
    */
-  void borrowRefCallInputs(const std::string& refName, const CallExprAST& call,
+  void borrowRefCallInputs(const std::string& refName, const ExprAST& call,
                            bool isMutable,
                            const sun::support::Position& refPos);
   /** Rejects borrowing a value whose ownership has already been moved. */
@@ -255,6 +255,7 @@ class BorrowChecker {
    */
   bool checkFrameStoreDepth(const std::string& destBase, size_t envDepth,
                             const sun::support::Position& pos);
+
   /**
    * A lifetime as the caller-side checker sees it. Concrete: pinned to a
    * scope depth of this frame (deeper dies sooner). Symbolic: one of the
@@ -271,6 +272,7 @@ class BorrowChecker {
     std::string name;       // Symbolic: the signature lifetime's name
     std::string described;  // the variable it came from, for messages
   };
+
   /**
    * Does a value with lifetime src provably live at least as long as
    * storage with lifetime dst?
@@ -681,7 +683,7 @@ class BorrowChecker {
    * Infer the lifetime of a call expression's return value,
    * considering whether temporaries were passed to ref params.
    */
-  Lifetime inferCallReturnLifetime(const CallExprAST& call) const;
+  Lifetime inferCallReturnLifetime(const ExprAST& call) const;
 };
 
 }  // namespace sun::borrow_checker

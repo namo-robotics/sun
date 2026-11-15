@@ -20,7 +20,7 @@ using sun::semantic_analysis::type_analysis::unifyTernaryTypes;
 using sun::types::unwrapRef;
 
 void ExpressionAnalyzer::analyzeTernaryExpr(sun::ast::TernaryExprAST& ternary,
-                                          TypePtr expectedType) {
+                                            TypePtr expectedType) {
   sema_.analyzeExpr(*ternary.getCond());
   checkConditionType(*ternary.getCond());
   sema_.analyzeExpr(*ternary.getThen(), expectedType);

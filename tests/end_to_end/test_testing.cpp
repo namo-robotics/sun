@@ -131,7 +131,8 @@ TEST(EndToEnd_Testing, an_uncaught_exception_fails_the_test) {
             1);
 }
 
-/** An empty runner succeeds rather than treating absence as a compiler error. */
+/** An empty runner succeeds rather than treating absence as a compiler error.
+ */
 TEST(EndToEnd_Testing, empty_test_suite_succeeds) {
   EXPECT_EQ(executeTestsWithStdlib("function main() i32 { return 0; }"), 0);
 }
@@ -333,9 +334,18 @@ TEST(EndToEnd_Testing, assertion_exception_exits_one) {
     /** Propagates an assertion failure through a custom result. */
     test_function fails() {  std.test.assert(false, "custom failure"); }
   )";
+  testing::internal::CaptureStderr();
   EXPECT_EQ(executeTestsWithStdlib(program), 1);
   const char* argv[] = {"program", "--test-sequential", nullptr};
   EXPECT_EQ(executeTestsWithStdlib(program, 2, const_cast<char**>(argv)), 1);
+  const auto diagnostics = testing::internal::GetCapturedStderr();
+  const auto first = diagnostics.find("Unhandled exception:");
+  ASSERT_NE(first, std::string::npos);
+  const auto second = diagnostics.find("Unhandled exception:", first + 1);
+  ASSERT_NE(second, std::string::npos);
+  EXPECT_EQ(diagnostics.find("Unhandled exception:", second + 1),
+            std::string::npos);
+  EXPECT_NE(diagnostics.find("fails()"), std::string::npos);
 }
 
 /** Checked arithmetic exceptions fail tests in both runner modes. */
@@ -354,14 +364,13 @@ TEST(EndToEnd_Testing, arithmetic_exception_exits_one) {
 
 /** Failure payloads cannot silently evade the test runner's error matching. */
 TEST(EndToEnd_Testing, rejects_non_void_test_return) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      executeTestsWithStdlib(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeTestsWithStdlib(R"(
     /** An integer is not a reportable test failure. */
     enum Outcome { Passed, Failure(i32) }
     /** Attempts to return an unsupported error payload. */
     test_function invalid() Outcome { return Outcome.Failure(1); }
   )"),
-      "test functions return void");
+                                "test functions return void");
 }
 
 /** Tests without annotations use void returns and allow exceptions. */
@@ -420,7 +429,8 @@ TEST(EndToEnd_Testing, public_errno_and_nonblocking_helpers) {
             0);
 }
 
-/** Arithmetic error results fail tests through the ordinary IError implementation. */
+/** Arithmetic error results fail tests through the ordinary IError
+ * implementation. */
 TEST(EndToEnd_Testing, concrete_arithmetic_errors_fail_tests) {
   EXPECT_EQ(executeTestsWithStdlib(R"(
     /** Propagates the standard-library failure from checked division. */
@@ -428,5 +438,6 @@ TEST(EndToEnd_Testing, concrete_arithmetic_errors_fail_tests) {
       var value =  std.checked_div(10, 0);
       return;
     }
-  )"), 1);
+  )"),
+            1);
 }

@@ -1121,8 +1121,7 @@ TEST(Modules, config_moon_url_is_fetched_and_imported) {
            "\"library\":\"urllib\",\"url\":"
            "\"file://"
         << fs::absolute(moonPath).string() << "\",\"hash\":\""
-        << sun::driver::packageFileHash(moonPath)
-        << "\"}]}";
+        << sun::driver::packageFileHash(moonPath) << "\"}]}";
   }
 
   auto driver = Driver::createForJIT("moon_url_main");
@@ -2354,7 +2353,8 @@ TEST(Modules, error_interfaces_keep_bundle_revision_identity) {
           init() {}
           /** Returns an owned revision-specific diagnostic. */
           public const method message() String { return String()" +
-      std::to_string(value) + R"(); }
+                                                        std::to_string(value) +
+                                                        R"(); }
         }
       }
       /** Exposes one revision without exposing its standard-library names. */
@@ -2373,13 +2373,15 @@ TEST(Modules, error_interfaces_keep_bundle_revision_identity) {
   auto second = library("second_error_revision", 22);
   for (bool reverse : {false, true}) {
     auto driver = Driver::createForJIT("error_contract_revisions");
-    driver->setMoonImports({MoonImport((reverse ? second : first).string(), "std", "stdlib_a"),
-                            MoonImport((reverse ? first : second).string(), "std", "stdlib_b")});
+    driver->setMoonImports(
+        {MoonImport((reverse ? second : first).string(), "std", "stdlib_a"),
+         MoonImport((reverse ? first : second).string(), "std", "stdlib_b")});
     EXPECT_EQ(driver->executeString(R"(
       /** Calls both independent error contracts. */
       function main() i32 {
         return first_error_revision.read() + second_error_revision.read();
       }
-    )"), 42);
+    )"),
+              42);
   }
 }

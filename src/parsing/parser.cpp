@@ -787,42 +787,54 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
   // parameters; lambda literals put it after the fat arrow.
   // Syntax: function foo(args) ReturnType { ... }
   //         (args) => ReturnType { ... }
-  // Lifecycle methods omit the return type. Fallible constructors declare throws.
+  // Lifecycle methods omit the return type. Fallible constructors declare
+  // throws.
   std::optional<sun::ast::TypeAnnotation> retType;
   if (isTestFunction) {
     retType = sun::ast::TypeAnnotation("void");
     retType->canError = true;
-    if (curTok.kind != TokenKind::BRACE_OPEN && curTok.kind != TokenKind::THROWS) {
+    if (curTok.kind != TokenKind::BRACE_OPEN &&
+        curTok.kind != TokenKind::THROWS) {
       retType = parseTypeAnnotation();
-      if (!retType || retType->baseName != "void")
-        parsingError("test functions return void and report failures by throwing");
+      if (!retType || retType->baseName != "void") {
+        parsingError(
+            "test functions return void and report failures by throwing");
+      }
       retType->canError = true;
     }
     if (curTok.kind == TokenKind::THROWS) {
       getNextToken();
-      if (curTok.kind == TokenKind::IDENTIFIER)
+      if (curTok.kind == TokenKind::IDENTIFIER) {
         parsingError("'throws' does not take an error type; use bare throws");
+      }
     }
   } else if (isLifecycleMethod) {
     retType = sun::ast::TypeAnnotation("void");
     if (curTok.kind == TokenKind::THROWS) {
-      if (name == "deinit") parsingError("deinit cannot declare throws; catch failures inside it");
+      if (name == "deinit") {
+        parsingError("deinit cannot declare throws; catch failures inside it");
+      }
       getNextToken();
-      if (curTok.kind == TokenKind::IDENTIFIER) parsingError("'throws' does not take an error type; use bare throws");
+      if (curTok.kind == TokenKind::IDENTIFIER) {
+        parsingError("'throws' does not take an error type; use bare throws");
+      }
       retType->canError = true;
     }
     if (curTok.kind != TokenKind::BRACE_OPEN) {
       if (name == "deinit") {
         parsingError("'deinit' cannot declare a return type");
       }
-      parsingError("Constructors do not return status values; use init(...) throws");
+      parsingError(
+          "Constructors do not return status values; use init(...) throws");
     }
   } else if (curTok.kind != TokenKind::BRACE_OPEN) {
     retType = parseTypeAnnotation();
 
     if (curTok.kind == TokenKind::THROWS) {
       getNextToken();
-      if (curTok.kind == TokenKind::IDENTIFIER) parsingError("'throws' does not take an error type; use bare throws");
+      if (curTok.kind == TokenKind::IDENTIFIER) {
+        parsingError("'throws' does not take an error type; use bare throws");
+      }
       retType->canError = true;
     }
   } else {
@@ -1262,8 +1274,11 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
     case TokenKind::TRY: {
       Position start = captureStart();
       getNextToken();
-      if (curTok.kind != TokenKind::BRACE_OPEN)
-        parsingError("Prefix try was removed; use a try block with catch, or declare throws");
+      if (curTok.kind != TokenKind::BRACE_OPEN) {
+        parsingError(
+            "Prefix try was removed; use a try block with catch, or declare "
+            "throws");
+      }
       auto body = parseBlock(sun::ast::BlockKind::Try);
       std::vector<sun::ast::ExceptionHandler> handlers;
       while (curTok.kind == TokenKind::CATCH) {
@@ -1272,22 +1287,30 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
         if (curTok.kind == TokenKind::PAREN_OPEN) {
           getNextToken();
           auto bindingStart = captureStart();
-          expectCurrentTokenKind(TokenKind::IDENTIFIER, "expected catch binding name");
+          expectCurrentTokenKind(TokenKind::IDENTIFIER,
+                                 "expected catch binding name");
           auto name = curTok.getIdentifier().value();
           getNextToken();
-          expectCurrentTokenKind(TokenKind::COLON, "expected ':' after catch binding");
+          expectCurrentTokenKind(TokenKind::COLON,
+                                 "expected ':' after catch binding");
           getNextToken();
           auto type = parseTypeAnnotation();
           binding = finishNode(std::make_unique<sun::ast::VariableCreationAST>(
-              name, nullptr, std::move(type)), bindingStart);
-          expectCurrentTokenKind(TokenKind::PAREN_CLOSE, "expected ')' after catch type");
+                                   name, nullptr, std::move(type)),
+                               bindingStart);
+          expectCurrentTokenKind(TokenKind::PAREN_CLOSE,
+                                 "expected ')' after catch type");
           getNextToken();
         }
-        handlers.push_back({std::move(binding), parseBlock(sun::ast::BlockKind::Catch)});
+        handlers.push_back(
+            {std::move(binding), parseBlock(sun::ast::BlockKind::Catch)});
       }
-      if (handlers.empty()) parsingError("try block requires a catch handler");
+      if (handlers.empty()) {
+        parsingError("try block requires a catch handler");
+      }
       return finishNode(std::make_unique<sun::ast::TryCatchAST>(
-          std::move(body), std::move(handlers)), start);
+                            std::move(body), std::move(handlers)),
+                        start);
       break;
     }
     case TokenKind::THROW:
@@ -1757,7 +1780,9 @@ sun::ast::TypeAnnotation Parser::parseTypeAnnotationImpl() {
 
     if (curTok.kind == TokenKind::THROWS) {
       getNextToken();
-      if (curTok.kind == TokenKind::IDENTIFIER) parsingError("'throws' does not take an error type; use bare throws");
+      if (curTok.kind == TokenKind::IDENTIFIER) {
+        parsingError("'throws' does not take an error type; use bare throws");
+      }
       type.canError = true;
     }
 
@@ -1828,7 +1853,9 @@ sun::ast::TypeAnnotation Parser::parseTypeAnnotationImpl() {
     // A lambda expresses failure through its return type.
     if (curTok.kind == TokenKind::THROWS) {
       getNextToken();
-      if (curTok.kind == TokenKind::IDENTIFIER) parsingError("'throws' does not take an error type; use bare throws");
+      if (curTok.kind == TokenKind::IDENTIFIER) {
+        parsingError("'throws' does not take an error type; use bare throws");
+      }
       type.canError = true;
     }
 
@@ -2769,10 +2796,12 @@ unique_ptr<ExprAST> Parser::parseStatementCore() {
     case TokenKind::THROW: {
       Position start = captureStart();
       getNextToken();
-      auto value = curTok.kind == TokenKind::SEMI_COLON ? nullptr : parseExpression();
+      auto value =
+          curTok.kind == TokenKind::SEMI_COLON ? nullptr : parseExpression();
       expectCurrentTokenKind(TokenKind::SEMI_COLON, "expected ';' after throw");
       getNextToken();
-      return finishNode(std::make_unique<sun::ast::ThrowAST>(std::move(value)), start);
+      return finishNode(std::make_unique<sun::ast::ThrowAST>(std::move(value)),
+                        start);
     }
     case TokenKind::CATCH:
       parsingError("'catch' must follow a try block");
@@ -3578,6 +3607,7 @@ unique_ptr<ModuleAST> Parser::parseModuleDecl() {
     std::string name;
     Position location;
   };
+
   std::vector<Segment> segments;
   while (true) {
     Position location = captureStart();
@@ -4439,13 +4469,17 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
   classDef->setException(exception);
   classDef->setExceptionParent(std::move(exceptionParent));
   if (exception) {
-    if (alignment)
+    if (alignment) {
       parsingError("exception declarations cannot override payload alignment");
-    for (const auto& method : classDef->getMethods()) {
-      if (method.function->getProto().getName() == "deinit")
-        parsingError("exception payloads cannot declare a destructor");
     }
-    for (auto& field : classDef->getMutableFields()) field.visibility = Visibility::Public;
+    for (const auto& method : classDef->getMethods()) {
+      if (method.function->getProto().getName() == "deinit") {
+        parsingError("exception payloads cannot declare a destructor");
+      }
+    }
+    for (auto& field : classDef->getMutableFields()) {
+      field.visibility = Visibility::Public;
+    }
   }
   classDef->setAlignment(alignment);
   classDef->setLifetimeParameters(std::move(lifetimeParameters));
@@ -4619,9 +4653,13 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
 
       if (curTok.kind == TokenKind::THROWS) {
         getNextToken();
-        if (curTok.kind != TokenKind::BRACE_OPEN && curTok.kind != TokenKind::SEMI_COLON)
+        if (curTok.kind != TokenKind::BRACE_OPEN &&
+            curTok.kind != TokenKind::SEMI_COLON) {
           parsingError("'throws' does not take an error type; use bare throws");
-        if (!retType) retType = sun::ast::TypeAnnotation("void");
+        }
+        if (!retType) {
+          retType = sun::ast::TypeAnnotation("void");
+        }
         retType->canError = true;
       }
 

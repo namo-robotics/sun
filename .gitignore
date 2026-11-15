@@ -1,5 +1,8 @@
 build/
 
+# Python bytecode caches
+__pycache__/
+
 # Stray compiled binaries (root-anchored so they don't swallow source dirs)
 /regex
 /echo

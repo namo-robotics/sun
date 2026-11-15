@@ -149,7 +149,8 @@ Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
   auto* failure = BasicBlock::Create(llvmCtx, "spawn.failure", function);
   auto* complete = BasicBlock::Create(llvmCtx, "spawn.complete", function);
   auto* nullPointer = ConstantPointerNull::get(cast<PointerType>(ptrTy));
-  /** Track each allocation so the shared failure path can free partial state. */
+  /** Track each allocation so the shared failure path can free partial state.
+   */
   auto makeSlot = [&](const char* name) {
     auto* slot = gen_.createEntryBlockAlloca(function, name, ptrTy);
     ctx.builder->CreateStore(nullPointer, slot);
@@ -233,16 +234,16 @@ Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
   Value* attrResult = ctx.builder->CreateCall(
       sun::codegen::intrinsics::pthreadAttrInit(module), {attr});
   ctx.builder->CreateCondBr(
-      ctx.builder->CreateICmpEQ(
-          attrResult, ConstantInt::get(attrResult->getType(), 0)),
+      ctx.builder->CreateICmpEQ(attrResult,
+                                ConstantInt::get(attrResult->getType(), 0)),
       attrReady, failure);
   ctx.builder->SetInsertPoint(attrReady);
   Value* stackResult = ctx.builder->CreateCall(
       sun::codegen::intrinsics::pthreadAttrSetstacksize(module),
       {attr, ConstantInt::get(i64Ty, 8ull * 1024 * 1024)});
   ctx.builder->CreateCondBr(
-      ctx.builder->CreateICmpEQ(
-          stackResult, ConstantInt::get(stackResult->getType(), 0)),
+      ctx.builder->CreateICmpEQ(stackResult,
+                                ConstantInt::get(stackResult->getType(), 0)),
       attrConfigured, attrFailed);
   ctx.builder->SetInsertPoint(attrFailed);
   ctx.builder->CreateCall(sun::codegen::intrinsics::pthreadAttrDestroy(module),

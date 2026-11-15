@@ -56,12 +56,15 @@ class SemanticContext : public AccessContext {
   const std::vector<std::string> &activeLifetimeNames() const {
     return activeLifetimeNames_;
   }
+
   /** Whether the current declaration or body may name the receiver lifetime. */
   bool allowsThisLifetime() const { return allowThisLifetime_; }
+
   /** Add a lifetime binder within a LifetimeScopeGuard. */
   void declareLifetime(const std::string &name) {
     activeLifetimeNames_.push_back(name);
   }
+
   /** Restores lifetime binders and receiver permission on every exit path. */
   class LifetimeScopeGuard {
    public:
@@ -82,10 +85,12 @@ class SemanticContext : public AccessContext {
         ctx_.allowThisLifetime_ = *allowThis;
       }
     }
+
     /** A lifetime scope has exactly one owner responsible for restoration. */
     LifetimeScopeGuard(const LifetimeScopeGuard &) = delete;
     /** Prevent duplicate restoration through assignment. */
     LifetimeScopeGuard &operator=(const LifetimeScopeGuard &) = delete;
+
     /** Restore the enclosing declaration's bindings, including after errors. */
     ~LifetimeScopeGuard() {
       if (isolated_) {
@@ -109,13 +114,17 @@ class SemanticContext : public AccessContext {
     sun::ast::InterfaceDefinitionAST *node;
     SemanticScope *scope;
   };
+
   std::map<DeclarationId, InterfaceDefinition> interfaceDefinitions;
+
   /** A non-generic class and the scope of its implemented interface names. */
   struct ClassDefinition {
     sun::ast::ClassDefinitionAST *node;
     SemanticScope *scope;
   };
+
   std::map<DeclarationId, ClassDefinition> classDefinitions;
+
   /** Whether type declarations are being collected before body analysis. */
   bool isCollectingDeclarations() const {
     return declarationCollectionDepth_ != 0;
@@ -130,8 +139,10 @@ class SemanticContext : public AccessContext {
         : context_(context) {
       ++context_.declarationCollectionDepth_;
     }
+
     /** Restore collection depth on success or failure. */
     ~DeclarationCollectionGuard() { --context_.declarationCollectionDepth_; }
+
     /** Keep each collection interval owned by one guard. */
     DeclarationCollectionGuard(const DeclarationCollectionGuard &) = delete;
     /** Prevent duplicate collection interval ownership. */
@@ -161,6 +172,7 @@ class SemanticContext : public AccessContext {
    * analysis pipeline has run; later stages only read it.
    */
   AnalysisResults &results() { return *results_; }
+
   /** Read-only view of the program-wide analysis results. */
   const AnalysisResults &results() const { return *results_; }
 
@@ -169,11 +181,13 @@ class SemanticContext : public AccessContext {
 
   /** Access the scope currently being analyzed. */
   SemanticScope &currentScope() { return *currentScope_; }
+
   /** Returns the lexical scope used for current semantic lookups. */
   const SemanticScope &currentScope() const { return *currentScope_; }
 
   /** The global scope, for debugging and visualization. */
   SemanticScope &rootScope() { return *rootScope_; }
+
   /** Returns the outermost scope containing the analyzed program. */
   const SemanticScope &rootScope() const { return *rootScope_; }
 
@@ -215,7 +229,8 @@ class SemanticContext : public AccessContext {
    * Enter a function scope with the function's signature for nested function
    * qualified names. The signature should be "funcName(paramType1,paramType2)".
    * funcName is the qualified name of the function.
-   * Generic specializations may contain typed match arms absent from their result type.
+   * Generic specializations may contain typed match arms absent from their
+   * result type.
    */
   void enterFunctionScope(const std::string &funcSig,
                           const sun::semantic_analysis::QualifiedName &funcName,
@@ -447,6 +462,7 @@ class SemanticContext : public AccessContext {
   struct SourceFileGuard {
     SemanticContext &ctx;
     SourceFileId saved;
+
     /** Changes the active source file and saves the previous source context. */
     SourceFileGuard(SemanticContext &c, SourceFileId id)
         : ctx(c), saved(c.sourceFileId_) {
@@ -454,8 +470,10 @@ class SemanticContext : public AccessContext {
         ctx.sourceFileId_ = id;
       }
     }
+
     /** Restores the source file used to resolve imports and report errors. */
     ~SourceFileGuard() { ctx.sourceFileId_ = saved; }
+
     /** Changes the active source file and saves the previous source context. */
     SourceFileGuard(const SourceFileGuard &) = delete;
     /** Disallows assignment so ownership and object identity cannot be
@@ -473,6 +491,7 @@ class SemanticContext : public AccessContext {
   struct ScopeSwitchGuard {
     SemanticContext &ctx;
     SemanticScope *saved;
+
     /** Temporarily switches semantic lookup to another scope. */
     ScopeSwitchGuard(SemanticContext &c, SemanticScope *target)
         : ctx(c), saved(c.currentScope_) {
@@ -480,8 +499,10 @@ class SemanticContext : public AccessContext {
         ctx.currentScope_ = target;
       }
     }
+
     /** Restores the semantic scope active before the guard was created. */
     ~ScopeSwitchGuard() { ctx.currentScope_ = saved; }
+
     /** Temporarily switches semantic lookup to another scope. */
     ScopeSwitchGuard(const ScopeSwitchGuard &) = delete;
     /** Disallows assignment so ownership and object identity cannot be
@@ -495,14 +516,17 @@ class SemanticContext : public AccessContext {
    */
   struct LocationGuard {
     SemanticContext &ctx;
+
     /** Changes the diagnostic source position and saves the previous position.
      */
     LocationGuard(SemanticContext &c, const sun::support::Position &loc)
         : ctx(c) {
       ctx.locationStack_.push_back(&loc);
     }
+
     /** Restores the source position used for subsequent diagnostics. */
     ~LocationGuard() { ctx.locationStack_.pop_back(); }
+
     /** Changes the diagnostic source position and saves the previous position.
      */
     LocationGuard(const LocationGuard &) = delete;

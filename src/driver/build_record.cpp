@@ -148,6 +148,9 @@ std::optional<std::string> readMoonInputHash(const std::string& path) {
       sun::abi::CompilationContext context{
           reader->getTargetTriple(), sun::abi::NativeExecution::NativeLink};
       context.producerWarnings = false;
+      context.exceptionTraceDepth = sun::abi::AbiCompatibilityChecker::current()
+                                        .context()
+                                        .exceptionTraceDepth;
       sun::abi::AbiCompatibilityChecker checker(std::move(context));
       checker.validate(*reader);
     }

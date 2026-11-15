@@ -2,8 +2,8 @@
 
 #include "types/argument_compatibility.h"
 
-#include "types/type_utils.h"
 #include "abi/abi_compatibility_checker.h"
+#include "types/type_utils.h"
 
 /** Type definitions shared by analysis and code generation. */
 namespace sun::types {
@@ -26,8 +26,10 @@ static bool compatibleBorrow(const TypePtr& source, const TypePtr& target) {
       }
     }
     return sun::abi::AbiCompatibilityChecker::current().acceptsNominalBorrow(
-        from.isSpecialized() ? from.getGenericQualifiedName() : from.getQualifiedName(),
-        to.isSpecialized() ? to.getGenericQualifiedName() : to.getQualifiedName(),
+        from.isSpecialized() ? from.getGenericQualifiedName()
+                             : from.getQualifiedName(),
+        to.isSpecialized() ? to.getGenericQualifiedName()
+                           : to.getQualifiedName(),
         sun::abi::NominalKind::Class);
   }
   if (source->isEnum() && target->isEnum()) {

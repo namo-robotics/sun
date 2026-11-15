@@ -89,6 +89,7 @@ struct TypeParameter {
 
   /** Creates a named generic parameter with its optional type constraint. */
   TypeParameter() = default;
+
   /** Creates a named generic parameter with its optional type constraint. */
   explicit TypeParameter(std::string n,
                          std::optional<TypeConstraint> c = std::nullopt)
@@ -138,6 +139,7 @@ struct LifetimeParameter {
 
   /** Creates a named lifetime parameter retaining its source position. */
   LifetimeParameter() = default;
+
   /** Creates a named lifetime parameter retaining its source position. */
   explicit LifetimeParameter(std::string n, sun::support::Position s = {})
       : name(std::move(n)), span(std::move(s)) {}
@@ -203,6 +205,7 @@ struct VariadicParam {
 
   /** Creates a variadic parameter with its optional element annotation. */
   VariadicParam() = default;
+
   /** Creates a variadic parameter with its optional element annotation. */
   explicit VariadicParam(std::string n,
                          std::optional<TypeAnnotation> annot = std::nullopt)

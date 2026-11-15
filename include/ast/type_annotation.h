@@ -91,8 +91,10 @@ struct TypeAnnotation {
 
   /** Creates a type annotation from a name or an existing annotation. */
   TypeAnnotation() = default;
+
   /** Creates a type annotation from a name or an existing annotation. */
   TypeAnnotation(std::string name) : baseName(std::move(name)) {}
+
   /** Creates a type annotation from a name or an existing annotation. */
   TypeAnnotation(const TypeAnnotation& other)
       : declarationKey(other.declarationKey),
@@ -118,6 +120,7 @@ struct TypeAnnotation {
       typeArguments.push_back(std::make_unique<TypeAnnotation>(*typeArg));
     }
   }
+
   /** Replaces the stored state with a copy of another instance. */
   TypeAnnotation& operator=(const TypeAnnotation& other) {
     if (this != &other) {
@@ -152,6 +155,7 @@ struct TypeAnnotation {
     }
     return *this;
   }
+
   /** Creates a type annotation from a name or an existing annotation. */
   TypeAnnotation(TypeAnnotation&&) = default;
   /** Transfers the stored state from another instance during move assignment.
@@ -162,35 +166,44 @@ struct TypeAnnotation {
   bool isRawPointer() const {
     return baseName == "raw_ptr";
   }  // raw_ptr<T> non-owning pointer for C interop
+
   /** Reports whether this syntax node represents a static-pointer annotation.
    */
   bool isStaticPointer() const {
     return baseName == "static_ptr";
   }  // static_ptr<T> pointer to immortal static data
+
   /** Reports whether this syntax node represents a borrowed-reference
    * annotation. */
   bool isReference() const {
     return baseName == "ref";
   }  // ref(T) reference type
+
   /** Reports whether this syntax node represents a reference without write
    * access. */
   bool isConstReference() const { return isReference() && constRef; }
+
   /** Reports whether this syntax node represents a function definition. */
   bool isFunction() const {
     return baseName == "fn";
   }  // function () T thin function-pointer type
+
   /** Reports whether this syntax node represents a lambda expression. */
   bool isLambda() const {
     return baseName == "lambda";
   }  // () => {} anonymous function type
+
   /** Reports whether this syntax node represents an array annotation. */
   bool isArray() const {
     return baseName == "array";
   }  // array<T, N> fixed-size array
+
   /** Reports whether this value can be invoked as a function. */
   bool isCallable() const { return isFunction() || isLambda(); }
+
   /** Reports whether this declaration still has unbound type parameters. */
   bool isGeneric() const { return !typeArguments.empty(); }
+
   /**
    * Reports whether this is a `<'_>` lambda type whose frame has no name:
    * written `<'_>` or with no lifetime at all. Such a type cannot be

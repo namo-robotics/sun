@@ -35,6 +35,7 @@ struct State {
   std::string groupName = "";
   int groupNameNum = -1;  // groupName parsed as int (-1 when unnamed)
 };
+
 /**
  * A group match recorded during a scan. The matched text is NOT stored;
  * callers slice it from their own buffer via [start.offset, end.offset).
@@ -86,6 +87,7 @@ class NFA {
  public:
   State* startState;
   State* acceptingState;
+
   /** Creates an empty nondeterministic automaton ready for pattern
    * construction. */
   NFA() {
@@ -609,6 +611,7 @@ class DFA {
 
   /** Returns the state from which matching begins. */
   int32_t startState() const { return start_; }
+
   /** Reports whether a state cannot continue a match. */
   static bool isDead(int32_t s) { return s == kDead; }
 
@@ -622,11 +625,13 @@ class DFA {
    * Token kind of the alternative accepted in this state, or kNoAccept
    */
   int32_t acceptKind(int32_t s) const { return acceptKind_[s]; }
+
   /** Returns the acceptance information for a deterministic state. */
   bool acceptingState(int32_t s) const { return accepting_[s] != 0; }
 
   /** Returns the number of deterministic states created so far. */
   int stateCount() const { return static_cast<int>(sets_.size()); }
+
   /** Returns the number of transitions requiring uncached computation. */
   long long transitionMisses() const { return misses_; }
 

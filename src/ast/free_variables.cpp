@@ -84,8 +84,6 @@ std::set<std::string> collectFreeVariables(const ExprAST& expr,
       break;
     }
 
-
-
     case ASTNodeType::LAMBDA: {
       // A nested lambda's free variables (minus its own params) are free in
       // the enclosing scope too: the enclosing closure must capture them so

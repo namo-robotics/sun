@@ -17,10 +17,12 @@ struct TokenTable {
 
   /** Returns the state from which token matching begins. */
   int32_t startState() const { return start; }
+
   /** Advances the scanner by one input byte. */
   int32_t step(int32_t state, unsigned char byte) const {
     return transitions[state][byte];
   }
+
   /** Returns the winning token kind, or a negative value for no match. */
   int32_t acceptKind(int32_t state) const { return kinds[state]; }
 };

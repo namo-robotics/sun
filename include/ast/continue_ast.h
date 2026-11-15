@@ -22,8 +22,10 @@ class ContinueAST : public ExprAST {
 
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::CONTINUE_STMT; }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override { return "continue"; }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "Continue"; }
 };

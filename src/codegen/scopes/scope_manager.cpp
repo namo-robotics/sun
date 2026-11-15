@@ -398,7 +398,8 @@ void ScopeManager::emitDeinitCall(const ClassType* classType, Value* receiver) {
   }
   Function* deinitFunc =
       gen_.functionRegistry().lookupFunctionById(classType->deinitializer);
-  gen_.errorGenerator().emitDestructorCall(deinitFunc,
+  gen_.exceptionGenerator().emitDestructorCall(
+      deinitFunc,
       gen_.materializeMethodClosure(deinitFunc, receiver, "deinit.closure"));
 }
 

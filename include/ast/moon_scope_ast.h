@@ -28,8 +28,9 @@ class MoonScopeAST : public ExprAST {
   std::optional<std::string> alias_;  // Optional rename from manifest
   std::string moonPath_;  // Path to the moon file (for error messages)
   std::unique_ptr<BlockExprAST> body_;  // Module stubs from this moon
-  bool embeddedDependency_ = false;  // Available only through retained identities.
-  bool ownBundle_ = false;              // The bundle being built, not an import
+  bool embeddedDependency_ =
+      false;                // Available only through retained identities.
+  bool ownBundle_ = false;  // The bundle being built, not an import
 
  public:
   /** A referenced declaration and the type kind required by this use. */
@@ -95,6 +96,7 @@ class MoonScopeAST : public ExprAST {
       body_->forEachChildSlot(fn);
     }
   }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     if (ownBundle_) {
@@ -132,6 +134,7 @@ class MoonScopeAST : public ExprAST {
    * Get the body containing module stubs
    */
   const BlockExprAST& getBody() const { return *body_; }
+
   /** Provides access to the expressions that make up the body. */
   BlockExprAST& getBody() { return *body_; }
 

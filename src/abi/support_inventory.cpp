@@ -11,9 +11,11 @@
 
 /** Publishes implemented compatibility rules independently of producer age. */
 namespace sun::abi {
-/** Resolves manifest selectors to the identities recorded in bundle contracts. */
+/** Resolves manifest selectors to the identities recorded in bundle contracts.
+ */
 namespace {
-/** Hashes the stable reader contract independently of compiler implementation. */
+/** Hashes the stable reader contract independently of compiler implementation.
+ */
 const std::string& bitcodeContractHash() {
   static const std::string identity =
       hashBitcodeReaderContract(compilerAbiSupport().bitcode_reader_contract());

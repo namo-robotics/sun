@@ -26,6 +26,7 @@ class QualifiedNameAST : public ExprAST {
 
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::QUALIFIED_NAME; }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override { return getFullName(); }
 

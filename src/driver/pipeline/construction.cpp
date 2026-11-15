@@ -1,14 +1,19 @@
 /** Constructs compiler drivers and manages JIT exit handlers. */
+#include <dlfcn.h>
+
 #include <cstdlib>
 #include <mutex>
 #include <vector>
 
 #include "abi/abi_compatibility_checker.h"
+#include "abi/exception_layout.h"
 #include "driver/driver.h"
+#include "driver/exception_runtime.h"
 #include "jit_runtime.h"
+#include "moon_bundling/library_cache.h"
+#include "runtime/exception_sources.h"
 #include "runtime/exceptions.h"
 #include "runtime/panic.h"
-#include "moon_bundling/library_cache.h"
 
 using sun::codegen::CodegenVisitor;
 using sun::moon_bundling::LibraryCache;
@@ -93,13 +98,19 @@ JITExitScope::~JITExitScope() { runJITExitHandlers(); }
 
 // Factory method for JIT execution
 std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
-                                             bool debugInfo, bool optimize) {
+                                             bool debugInfo, bool optimize,
+                                             unsigned exceptionTraceDepth) {
+  if (exceptionTraceDepth > sun::abi::exceptions::maximumTraceDepth) {
+    sun::support::logAndThrowError(
+        "Exception trace depth must be between 0 and " +
+        std::to_string(sun::abi::exceptions::maximumTraceDepth));
+  }
   ensureLLVMInitialized();
 
   // JIT always runs on the host; .moon bundle selection must match.
   LibraryCache::instance().setTargetTriple("", false);
   abi::AbiCompatibilityChecker::prepareCompilation(
-      "", abi::NativeExecution::JIT, debugInfo, optimize);
+      "", abi::NativeExecution::JIT, debugInfo, optimize, exceptionTraceDepth);
 
   auto jit = SunJIT::Create(optimize);
   if (!jit) {
@@ -113,11 +124,36 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
       moduleName, jitShared,
       /*existingContext=*/nullptr,
       /*targetTriple=*/"", debugInfo, optimize);
+  ctx->exceptionTraceDepth = exceptionTraceDepth;
+
+  auto exceptionRuntime = loadExceptionRuntime(exceptionTraceDepth);
+  ExceptionSourceCallbacks sourceCallbacks{sun_eh_register_source_map,
+                                           sun_eh_unregister_source_map};
+  if (exceptionRuntime) {
+    sourceCallbacks.add = reinterpret_cast<decltype(sourceCallbacks.add)>(
+        dlsym(exceptionRuntime.get(), "sun_eh_register_source_map"));
+    sourceCallbacks.remove = reinterpret_cast<decltype(sourceCallbacks.remove)>(
+        dlsym(exceptionRuntime.get(), "sun_eh_unregister_source_map"));
+  }
+  if (!sourceCallbacks.add || !sourceCallbacks.remove) {
+    sun::support::logAndThrowError(
+        "Missing exception source-index runtime entrypoints");
+  }
+  ctx->jit->setExceptionSourceCallbacks(sourceCallbacks);
 
   // Register runtime symbols for JIT
   auto& mainDylib = ctx->jit->getMainJITDylib();
   llvm::orc::SymbolMap runtimeSymbols;
   auto provide = [&](const char* name, void* address) {
+    if (exceptionRuntime &&
+        (std::string_view(name).starts_with("sun_eh_") ||
+         std::string_view(name).compare("sun_report_stack_trace") == 0)) {
+      address = dlsym(exceptionRuntime.get(), name);
+      if (!address) {
+        sun::support::logAndThrowError("Missing exception runtime symbol: " +
+                                       std::string(name));
+      }
+    }
     runtimeSymbols[ctx->jit->mangle(name)] = ExecutorSymbolDef(
         ExecutorAddr::fromPtr(address), JITSymbolFlags::Exported);
   };
@@ -127,6 +163,13 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
   // (On glibc these also live in libc_nonshared.a, out of dlsym's sight.)
   provide("sun_eh_initialize", reinterpret_cast<void*>(&sun_eh_initialize));
   provide("sun_eh_raise", reinterpret_cast<void*>(&sun_eh_raise));
+  provide("sun_eh_throw", reinterpret_cast<void*>(&sun_eh_throw));
+  provide("sun_report_stack_trace",
+          reinterpret_cast<void*>(&sun_report_stack_trace));
+  provide("sun_eh_report", reinterpret_cast<void*>(&sun_eh_report));
+  provide("sun_eh_print_trace", reinterpret_cast<void*>(&sun_eh_print_trace));
+  provide("sun_eh_terminate_exception",
+          reinterpret_cast<void*>(&sun_eh_terminate_exception));
   provide("sun_eh_take", reinterpret_cast<void*>(&sun_eh_take));
   provide("sun_eh_push", reinterpret_cast<void*>(&sun_eh_push));
   provide("sun_eh_pop", reinterpret_cast<void*>(&sun_eh_pop));
@@ -143,9 +186,11 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
   auto codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, analysisResults);
   auto analyzer = std::make_unique<SemanticAnalyzer>(analysisResults);
 
-  return std::unique_ptr<Driver>(new Driver(std::move(ctx), analysisResults,
-                                            std::move(codegenVisitor),
-                                            std::move(analyzer)));
+  auto driver = std::unique_ptr<Driver>(
+      new Driver(std::move(ctx), analysisResults, std::move(codegenVisitor),
+                 std::move(analyzer)));
+  driver->exceptionRuntime_ = std::move(exceptionRuntime);
+  return driver;
 }
 
 void Driver::defineJITSymbol(const std::string& name, void* address) {
@@ -165,18 +210,26 @@ void Driver::defineJITSymbol(const std::string& name, void* address) {
 // Factory method for AOT compilation
 std::unique_ptr<Driver> Driver::createForAOT(const std::string& moduleName,
                                              const std::string& targetTriple,
-                                             bool debugInfo, bool optimize) {
+                                             bool debugInfo, bool optimize,
+                                             unsigned exceptionTraceDepth) {
+  if (exceptionTraceDepth > sun::abi::exceptions::maximumTraceDepth) {
+    sun::support::logAndThrowError(
+        "Exception trace depth must be between 0 and " +
+        std::to_string(sun::abi::exceptions::maximumTraceDepth));
+  }
   ensureLLVMInitialized();
 
   // Both the parser's bundle resolution and the linker's bundle selection
   // key off this; setting it here keeps API users consistent with the CLI.
   LibraryCache::instance().setTargetTriple(targetTriple, false);
   abi::AbiCompatibilityChecker::prepareCompilation(
-      targetTriple, abi::NativeExecution::NativeLink, debugInfo, optimize);
+      targetTriple, abi::NativeExecution::NativeLink, debugInfo, optimize,
+      exceptionTraceDepth);
 
   auto ctx = std::make_unique<sun::codegen::CodegenContext>(
       moduleName, nullptr,
       /*existingContext=*/nullptr, targetTriple, debugInfo, optimize);
+  ctx->exceptionTraceDepth = exceptionTraceDepth;
   auto analysisResults = std::make_shared<AnalysisResults>();
   auto codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, analysisResults);
   auto analyzer = std::make_unique<SemanticAnalyzer>(analysisResults);

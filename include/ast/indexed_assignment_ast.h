@@ -35,14 +35,18 @@ class IndexedAssignmentAST : public ExprAST {
     fn(target);
     fn(value);
   }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     return target->toString() + " = " + value->toString();
   }
+
   /** Returns the target stored by this object. */
   const ExprAST* getTarget() const { return target.get(); }
+
   /** Returns the value represented by this object. */
   const ExprAST* getValue() const { return value.get(); }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "IndexedAssign"; }
 };

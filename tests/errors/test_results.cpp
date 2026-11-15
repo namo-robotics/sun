@@ -40,12 +40,14 @@ TEST(Errors_Integration, generic_typed_matches_allow_absent_payloads) {
       return classify(One.Failed(First())) + classify(Two.Failed(Second()))
         + classify(One.Ok) + classify(Two.Ok);
     }
-  )"), 3);
+  )"),
+            3);
 }
 
 /** Concrete matches still diagnose a payload type that cannot occur. */
 TEST(Errors_Integration, concrete_typed_matches_reject_absent_payloads) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
     /** Identifies a failure absent from the result. */
     class Failure {}
     /** Has no payload to bind. */
@@ -57,7 +59,8 @@ TEST(Errors_Integration, concrete_typed_matches_reject_absent_payloads) {
         _ => 0
       };
     }
-  )"), "Typed match pattern matches no variant payloads");
+  )"),
+      "Typed match pattern matches no variant payloads");
 }
 
 /** Obsolete wire nodes are rejected before they enter the compiler AST. */
@@ -232,10 +235,14 @@ TEST(Errors_Integration, syntax_serialization) {
   int typed = 0;
   std::function<void(const sun::ast::ExprAST&)> visit =
       [&](const sun::ast::ExprAST& node) {
-        if (dynamic_cast<const sun::ast::TryCatchAST*>(&node)) ++handlers;
+        if (dynamic_cast<const sun::ast::TryCatchAST*>(&node)) {
+          ++handlers;
+        }
         if (auto* match = dynamic_cast<const sun::ast::MatchExprAST*>(&node)) {
           for (const auto& arm : match->getArms()) {
-            if (!arm.bindingType) continue;
+            if (!arm.bindingType) {
+              continue;
+            }
             ++typed;
             EXPECT_TRUE(arm.bindingType->isReference());
             EXPECT_TRUE(arm.bindings.front().isWildcard);
@@ -372,7 +379,8 @@ TEST(Errors_Integration, removed_exception_syntax) {
       "Unknown type");
 }
 
-/** Returning a result as its payload must be diagnosed before code generation. */
+/** Returning a result as its payload must be diagnosed before code generation.
+ */
 TEST(Errors_Integration, result_cannot_be_returned_as_its_payload) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     /** Provides a compound success payload. */
@@ -383,12 +391,15 @@ TEST(Errors_Integration, result_cannot_be_returned_as_its_payload) {
     function invalid() Value { return Outcome.Ok(Value()); }
     /** Supplies an entry point for analysis. */
     function main() i32 { return 0; }
-  )"), "Return value has type");
+  )"),
+                                "Return value has type");
 }
 
-/** Consumed call and match results must not accumulate cleanup at later tries. */
+/** Consumed call and match results must not accumulate cleanup at later tries.
+ */
 TEST(Errors_Integration, consumed_temporaries_have_linear_cleanup_ir) {
-  /** Counts unoptimized instructions while increasing independent propagations. */
+  /** Counts unoptimized instructions while increasing independent propagations.
+   */
   const auto instructionCount = [](int repetitions) {
     std::string source = R"(
       /** Gives a successful result an owning payload. */
@@ -418,12 +429,13 @@ TEST(Errors_Integration, consumed_temporaries_have_linear_cleanup_ir) {
         var factory = Factory();
     )";
     for (int i = 0; i < repetitions; ++i) {
-      source += "source(); generic_source<i32>(); "
-                "factory.source(); consume(make());\n";
+      source +=
+          "source(); generic_source<i32>(); "
+          "factory.source(); consume(make());\n";
     }
     source += "return; }";
-    auto driver = sun::driver::Driver::createForAOT(
-        "cleanup_growth", "", false, false);
+    auto driver =
+        sun::driver::Driver::createForAOT("cleanup_growth", "", false, false);
     driver->compileString(source);
     size_t count = 0;
     for (const auto& function : driver->getModule()) {
@@ -435,19 +447,21 @@ TEST(Errors_Integration, consumed_temporaries_have_linear_cleanup_ir) {
   };
   const auto small = instructionCount(8);
   const auto large = instructionCount(16);
-  EXPECT_LT(large * 2, small * 5)
-      << "Doubling independent throwing calls should not produce quadratic cleanup: "
-      << small << " -> " << large;
+  EXPECT_LT(large * 2, small * 5) << "Doubling independent throwing calls "
+                                     "should not produce quadratic cleanup: "
+                                  << small << " -> " << large;
 }
 
-/** Legacy propagation syntax is rejected rather than silently changing behavior. */
+/** Legacy propagation syntax is rejected rather than silently changing
+ * behavior. */
 TEST(Errors_Integration, rejects_prefix_try) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::analyzeString(R"(
     /** Supplies an ordinary value. */
     function source() i32 { return 42; }
     /** Attempts to use the removed prefix syntax. */
     function caller() i32 throws { return try source(); }
-  )"), "Prefix try was removed");
+  )"),
+                                "Prefix try was removed");
 }
 
 /** Removed result and discard builtins cannot conceal unhandled failures. */
@@ -455,14 +469,17 @@ TEST(Errors_Integration, rejects_removed_builtins) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::analyzeString(R"(
     /** Attempts to name the removed builtin wrapper. */
     function source() _Result<i32, bool> { return _Result.Ok(42); }
-  )"), "Unknown generic type");
+  )"),
+                                "Unknown generic type");
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     /** Attempts to use the removed discard intrinsic. */
     function main() i32 { ignore_error(42); return 0; }
-  )"), "Unknown");
+  )"),
+                                "Unknown");
 }
 
-/** Successful direct returns and failure propagation evaluate each call once. */
+/** Successful direct returns and failure propagation evaluate each call once.
+ */
 TEST(Errors_Integration, propagation_evaluates_once) {
   EXPECT_EQ(executeString(R"(
     var calls: i32 = 0;
@@ -485,10 +502,12 @@ TEST(Errors_Integration, propagation_evaluates_once) {
       }
       return -2;
     }
-  )"), 42);
+  )"),
+            42);
 }
 
-/** Throwing reference returns preserve the caller's array view without copying. */
+/** Throwing reference returns preserve the caller's array view without copying.
+ */
 TEST(Errors_Integration, borrowed_array_success) {
   EXPECT_EQ(executeString(R"(
     /** Forwards caller-owned storage through a throwing signature. */
@@ -504,10 +523,12 @@ TEST(Errors_Integration, borrowed_array_success) {
       update(values);
       return values[0];
     }
-  )"), 42);
+  )"),
+            42);
 }
 
-/** A throws annotation cannot permit references into an unwound frame to escape. */
+/** A throws annotation cannot permit references into an unwound frame to
+ * escape. */
 TEST(Errors_Integration, throwing_reference_cannot_escape_local) {
   EXPECT_THROW(executeString(R"(
     /** Returns its caller's reference. */
@@ -516,7 +537,8 @@ TEST(Errors_Integration, throwing_reference_cannot_escape_local) {
     function invalid() const ref i32 throws { var value = 42; return borrow(value); }
     /** Forces analysis without executing the invalid function. */
     function main() i32 { return 0; }
-  )"), sun::support::SunError);
+  )"),
+               sun::support::SunError);
 }
 
 /** Earlier arguments are destroyed once if a later argument throws. */
@@ -543,10 +565,12 @@ TEST(Errors_Integration, pending_argument_cleanup) {
       try { consume(make(), fail()); } catch (error: Failure) { return drops; }
       return -1;
     }
-  )"), 1);
+  )"),
+            1);
 }
 
-/** Failed generic constructors destroy initialized fields but not incomplete objects. */
+/** Failed generic constructors destroy initialized fields but not incomplete
+ * objects. */
 TEST(Errors_Integration, partial_generic_constructor_cleanup) {
   EXPECT_EQ(executeString(R"(
     var drops: i32 = 0;
@@ -583,10 +607,12 @@ TEST(Errors_Integration, partial_generic_constructor_cleanup) {
       attempt(false);
       return drops * 10 + completed;
     }
-  )"), 31);
+  )"),
+            31);
 }
 
-/** Native constructors still require complete initialization on successful paths. */
+/** Native constructors still require complete initialization on successful
+ * paths. */
 TEST(Errors_Integration, throwing_constructor_requires_complete_success) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     /** Leaves a required field uninitialized. */
@@ -597,10 +623,12 @@ TEST(Errors_Integration, throwing_constructor_requires_complete_success) {
     }
     /** Forces declaration analysis. */
     function main() i32 { return 0; }
-  )"), "unassigned");
+  )"),
+                                "unassigned");
 }
 
-/** In-place construction propagates its exception before caller-owned storage is freed. */
+/** In-place construction propagates its exception before caller-owned storage
+ * is freed. */
 TEST(Errors_Integration, in_place_initialization_throws) {
   EXPECT_EQ(executeString(R"(
     /** Carries the construction status. */
@@ -621,5 +649,6 @@ TEST(Errors_Integration, in_place_initialization_throws) {
         return code;
       };
     }
-  )"), 42);
+  )"),
+            42);
 }

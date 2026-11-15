@@ -12,7 +12,8 @@ const proto::CompilerAbiSupport& compilerAbiSupport();
 /** Returns supported rule implementations; this inventory never authorizes a
  * payload. */
 std::map<std::string, std::string> supportedRules();
-/** Recognizes well-formed advisory fingerprints for implemented experimental rules. */
+/** Recognizes well-formed advisory fingerprints for implemented experimental
+ * rules. */
 bool isExperimentalFingerprint(const std::string& name,
                                const std::string& implementation);
 /** Compares rule identities, allowing experimental fingerprints and bitcode

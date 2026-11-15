@@ -73,8 +73,7 @@ class MatchExprAST : public ExprAST {
    * expressions. */
   MatchExprAST(std::unique_ptr<ExprAST> discriminant,
                std::vector<MatchArm> arms)
-      : discriminant(std::move(discriminant)),
-        arms(std::move(arms)) {}
+      : discriminant(std::move(discriminant)), arms(std::move(arms)) {}
 
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::MATCH; }
@@ -105,8 +104,10 @@ class MatchExprAST : public ExprAST {
 
   /** Returns the enum tag. */
   const ExprAST* getDiscriminant() const { return discriminant.get(); }
+
   /** Returns the pattern-match branches. */
   const std::vector<MatchArm>& getArms() const { return arms; }
+
   /** Returns the modifiable pattern-match branches. */
   std::vector<MatchArm>& getArmsMutable() { return arms; }
 
@@ -119,6 +120,7 @@ class MatchExprAST : public ExprAST {
       fn(arm.body);
     }
   }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "Match"; }
 };

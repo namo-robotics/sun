@@ -4,6 +4,7 @@
 namespace sun::codegen {
 class CodegenVisitor;
 }
+
 /** Provides the scope manager responsible for variable storage and cleanup. */
 namespace sun::codegen::scopes {
 class ScopeManager;
@@ -23,24 +24,24 @@ class ScopeManager;
 #include "codegen/codegen_state.h"
 
 /** Generates native exception handling and ownership cleanup. */
-namespace sun::codegen::errors {
+namespace sun::codegen::exceptions {
 using sun::ast::ExprAST;
 
 /** Emits throws, handlers, unsafe blocks, and calls with ownership cleanup. */
-class ErrorGenerator {
+class ExceptionGenerator {
  public:
-  /** Binds error propagation generation to the shared expression visitor and
-   * state. */
-  ErrorGenerator(sun::codegen::CodegenState& state,
-                 sun::codegen::CodegenVisitor& gen)
+  /** Binds exception propagation generation to the shared expression visitor
+   * and state. */
+  ExceptionGenerator(sun::codegen::CodegenState& state,
+                     sun::codegen::CodegenVisitor& gen)
       : state_(state), gen_(gen), ctx(state.ctx), module(state.module) {}
 
-  /** Binds error propagation generation to the shared expression visitor and
-   * state. */
-  ErrorGenerator(const ErrorGenerator&) = delete;
+  /** Binds exception propagation generation to the shared expression visitor
+   * and state. */
+  ExceptionGenerator(const ExceptionGenerator&) = delete;
   /** Disallows assignment so ownership and object identity cannot be
    * duplicated. */
-  ErrorGenerator& operator=(const ErrorGenerator&) = delete;
+  ExceptionGenerator& operator=(const ExceptionGenerator&) = delete;
 
   /**
    * The body is emitted as written, in a scope of its own; the block's value
@@ -66,6 +67,21 @@ class ErrorGenerator {
   llvm::Value* codegen(const sun::ast::TryCatchAST& statement);
   /** Terminates if a destructor violates its non-throwing boundary. */
   void emitDestructorCall(llvm::Function* callee, llvm::Value* receiver);
+  /** Reserves destructor-owned propagation storage and restores it at every
+   * return. */
+  void protectDestructor(llvm::Function* function);
+  /** Removes destructor storage only when a fixed-point call analysis proves it
+   * unnecessary. */
+  void omitInfallibleDestructorStorage();
+  /** Lowers current-stack reporting and catch-only exception trace intrinsics.
+   */
+  std::optional<llvm::Value*> emitTraceOperation(
+      const sun::ast::ExprAST& call,
+      const std::vector<std::unique_ptr<sun::ast::ExprAST>>& arguments);
+  /** Reports the retained value of this function's current catch, including
+   * anonymous catches. */
+  llvm::Value* reportCurrentException(const sun::support::Position& location,
+                                      bool unhandled);
 
  private:
   /** Describes a handler in the currently generated function. */
@@ -76,12 +92,14 @@ class ErrorGenerator {
     llvm::PHINode* exception;
     std::size_t depth;
   };
+
   /** Retains the full concrete value while a catch exposes its family view. */
   struct NativeCatch {
     llvm::Function* function;
     sun::semantic_analysis::DeclarationId binding;
     llvm::Value* record;
   };
+
   std::vector<NativeHandler> nativeHandlers_;
   std::vector<NativeCatch> nativeCatches_;
   /** Emits immutable nominal metadata including the payload layout contract. */
@@ -92,10 +110,11 @@ class ErrorGenerator {
   llvm::Value* emitNativeCall(llvm::FunctionType* type, llvm::Value* callee,
                               llvm::ArrayRef<llvm::Value*> args,
                               const llvm::Twine& name);
-  /** Runs exceptional cleanup with a separate stable record for nested throws. */
+  /** Runs exceptional cleanup with a separate stable record for nested throws.
+   */
   void emitNativeCleanup(std::size_t depth);
   /** Terminates at a non-throwing boundary without invoking further cleanup. */
-  void emitExceptionTermination();
+  void emitExceptionTermination(llvm::Value* exception);
   sun::codegen::CodegenState& state_;
   sun::codegen::CodegenVisitor& gen_;
   sun::codegen::CodegenContext& ctx;
@@ -135,7 +154,6 @@ class ErrorGenerator {
    * contains an invoke/landingpad). Idempotent.
    */
   void ensurePersonality(llvm::Function* fn);
-
 };
 
-}  // namespace sun::codegen::errors
+}  // namespace sun::codegen::exceptions

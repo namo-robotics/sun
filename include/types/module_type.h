@@ -20,8 +20,10 @@ class ModuleType : public Type {
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::Module;
+
   /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
+
   /** Returns the module path stored by this object. */
   const std::string& getModulePath() const { return modulePath; }
 

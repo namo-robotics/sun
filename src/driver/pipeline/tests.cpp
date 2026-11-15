@@ -82,9 +82,8 @@ void visitTests(BlockExprAST& block, std::vector<std::string>& modulePath,
         path += segment + ".";
       }
       path += func.getProto().getName();
-      found->push_back({path,
-                        "run_one",
-                        func.getLocation(), func.getProto().getName()});
+      found->push_back(
+          {path, "run_one", func.getLocation(), func.getProto().getName()});
       ++it;
       continue;
     }

@@ -88,7 +88,7 @@ struct ClassAllocation {
  */
 struct CodegenScope {
   std::map<DeclarationId, llvm::AllocaInst*> variables;
-  bool isFunctionBoundary = false;     // True for scopes marking function entry
+  bool isFunctionBoundary = false;  // True for scopes marking function entry
   bool hasDebugScope = false;  // True when a DILexicalBlock was opened with it
   std::vector<OwnedAllocation> ownedAllocations;
   std::vector<ClassAllocation> classAllocations;
@@ -126,10 +126,13 @@ class ScopeManager {
 
   /** Reports whether this object contains no entries. */
   bool empty() const { return scopes_.empty(); }
+
   /** Returns the number of stored entries. */
   size_t size() const { return scopes_.size(); }
+
   /** Provides access to the most recently entered scope. */
   CodegenScope& back() { return scopes_.back(); }
+
   /** Provides indexed access to the stored elements. */
   CodegenScope& operator[](size_t i) { return scopes_[i]; }
 

@@ -36,6 +36,7 @@ class ScopedEnvironment {
       unsetenv(name);
     }
   }
+
   /** Restores the value present before the test. */
   ~ScopedEnvironment() {
     if (old_) {
@@ -57,6 +58,7 @@ class ColoredStringStream : public llvm::raw_string_ostream {
   /** Captures output in the supplied string. */
   explicit ColoredStringStream(std::string& output)
       : llvm::raw_string_ostream(output) {}
+
   /** Enables terminal styling for isolated rendering checks. */
   bool has_colors() const override { return true; }
 };
@@ -65,13 +67,15 @@ class ColoredStringStream : public llvm::raw_string_ostream {
 class TerminalFileFixture : public testing::Test {
  protected:
   std::filesystem::path directory;
+
   /** Creates a scratch directory under the workspace temporary directory. */
   void SetUp() override {
     directory = std::filesystem::current_path() / "tmp" /
-        (std::string("terminal_format_") +
-         testing::UnitTest::GetInstance()->current_test_info()->name());
+                (std::string("terminal_format_") +
+                 testing::UnitTest::GetInstance()->current_test_info()->name());
     std::filesystem::create_directories(directory);
   }
+
   /** Removes this fixture's scratch files. */
   void TearDown() override { std::filesystem::remove_all(directory); }
 };
@@ -169,7 +173,8 @@ TEST(Tooling_Cli_Terminal, multiline_warnings_are_prefixed) {
             "[sun][warning]: first\n[sun][warning]: second\n");
 }
 
-/** Build progress stays short while debug messages retain both absolute paths. */
+/** Build progress stays short while debug messages retain both absolute paths.
+ */
 TEST(Tooling_Cli_Terminal, build_progress_keeps_paths_in_debug_output) {
   ScopedEnvironment level("SUN_LOG_LEVEL", "debug");
   ScopedEnvironment noColor("NO_COLOR", "1");
@@ -189,7 +194,8 @@ TEST(Tooling_Cli_Terminal, build_progress_keeps_paths_in_debug_output) {
 TEST(Tooling_Cli_Terminal, default_level_is_info) {
   ScopedEnvironment level("SUN_LOG_LEVEL", nullptr);
   ScopedEnvironment noColor("NO_COLOR", "1");
-  // Earlier tests can leave messages in LLVM's buffer when stdout is redirected.
+  // Earlier tests can leave messages in LLVM's buffer when stdout is
+  // redirected.
   llvm::outs() << "output before capture\n";
   captureStdout();
   testing::internal::CaptureStderr();
@@ -298,6 +304,14 @@ TEST(Tooling_Cli_Terminal, linker_output_preserves_severity_and_exit_status) {
 TEST_F(TerminalFileFixture, embedded_runtime_source_is_self_contained) {
   const auto source = directory / "runtime source.cpp";
   const auto binary = directory / "runtime probe";
+  const auto storage = directory / "runtime storage.o";
+  llvm::InitializeNativeTarget();
+  llvm::InitializeNativeTargetAsmPrinter();
+  llvm::LLVMContext context;
+  llvm::Module module("runtime_storage", context);
+  std::string error;
+  ASSERT_TRUE(sun::driver::emitObjectFile(module, storage.string(), error))
+      << error;
   {
     std::ofstream output(source);
     output << sun::driver::embeddedExceptionRuntimeSource().str();
@@ -306,7 +320,8 @@ TEST_F(TerminalFileFixture, embedded_runtime_source_is_self_contained) {
   }
   const auto command =
       "cc -std=c++20 -O2 -fno-exceptions -fno-rtti -funwind-tables " +
-      sun::driver::shellQuote(source.string()) + " -o " +
+      sun::driver::shellQuote(source.string()) + " " +
+      sun::driver::shellQuote(storage.string()) + " -o " +
       sun::driver::shellQuote(binary.string());
   ASSERT_EQ(std::system(command.c_str()), 0);
   EXPECT_EQ(std::system(sun::driver::shellQuote(binary.string()).c_str()), 0);
