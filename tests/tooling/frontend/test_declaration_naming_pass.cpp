@@ -5,11 +5,11 @@
 #include "ast.h"
 #include "ast/ast_children.h"
 #include "driver/execution_utils.h"
-#include "semantic_analysis/semantic_analyzer.h"
 #include "parsing/parser.h"
 #include "semantic_analysis/analysis_results.h"
 #include "semantic_analysis/passes/declaration_naming_pass.h"
 #include "semantic_analysis/passes/field_initializer_preparation_pass.h"
+#include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/semantic_pipeline.h"
 #include "semantic_analysis/type_analysis/type_rules.h"
 

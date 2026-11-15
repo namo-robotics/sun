@@ -62,6 +62,7 @@ class ForInExprAST : public ExprAST {
     fn(Iterable);
     fn(Body);
   }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     return std::string(isConst_ ? "for (const " : "for (var ") + LoopVar +
@@ -71,12 +72,16 @@ class ForInExprAST : public ExprAST {
 
   /** Reports whether this syntax node represents an immutable declaration. */
   bool isConst() const { return isConst_; }
+
   /** Returns the loop variable declaration. */
   const std::string& getLoopVar() const { return LoopVar; }
+
   /** Returns the declared loop-variable type. */
   const TypeAnnotation& getLoopVarType() const { return LoopVarType; }
+
   /** Returns the expression being iterated. */
   const ExprAST* getIterable() const { return Iterable.get(); }
+
   /** Provides access to the expressions that make up the body. */
   const ExprAST* getBody() const { return Body.get(); }
 
@@ -91,12 +96,14 @@ class ForInExprAST : public ExprAST {
   void setResolvedLoopVarType(sun::types::TypePtr type) const {
     forInAnalysis().resolvedLoopVarType = std::move(type);
   }
+
   /** Returns the loop-variable type selected by analysis. */
   sun::types::TypePtr getResolvedLoopVarType() const {
     return analysis_
                ? static_cast<ForInAnalysis&>(*analysis_).resolvedLoopVarType
                : nullptr;
   }
+
   /** Reports whether this object has resolved loop var type. */
   bool hasResolvedLoopVarType() const {
     return analysis_ &&

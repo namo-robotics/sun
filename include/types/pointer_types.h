@@ -21,8 +21,10 @@ class RawPointerType : public Type {
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::RawPointer;
+
   /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
+
   /** Returns the pointee type stored by this object. */
   const TypePtr& getPointeeType() const { return pointeeType; }
 
@@ -74,8 +76,10 @@ class StaticPointerType : public Type {
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::StaticPointer;
+
   /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
+
   /** Returns the pointee type stored by this object. */
   const TypePtr& getPointeeType() const { return pointeeType; }
 
@@ -151,6 +155,7 @@ class NullPointerType : public Type {
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::NullPointer;
+
   /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
 

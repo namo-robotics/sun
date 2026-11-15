@@ -129,8 +129,12 @@ void addSourceDigests(
 /** Computes a digest covering the inputs and settings of a build. */
 std::string computeInputHash(const BuildInputs& inputs) {
   sun::abi::CompilationContext context{
-      inputs.targetTriple, sun::abi::NativeExecution::NativeLink,
-      inputs.debugInfo, inputs.optimize, inputs.settings};
+      .targetTriple = inputs.targetTriple,
+      .execution = sun::abi::NativeExecution::NativeLink,
+      .debugInfo = inputs.debugInfo,
+      .optimize = inputs.optimize,
+      .linkOptions = inputs.settings,
+      .exceptionTraceDepth = inputs.exceptionTraceDepth};
   sun::abi::AbiCompatibilityChecker isolated(context);
   auto& current = sun::abi::AbiCompatibilityChecker::current();
   const auto& active = current.context();
@@ -138,7 +142,8 @@ std::string computeInputHash(const BuildInputs& inputs) {
                      active.targetTriple == context.targetTriple &&
                      active.execution == context.execution &&
                      active.debugInfo == context.debugInfo &&
-                     active.optimize == context.optimize;
+                     active.optimize == context.optimize &&
+                     active.exceptionTraceDepth == context.exceptionTraceDepth;
   // A differently configured artifact may only be probed for build skipping.
   // Its real compilation gets its own scope and emits import diagnostics there.
   if (sun::abi::AbiCompatibilityChecker::hasValidationScope() && !share) {
@@ -192,6 +197,8 @@ std::string computeInputHash(const BuildInputs& inputs) {
                                    : inputs.targetTriple);
   input += hashField("debug", inputs.debugInfo ? "1" : "0");
   input += hashField("optimize", inputs.optimize ? "1" : "0");
+  input += hashField("exception_trace_depth",
+                     std::to_string(inputs.exceptionTraceDepth));
   for (const auto& [name, value] : inputs.settings) {
     input += hashField("setting", hashField(name, value));
   }

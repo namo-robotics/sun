@@ -241,6 +241,7 @@ class GenericSpecializer {
         ast;
     bool isMethod = false;
   };
+
   std::deque<PendingBody> pendingBodies_;
 
   /** Check ordinary specialized methods, then constructor initialization. */

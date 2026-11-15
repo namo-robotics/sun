@@ -128,10 +128,13 @@ class SemanticAnalyzer {
 
   /** Declaration checks, signatures, and global initializer dependencies. */
   DeclarationAnalyzer &declarations() { return declarations_; }
+
   /** Class definitions, partial classes, and packed layout restrictions. */
   ClassAnalyzer &classes() { return classes_; }
+
   /** Expression checking, result types, conversions, and value access. */
   ExpressionAnalyzer &expressions() { return expressions_; }
+
   /** Call resolution and checking. */
   CallAnalyzer &calls() { return calls_; }
 

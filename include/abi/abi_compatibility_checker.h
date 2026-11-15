@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "abi/compatibility.h"
+#include "abi/exception_layout.h"
 #include "abi/nominal_identity.h"
 #include "semantic_analysis/qualified_name.h"
 
@@ -31,6 +32,7 @@ struct CompilationContext {
   bool optimize = true;
   std::vector<std::pair<std::string, std::string>> linkOptions;
   bool producerWarnings = true;
+  unsigned exceptionTraceDepth = sun::abi::exceptions::defaultTraceDepth;
   /** Compares all options, preserving native link order. */
   bool operator==(const CompilationContext&) const = default;
 };
@@ -44,9 +46,11 @@ class ValidatedBundle {
 
  private:
   friend class AbiCompatibilityChecker;
+
   /** Only the checker can authorize a contract after checking its payload. */
   explicit ValidatedBundle(std::shared_ptr<const BundleContract> contract)
       : contract_(std::move(contract)) {}
+
   std::shared_ptr<const BundleContract> contract_;
 };
 
@@ -61,14 +65,17 @@ class AbiCompatibilityChecker {
       NativeExecution execution = NativeExecution::JIT);
   /** Creates a checker with the complete compilation settings. */
   explicit AbiCompatibilityChecker(CompilationContext context);
+
   /** Returns immutable settings used by all validations in this checker. */
   const CompilationContext& context() const { return context_; }
+
   /** Resets authorizations when any compilation setting changes. */
   void configure(CompilationContext context);
   /** Prepares a driver, retaining matching preflight state inside a scope. */
-  static void prepareCompilation(const std::string& targetTriple,
-                                 NativeExecution execution, bool debugInfo,
-                                 bool optimize);
+  static void prepareCompilation(
+      const std::string& targetTriple, NativeExecution execution,
+      bool debugInfo, bool optimize,
+      unsigned exceptionTraceDepth = sun::abi::exceptions::defaultTraceDepth);
   /** Reports whether an explicit compilation scope owns the current checker. */
   static bool hasValidationScope();
   /** Returns the current thread's checker shared by compiler import paths. */
@@ -95,17 +102,18 @@ class AbiCompatibilityChecker {
   void validateContract(const BundleContract& contract,
                         const std::string& bundle,
                         const std::string& targetTriple) const;
+
   /** Returns requirements inherited from imports accepted during this
    * compilation. */
   const std::map<std::string, BundleContract>& importedContracts() const {
     return importedContracts_;
   }
 
-  /** Checks a borrowed nominal argument without replacing either declaration. */
-  bool acceptsNominalBorrow(
-      const sun::semantic_analysis::QualifiedName& source,
-      const sun::semantic_analysis::QualifiedName& target,
-      NominalKind kind) const;
+  /** Checks a borrowed nominal argument without replacing either declaration.
+   */
+  bool acceptsNominalBorrow(const sun::semantic_analysis::QualifiedName& source,
+                            const sun::semantic_analysis::QualifiedName& target,
+                            NominalKind kind) const;
 
  private:
   /** Records ABI-compatible artifact pairs for later argument checks. */

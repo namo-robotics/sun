@@ -210,7 +210,14 @@ if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8 OR NOT
    (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR APPLE))
     message(FATAL_ERROR "Sun exception transport requires a 64-bit Linux or macOS host")
 endif()
-add_library(sun_exception_runtime STATIC src/runtime/exceptions.cpp src/runtime/panic.cpp)
+set(SUN_EXCEPTION_RUNTIME_SOURCES
+    src/runtime/exceptions.cpp
+    src/runtime/exception_sources.cpp
+    src/runtime/exception_trace.cpp
+    src/runtime/exception_report.cpp
+    src/runtime/exception_personality.cpp
+    src/runtime/panic.cpp)
+add_library(sun_exception_runtime STATIC ${SUN_EXCEPTION_RUNTIME_SOURCES})
 target_include_directories(sun_exception_runtime PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 # Native propagation must unwind through sun_eh_raise even without C++ exceptions.
 # Darwin Clang otherwise omits the runtime's unwind tables in optimized builds.
@@ -222,7 +229,8 @@ set_target_properties(sun_exception_runtime PROPERTIES
     POSITION_INDEPENDENT_CODE ON INTERPROCEDURAL_OPTIMIZATION OFF)
 
 # Compiler-side JIT support is separate from the runtime linked into Sun programs.
-add_library(sun_jit_support STATIC src/driver/jit/unwind_registration.cpp)
+add_library(sun_jit_support STATIC src/driver/jit/unwind_registration.cpp
+    src/driver/jit/exception_storage.cpp src/driver/jit/exception_sources.cpp)
 target_include_directories(sun_jit_support PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(sun_jit_support PUBLIC LLVM PRIVATE ${CMAKE_DL_LIBS})
 set_target_properties(sun_jit_support PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -233,6 +241,7 @@ add_library(sun_lib
     # Driver: pipeline orchestration
     src/driver/pipeline/execution.cpp
     src/driver/pipeline/main_entry.cpp
+    src/driver/exception_runtime.cpp
     src/driver/pipeline/construction.cpp
     src/driver/pipeline/inspection.cpp
     src/driver/pipeline/analysis.cpp
@@ -283,6 +292,7 @@ add_library(sun_lib
     src/semantic_analysis/body_analysis/type_guards.cpp
     src/semantic_analysis/call_analysis/argument_conversion.cpp
     src/semantic_analysis/call_analysis/call_analyzer.cpp
+    src/semantic_analysis/call_analysis/intrinsic_calls.cpp
     src/semantic_analysis/call_analysis/call_result_resolution.cpp
     src/semantic_analysis/class_analysis/class_definitions.cpp
     src/semantic_analysis/class_analysis/field_initialization.cpp
@@ -365,9 +375,9 @@ add_library(sun_lib
     src/codegen/expressions/match_expressions.cpp
     src/codegen/loops/loop_generator.cpp
     src/codegen/loops/loops.cpp
-    src/codegen/errors/error_generator.cpp
-    src/codegen/errors/error_handling.cpp
-    src/codegen/errors/native_exceptions.cpp
+    src/codegen/exceptions/exception_generator.cpp
+    src/codegen/exceptions/exception_handling.cpp
+    src/codegen/exceptions/native_exceptions.cpp
     src/semantic_analysis/body_analysis/exceptions.cpp
     src/codegen/abi/aapcs64/aapcs64.cpp
     src/codegen/abi/c_abi.cpp
@@ -481,7 +491,7 @@ add_custom_command(OUTPUT ${EXCEPTION_ARCHIVE_SOURCE}
         -P ${CMAKE_SOURCE_DIR}/cmake/EmbedArchive.cmake
     DEPENDS sun_exception_runtime ${CMAKE_SOURCE_DIR}/cmake/EmbedArchive.cmake
         include/abi/exception_layout.h include/runtime/exceptions.h
-        include/runtime/panic.h src/runtime/exceptions.cpp src/runtime/panic.cpp
+        include/runtime/panic.h include/runtime/exception_trace.h include/runtime/exception_sources.h ${SUN_EXCEPTION_RUNTIME_SOURCES}
     COMMENT "Embedding the native exception runtime archive" VERBATIM)
 target_sources(sun_lib PRIVATE ${EXCEPTION_ARCHIVE_SOURCE})
 
@@ -538,7 +548,7 @@ target_precompile_headers(sun_lib PRIVATE
     include/codegen/functions/function_registry.h
     include/codegen/variables/variable_generator.h
     include/codegen/loops/loop_generator.h
-    include/codegen/errors/error_generator.h
+    include/codegen/exceptions/exception_generator.h
     include/codegen/intrinsics/intrinsics.h
     include/codegen/intrinsics/intrinsics_generator.h
 )

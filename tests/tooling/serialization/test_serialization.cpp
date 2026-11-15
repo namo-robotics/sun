@@ -1055,6 +1055,7 @@ TEST(Tooling_Serialization, ReferenceTypeAnnotation) {
   ASSERT_NE(restored, nullptr);
   EXPECT_EQ(restored->getType(), ASTNodeType::BLOCK);
 }
+
 TEST(Tooling_Serialization, FunctionPointerTypeAnnotationRoundtrip) {
   auto block = parseCode(R"(
     function use(callback: function (i32, bool) i64 throws) void {}

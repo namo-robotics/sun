@@ -18,6 +18,7 @@ namespace {
 class ABI_LibraryAbiSnapshot : public testing::Test {
  protected:
   std::filesystem::path directory;
+
   /** Creates a per-test workspace and initializes compiler dependencies. */
   void SetUp() override {
     sun::driver::initTestEnvironment();
@@ -26,6 +27,7 @@ class ABI_LibraryAbiSnapshot : public testing::Test {
     std::filesystem::create_directories(directory);
     std::ofstream(directory / "sun-config.json") << R"({"root":true})";
   }
+
   /** Packages source with an explicit dependency list. */
   std::string build(const std::string& name, const std::string& source,
                     const std::vector<std::string>& dependencies = {},
@@ -41,6 +43,7 @@ class ABI_LibraryAbiSnapshot : public testing::Test {
     sun::moon_bundling::MoonBuilder::build(path.string(), output, options);
     return output.string();
   }
+
   /** Runs a consumer using exactly the selected revisions. */
   sun::driver::SunValue run(const std::vector<std::string>& dependencies,
                             const std::string& source) {
@@ -52,6 +55,7 @@ class ABI_LibraryAbiSnapshot : public testing::Test {
     driver->setMoonImports(imports);
     return driver->executeString(source);
   }
+
   /** Builds a Point revision with a chosen identity, body, and layout. */
   std::string buildShapes(const std::string& name, int value,
                           const std::string& identity = "example/shapes",
@@ -66,6 +70,7 @@ class ABI_LibraryAbiSnapshot : public testing::Test {
         "} } }";
     return build(name, source, {}, identity);
   }
+
   /** Builds a precompiled borrower of the original Point declaration. */
   std::string consumer(const std::string& original) {
     return build("reader", R"(
@@ -79,6 +84,7 @@ class ABI_LibraryAbiSnapshot : public testing::Test {
     )",
                  {original});
   }
+
   /** Uses the selected constructor and the previously compiled reader. */
   static std::string application() {
     return R"(

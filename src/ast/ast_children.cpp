@@ -229,7 +229,6 @@ void forEachChild(const ExprAST& node, const ChildFn& fn) {
       break;
     }
 
-
     case ASTNodeType::UNSAFE_BLOCK:
       fn(static_cast<const UnsafeBlockAST&>(node).getBody());
       break;

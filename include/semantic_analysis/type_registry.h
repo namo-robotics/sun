@@ -76,7 +76,8 @@ class TypeRegistry {
       specializations_;
 
  public:
-  /** Creates nominal types tied to declarations, which must outlive this registry. */
+  /** Creates nominal types tied to declarations, which must outlive this
+   * registry. */
   explicit TypeRegistry(DeclarationTable& declarations)
       : declarations_(declarations) {}
 
@@ -92,7 +93,8 @@ class TypeRegistry {
    * Movable
    */
   TypeRegistry(TypeRegistry&&) = default;
-  /** Disallows move assignment because the declaration table cannot be rebound. */
+  /** Disallows move assignment because the declaration table cannot be rebound.
+   */
   TypeRegistry& operator=(TypeRegistry&&) = delete;
 
   /** Get a source class before its source name has been assigned. */

@@ -37,7 +37,6 @@ void ClassAnalyzer::analyzeClassDefinition(
   // Validate class name
   validateNotReserved(classDef.getName(), "Class name", classDef.getLocation());
 
-
   // Validate field names and reject duplicates. Names alone are compared, so
   // this runs before the generic early-return below: a template's field types
   // have no meaning until a specialization substitutes them, but a repeated
@@ -255,8 +254,10 @@ void ClassAnalyzer::analyzePartialClass(sun::ast::ClassDefinitionAST& classDef,
 
   auto existingClass = ctx_.lookupClass(baseName);
   if (existingClass) {
-    if (existingClass->isException())
-      logAndThrowError("Partial classes cannot extend exception declarations", classDef.getLocation());
+    if (existingClass->isException()) {
+      logAndThrowError("Partial classes cannot extend exception declarations",
+                       classDef.getLocation());
+    }
     classDef.setTargetDeclarationId(existingClass->getDeclarationId());
     // Primary already analyzed — validate and merge methods now
     for (const auto& extMethod : classDef.getMethods()) {

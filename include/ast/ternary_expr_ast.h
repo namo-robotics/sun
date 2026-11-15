@@ -39,17 +39,22 @@ class TernaryExprAST : public ExprAST {
     fn(thenExpr);
     fn(elseExpr);
   }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     return cond->toString() + " ? " + thenExpr->toString() + " : " +
            elseExpr->toString();
   }
+
   /** Returns the condition expression. */
   ExprAST* getCond() const { return cond.get(); }
+
   /** Returns the branch taken when the condition is true. */
   ExprAST* getThen() const { return thenExpr.get(); }
+
   /** Returns the alternative branch. */
   ExprAST* getElse() const { return elseExpr.get(); }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "Ternary\n?:"; }
 };

@@ -30,6 +30,7 @@ class WhileExprAST : public ExprAST {
     fn(Condition);
     fn(Body);
   }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     return "while (" + Condition->toString() + ") " + Body->toString();
@@ -37,6 +38,7 @@ class WhileExprAST : public ExprAST {
 
   /** Returns the condition expression. */
   const ExprAST* getCondition() const { return Condition.get(); }
+
   /** Provides access to the expressions that make up the body. */
   const ExprAST* getBody() const { return Body.get(); }
 

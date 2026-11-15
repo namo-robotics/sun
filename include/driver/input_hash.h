@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "abi/exception_layout.h"
 #include "moon_bundling/moon_import.h"
 #include "moon_bundling/proto_importer.h"
 
@@ -48,6 +49,7 @@ struct BuildInputs {
   std::string targetTriple;  // empty = host
   bool debugInfo = false;
   bool optimize = true;
+  unsigned exceptionTraceDepth = sun::abi::exceptions::defaultTraceDepth;
   // Anything else that shapes the artifact, such as link flags, as
   // (name, value) pairs. Order is kept: link order is meaningful.
   std::vector<std::pair<std::string, std::string>> settings;

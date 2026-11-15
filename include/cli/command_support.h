@@ -57,6 +57,12 @@ sun::driver::SunConfig loadConfigInput(const std::string& input,
  */
 void applySharedSettings(const SharedOptions& shared);
 
+/** Selects explicit trace depth before the nearest project's depth or the
+ * default. */
+unsigned resolveExceptionTraceDepth(const SharedOptions& shared,
+                                    const std::string& input,
+                                    const std::string& target = "");
+
 /**
  * Put the default command's options into effect: the GitHub token, the
  * target the library search is for, and the shared settings.

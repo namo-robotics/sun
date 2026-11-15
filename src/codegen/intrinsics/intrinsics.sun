@@ -524,3 +524,18 @@ declare function _gemm_block_avx2_fma(
 
 /** Prints a literal diagnostic to stderr and aborts without cleanup. */
 declare function _panic(message: static_ptr<u8>) void;
+
+/** Reports the current call stack without requiring an active exception. */
+declare function _report_stack_trace() void;
+
+/** Reports the exception retained by the current catch without consuming it. */
+declare function _report_exception() void;
+
+/** Reports an exception that is escaping a generated entrypoint or test boundary. */
+declare function _report_unhandled_exception() void;
+
+/** Borrows populated original frame addresses from a direct active catch binding. */
+declare function _exception_trace_frames<T>(error: const ref T) const ref array<u64>;
+
+/** Reads the original capture status from a direct active catch binding. */
+declare function _exception_trace_status<T>(error: const ref T) u32;

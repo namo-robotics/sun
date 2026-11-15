@@ -47,6 +47,7 @@ bool contains(const std::string& text, const std::string& part) {
  */
 struct Scratch {
   std::filesystem::path dir;
+
   /** Owns a temporary directory used for build-provenance test artifacts. */
   explicit Scratch(const std::string& name)
       : dir(std::filesystem::path(::testing::TempDir()) /
@@ -54,12 +55,15 @@ struct Scratch {
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir);
   }
+
   /** Removes the temporary build-provenance test directory. */
   ~Scratch() { std::filesystem::remove_all(dir); }
+
   /** Returns a filename within the scratch directory. */
   std::string path(const std::string& name) const {
     return (dir / name).string();
   }
+
   /**
    * Runs build/sun with progress logging so cache decisions can be asserted.
    */
@@ -480,7 +484,8 @@ TEST(Tooling_Backend_InputHash, config_version_name_reaches_each_library) {
   }
 }
 
-/** Shared module names do not export declarations from test-only source files. */
+/** Shared module names do not export declarations from test-only source files.
+ */
 TEST(Tooling_Backend_InputHash, test_only_declarations_stay_out_of_library) {
   if (!haveSunBinary()) {
     GTEST_SKIP() << "build/sun not found";

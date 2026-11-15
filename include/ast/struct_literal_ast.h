@@ -80,9 +80,11 @@ class StructLiteralAST : public ExprAST {
 
   /** Provides the field declarations belonging to this type. */
   const std::vector<FieldInit>& getFields() const { return fields_; }
+
   /** Provides mutable access to field declarations for later compiler passes.
    */
   std::vector<FieldInit>& getMutableFields() { return fields_; }
+
   /** Returns the number of stored entries. */
   size_t size() const { return fields_.size(); }
 

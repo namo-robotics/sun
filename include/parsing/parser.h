@@ -202,6 +202,7 @@ class Parser {
  public:
   /** Initializes a parser with empty input and default parsing state. */
   Parser() : lexer(std::cin) {}
+
   /**
    * Updated constructor: takes both input stream and codegen context
    */
@@ -214,12 +215,14 @@ class Parser {
 
   /** Parse an embedded expression in its enclosing source unit. */
   void setSourceFileId(sun::support::SourceFileId id) { sourceFileId_ = id; }
+
   /** Returns the file path stored by this object. */
   const std::string& getFilePath() const { return currentFilePath; }
 
   /** Consumes tokens for a complete program and builds its syntax-tree
    * representation. */
   unique_ptr<BlockExprAST> parseProgram();
+
   // Convenience constructors (optional but recommended)
 
   /** Creates a parser reading the supplied source string. */
@@ -359,6 +362,7 @@ class Parser {
     std::optional<sun::ast::TypeAnnotation> bindingType;
     bool ok = false;
   };
+
   /** Consumes tokens for a match pattern and builds its syntax-tree
    * representation. */
   ParsedPattern parsePattern();
@@ -612,11 +616,13 @@ class Parser {
    * Setters for import resolution (used by Driver)
    */
   void setBaseDir(const std::string& dir) { baseDir = dir; }
+
   /** Updates the precompiled imports stored by this object. */
   void setPrecompiledImports(
       std::shared_ptr<std::vector<std::string>> imports) {
     precompiledImports = imports;
   }
+
   /**
    * Get the list of precompiled imports discovered during parsing
    */
@@ -640,6 +646,7 @@ class Parser {
    * Check if string interpolation was used during parsing
    */
   bool usesStringInterpolation() const { return usesStringInterpolation_; }
+
   /** Records whether this string contains embedded expressions. */
   void setUsesStringInterpolation(bool value) {
     usesStringInterpolation_ = value;
@@ -652,6 +659,7 @@ class Parser {
     collectComments_ = collect;
     lexer.setEmitComments(collect);
   }
+
   /**
    * Collected comments, keyed by absolute start offset
    */

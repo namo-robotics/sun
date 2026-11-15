@@ -6,9 +6,11 @@
 #include <vector>
 
 #include "semantic_analysis/semantic_context.h"
+
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 class SemanticAnalyzer;
+
 /** Resolves expressions and checks their types, conversions, and value access.
  */
 class ExpressionAnalyzer {
@@ -16,6 +18,7 @@ class ExpressionAnalyzer {
   /** Borrows the session context and the cooperating analysis services. */
   ExpressionAnalyzer(SemanticContext &context, SemanticAnalyzer &analyzer)
       : ctx_(context), sema_(analyzer) {}
+
   /**
    * Throw when `target` names a variable the enclosing lambda picked up
    * without a capture list. That capture is the closure's own copy, so a

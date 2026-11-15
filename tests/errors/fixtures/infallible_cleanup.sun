@@ -1,0 +1,22 @@
+var dropped: i32 = 0;
+/** Owns a trivial cleanup operation. */
+class Resource {
+  /** Creates a resource without fallible work. */
+  init() {}
+
+  /** Updates a scalar without initiating an exception. */
+  deinit() {
+    dropped = 42;
+  }
+}
+
+/** Destroys its local on a normal return. */
+function release() void {
+  var resource = Resource();
+}
+
+/** Observes the completed destruction. */
+function main() i32 {
+  release();
+  return dropped;
+}

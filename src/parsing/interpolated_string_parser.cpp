@@ -247,7 +247,8 @@ std::unique_ptr<sun::ast::BlockExprAST> InterpolatedStringParser::desugar(
   block->setKind(sun::ast::BlockKind::Value);
   block->setLocation(loc);
 
-  // The builder keeps failures inside the expression and returns them at finish.
+  // The builder keeps failures inside the expression and returns them at
+  // finish.
   auto builderCall = makeCall(
       makeMemberAccess(makeVarRef("std", loc), "InterpolationBuilder", loc), {},
       loc);
@@ -303,9 +304,11 @@ std::unique_ptr<sun::ast::BlockExprAST> InterpolatedStringParser::desugar(
     block->addExpression(std::move(appendCall));
   }
 
-  // Finish returns AllocationResult<String> for the caller to handle explicitly.
+  // Finish returns AllocationResult<String> for the caller to handle
+  // explicitly.
   block->addExpression(makeCall(
-      makeMemberAccess(makeVarRef("interp_result_", loc), "finish", loc), {}, loc));
+      makeMemberAccess(makeVarRef("interp_result_", loc), "finish", loc), {},
+      loc));
 
   return block;
 }

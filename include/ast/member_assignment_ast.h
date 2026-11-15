@@ -55,6 +55,7 @@ class MemberAssignmentAST : public ExprAST {
     fn(object);
     fn(value);
   }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     return object->toString() + "." + memberName + " = " + value->toString();
@@ -62,10 +63,13 @@ class MemberAssignmentAST : public ExprAST {
 
   /** Provides the receiver expression used for member access. */
   const ExprAST* getObject() const { return object.get(); }
+
   /** Returns the member name to resolve on the receiver. */
   const std::string& getMemberName() const { return memberName; }
+
   /** Returns the value represented by this object. */
   const ExprAST* getValue() const { return value.get(); }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override {
     return "MemberAssign\n." + memberName;
@@ -78,6 +82,7 @@ class MemberAssignmentAST : public ExprAST {
   void setQualifiedName(sun::semantic_analysis::QualifiedName name) const {
     memberAnalysis().qualifiedName = std::move(name);
   }
+
   /** Returns the declaration name together with its enclosing scopes. */
   const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
     return memberAnalysis().qualifiedName;
@@ -91,6 +96,7 @@ class MemberAssignmentAST : public ExprAST {
   void setFieldWriteKind(sun::ast::FieldWriteKind kind) const {
     memberAnalysis().fieldWrite = kind;
   }
+
   /** Returns whether this field write initializes or replaces its value. */
   sun::ast::FieldWriteKind fieldWriteKind() const {
     return memberAnalysis().fieldWrite;

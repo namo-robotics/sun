@@ -17,16 +17,22 @@ class DeclarationId {
  public:
   /** Construct an unassigned identity. */
   DeclarationId() = default;
+
   /** Construct an identity allocated by a declaration table. */
   explicit DeclarationId(uint64_t value) : value_(value) {}
+
   /** Return the table index; this value is never a portable identity. */
   uint64_t index() const { return value_; }
+
   /** Report whether this identity has been assigned. */
   explicit operator bool() const { return value_ != 0; }
+
   /** Compares the stored values for equality. */
   bool operator==(DeclarationId other) const { return value_ == other.value_; }
+
   /** Reports whether the stored values differ. */
   bool operator!=(DeclarationId other) const { return !(*this == other); }
+
   /** Orders values for use in sorted containers. */
   bool operator<(DeclarationId other) const { return value_ < other.value_; }
 };
@@ -59,6 +65,7 @@ struct DeclarationIdentity {
   std::vector<DeclarationId> variadicParameters;
   std::vector<DeclarationId> typeParameters;
   std::vector<DeclarationId> lifetimeParameters;
+
   /** Discard session state while retaining the artifact's source identities. */
   void resetSession() {
     auto source = std::move(imported);

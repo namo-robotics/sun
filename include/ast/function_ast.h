@@ -61,6 +61,7 @@ class FunctionAST : public ExprAST {
       Body->forEachChildSlot(fn);
     }
   }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string result = std::string(isPublic() ? "public " : "") +
@@ -92,29 +93,36 @@ class FunctionAST : public ExprAST {
   DeclarationId getDeclarationId() const override {
     return Proto->getDeclarationId();
   }
+
   /** Assign the prototype's declaration identity. */
   void setDeclarationId(DeclarationId id) const override {
     Proto->setDeclarationId(id);
   }
+
   /** Access the identities owned by the prototype. */
   sun::semantic_analysis::DeclarationIdentity& declarationIdentity()
       const override {
     return Proto->declarationIdentity();
   }
+
   /** Clear body and signature results while retaining identities. */
   void clearComputedAnalysis() const override {
     ExprAST::clearComputedAnalysis();
     Proto->clearComputedAnalysis();
   }
+
   /** Discard the function's annotations and its prototype's annotations. */
   void resetAnalysisSession() const override {
     ExprAST::resetAnalysisSession();
     Proto->resetAnalysisSession();
   }
+
   /** Provides the function signature independently of its body. */
   const PrototypeAST& getProto() const { return *Proto; }
+
   /** Returns the modifiable function signature. */
   PrototypeAST& getProtoMut() { return *Proto; }
+
   /** Provides access to the expressions that make up the body. */
   const BlockExprAST& getBody() const {
     assert(Body && "getBody() called on extern function with no body");
@@ -131,12 +139,15 @@ class FunctionAST : public ExprAST {
   /** Returns the number of generated field assignments before the source body.
    */
   size_t getFieldInitializerCount() const { return fieldInitializerCount_; }
+
   /** Records the generated prefix so lowering and analysis do not repeat it. */
   void setFieldInitializerCount(size_t count) {
     fieldInitializerCount_ = count;
   }
+
   /** Reports whether field defaults supplied this constructor. */
   bool isSynthesizedConstructor() const { return synthesizedConstructor_; }
+
   /** Marks a constructor supplied by field defaults. */
   void setSynthesizedConstructor(bool value) {
     synthesizedConstructor_ = value;
@@ -155,6 +166,7 @@ class FunctionAST : public ExprAST {
    * two must not be conflated even though both are bodyless.
    */
   bool isCExtern() const { return CAbi; }
+
   /** Marks whether the function uses the C calling convention. */
   void setCExtern(bool v) { CAbi = v; }
 
@@ -163,11 +175,14 @@ class FunctionAST : public ExprAST {
    * into the test binary; production builds and .moon bundles strip them.
    */
   bool isTest() const { return IsTest; }
+
   /** Marks whether the function is a discoverable test. */
   void setIsTest(bool v) { IsTest = v; }
+
   /** Reports whether a function body is present rather than just a declaration.
    */
   bool hasBody() const { return Body != nullptr; }
+
   /** Reports whether this object has non empty body. */
   bool hasNonEmptyBody() const { return Body && !Body->getBody().empty(); }
 
@@ -179,11 +194,13 @@ class FunctionAST : public ExprAST {
                          std::shared_ptr<FunctionAST> specializedAST) const {
     funcAnalysis().specializations[id] = std::move(specializedAST);
   }
+
   const std::map<DeclarationId, std::shared_ptr<FunctionAST>>&
   /** Provides the concrete instances created from this generic declaration. */
   getSpecializations() const {
     return funcAnalysis().specializations;
   }
+
   /** Reports whether an instance already exists for the supplied type
    * arguments. */
   bool hasSpecialization(DeclarationId id) const {
@@ -192,6 +209,7 @@ class FunctionAST : public ExprAST {
                    .specializations.find(id) !=
                static_cast<FunctionAnalysis&>(*analysis_).specializations.end();
   }
+
   /** Looks up the instance previously created for the supplied type arguments.
    */
   std::shared_ptr<FunctionAST> getSpecialization(DeclarationId id) const {

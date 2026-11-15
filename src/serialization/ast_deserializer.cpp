@@ -434,13 +434,16 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserialize(
       break;
     case pbc::ASTNode::kNativeThrow:
       result = std::make_unique<sun::ast::ThrowAST>(
-          node.native_throw().has_error_expr() ? deserialize(node.native_throw().error_expr()) : nullptr);
+          node.native_throw().has_error_expr()
+              ? deserialize(node.native_throw().error_expr())
+              : nullptr);
       break;
     case pbc::ASTNode::kNativeTryCatch: {
       std::vector<sun::ast::ExceptionHandler> handlers;
       for (const auto& handler : node.native_try_catch().handlers()) {
-        handlers.push_back({handler.has_binding() ? deserialize(handler.binding()) : nullptr,
-                            deserialize(handler.body())});
+        handlers.push_back(
+            {handler.has_binding() ? deserialize(handler.binding()) : nullptr,
+             deserialize(handler.body())});
       }
       result = std::make_unique<sun::ast::TryCatchAST>(
           deserialize(node.native_try_catch().body()), std::move(handlers));
@@ -763,10 +766,12 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeMatch(
       arms.back().bindings.push_back(std::move(binding));
     }
   }
-  if (proto.propagation())
-    sun::support::logAndThrowError("Legacy result propagation is unsupported; rebuild the bundle");
-  return std::make_unique<sun::ast::MatchExprAST>(
-      std::move(discriminant), std::move(arms));
+  if (proto.propagation()) {
+    sun::support::logAndThrowError(
+        "Legacy result propagation is unsupported; rebuild the bundle");
+  }
+  return std::make_unique<sun::ast::MatchExprAST>(std::move(discriminant),
+                                                  std::move(arms));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeFor(
@@ -1023,8 +1028,10 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
     classDef->addCompiledSpecialization(name.declaration_key());
   }
   classDef->setException(proto.is_exception());
-  if (proto.has_exception_parent())
-    classDef->setExceptionParent(deserializeTypeAnnotation(proto.exception_parent()));
+  if (proto.has_exception_parent()) {
+    classDef->setExceptionParent(
+        deserializeTypeAnnotation(proto.exception_parent()));
+  }
   classDef->setIsPartial(proto.is_partial());
   classDef->setIsPacked(proto.is_packed());
   classDef->setAlignment(proto.alignment());
@@ -1115,10 +1122,6 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeMemberAccess(
   return std::make_unique<sun::ast::MemberAccessAST>(
       std::move(object), proto.member_name(), std::move(typeArgs));
 }
-
-
-
-
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeDeclareType(
     const pbc::DeclareType& proto) const {

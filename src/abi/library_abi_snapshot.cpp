@@ -26,6 +26,7 @@ std::string frame(const std::string& value) {
   }
   return result + value;
 }
+
 /** Recognizes fields that contain declaration identities rather than literals.
  */
 bool isReference(const google::protobuf::FieldDescriptor& field) {
@@ -206,6 +207,7 @@ proto::LibraryAbiSnapshot describeLibraryAbiSnapshot(
   revision.set_abi_hash(moon_bundling::computeSha256Hex(encoded));
   return revision;
 }
+
 bool matchesLibraryAbiSnapshot(
     const proto::LibraryAbiSnapshot& required, const BundleContract& selected,
     const std::string& artifact,
@@ -216,7 +218,8 @@ bool matchesLibraryAbiSnapshot(
     return false;
   }
   auto comparable = selected;
-  comparable.mutable_target()->set_platform_abi(retaining.target().platform_abi());
+  comparable.mutable_target()->set_platform_abi(
+      retaining.target().platform_abi());
   for (auto& rule : *comparable.mutable_requirements()) {
     for (const auto& inherited : retaining.requirements()) {
       if (rule.name() == inherited.name() &&

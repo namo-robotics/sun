@@ -19,16 +19,19 @@ namespace {
 
 /**
  * Compile one entrypoint with tests enabled and JIT-run the synthesized
- * runner. Returns zero when every selected test passed, including an empty suite.
+ * runner. Returns zero when every selected test passed, including an empty
+ * suite.
  */
-int runTestEntrypoint(const std::string& inputFile, const TestOptions& options) {
+int runTestEntrypoint(const std::string& inputFile,
+                      const TestOptions& options) {
   // The runner reads its flags from main(argc, argv), argv[0] being the
   // entrypoint file, same as ordinary JIT execution.
   ProgramArguments programArgs(inputFile, options.forwardedArgs);
 
   try {
     auto driver = sun::driver::Driver::createForJIT(
-        "main_module", /*debugInfo=*/true, options.shared.optimize);
+        "main_module", /*debugInfo=*/true, options.shared.optimize,
+        resolveExceptionTraceDepth(options.shared, inputFile));
     driver->setTestHandling(sun::driver::Driver::TestHandling::Compile);
     driver->setDumpIR(options.shared.emitIR);
     if (options.shared.debugMode) {
@@ -67,7 +70,11 @@ int runConfigTests(const TestOptions& options) {
                      << " ==\n";
         llvm::outs().flush();
       }
-      if (runTestEntrypoint(entry.path, options) != 0) {
+      auto selectedOptions = options;
+      if (!selectedOptions.shared.exceptionTraceDepth) {
+        selectedOptions.shared.exceptionTraceDepth = config.exceptionTraceDepth;
+      }
+      if (runTestEntrypoint(entry.path, selectedOptions) != 0) {
         failures++;
       }
     }
@@ -81,18 +88,23 @@ int runConfigTests(const TestOptions& options) {
 
 /** Runs the test command and returns its process exit status. */
 int runTestCommand(const std::vector<std::string>& args) {
-  TestOptions options;
-  if (auto earlyExit = parseTestArguments(args, options)) {
-    return reportEarlyExit(*earlyExit);
-  }
-  applySharedSettings(options.shared);
-  sun::driver::GitDependencyBuildScope dependencyScope(true,
-                                                       options.shared.optimize);
+  try {
+    TestOptions options;
+    if (auto earlyExit = parseTestArguments(args, options)) {
+      return reportEarlyExit(*earlyExit);
+    }
+    applySharedSettings(options.shared);
+    sun::driver::GitDependencyBuildScope dependencyScope(
+        true, options.shared.optimize, false, false,
+        resolveExceptionTraceDepth(options.shared, options.inputFile));
 
-  if (isConfigInput(options.inputFile)) {
-    return runConfigTests(options);
+    if (isConfigInput(options.inputFile)) {
+      return runConfigTests(options);
+    }
+    return runTestEntrypoint(options.inputFile, options);
+  } catch (const sun::support::SunError& error) {
+    return reportSunError(error);
   }
-  return runTestEntrypoint(options.inputFile, options);
 }
 
 }  // namespace sun::cli

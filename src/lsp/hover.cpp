@@ -226,7 +226,9 @@ std::string renderPrototype(const sun::ast::PrototypeAST& proto,
           ? !proto.getResolvedReturnType()->isVoid()
           : proto.hasReturnType() && proto.getReturnType()->baseName != "void";
   if (isLifecycle && !hasResult) {
-    if (proto.canThrow()) out += " throws";
+    if (proto.canThrow()) {
+      out += " throws";
+    }
     return out;
   }
   if (proto.hasResolvedReturnType()) {
@@ -234,7 +236,9 @@ std::string renderPrototype(const sun::ast::PrototypeAST& proto,
   } else if (proto.hasReturnType()) {
     out += " " + annotationText(*proto.getReturnType(), source);
   }
-  if (proto.canThrow()) out += " throws";
+  if (proto.canThrow()) {
+    out += " throws";
+  }
   return out;
 }
 

@@ -1,9 +1,4 @@
-// debug_info_builder.h — DWARF debug metadata emission for -g builds
-//
-// Mirrors the LLVMTypeResolver idiom: a cache plus resolve(TypePtr), but
-// producing llvm::DIType nodes. Every public method is a no-op when the
-// builder is disabled, so builds without -g generate identical IR.
-
+/** Emits source locations for traces and full debug metadata for -g builds. */
 #pragma once
 
 #include <llvm/IR/DIBuilder.h>
@@ -36,12 +31,14 @@ class DebugInfoBuilder {
   std::vector<llvm::DIScope*> scopeStack_;
   bool finalized_ = false;
   bool optimized_ = false;
+  bool fullDebug_ = false;
 
  public:
   /**
    * Build debug metadata, recording whether the generated code is optimized.
    */
-  DebugInfoBuilder(llvm::Module* module, bool enabled, bool optimized = false);
+  DebugInfoBuilder(llvm::Module* module, bool enabled, bool optimized = false,
+                   bool traceLocations = false);
 
   /** Reports whether debug metadata generation is enabled. */
   bool enabled() const { return di_ != nullptr; }
@@ -116,6 +113,10 @@ class DebugInfoBuilder {
    * emitObjectFile treat it as a debug build.
    */
   static void stripFromModule(llvm::Module& module);
+
+  /** Makes recorded source locations relative to the entrypoint directory. */
+  static void relativizeSourcePaths(llvm::Module& module,
+                                    const std::string& entrypointDirectory);
 
  private:
   /** Creates the debug compilation unit when one is not already present. */

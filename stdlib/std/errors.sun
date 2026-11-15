@@ -7,6 +7,25 @@
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
 
+  /** Borrows a caught exception's original addresses and retains its capture status. */
+  public class ExceptionTrace {
+    /** Borrows addresses whose storage belongs to the originating catch. */
+    public var addresses: const ref array<u64>;
+    /** Retains the platform capture result associated with these addresses. */
+    public var status: u32;
+
+    /** Retains a bounded borrowed view; the addresses must outlive this value. */
+    init(addresses: const ref array<u64>, status: u32) {
+      this.addresses = addresses;
+      this.status = status;
+    }
+  }
+
+  /** Prints a borrowed original trace to stderr without allocating or throwing. */
+  public function print_exception_trace(trace: const ref ExceptionTrace) void {
+    unsafe { c_sun_eh_print_trace(trace.addresses, trace.status); };
+  }
+
   /** Provides borrowed access to exception codes and explicit diagnostic copies. */
   public interface IError {
     /** Identifies the error within its originating subsystem. */

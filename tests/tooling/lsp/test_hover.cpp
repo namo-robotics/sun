@@ -511,8 +511,7 @@ function main() i32 {
   ASSERT_TRUE(annotation);
   EXPECT_EQ(annotation->code,
             "public class HeapAllocator implements IAllocator");
-  EXPECT_NE(annotation->documentation.find("system heap"),
-            std::string::npos)
+  EXPECT_NE(annotation->documentation.find("system heap"), std::string::npos)
       << annotation->documentation;
   auto call = hover("make_heap_allocator()");
   ASSERT_TRUE(call);

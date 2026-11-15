@@ -88,7 +88,9 @@
       "path": "build/tests/sun_tests",
       "group": "SunCompiler",
       "cwd": ".",
-      "env": { "SUN_PATH": "." }
+      "env": {
+        "SUN_PATH": "."
+      }
     }
   ],
   "cppTestExplorer.parallelMode": "case",

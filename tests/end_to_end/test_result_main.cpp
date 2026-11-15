@@ -17,7 +17,8 @@ TEST(EndToEnd_ExceptionMain, propagates_from_allocating_code) {
        values.push(42);
       return values[0];
     }
-  )"), 42);
+  )"),
+            42);
 }
 
 /** Throwing JIT entrypoints preserve wide integer return values. */
@@ -25,7 +26,8 @@ TEST(EndToEnd_ExceptionMain, preserves_i64) {
   EXPECT_EQ(executeString(R"(
     /** Returns a value wider than a process exit code. */
     function main() i64 throws { return 4294967296i64; }
-  )"), 4294967296LL);
+  )"),
+            4294967296LL);
 }
 
 /** JIT entrypoints preserve floating-point success payloads. */
@@ -33,7 +35,8 @@ TEST(EndToEnd_ExceptionMain, preserves_f64) {
   EXPECT_EQ(executeStringWithStdlib(R"(
     /** Returns a fractional result. */
     function main() f64 throws { return 1.5; }
-  )"), 1.5);
+  )"),
+            1.5);
 }
 
 /** Empty success remains a void value during JIT execution. */
@@ -44,7 +47,8 @@ TEST(EndToEnd_ExceptionMain, preserves_void) {
   )")));
 }
 
-/** String success uses the JIT's existing pointer-and-length return convention. */
+/** String success uses the JIT's existing pointer-and-length return convention.
+ */
 TEST(EndToEnd_ExceptionMain, preserves_static_string) {
   const auto value = executeString(R"(
     /** Returns literal text. */
@@ -62,17 +66,21 @@ TEST(EndToEnd_ExceptionMain, forwards_arguments) {
     function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 throws {
       return argc;
     }
-  )", 1, argv), 1);
+  )",
+                                    1, argv),
+            1);
 }
 
-/** An uncaught bounded exception produces a diagnostic and a failing exit code. */
+/** An uncaught bounded exception produces a diagnostic and a failing exit code.
+ */
 TEST(EndToEnd_ExceptionMain, uncaught_exception_exits_one) {
   EXPECT_EXIT(executeString(R"(
     /** Carries the failure code without owning storage. */
     exception Failure { var code: i32 = 7; }
     /** Raises a failure at the process boundary. */
     function main() i32 throws { throw Failure(); }
-  )"), testing::ExitedWithCode(1), "Unhandled main exception");
+  )"),
+              testing::ExitedWithCode(1), "Unhandled exception:");
 }
 
 /** Stack resources are released before the entrypoint handler exits. */
@@ -93,10 +101,12 @@ TEST(EndToEnd_ExceptionMain, uncaught_exception_drops_locals) {
       var resource = Resource();
       throw Failure();
     }
-  )"), testing::ExitedWithCode(1), "dropped\nUnhandled main exception");
+  )"),
+              testing::ExitedWithCode(1), "dropped\nUnhandled exception:");
 }
 
-/** Boundary reporting does not invoke an exception's allocating message method. */
+/** Boundary reporting does not invoke an exception's allocating message method.
+ */
 TEST(EndToEnd_ExceptionMain, boundary_reporting_needs_no_message_allocation) {
   EXPECT_EXIT(executeStringWithStdlib(R"(
     using std;
@@ -109,7 +119,8 @@ TEST(EndToEnd_ExceptionMain, boundary_reporting_needs_no_message_allocation) {
     }
     /** Raises the bounded exception. */
     function main() void throws { throw Failure(); }
-  )"), testing::ExitedWithCode(1), "Unhandled main exception");
+  )"),
+              testing::ExitedWithCode(1), "Unhandled exception:");
 }
 
 /** Owned class payloads cannot cross the native JIT entrypoint ABI. */
@@ -119,7 +130,8 @@ TEST(EndToEnd_ExceptionMain, rejects_unsupported_success) {
     class Value { var number: i32 = 42; }
     /** Returns an owned class. */
     function main() Value throws { return Value(); }
-  )"), "Unsupported return type for 'main': 'Value'");
+  )"),
+                                "Unsupported return type for 'main': 'Value'");
 }
 
 /** Ordinary entrypoints also reject values the host cannot safely receive. */
@@ -129,7 +141,8 @@ TEST(EndToEnd_ExceptionMain, rejects_unsupported_plain_return) {
     class Value { var number: i32 = 42; }
     /** Returns an unsupported owned value directly. */
     function main() Value { return Value(); }
-  )"), "Unsupported return type for 'main': 'Value'");
+  )"),
+                                "Unsupported return type for 'main': 'Value'");
 }
 
 /** Native executable entrypoints cannot return a wide success payload. */
@@ -140,7 +153,8 @@ TEST(EndToEnd_ExceptionMain, aot_rejects_i64_success) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(driver->compileString(R"(
     /** Returns a value unsuitable for a native exit code. */
     function main() i64 throws { return 42i64; }
-  )"), "Unsupported return type for 'main': 'i64'");
+  )"),
+                                "Unsupported return type for 'main': 'i64'");
 }
 
 /** Boolean payloads retain their native JIT representation. */
@@ -148,7 +162,8 @@ TEST(EndToEnd_ExceptionMain, preserves_bool) {
   EXPECT_EQ(executeStringWithStdlib(R"(
     /** Returns a boolean success. */
     function main() bool throws { return true; }
-  )"), true);
+  )"),
+            true);
 }
 
 /** Character payloads do not require an implicit integer conversion. */
@@ -156,7 +171,8 @@ TEST(EndToEnd_ExceptionMain, preserves_char) {
   EXPECT_EQ(executeStringWithStdlib(R"(
     /** Returns a character success. */
     function main() char throws { return 'A'; }
-  )"), 65);
+  )"),
+            65);
 }
 
 /** Recursive calls retain the source return type and exception contract. */
@@ -169,17 +185,20 @@ TEST(EndToEnd_ExceptionMain, recursive_calls_keep_return_type) {
       if (calls == 1) { return  main(); }
       return 42;
     }
-  )"), 42);
+  )"),
+            42);
 }
 
-/** An entrypoint cannot expose multiple success values through one return slot. */
+/** An entrypoint cannot expose multiple success values through one return slot.
+ */
 TEST(EndToEnd_ExceptionMain, rejects_multiple_success_payloads) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     /** Carries an unsupported pair on success. */
     enum Outcome { Ready(i32, i32), Failed(i32) }
     /** Returns both values. */
     function main() Outcome { return Outcome.Ready(1, 2); }
-  )"), "Unsupported return type for 'main'");
+  )"),
+                                "Unsupported return type for 'main'");
 }
 
 /** Payload enums have no native entrypoint representation. */
@@ -189,10 +208,12 @@ TEST(EndToEnd_ExceptionMain, rejects_empty_failure_variant) {
     enum Outcome { Ready(i32), Failed }
     /** Returns a supported scalar in an invalid result shape. */
     function main() Outcome { return Outcome.Ready(42); }
-  )"), "Unsupported return type for 'main'");
+  )"),
+                                "Unsupported return type for 'main'");
 }
 
-/** A void throwing main receives the native executable's exit status adapter. */
+/** A void throwing main receives the native executable's exit status adapter.
+ */
 TEST(EndToEnd_ExceptionMain, aot_void_success_has_native_status) {
   sun::driver::initTestEnvironment();
   auto driver = sun::driver::Driver::createForAOT("exception_main_void");

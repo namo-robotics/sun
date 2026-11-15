@@ -352,6 +352,7 @@ TEST(Tooling_Frontend_Parser, ParseFunction) {
   ASSERT_EQ(func->getProto().getArgNames().size(), 1);
   EXPECT_EQ(func->getProto().getArgNames()[0], "x");
 }
+
 TEST(Tooling_Frontend_Parser, ParseFunctionPointerType) {
   auto block = parseString(
       "function use(callback: function (i32, bool) Result<i64>) void {}");

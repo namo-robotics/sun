@@ -119,7 +119,8 @@ struct TestBuildCandidate {
   std::set<std::string> configs;
 };
 
-/** Order build candidates without depending on their timestamps across roots. */
+/** Order build candidates without depending on their timestamps across roots.
+ */
 enum class TestBuildPreference { Missing, Unknown, Stale, Fresh };
 
 /** Evaluated metadata and preference for one build. */
@@ -129,7 +130,8 @@ struct TestBuildInspection {
   bool hidden;
 };
 
-/** Resolve inputs in this build's graph and inspect artifacts without executing them. */
+/** Resolve inputs in this build's graph and inspect artifacts without executing
+ * them. */
 static TestBuildInspection inspectTestBuild(
     const std::string& path, const TestBuildCandidate& candidate,
     const std::string& configurationError, std::set<std::string>& watched,
@@ -210,8 +212,8 @@ static TestBuildInspection inspectTestBuild(
   if (freshness.status != "fresh" && problem.empty()) {
     const auto production = sun::driver::readBuildRecord(entry.outputName);
     hide = production && !production->hasTests &&
-        checkTestFreshness(entry.outputName, declarationInputs, problem).status ==
-            "fresh";
+           checkTestFreshness(entry.outputName, declarationInputs, problem)
+                   .status == "fresh";
   }
   llvm::json::Object suite;
   suite["entrypoint"] = path;
@@ -223,8 +225,7 @@ static TestBuildInspection inspectTestBuild(
       binary.empty() ? llvm::json::Value(nullptr) : llvm::json::Value(binary);
   // A concurrent rebuild must not transfer an old capability to a new file.
   const bool stable = identity && identity == testBinaryIdentity(binary);
-  suite["listing_version"] =
-      record && stable ? record->testListingVersion : 0;
+  suite["listing_version"] = record && stable ? record->testListingVersion : 0;
   suite["binary_identity"] =
       identity ? llvm::json::Value(*identity) : llvm::json::Value(nullptr);
   suite["freshness"] = freshness.status;
@@ -263,7 +264,8 @@ llvm::json::Object testSuites() {
         collectTestConfigPaths(file.string(), configs, configPatterns);
         const auto standalone = sun::driver::loadConfigGraph(file);
         std::set<std::string> standaloneConfigs;
-        collectTestConfigPaths(file.string(), standaloneConfigs, ignoredPatterns);
+        collectTestConfigPaths(file.string(), standaloneConfigs,
+                               ignoredPatterns);
         for (const auto* candidateGraph : {&graph, &standalone}) {
           const auto config = sun::driver::configureBuildPaths(
               *candidateGraph, sun::driver::SunConfig::loadFile(file));
@@ -289,7 +291,7 @@ llvm::json::Object testSuites() {
               candidates.push_back(
                   {std::move(entry), *candidateGraph, config.packageId,
                    candidateGraph->root == config.configDir ? "standalone"
-                                                           : "workspace",
+                                                            : "workspace",
                    candidateGraph == &graph ? workspaceConfigs
                                             : standaloneConfigs});
             }

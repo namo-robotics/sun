@@ -1068,6 +1068,7 @@ TEST_F(MoonExactTypes,
   )"),
                SunError);
 }
+
 TEST_F(MoonExactTypes, nested_using_target_is_canonical_in_generic_body) {
   auto dep = bundle("nested_using", R"(
     public module outer {
@@ -1170,12 +1171,10 @@ TEST_F(MoonExactTypes,
       public function answer() i32 { return b.version() + c.value(); }
     }
   )";
-  auto first =
-      bundle("consumer_first", source, {MoonImport(b1), MoonImport(c)},
-             "consumer");
-  auto second =
-      bundle("consumer_second", source, {MoonImport(c), MoonImport(b1)},
-             "consumer");
+  auto first = bundle("consumer_first", source, {MoonImport(b1), MoonImport(c)},
+                      "consumer");
+  auto second = bundle("consumer_second", source,
+                       {MoonImport(c), MoonImport(b1)}, "consumer");
   auto digest = [](const std::string& path) {
     auto reader = MoonReader::open(path);
     return reader->getMetadata(reader->listModules()[0])->content_hash();
@@ -1212,11 +1211,13 @@ TEST_F(MoonExactTypes,
   auto key = reader->listModules()[0];
   auto& cache = sun::moon_bundling::LibraryCache::instance();
   cache.clear();
+
   /** Clears the shared library cache when the fixture leaves scope. */
   struct ResetCache {
     /** Clears the shared library cache after the test finishes. */
     ~ResetCache() { sun::moon_bundling::LibraryCache::instance().clear(); }
   } reset;
+
   cache.addSearchPath(dir);
   EXPECT_NO_THROW(cache.preloadAll());
   EXPECT_TRUE(cache.hasModule(key));

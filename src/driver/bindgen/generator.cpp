@@ -348,8 +348,9 @@ class Generator {
     std::string body;
     const llvm::Triple target(options.target);
     if (target.isMacOSX() && target.getOSName() == "darwin") {
-      body += "// Keep this target version-free; do not add a host-specific "
-              "Darwin version.\n";
+      body +=
+          "// Keep this target version-free; do not add a host-specific "
+          "Darwin version.\n";
     }
     body += "_assert_c_target(" + quote(options.target) + ");\n\n";
     for (const auto* declarations : {&records, &functions}) {

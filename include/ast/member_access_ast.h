@@ -57,6 +57,7 @@ class MemberAccessAST : public ExprAST {
 
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::MEMBER_ACCESS; }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string result = object->toString() + "." + memberName;
@@ -79,12 +80,16 @@ class MemberAccessAST : public ExprAST {
   /** Visits replaceable child expressions so tree passes can rewrite them in
    * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override { fn(object); }
+
   /** Transfers ownership of the receiver expression to the caller. */
   std::unique_ptr<ExprAST> releaseObject() { return std::move(object); }
+
   /** Returns the member name to resolve on the receiver. */
   const std::string& getMemberName() const { return memberName; }
+
   /** Reports whether this object has type arguments. */
   bool hasTypeArguments() const { return !typeArguments.empty(); }
+
   /** Provides the concrete types supplied for generic specialization. */
   const std::vector<std::unique_ptr<TypeAnnotation>>& getTypeArguments() const {
     return typeArguments;
@@ -96,10 +101,12 @@ class MemberAccessAST : public ExprAST {
   void setResolvedTypeArgs(std::vector<TypePtr> types) const {
     memberAnalysis().resolvedTypeArgs = std::move(types);
   }
+
   /** Returns the concrete generic type arguments. */
   const std::vector<TypePtr>& getResolvedTypeArgs() const {
     return memberAnalysis().resolvedTypeArgs;
   }
+
   /** Reports whether this object has resolved type args. */
   bool hasResolvedTypeArgs() const {
     return analysis_ && !static_cast<MemberAccessAnalysis&>(*analysis_)
@@ -114,6 +121,7 @@ class MemberAccessAST : public ExprAST {
   void setResolvedVariadicArgTypes(std::vector<TypePtr> types) const {
     memberAnalysis().resolvedVariadicArgTypes = std::move(types);
   }
+
   /** Returns the concrete variadic argument types. */
   const std::vector<TypePtr>& getResolvedVariadicArgTypes() const {
     return memberAnalysis().resolvedVariadicArgTypes;
@@ -126,6 +134,7 @@ class MemberAccessAST : public ExprAST {
   void setIsBoundMethodRef(bool value) const {
     memberAnalysis().isBoundMethodRef = value;
   }
+
   /** Reports whether this syntax node represents a bound method reference. */
   bool isBoundMethodRef() const {
     return analysis_ &&
@@ -140,10 +149,12 @@ class MemberAccessAST : public ExprAST {
   void setQualifiedName(sun::semantic_analysis::QualifiedName name) const {
     memberAnalysis().qualifiedName = std::move(name);
   }
+
   /** Returns the declaration name together with its enclosing scopes. */
   const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
     return memberAnalysis().qualifiedName;
   }
+
   /** Reports whether a name including the enclosing scopes has been assigned.
    */
   bool hasQualifiedName() const {

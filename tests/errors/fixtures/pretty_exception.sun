@@ -1,0 +1,18 @@
+/** Carries a test failure. */
+exception Failure {
+}
+
+/** Throws at the deepest point. */
+function bar() void throws {
+  throw Failure();
+}
+
+/** Adds a source call site. */
+function foo() void throws {
+  bar();
+}
+
+/** Reports an uncaught exception without importing stdlib. */
+function main() void throws {
+  foo();
+}

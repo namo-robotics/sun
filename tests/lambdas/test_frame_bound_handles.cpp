@@ -373,5 +373,6 @@ function check() void throws {
 }
 /** Supply an entry point without running the invalid function. */
 function main() i32 { return 0; }
-)"), "Borrow check failed");
+)"),
+                                "Borrow check failed");
 }

@@ -13,7 +13,7 @@
 //   FunctionGenerator   functions, lambdas, closures, returns
 //   VariableGenerator   variables, lvalues, globals
 //   LoopGenerator       loops and the jumps out of them
-//   ErrorGenerator      throw, try/catch, calls that may unwind
+//   ExceptionGenerator      throw, try/catch, calls that may unwind
 //   IntrinsicsGenerator compiler intrinsics and libc built-ins
 //
 // They all share the one CodegenState by reference and reach each other back
@@ -46,7 +46,7 @@
 #include "codegen/codegen.h"                  // CodegenContext
 #include "codegen/codegen_state.h"  // Shared state for one codegen run
 #include "codegen/enums/enum_generator.h"
-#include "codegen/errors/error_generator.h"  // throw, try/catch, unwinding calls
+#include "codegen/exceptions/exception_generator.h"  // throw, try/catch, unwinding calls
 #include "codegen/functions/function_generator.h"  // Functions, lambdas, closures
 #include "codegen/functions/function_registry.h"  // Function lookup and conventions
 #include "codegen/intrinsics/intrinsics_generator.h"  // Intrinsics, built-ins
@@ -120,7 +120,7 @@ class CodegenVisitor {
   loops::LoopGenerator loops{state_, *this};
 
   // throw, try/catch, and every call that may unwind
-  errors::ErrorGenerator errors{state_, *this};
+  exceptions::ExceptionGenerator exceptions{state_, *this};
 
   // Compiler intrinsics and libc built-ins; owns the thread helpers they need
   intrinsics::IntrinsicsGenerator intrinsics{state_, *this};
@@ -220,20 +220,28 @@ class CodegenVisitor {
 
   /** Provides the manager of generated lexical scopes and cleanup. */
   scopes::ScopeManager& scopeManager() { return scopes; }
+
   /** Provides the generator for class layouts and member operations. */
   classes::ClassGenerator& classGenerator() { return classes; }
+
   /** Gives codegen components access to enum generation. */
   enums::EnumGenerator& enumGenerator() { return enums; }
+
   /** Provides the generator for function bodies and calls. */
   functions::FunctionGenerator& functionGenerator() { return functions_; }
+
   /** Provides the generator for variable storage and access. */
   variables::VariableGenerator& variableGenerator() { return variables; }
-  /** Provides the generator for throwing and catching errors. */
-  errors::ErrorGenerator& errorGenerator() { return errors; }
+
+  /** Provides the generator for throwing and catching exceptions. */
+  exceptions::ExceptionGenerator& exceptionGenerator() { return exceptions; }
+
   /** Provides the generator for built-in operations. */
   intrinsics::IntrinsicsGenerator& intrinsicsGenerator() { return intrinsics; }
+
   /** Provides the registry of generated functions and signatures. */
   functions::FunctionRegistry& functionRegistry() { return functions; }
+
   /** Provides the emitter for calls that use the C calling convention. */
   sun::codegen::abi::ExternCEmitter& externCEmitter() { return externC; }
 
@@ -280,10 +288,12 @@ class CodegenVisitor {
   llvm::Value* tryCodegenAddress(const ExprAST& expr) {
     return variables.tryCodegenAddress(expr);
   }
+
   /** Emits the storage address of an addressable expression. */
   llvm::Value* codegenAddress(const ExprAST& expr) {
     return variables.codegenAddress(expr);
   }
+
   /** Emits the address used to borrow an expression without moving its value.
    */
   llvm::Value* codegenBorrowAddress(const ExprAST& expr) {
@@ -588,9 +598,9 @@ class CodegenVisitor {
    * module-qualified call sites. The resolved Sun signature supplies the
    * parameter types and exception contract.
    */
-  llvm::Value* emitMarshalledExternCall(const CallExprAST& expr,
-                                        const sun::types::FunctionType& signature,
-                                        llvm::Function* func);
+  llvm::Value* emitMarshalledExternCall(
+      const CallExprAST& expr, const sun::types::FunctionType& signature,
+      llvm::Function* func);
 
   /**
    * Read through a reference where a plain value is wanted. A reference is

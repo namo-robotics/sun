@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "abi/exception_layout.h"
 #include "cli/options.h"
 #include "driver/compiler.h"
 #include "moon_bundling/moon_import.h"
@@ -38,6 +39,7 @@ struct CompileJob {
   bool emitIR = false;
   bool debugMode = false;
   bool debugInfo = false;
+  unsigned exceptionTraceDepth = sun::abi::exceptions::defaultTraceDepth;
   bool optimize = true;
   bool dumpProtoSun = false;
   bool noTest = false;

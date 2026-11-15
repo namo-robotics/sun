@@ -1,0 +1,7 @@
+/** Deliberately has no native definition. */
+extern "C" function sun_missing_link_fixture() i32;
+
+/** Reaches the linker with an unresolved symbol. */
+function main() i32 {
+  return unsafe { sun_missing_link_fixture(); };
+}

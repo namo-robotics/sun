@@ -4,6 +4,7 @@
 #include "support/error.h"
 
 using sun::support::logAndThrowError;
+
 /** Resolves calls using the active semantic session. */
 namespace sun::semantic_analysis {
 using sun::types::EnumType;

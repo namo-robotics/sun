@@ -2005,3 +2005,18 @@ build/sun examples/105-xml/svg.sun
 
 The SVG example generates escaped vector markup without requiring GTK. Incremental input, file adapters,
 XPath, schemas, and migrations of external consumers are outside this release.
+
+## ExceptionTrace
+
+`std.ExceptionTrace` holds borrowed frame addresses and the original capture
+status. Construct it inside a catch with
+`ExceptionTrace(_exception_trace_frames(error), _exception_trace_status(error))`.
+The compiler rejects extraction from ordinary unthrown values and prevents the
+borrow from outliving the catch or surviving a rethrow that consumes the value.
+
+`std.print_exception_trace(trace)` accepts a `const ref ExceptionTrace` and writes
+the original call stack to stderr without allocating or throwing. Known frames
+show function names and source locations; unknown frames show addresses.
+Incomplete or disabled traces include their capture status. Pass the borrowed
+view to helpers to print the original trace even inside a nested catch.
+See [Error Handling](./errors) for capture limits and lifetime examples.

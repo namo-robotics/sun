@@ -59,22 +59,29 @@ class VariableCreationAST : public ExprAST {
         value(std::move(value)),
         typeAnnotation(std::move(type)),
         isConst_(isConst) {}
+
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override {
     return ASTNodeType::VARIABLE_CREATION;
   }
+
   /** Reports whether this syntax node represents an immutable declaration. */
   bool isConst() const { return isConst_; }
+
   /** Reports whether this syntax node represents a declaration using the C
    * calling convention. */
   bool isCExtern() const { return isCExtern_; }
+
   /** Marks whether the function uses the C calling convention. */
   void setCExtern(bool value) { isCExtern_ = value; }
+
   /** Reports whether this object has explicit c ABI. */
   bool hasExplicitCAbi() const { return explicitCAbi_; }
+
   /** Records whether the declaration explicitly uses the C calling convention.
    */
   void setExplicitCAbi(bool value) { explicitCAbi_ = value; }
+
   /**
    * The compile-time value a library published for this global, if any. Only
    * a global read from a bundle has one.
@@ -83,19 +90,24 @@ class VariableCreationAST : public ExprAST {
   getImportedConstant() const {
     return importedConstant_;
   }
+
   /** Records the value read from a bundle for this global. */
   void setImportedConstant(
       sun::semantic_analysis::constants::ConstantValue value) {
     importedConstant_ = std::move(value);
   }
+
   /** Reports whether an explicit linker symbol name is present. */
   bool hasLinkName() const { return linkName_.has_value(); }
+
   /** Updates the link name stored by this object. */
   void setLinkName(std::string name) { linkName_ = std::move(name); }
+
   /** Returns the link name stored by this object. */
   const std::string& getLinkName() const {
     return linkName_.has_value() ? *linkName_ : name;
   }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string externPrefix =
@@ -115,10 +127,13 @@ class VariableCreationAST : public ExprAST {
     }
     return result;
   }
+
   /** Returns the declared name used to identify this object. */
   const std::string& getName() const { return name; }
+
   /** Returns the value represented by this object. */
   const ExprAST* getValue() const { return value.get(); }
+
   /** Reports whether this object has value. */
   bool hasValue() const { return value != nullptr; }
 
@@ -129,10 +144,12 @@ class VariableCreationAST : public ExprAST {
       fn(value);
     }
   }
+
   /** Returns the type annotation stored by this object. */
   const std::optional<TypeAnnotation>& getTypeAnnotation() const {
     return typeAnnotation;
   }
+
   /** Reports whether this object has type annotation. */
   bool hasTypeAnnotation() const { return typeAnnotation.has_value(); }
 
@@ -140,6 +157,7 @@ class VariableCreationAST : public ExprAST {
    * Comment written above the declaration (see doc_comments.h)
    */
   const std::string& getDoc() const { return doc_; }
+
   /** Stores the source documentation comment for this declaration. */
   void setDoc(std::string doc) { doc_ = std::move(doc); }
 
@@ -158,10 +176,12 @@ class VariableCreationAST : public ExprAST {
   const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
     return varAnalysis().qualifiedName;
   }
+
   /** Records the declaration name together with its enclosing scopes. */
   void setQualifiedName(sun::semantic_analysis::QualifiedName qname) {
     varAnalysis().qualifiedName = std::move(qname);
   }
+
   /**
    * How this file-scope variable gets its first value: computed at compile
    * time and written into the program, or computed by the startup function.
@@ -174,6 +194,7 @@ class VariableCreationAST : public ExprAST {
                ? static_cast<VariableAnalysis&>(*analysis_).globalInit.get()
                : nullptr;
   }
+
   /** Records the decision made for this file-scope variable. */
   void setGlobalInit(
       sun::semantic_analysis::constants::GlobalInitRecord record) const {
@@ -181,6 +202,7 @@ class VariableCreationAST : public ExprAST {
         const sun::semantic_analysis::constants::GlobalInitRecord>(
         std::move(record));
   }
+
   /** Reports whether a name including the enclosing scopes has been assigned.
    */
   bool hasQualifiedName() const {

@@ -43,6 +43,7 @@ sun::abi::BundleContract contract() {
       sun::abi::compatibilityTarget(module.getTargetTriple()).data_layout());
   return sun::abi::describeContract(module);
 }
+
 /** Uses one temporary bundle path per test process. */
 std::filesystem::path bundlePath() {
   std::filesystem::create_directories("tmp");

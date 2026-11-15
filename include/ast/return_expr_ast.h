@@ -30,11 +30,13 @@ class ReturnExprAST : public ExprAST {
   void setTargetType(sun::types::TypePtr type) {
     static_cast<ReturnAnalysis&>(analysis()).targetType = std::move(type);
   }
+
   /** Returns the declared return type recorded by semantic analysis. */
   sun::types::TypePtr getTargetType() const {
     return analysis_ ? static_cast<ReturnAnalysis&>(*analysis_).targetType
                      : nullptr;
   }
+
   /** Creates this syntax node and takes ownership of any supplied child
    * expressions. */
   explicit ReturnExprAST(std::unique_ptr<ExprAST> value = nullptr)
@@ -42,6 +44,7 @@ class ReturnExprAST : public ExprAST {
 
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::RETURN; }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     if (Value) {
@@ -52,12 +55,14 @@ class ReturnExprAST : public ExprAST {
 
   /** Returns the value represented by this object. */
   const ExprAST* getValue() const { return Value.get(); }
+
   /** Reports whether this object has value. */
   bool hasValue() const { return Value != nullptr; }
 
   /** Visits replaceable child expressions so tree passes can rewrite them in
    * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override { fn(Value); }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "Return"; }
 };

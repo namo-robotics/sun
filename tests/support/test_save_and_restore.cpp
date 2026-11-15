@@ -33,7 +33,9 @@ TEST(SaveAndRestore, RestoresObjectsOnException) {
   EXPECT_EQ(value, "original");
 }
 
-static_assert(!std::is_copy_constructible_v<sun::support::SaveAndRestore<bool>>);
-static_assert(!std::is_move_constructible_v<sun::support::SaveAndRestore<bool>>);
+static_assert(
+    !std::is_copy_constructible_v<sun::support::SaveAndRestore<bool>>);
+static_assert(
+    !std::is_move_constructible_v<sun::support::SaveAndRestore<bool>>);
 static_assert(!std::is_copy_assignable_v<sun::support::SaveAndRestore<bool>>);
 static_assert(!std::is_move_assignable_v<sun::support::SaveAndRestore<bool>>);

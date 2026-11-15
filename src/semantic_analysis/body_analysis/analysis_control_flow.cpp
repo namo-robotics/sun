@@ -292,10 +292,6 @@ void BodyAnalyzer::analyzeForInLoop(sun::ast::ForInExprAST& forInExpr) {
   forInExpr.setResolvedType(Types::Float64());  // for-in loops return 0.0
 }
 
-
-
-
-
 void BodyAnalyzer::analyzeUnsafeBlock(sun::ast::UnsafeBlockAST& unsafeBlock) {
   // Track that we're inside an unsafe block
   ctx_.enterUnsafeBlock();

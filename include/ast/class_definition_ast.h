@@ -38,6 +38,7 @@ struct ClassMethodDecl {
   std::unique_ptr<FunctionAST> function;
   bool isConstructor;    // true if method name is "init"
   bool isConst = false;  // `const method`: does not mutate `this`
+
   /** Returns the access level recorded on this member declaration. */
   Visibility visibility() const { return function->getVisibility(); }
 };
@@ -59,6 +60,7 @@ struct ImplementedInterfaceAST {
     }
     return result;
   }
+
   std::string name;
   std::vector<TypeAnnotation> typeArguments;
   std::optional<sun::semantic_analysis::PortableDeclarationKey> declarationKey;
@@ -87,7 +89,7 @@ class ClassDefinitionAST : public ExprAST {
   bool isPacked_ = false;   // True for "packed class X {}" (no field padding)
   bool isException_ = false;
   std::optional<TypeAnnotation> exceptionParent_;
-  std::string doc_;         // Comment written above the class
+  std::string doc_;  // Comment written above the class
 
  protected:
   /**
@@ -109,18 +111,23 @@ class ClassDefinitionAST : public ExprAST {
   }
 
  public:
-  /** Marks a bounded exception declaration without enabling class inheritance. */
+  /** Marks a bounded exception declaration without enabling class inheritance.
+   */
   void setException(bool value) { isException_ = value; }
+
   /** Reports whether this declaration can be thrown and caught. */
   bool isException() const { return isException_; }
+
   /** Records the optional parent family as source type syntax. */
   void setExceptionParent(std::optional<TypeAnnotation> parent) {
     exceptionParent_ = std::move(parent);
   }
+
   /** Returns the declared parent family, if present. */
   const std::optional<TypeAnnotation>& getExceptionParent() const {
     return exceptionParent_;
   }
+
   /** Creates this syntax node and takes ownership of any supplied child
    * expressions. */
   ClassDefinitionAST(std::string name, std::vector<TypeParameter> typeParams,
@@ -153,6 +160,7 @@ class ClassDefinitionAST : public ExprAST {
       }
     }
   }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string result;
@@ -191,41 +199,50 @@ class ClassDefinitionAST : public ExprAST {
 
   /** Returns the declared name used to identify this object. */
   const std::string& getName() const { return name; }
+
   /**
    * Qualified name (after semantic analysis qualifies it)
    */
   const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
     return classAnalysis().qualifiedName;
   }
+
   /** Records the declaration name together with its enclosing scopes. */
   void setQualifiedName(sun::semantic_analysis::QualifiedName qname) {
     classAnalysis().qualifiedName = std::move(qname);
   }
+
   /** Reports whether a name including the enclosing scopes has been assigned.
    */
   bool hasQualifiedName() const {
     return analysis_ &&
            !static_cast<ClassAnalysis&>(*analysis_).qualifiedName.empty();
   }
+
   /** Stores the declared lifetime parameters used to check borrowed values. */
   void setLifetimeParameters(std::vector<LifetimeParameter> params) {
     lifetimeParameters = std::move(params);
   }
+
   /** Provides the declared lifetime parameters used to check borrowed values.
    */
   const std::vector<LifetimeParameter>& getLifetimeParameters() const {
     return lifetimeParameters;
   }
+
   /** Provides the generic parameters declared by this type or function. */
   const std::vector<TypeParameter>& getTypeParameters() const {
     return typeParameters;
   }
+
   /** Returns the names used to bind generic arguments during specialization. */
   std::vector<std::string> getTypeParameterNames() const {
     return typeParameterNames(typeParameters);
   }
+
   /** Reports whether this declaration still has unbound type parameters. */
   bool isGeneric() const { return !typeParameters.empty(); }
+
   /** Reports whether this object has generic methods. */
   bool hasGenericMethods() const {
     for (const auto& method : methods) {
@@ -235,12 +252,15 @@ class ClassDefinitionAST : public ExprAST {
     }
     return false;
   }
+
   /** Provides the interfaces implemented by this class. */
   const std::vector<ImplementedInterfaceAST>& getImplementedInterfaces() const {
     return implementedInterfaces;
   }
+
   /** Provides the field declarations belonging to this type. */
   const std::vector<ClassFieldDecl>& getFields() const { return fields; }
+
   /** Provides the method declarations belonging to this type. */
   const std::vector<ClassMethodDecl>& getMethods() const { return methods; }
 
@@ -262,10 +282,12 @@ class ClassDefinitionAST : public ExprAST {
         sun::semantic_analysis::PortableDeclarationKey::fromString(key)
             .encoding());
   }
+
   /** Return the specializations already compiled into the bundle. */
   const std::set<std::string>& getCompiledSpecializations() const {
     return compiledSpecializations_;
   }
+
   /** Report whether the bundle supplies this concrete class. */
   bool hasCompiledSpecialization(const std::string& key) const {
     return compiledSpecializations_.count(key) != 0;
@@ -280,11 +302,13 @@ class ClassDefinitionAST : public ExprAST {
       std::shared_ptr<ClassDefinitionAST> specializedAST) const {
     classAnalysis().specializations[id] = std::move(specializedAST);
   }
+
   const std::map<DeclarationId, std::shared_ptr<ClassDefinitionAST>>&
   /** Provides the concrete instances created from this generic declaration. */
   getSpecializations() const {
     return classAnalysis().specializations;
   }
+
   /** Reports whether an instance already exists for the supplied type
    * arguments. */
   bool hasSpecialization(DeclarationId id) const {
@@ -292,6 +316,7 @@ class ClassDefinitionAST : public ExprAST {
            static_cast<ClassAnalysis&>(*analysis_).specializations.find(id) !=
                static_cast<ClassAnalysis&>(*analysis_).specializations.end();
   }
+
   /** Looks up the instance previously created for the supplied type arguments.
    */
   std::shared_ptr<ClassDefinitionAST> getSpecialization(
@@ -308,6 +333,7 @@ class ClassDefinitionAST : public ExprAST {
    * Partial class support: "partial class X {}" adds methods to existing class
    */
   bool isPartial() const { return isPartial_; }
+
   /** Marks whether this class declaration extends a partial class. */
   void setIsPartial(bool v) { isPartial_ = v; }
 
@@ -317,10 +343,12 @@ class ClassDefinitionAST : public ExprAST {
   /** Returns the explicit minimum byte alignment, or zero for natural layout.
    */
   uint64_t getAlignment() const { return alignment_; }
+
   /** Sets the minimum alignment before the class layout is materialized. */
   void setAlignment(uint64_t alignment) { alignment_ = alignment; }
 
   bool isPacked() const { return isPacked_; }
+
   /** Controls whether the class uses a packed memory layout. */
   void setIsPacked(bool v) { isPacked_ = v; }
 
@@ -331,6 +359,7 @@ class ClassDefinitionAST : public ExprAST {
     compiledSpecializations_.clear();
     return methods;
   }
+
   /** Provides mutable access to field declarations for later compiler passes.
    */
   std::vector<ClassFieldDecl>& getMutableFields() { return fields; }
@@ -339,6 +368,7 @@ class ClassDefinitionAST : public ExprAST {
    * Comment written above the class (see doc_comments.h)
    */
   const std::string& getDoc() const { return doc_; }
+
   /** Stores the source documentation comment for this declaration. */
   void setDoc(std::string doc) { doc_ = std::move(doc); }
 

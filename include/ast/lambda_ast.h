@@ -36,6 +36,7 @@ class LambdaAST : public ExprAST {
       Body->forEachChildSlot(fn);
     }
   }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string result;
@@ -98,30 +99,37 @@ class LambdaAST : public ExprAST {
   sun::semantic_analysis::DeclarationId getDeclarationId() const override {
     return Proto->getDeclarationId();
   }
+
   /** Assign the prototype's declaration identity. */
   void setDeclarationId(
       sun::semantic_analysis::DeclarationId id) const override {
     Proto->setDeclarationId(id);
   }
+
   /** Access the identities owned by the prototype. */
   sun::semantic_analysis::DeclarationIdentity& declarationIdentity()
       const override {
     return Proto->declarationIdentity();
   }
+
   /** Clear body and signature results while retaining identities. */
   void clearComputedAnalysis() const override {
     ExprAST::clearComputedAnalysis();
     Proto->clearComputedAnalysis();
   }
+
   /** Discard the function's annotations and its prototype's annotations. */
   void resetAnalysisSession() const override {
     ExprAST::resetAnalysisSession();
     Proto->resetAnalysisSession();
   }
+
   /** Provides the function signature independently of its body. */
   const PrototypeAST& getProto() const { return *Proto; }
+
   /** Provides access to the expressions that make up the body. */
   const BlockExprAST& getBody() const { return *Body; }
+
   /** Reports whether a function body is present rather than just a declaration.
    */
   bool hasBody() const { return Body != nullptr; }

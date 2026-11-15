@@ -87,6 +87,7 @@ class NodeFinder {
 struct Target {
   std::vector<const ExprAST*> chain;
   Bindings bindings;
+
   /** Returns the syntax node selected at the requested source offset. */
   const ExprAST& node() const { return *chain.back(); }
 };

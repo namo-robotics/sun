@@ -40,6 +40,28 @@ using sun::support::SunError;
 /** Checks ownership and lifetimes so references cannot outlive their values. */
 namespace sun::borrow_checker {
 
+/** Exposes analyzed arguments and signatures for ordinary and explicit generic
+ * calls. */
+struct BorrowedCall {
+  const ExprAST* callee;
+  TypePtr signature;
+  const std::vector<std::unique_ptr<ExprAST>>& args;
+};
+
+/** Requires an ordinary call or an explicit generic call with its resolved
+ * signature. */
+static BorrowedCall borrowedCall(const ExprAST& expression) {
+  if (expression.getType() == ASTNodeType::CALL) {
+    const auto& call = static_cast<const CallExprAST&>(expression);
+    const auto* callee = call.getCallee();
+    return {callee, callee ? callee->getResolvedType() : nullptr,
+            call.getArgs()};
+  }
+  assert(expression.getType() == ASTNodeType::GENERIC_CALL);
+  const auto& call = static_cast<const GenericCallAST&>(expression);
+  return {nullptr, call.getResolvedCalleeType(), call.getArgs()};
+}
+
 /** Find the source whose captured environment survives parentheses. */
 static const ExprAST* unwrapFrameSource(const ExprAST& expr) {
   const ExprAST* source = &expr;
@@ -131,13 +153,20 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
       for (const auto& handler : statement.handlers) {
         movedVariables_ = beforeHandlers;
         enterScope();
-        auto* binding = handler.binding ? static_cast<const sun::ast::VariableCreationAST*>(handler.binding.get()) : nullptr;
-        if (binding) checkVariableCreation(*binding);
+        auto* binding = handler.binding
+                            ? static_cast<const sun::ast::VariableCreationAST*>(
+                                  handler.binding.get())
+                            : nullptr;
+        if (binding) {
+          checkVariableCreation(*binding);
+        }
         exceptionBindings_.push_back(binding);
         checkExpr(*handler.body);
         exceptionBindings_.pop_back();
         exitScope();
-        if (!exprDiverges(*handler.body)) afterHandlers.insert(movedVariables_.begin(), movedVariables_.end());
+        if (!exprDiverges(*handler.body)) {
+          afterHandlers.insert(movedVariables_.begin(), movedVariables_.end());
+        }
       }
       movedVariables_ = std::move(afterHandlers);
       break;
@@ -196,8 +225,6 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
     case ASTNodeType::BLOCK:
       checkBlockExpr(static_cast<const BlockExprAST&>(expr));
       break;
-
-
 
     case ASTNodeType::RETURN:
       checkReturnStmt(static_cast<const ReturnExprAST&>(expr));
@@ -437,8 +464,9 @@ void BorrowChecker::checkVariableCreation(
             "_to_ref") {
       // The unsafe conversion carries the raw pointer's existing lifetime rule.
       state_.setLifetime(var.getName(), inferExprLifetime(*init));
-    } else if (init->getType() == ASTNodeType::CALL) {
-      borrowRefCallInputs(var.getName(), static_cast<const CallExprAST&>(*init),
+    } else if (init->getType() == ASTNodeType::CALL ||
+               init->getType() == ASTNodeType::GENERIC_CALL) {
+      borrowRefCallInputs(var.getName(), *init,
                           declaredType ? sun::types::isMutableRef(declaredType)
                                        : !annotation->constRef,
                           var.getLocation());
@@ -601,8 +629,9 @@ void BorrowChecker::checkBorrowBinding(const std::string& refName,
 // that is already a ref (a ref variable or ref parameter) is a reborrow: the
 // loan it made governs the storage, so no new loan is taken.
 void BorrowChecker::borrowRefCallInputs(const std::string& refName,
-                                        const CallExprAST& call, bool isMutable,
+                                        const ExprAST& call, bool isMutable,
                                         const Position& refPos) {
+  const auto inputs = borrowedCall(call);
   BorrowKind kind = isMutable ? BorrowKind::Mutable : BorrowKind::Shared;
   bool tracked = false;
 
@@ -628,6 +657,14 @@ void BorrowChecker::borrowRefCallInputs(const std::string& refName,
       base = getBaseVariableName(*source);
     }
     if (!base) {
+      // A reference returned by another call retains that call's borrowed
+      // inputs.
+      if (source->getResolvedType() &&
+          source->getResolvedType()->isReference() &&
+          (source->getType() == ASTNodeType::CALL ||
+           source->getType() == ASTNodeType::GENERIC_CALL)) {
+        borrowRefCallInputs(refName, *source, isMutable, refPos);
+      }
       return;
     }
     // Raw pointers are the unsafe escape hatch: storage the checker cannot see
@@ -666,7 +703,7 @@ void BorrowChecker::borrowRefCallInputs(const std::string& refName,
   };
 
   // Method receiver: `obj.method(...)` returning ref borrows from obj
-  const ExprAST* callee = call.getCallee();
+  const ExprAST* callee = inputs.callee;
   if (callee && callee->getType() == ASTNodeType::MEMBER_ACCESS) {
     const auto& access = static_cast<const MemberAccessAST&>(*callee);
     if (access.getObject()) {
@@ -676,7 +713,7 @@ void BorrowChecker::borrowRefCallInputs(const std::string& refName,
 
   // Arguments bound to ref parameters
   std::vector<TypePtr> paramTypes;
-  if (TypePtr calleeType = callee ? callee->getResolvedType() : nullptr) {
+  if (TypePtr calleeType = inputs.signature) {
     if (auto* lambdaType = dynamic_cast<const LambdaType*>(calleeType.get())) {
       paramTypes = lambdaType->getParamTypes();
     } else if (auto* funcType = dynamic_cast<const sun::types::FunctionType*>(
@@ -684,7 +721,7 @@ void BorrowChecker::borrowRefCallInputs(const std::string& refName,
       paramTypes = funcType->getParamTypes();
     }
   }
-  const auto& args = call.getArgs();
+  const auto& args = inputs.args;
   for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
     if (!args[i] || !paramTypes[i] || !paramTypes[i]->isReference()) {
       continue;
@@ -1769,8 +1806,8 @@ bool BorrowChecker::forEachHolderInput(
       return false;
     }
     const auto* variant =
-        access ? static_cast<const sun::types::EnumType&>(*enumType)
-                     .getVariant(access->getMemberName())
+        access ? static_cast<const sun::types::EnumType&>(*enumType).getVariant(
+                     access->getMemberName())
                : nullptr;
     if (!variant) {
       return false;
@@ -1829,7 +1866,17 @@ bool BorrowChecker::forEachHolderInput(
 
 void BorrowChecker::borrowHolderInputs(const CallExprAST& call) {
   forEachHolderInput(call, [&](const ExprAST& input, bool mutableRef) {
-    const std::string* base = getBaseVariableName(input);
+    const auto& inputPos = input.getLocation();
+    const std::string holder = "$refholder@" + std::to_string(inputPos.line) +
+                               ":" + std::to_string(inputPos.column);
+    const auto* source = unwrapFrameSource(input);
+    if (source->getResolvedType() && source->getResolvedType()->isReference() &&
+        (source->getType() == ASTNodeType::CALL ||
+         source->getType() == ASTNodeType::GENERIC_CALL)) {
+      borrowRefCallInputs(holder, *source, mutableRef, inputPos);
+      return;
+    }
+    const std::string* base = getBaseVariableName(*source);
     if (!base || rawPointerLocals_.count(*base)) {
       return;
     }
@@ -1841,9 +1888,6 @@ void BorrowChecker::borrowHolderInputs(const CallExprAST& call) {
     if (targetInfo.isRebind) {
       return;  // reborrow: the original loan governs
     }
-    const auto& inputPos = input.getLocation();
-    std::string holder = "$refholder@" + std::to_string(inputPos.line) + ":" +
-                         std::to_string(inputPos.column);
     auto result =
         state_.addBorrow(targetInfo.actualTarget, holder,
                          mutableRef ? BorrowKind::Mutable : BorrowKind::Shared,
@@ -1912,7 +1956,10 @@ void BorrowChecker::recordMove(const std::string& place, const Position& pos) {
   if (!transferringException_) {
     for (const auto* binding : exceptionBindings_) {
       if (binding && binding->getName() == place) {
-        reportError("A catch binding can only be moved by throw; borrow it to inspect its payload", pos);
+        reportError(
+            "A catch binding can only be moved by throw; borrow it to inspect "
+            "its payload",
+            pos);
         return;
       }
     }
@@ -2797,6 +2844,7 @@ BorrowChecker::LifetimeValue BorrowChecker::inferDestLifetimeValue(
 void BorrowChecker::checkNamedLifetimesAtCall(
     const CallExprAST& call, const std::vector<TypePtr>& paramTypes) {
   const auto& args = call.getArgs();
+
   /** A call argument lifetime and source position used to compare named
    * lifetime bindings. */
   struct Entry {
@@ -2804,6 +2852,7 @@ void BorrowChecker::checkNamedLifetimesAtCall(
     Position pos;
     size_t argIndex;
   };
+
   std::map<std::string, std::vector<Entry>> sources, dests;
   bool usesThis = false;
 
@@ -3659,8 +3708,6 @@ void BorrowChecker::checkIndexExpr(const IndexAST& index) {
   }
 }
 
-
-
 void BorrowChecker::checkUnsafeBlock(const UnsafeBlockAST& unsafeBlock) {
   // Unsafe blocks are just scoped blocks - check the body normally
   enterScope();
@@ -3950,8 +3997,7 @@ Lifetime BorrowChecker::inferExprLifetime(const ExprAST& expr) const {
         }
         return Lifetime::static_();
       }
-      // Other generic calls: treat as temporary
-      break;
+      return inferCallReturnLifetime(genericCall);
     }
 
     case ASTNodeType::UNSAFE_BLOCK: {
@@ -4024,26 +4070,29 @@ void BorrowChecker::reportDanglingRef(const std::string& varName,
 // Temporary Ownership Tracking
 // ============================================================================
 
-Lifetime BorrowChecker::inferCallReturnLifetime(const CallExprAST& call) const {
-  const ExprAST* callee = call.getCallee();
-  if (!callee) {
+Lifetime BorrowChecker::inferCallReturnLifetime(const ExprAST& call) const {
+  const auto inputs = borrowedCall(call);
+  const ExprAST* callee = inputs.callee;
+  if (!callee && !inputs.signature) {
     return Lifetime::local("$temp", currentScope_);
   }
-  if (call.getResolvedType() && !call.getResolvedType()->isReference() &&
+  if (callee && call.getResolvedType() &&
+      !call.getResolvedType()->isReference() &&
       classStoresRefs(call.getResolvedType())) {
     Lifetime shortest = Lifetime::static_();
-    forEachHolderInput(call, [&](const ExprAST& input, bool) {
-      auto lifetime = inferExprLifetime(input);
-      if (lifetime.isLocal()) {
-        if (!shortest.isLocal() ||
-            lifetime.getScopeDepth() > shortest.getScopeDepth()) {
-          shortest = lifetime;
-        }
-      } else if (!shortest.isLocal()) {
-        shortest = lifetime;
-      }
-    });
-    for (const auto& argument : call.getArgs()) {
+    forEachHolderInput(
+        static_cast<const CallExprAST&>(call), [&](const ExprAST& input, bool) {
+          auto lifetime = inferExprLifetime(input);
+          if (lifetime.isLocal()) {
+            if (!shortest.isLocal() ||
+                lifetime.getScopeDepth() > shortest.getScopeDepth()) {
+              shortest = lifetime;
+            }
+          } else if (!shortest.isLocal()) {
+            shortest = lifetime;
+          }
+        });
+    for (const auto& argument : inputs.args) {
       auto type = argument->getResolvedType();
       if (!type || type->isReference() || !classStoresRefs(type)) {
         continue;
@@ -4065,7 +4114,7 @@ Lifetime BorrowChecker::inferCallReturnLifetime(const CallExprAST& call) const {
   // raw pointers are the unsafe escape hatch and name storage the checker
   // cannot see.
   const MemberAccessAST* methodAccess =
-      callee->getType() == ASTNodeType::MEMBER_ACCESS
+      callee && callee->getType() == ASTNodeType::MEMBER_ACCESS
           ? static_cast<const MemberAccessAST*>(callee)
           : nullptr;
   auto receiverLifetime = [&]() -> std::optional<Lifetime> {
@@ -4085,7 +4134,7 @@ Lifetime BorrowChecker::inferCallReturnLifetime(const CallExprAST& call) const {
     return inferExprLifetime(object);
   };
 
-  TypePtr calleeType = callee->getResolvedType();
+  TypePtr calleeType = inputs.signature;
   if (!calleeType) {
     if (auto lt = receiverLifetime()) {
       return *lt;
@@ -4102,7 +4151,7 @@ Lifetime BorrowChecker::inferCallReturnLifetime(const CallExprAST& call) const {
       return Lifetime::local("$temp", currentScope_);
     }
     const auto& paramTypes = lambdaType->getParamTypes();
-    const auto& args = call.getArgs();
+    const auto& args = inputs.args;
     for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
       if (args[i] && paramTypes[i] && paramTypes[i]->isReference() &&
           args[i]->isTemporary()) {
@@ -4136,7 +4185,7 @@ Lifetime BorrowChecker::inferCallReturnLifetime(const CallExprAST& call) const {
   // has local lifetime (can't outlive the call expression).
 
   const auto& paramTypes = funcType->getParamTypes();
-  const auto& args = call.getArgs();
+  const auto& args = inputs.args;
 
   // Check each ref parameter to see if it received a class temporary
   for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {

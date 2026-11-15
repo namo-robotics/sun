@@ -25,6 +25,7 @@
 #include "serialization/source_file_ids.h"
 #include "support/display_path.h"
 #include "support/error.h"
+#include "support/source_path.h"
 #include "support/terminal.h"
 
 using sun::support::SourceFileId;
@@ -52,6 +53,37 @@ std::string readWholeFile(const std::string& path, const char* what) {
   }
   return std::string((std::istreambuf_iterator<char>(in)),
                      std::istreambuf_iterator<char>());
+}
+
+/** Rewrites source locations throughout exported declarations, including
+ * generic bodies. */
+void relativizeMetadataPaths(google::protobuf::Message& message,
+                             const std::string& entrypointDirectory) {
+  const auto* reflection = message.GetReflection();
+  std::vector<const google::protobuf::FieldDescriptor*> fields;
+  reflection->ListFields(message, &fields);
+  for (const auto* field : fields) {
+    if (field->cpp_type() ==
+            google::protobuf::FieldDescriptor::CPPTYPE_STRING &&
+        (field->name() == "file_path" || field->name() == "source_path")) {
+      reflection->SetString(
+          &message, field,
+          sun::support::relativeSourcePath(
+              reflection->GetString(message, field), entrypointDirectory));
+    } else if (field->cpp_type() ==
+               google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
+      if (field->is_repeated()) {
+        for (int i = 0; i < reflection->FieldSize(message, field); ++i) {
+          relativizeMetadataPaths(
+              *reflection->MutableRepeatedMessage(&message, field, i),
+              entrypointDirectory);
+        }
+      } else {
+        relativizeMetadataPaths(*reflection->MutableMessage(&message, field),
+                                entrypointDirectory);
+      }
+    }
+  }
 }
 
 /**
@@ -149,6 +181,7 @@ MoonBuilder::LoadedInputs MoonBuilder::loadInputs(
   inputs.targetTriple = options.targetTriple;
   inputs.debugInfo = options.debugInfo;
   inputs.optimize = options.optimize;
+  inputs.exceptionTraceDepth = options.exceptionTraceDepth;
   inputs.settings.emplace_back("format", std::to_string(MoonHeader::VERSION));
   sun::driver::generateCBindings(baseDir, options.targetTriple);
   result.protoModules = ProtoImporter::importAll(report.protoFiles, baseDir);
@@ -193,7 +226,8 @@ MoonBuildReport MoonBuilder::readExistingReport(
   }
   for (const auto& key : reader->listModules()) {
     const auto* metadata = reader->getMetadata(key);
-    if (metadata && metadata->content_hash() == reader->getLibrary().content_hash() &&
+    if (metadata &&
+        metadata->content_hash() == reader->getLibrary().content_hash() &&
         !metadata->module_name().empty()) {
       report.modules.push_back(metadata->module_name());
     }
@@ -292,7 +326,8 @@ MoonBuilder::CompiledBundle MoonBuilder::compile(
   CompiledBundle result;
   auto& driver = result.driver;
   driver = sun::driver::Driver::createForAOT(
-      "moon_module", options.targetTriple, options.debugInfo, options.optimize);
+      "moon_module", options.targetTriple, options.debugInfo, options.optimize,
+      options.exceptionTraceDepth);
   if (options.debugMode) {
     driver->setDebugMode(true, entrypoint);
   }
@@ -305,6 +340,12 @@ MoonBuilder::CompiledBundle MoonBuilder::compile(
           sun::semantic_analysis::SemanticAnalyzer& analyzer) {
         result.metadata = collectMetadata(program, analyzer, inputs.inputHash,
                                           driver->getStaticInitOrder());
+        if (!options.debugInfo) {
+          const auto root = fs::canonical(entrypoint).parent_path().string();
+          for (auto& metadata : result.metadata.records) {
+            relativizeMetadataPaths(metadata, root);
+          }
+        }
       });
   driver->compileFiles(inputs.report.sunFiles, inputs.report.moonImports, {},
                        {}, inputs.protoModules);
@@ -430,11 +471,18 @@ std::vector<std::string> MoonBuilder::writeBundle(
   for (const auto& dependency : inputs.report.moonImports) {
     auto reader = MoonReader::open(dependency.path);
     if (!reader) {
-      sun::support::logAndThrowError("Cannot reopen dependency: " + dependency.path);
+      sun::support::logAndThrowError("Cannot reopen dependency: " +
+                                     dependency.path);
     }
     for (const auto& key : reader->listModules()) {
       if (retainedModules.insert(key).second) {
         auto metadata = *reader->getMetadata(key);
+        if (!options.debugInfo) {
+          relativizeMetadataPaths(metadata,
+                                  fs::canonical(inputs.report.sunFiles.front())
+                                      .parent_path()
+                                      .string());
+        }
         writer.addModule(driver->getModule(), metadata);
       }
     }
@@ -474,11 +522,15 @@ std::filesystem::path MoonBuilder::defaultOutputPath(
 MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
                                    const std::filesystem::path& outputPath,
                                    const MoonBuildOptions& options) {
-  abi::AbiValidationScope compatibility({options.targetTriple,
-                                         abi::NativeExecution::NativeLink,
-                                         options.debugInfo, options.optimize});
+  abi::AbiValidationScope compatibility(
+      {.targetTriple = options.targetTriple,
+       .execution = abi::NativeExecution::NativeLink,
+       .debugInfo = options.debugInfo,
+       .optimize = options.optimize,
+       .exceptionTraceDepth = options.exceptionTraceDepth});
   sun::driver::GitDependencyBuildScope dependencyScope(
-      options.debugInfo, options.optimize, options.forceRebuild);
+      options.debugInfo, options.optimize, options.forceRebuild, false,
+      options.exceptionTraceDepth);
   auto inputs = loadInputs(entrypoint, options);
   if (isUpToDate(inputs.inputHash, outputPath, options)) {
     sun::support::logBuildProgress("Up to date: ", outputPath.string());
@@ -486,16 +538,15 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
                               std::move(inputs.report));
   }
 
-  sun::support::logBuildProgress(
-      "Building ", outputPath, entrypoint);
+  sun::support::logBuildProgress("Building ", outputPath, entrypoint);
 
   if (options.onBuildStart) {
     options.onBuildStart();
   }
   const auto symbols = prepareNativeSymbols(inputs);
   auto compiled = compile(inputs, symbols, entrypoint, options);
-  sun::support::logPathMessage(
-      "debug", "Writing library: ", outputPath.string());
+  sun::support::logPathMessage("debug",
+                               "Writing library: ", outputPath.string());
   auto inheritedArchives =
       writeBundle(inputs, symbols, compiled, outputPath, options);
   // Release the compiler before invalidating bundles or transferring its

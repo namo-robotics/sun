@@ -15,6 +15,7 @@ struct NativeArchiveInput {
   llvm::MemoryBufferRef bytes;
   std::string symbolPrefix;
 };
+
 /** Returns the implemented native object rule for a declared target, or fails.
  */
 std::string nativeArchiveRule(const TargetProfile& target);

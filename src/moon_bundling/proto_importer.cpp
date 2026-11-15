@@ -22,8 +22,8 @@
 //       init(alloc: const ref HeapAllocator) throws { ...zero values... }
 //       method encode(buf: ref Vec<u8>) void throws { ... }
 //     }
-//     function <Msg>_decode(alloc: const ref HeapAllocator, buf: ref Vec<u8>) <Msg>,
-//     IError
+//     function <Msg>_decode(alloc: const ref HeapAllocator, buf: ref Vec<u8>)
+//     <Msg>, IError
 //   }
 //
 // Nested messages/enums flatten to Outer_Inner. Sun has no static methods, so
@@ -120,6 +120,7 @@ class ErrorCollector : public pbc::MultiFileErrorCollector {
        << message;
     errors_.push_back(os.str());
   }
+
   /** Combines the collected protobuf errors into one diagnostic message. */
   std::string joined() const {
     std::string out;
@@ -151,21 +152,25 @@ class Writer {
     }
     out_ += std::string(indent_ * 2, ' ') + text + "\n";
   }
+
   /** Writes the start of a generated block and increases indentation. */
   void open(const std::string& text) {
     line(text);
     ++indent_;
   }
+
   /** Ends a generated block and decreases indentation. */
   void close(const std::string& text = "}") {
     --indent_;
     line(text);
   }
+
   /**
    * Pop an indent level without emitting a brace (the next opener prints
    * "} else if (...) {" itself)
    */
   void closeSilently() { --indent_; }
+
   /** Returns the generated source accumulated so far. */
   const std::string& str() const { return out_; }
 
@@ -518,8 +523,7 @@ class TypeMapper {
       case FD::TYPE_BYTES:
         return "r.read_bytes_field(alloc)";
       case FD::TYPE_MESSAGE:
-        return messageName(f->message_type()) +
-               "_decode_nested(alloc, r)";
+        return messageName(f->message_type()) + "_decode_nested(alloc, r)";
       case FD::TYPE_ENUM:
         return "proto_enum_from_i32_" + enumName(f->enum_type()) +
                "(r.read_int32())";
@@ -980,9 +984,10 @@ class MessageGenerator {
    * Nested (length-prefixed), whole-buffer, and delimited entry points
    */
   void emitDecodeHelpers() {
-    const std::string sig = "(alloc: const ref HeapAllocator, r: ref ProtoReader) ";
-    w_.open("public function " + name_ + "_decode_nested" + sig +
-            name_ + " throws {");
+    const std::string sig =
+        "(alloc: const ref HeapAllocator, r: ref ProtoReader) ";
+    w_.open("public function " + name_ + "_decode_nested" + sig + name_ +
+            " throws {");
     w_.line("var end: i64 = r.read_length();");
     w_.line("var old: i64 = r.push_limit(end);");
     w_.open("try {");
@@ -1005,8 +1010,8 @@ class MessageGenerator {
     w_.close();
     w_.line();
 
-    w_.open("public function " + name_ + "_decode_delimited" + sig +
-            name_ + " throws {");
+    w_.open("public function " + name_ + "_decode_delimited" + sig + name_ +
+            " throws {");
     w_.line("return " + name_ + "_decode_nested(alloc, r);");
     w_.close();
     w_.line();

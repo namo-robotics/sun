@@ -27,16 +27,17 @@ class DisplayPathScope {
 /** Writes and flushes a progress message with one path or an input/output pair.
  * Paths follow the active display policy; disabled levels produce no output.
  */
-void logPathMessage(const std::string& level, const std::string& label,
-                    const std::filesystem::path& path,
-                    const std::optional<std::filesystem::path>& output = std::nullopt);
+void logPathMessage(
+    const std::string& level, const std::string& label,
+    const std::filesystem::path& path,
+    const std::optional<std::filesystem::path>& output = std::nullopt);
 
 /** Logs an artifact's basename, linking existing files in formatted terminals.
  * Debug logging includes full artifact and optional source paths.
  */
-void logBuildProgress(const std::string& label,
-                      const std::filesystem::path& output,
-                      const std::optional<std::filesystem::path>& source = std::nullopt);
+void logBuildProgress(
+    const std::string& label, const std::filesystem::path& output,
+    const std::optional<std::filesystem::path>& source = std::nullopt);
 
 /** Returns the display base for child build contexts, or the current directory.
  */

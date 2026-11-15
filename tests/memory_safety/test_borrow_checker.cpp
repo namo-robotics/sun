@@ -368,6 +368,7 @@ TEST(MemorySafety_BorrowChecker, temporary_with_method_call) {
   )");
   EXPECT_EQ(value, 42);
 }
+
 // ============================================================================
 // Match bindings borrow from the discriminant
 // ============================================================================
@@ -462,7 +463,7 @@ function main() i32 throws {
   return _convert<i32>(( first(alloc)).length());
 }
 )"),
-               "Borrow check failed");
+                                "Borrow check failed");
 }
 
 // ============================================================================
@@ -1199,7 +1200,7 @@ function main() i32 throws {
   return 0;
 }
 )"),
-               "Borrow check failed");
+                                "Borrow check failed");
 }
 
 /** Rejects modifying input that a live XML reader still borrows. */
@@ -1219,7 +1220,7 @@ function main() i32 throws {
   return 0;
 }
 )"),
-               "Borrow check failed");
+                                "Borrow check failed");
 }
 
 /** Rejects destroying an XML document while a child borrow remains live. */
@@ -1244,7 +1245,7 @@ TEST(MemorySafety_BorrowChecker, xml_child_prevents_document_move) {
 return value; } catch { std.panic("unexpected test error");return 1; }
     }
   )"),
-               "Borrow check failed");
+                                "Borrow check failed");
 }
 
 /** Rejects invalidating child storage while a borrowed child is still used. */
@@ -1267,7 +1268,7 @@ TEST(MemorySafety_BorrowChecker, xml_child_prevents_removal) {
 return value; } catch { std.panic("unexpected test error");return 1; }
     }
   )"),
-               "Borrow check failed");
+                                "Borrow check failed");
 }
 
 /** Allows chained child borrows while their document remains alive. */

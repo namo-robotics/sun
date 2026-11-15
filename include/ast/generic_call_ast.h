@@ -65,6 +65,7 @@ class GenericCallAST : public ExprAST {
       fn(arg);
     }
   }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string result = functionName + "<";
@@ -88,10 +89,12 @@ class GenericCallAST : public ExprAST {
 
   /** Returns the function name stored by this object. */
   const std::string& getFunctionName() const { return functionName; }
+
   /** Provides the concrete types supplied for generic specialization. */
   const std::vector<std::unique_ptr<TypeAnnotation>>& getTypeArguments() const {
     return typeArguments;
   }
+
   /** Provides the ordered arguments associated with this expression. */
   const std::vector<std::unique_ptr<ExprAST>>& getArgs() const { return args; }
 
@@ -111,6 +114,7 @@ class GenericCallAST : public ExprAST {
       std::vector<sun::semantic_analysis::ArgConversion> conversions) const {
     gcAnalysis().argConversions = std::move(conversions);
   }
+
   /** Returns the argument conversions selected by analysis. */
   const std::vector<sun::semantic_analysis::ArgConversion>& getArgConversions()
       const {
@@ -121,10 +125,12 @@ class GenericCallAST : public ExprAST {
   void setResolvedTypeArgs(std::vector<TypePtr> types) const {
     gcAnalysis().resolvedTypeArgs = std::move(types);
   }
+
   /** Returns the concrete generic type arguments. */
   const std::vector<TypePtr>& getResolvedTypeArgs() const {
     return gcAnalysis().resolvedTypeArgs;
   }
+
   /** Reports whether this object has resolved type args. */
   bool hasResolvedTypeArgs() const {
     return analysis_ && !static_cast<GenericCallAnalysis&>(*analysis_)
@@ -137,12 +143,14 @@ class GenericCallAST : public ExprAST {
   void setGenericFunctionAST(const FunctionAST* ast) const {
     gcAnalysis().genericFunctionAST = ast;
   }
+
   /** Returns the generic function syntax tree stored by this object. */
   const FunctionAST* getGenericFunctionAST() const {
     return analysis_ ? static_cast<GenericCallAnalysis&>(*analysis_)
                            .genericFunctionAST
                      : nullptr;
   }
+
   /** Reports whether this object has generic function syntax tree. */
   bool hasGenericFunctionAST() const {
     return analysis_ &&

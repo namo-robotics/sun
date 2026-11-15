@@ -2,8 +2,8 @@
 #include <gtest/gtest.h>
 
 #include <cerrno>
-#include <cstdlib>
 #include <cstdint>
+#include <cstdlib>
 #include <unordered_set>
 
 #include "driver/driver.h"
@@ -16,6 +16,7 @@ struct AllocationState {
   std::int64_t remaining = -1;
   std::unordered_set<void*> live;
 };
+
 thread_local AllocationState* allocationState = nullptr;
 
 /** Report whether the configured successful allocation budget is exhausted. */
@@ -30,7 +31,8 @@ bool failAllocation() {
   return false;
 }
 
-/** Allocate for generated code, with deterministic failure and leak tracking. */
+/** Allocate for generated code, with deterministic failure and leak tracking.
+ */
 void* checkedMalloc(std::size_t bytes) {
   if (failAllocation()) {
     return nullptr;
@@ -73,8 +75,10 @@ void failAfter(std::int64_t remaining) {
 /** Restore native test state even when compilation or execution throws. */
 struct AllocationScope {
   AllocationState state;
+
   /** Start an isolated allocation accounting scope. */
   AllocationScope() { allocationState = &state; }
+
   /** Detect leaked generated allocations and restore the host environment. */
   ~AllocationScope() {
     EXPECT_TRUE(state.live.empty());
@@ -85,7 +89,8 @@ struct AllocationScope {
   }
 };
 
-/** Execute a program with allocator shims bound only in its own JIT instance. */
+/** Execute a program with allocator shims bound only in its own JIT instance.
+ */
 sun::driver::SunValue executeWithAllocationFailures(const std::string& source) {
   sun::driver::initTestEnvironment();
   AllocationScope scope;
@@ -114,10 +119,12 @@ TEST(MemorySafety_AllocationFailure, raw_allocation_reports_failure) {
       try { global_allocator.alloc_raw(64);
 return -1; } catch (error: AllocationError) { return _convert<i32>(error.requested_size()); } catch { return -1; }
     }
-  )"), 64);
+  )"),
+            64);
 }
 
-/** Invalid sizes and typed multiplication overflow do not reach native allocation. */
+/** Invalid sizes and typed multiplication overflow do not reach native
+ * allocation. */
 TEST(MemorySafety_AllocationFailure, invalid_sizes_are_rejected) {
   EXPECT_EQ(executeWithAllocationFailures(R"(
     /** Check distinct invalid-argument and overflow outcomes. */
@@ -129,7 +136,8 @@ TEST(MemorySafety_AllocationFailure, invalid_sizes_are_rejected) {
       try { global_allocator.alloc<i64>(std.I64_MAX); } catch (error: OverflowError) { overflow = 2; }
       return negative + overflow;
     }
-  )"), 3);
+  )"),
+            3);
 }
 
 /** A zero-size allocation succeeds with normal ownership and deallocation. */
@@ -141,7 +149,8 @@ TEST(MemorySafety_AllocationFailure, zero_size_has_freeable_storage) {
 var valid = pointer != null;
           global_allocator.dealloc_raw(pointer, 0);return valid ? 1 : 0; } catch { return 0; }
     }
-  )"), 1);
+  )"),
+            1);
 }
 
 /** Failed storage allocation must not invoke the requested constructor. */
@@ -160,7 +169,8 @@ TEST(MemorySafety_AllocationFailure, allocation_failure_skips_constructor) {
       try { global_allocator.create<Value>(); } catch (error: AllocationError) { failed = 1; }
       return failed - constructions;
     }
-  )"), 1);
+  )"),
+            1);
 }
 
 /** Vector growth failure preserves all existing initialized values. */
@@ -178,7 +188,8 @@ TEST(MemorySafety_AllocationFailure, vector_growth_preserves_contents) {
     /** Translate the checked scenario into a test exit value. */
     function main() i32 { try { var value = check();
 return value; } catch { return -1; } }
-  )"), 1);
+  )"),
+            1);
 }
 
 /** Over-aligned requests propagate native allocation failure too. */
@@ -195,7 +206,8 @@ TEST(MemorySafety_AllocationFailure, aligned_allocation_reports_failure) {
       try { global_allocator.alloc<Aligned>(1);
 return 0; } catch (ignored_error: AllocationError) { return 1; } catch { return 0; }
     }
-  )"), 1);
+  )"),
+            1);
 }
 
 /** Failed constructors drop initialized fields once and release raw storage. */
@@ -225,7 +237,8 @@ TEST(MemorySafety_AllocationFailure, failed_constructor_releases_storage) {
       try { global_allocator.create_unique<Value>(); } catch (error: IndexOutOfBoundsError) { failed = 1; }
       return failed == 1 and field_drops == 1 and object_drops == 0 ? 1 : 0;
     }
-  )"), 1);
+  )"),
+            1);
 }
 
 /** A later map storage failure must leave the original table intact. */
@@ -244,7 +257,8 @@ TEST(MemorySafety_AllocationFailure, map_growth_preserves_contents) {
     /** Translate the checked scenario into a test exit value. */
     function main() i32 { try { var value = check();
 return value; } catch { return -1; } }
-  )"), 1);
+  )"),
+            1);
 }
 
 /** Interpolation returns an error and releases its partial string. */
@@ -256,7 +270,8 @@ TEST(MemorySafety_AllocationFailure, interpolation_propagates_failure) {
       try { `this string is longer than inline storage: ${42}`;
 return 0; } catch (ignored_error: AllocationError) { return 1; } catch { return 0; }
     }
-  )"), 1);
+  )"),
+            1);
 }
 
 /** Building an allocation error does not itself need memory. */
@@ -269,10 +284,12 @@ TEST(MemorySafety_AllocationFailure, diagnostic_allocation_is_fallible) {
       try { error.message();
 return 0; } catch (ignored_error: AllocationError) { return 1; } catch { return 0; }
     }
-  )"), 1);
+  )"),
+            1);
 }
 
-/** Every thread allocation failure cleans up arguments already moved into spawn. */
+/** Every thread allocation failure cleans up arguments already moved into
+ * spawn. */
 TEST(MemorySafety_AllocationFailure, thread_setup_releases_partial_storage) {
   EXPECT_EQ(executeWithAllocationFailures(R"(
     var drops: i32 = 0;
@@ -294,10 +311,12 @@ TEST(MemorySafety_AllocationFailure, thread_setup_releases_partial_storage) {
       }
       return failures == 3 and drops == 3 ? 1 : 0;
     }
-  )"), 1);
+  )"),
+            1);
 }
 
-/** Global allocation remains explicit and callable through an immutable module borrow. */
+/** Global allocation remains explicit and callable through an immutable module
+ * borrow. */
 TEST(MemorySafety_AllocationFailure, global_allocator_across_modules) {
   EXPECT_EQ(executeWithAllocationFailures(R"(
     /** Provides allocation operations across a module boundary. */
@@ -318,11 +337,14 @@ TEST(MemorySafety_AllocationFailure, global_allocator_across_modules) {
       try { var value = client.allocate(global_allocator);
 return value; } catch { return -1; }
     }
-  )"), 42);
+  )"),
+            42);
 }
 
-/** Constructor errors must fit the factory result instead of being silently lost. */
-TEST(MemorySafety_AllocationFailure, custom_constructor_exception_releases_storage) {
+/** Constructor errors must fit the factory result instead of being silently
+ * lost. */
+TEST(MemorySafety_AllocationFailure,
+     custom_constructor_exception_releases_storage) {
   EXPECT_EQ(executeWithAllocationFailures(R"(
     /** Carries a constructor-specific code outside standard error categories. */
     exception CustomError { public var code: i32 = 100; }
@@ -337,7 +359,8 @@ TEST(MemorySafety_AllocationFailure, custom_constructor_exception_releases_stora
       catch (error: CustomError) { return error.code; }
       return -1;
     }
-  )"), 100);
+  )"),
+            100);
 }
 
 /** Error reporting uses fixed text when allocating a diagnostic also fails. */
@@ -361,7 +384,8 @@ TEST(MemorySafety_AllocationFailure, diagnostic_reporting_uses_fixed_fallback) {
   EXPECT_EQ(status, 1);
 }
 
-/** Zero logical elements retain alignment and ordinary deallocation semantics. */
+/** Zero logical elements retain alignment and ordinary deallocation semantics.
+ */
 TEST(MemorySafety_AllocationFailure, zero_size_aligned_storage) {
   EXPECT_EQ(executeWithAllocationFailures(R"(
     /** Requires the native aligned allocation path. */
@@ -372,7 +396,8 @@ TEST(MemorySafety_AllocationFailure, zero_size_aligned_storage) {
 var valid = pointer != null;
           global_allocator.dealloc<Aligned>(pointer, 0);return valid ? 1 : 0; } catch { return 0; }
     }
-  )"), 1);
+  )"),
+            1);
 }
 
 /** Typed negative counts fail before any native allocation is attempted. */
@@ -384,7 +409,8 @@ TEST(MemorySafety_AllocationFailure, negative_typed_count) {
       try { global_allocator.alloc<i64>(-1);
 return 0; } catch (ignored_error: InvalidArgumentError) { return 1; } catch { return 0; }
     }
-  )"), 1);
+  )"),
+            1);
 }
 
 /** A later interpolation allocation failure drops previously allocated text. */
@@ -402,11 +428,14 @@ return 0; } catch (ignored_error: AllocationError) { return 1; } catch { return 
       try { var value = check();
 return value; } catch { return -1; }
     }
-  )"), 1);
+  )"),
+            1);
 }
 
-/** Copying a bounded diagnostic and throwing it still works with allocation disabled. */
-TEST(MemorySafety_AllocationFailure, bounded_diagnostic_throw_does_not_allocate) {
+/** Copying a bounded diagnostic and throwing it still works with allocation
+ * disabled. */
+TEST(MemorySafety_AllocationFailure,
+     bounded_diagnostic_throw_does_not_allocate) {
   EXPECT_EQ(executeWithAllocationFailures(R"(
     /** Throws inline text after exhausting all generated-code allocation. */
     function main() i32 {
@@ -415,5 +444,6 @@ TEST(MemorySafety_AllocationFailure, bounded_diagnostic_throw_does_not_allocate)
         throw Error(42, "this diagnostic is copied into the bounded exception payload without allocating");
       } catch (error: Error) { return error.code(); }
     }
-  )"), 42);
+  )"),
+            42);
 }

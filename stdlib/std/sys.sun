@@ -20,6 +20,9 @@
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
 
+  /** Prints a borrowed trace through the runtime's bounded, non-throwing writer. */
+  extern "C" function c_sun_eh_print_trace(frames: const ref array<u64>, status: u32) void as "sun_eh_print_trace";
+
   /** Read an integer socket option into caller-owned storage. */
   extern "C" function c_getsockopt(
     fd: i32,

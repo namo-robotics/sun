@@ -73,6 +73,20 @@ class CallAnalyzer {
       const std::vector<sun::types::TypePtr> &argTypes) const;
 
  private:
+  /** Dispatches syntax-dependent intrinsic rules before ordinary call
+   * resolution. */
+  bool analyzeSpecialIntrinsicCall(CallExprAST &call);
+  /** Checks declaration arity and substitutes inferred or explicit intrinsic
+   * type arguments. */
+  sun::types::TypePtr resolveDeclaredIntrinsicSignature(
+      const GenericFunctionInfo &intrinsic,
+      const std::vector<sun::types::TypePtr> &arguments,
+      const std::vector<sun::types::TypePtr> &explicitTypes,
+      std::optional<sun::support::Position> location);
+  /** Checks an explicit generic intrinsic that needs no custom signature rules.
+   */
+  void analyzeDeclaredIntrinsicCall(GenericCallAST &call,
+                                    const GenericFunctionInfo &intrinsic);
   /** The result type of an intrinsic call (_sizeof, _load, _to_ref, ...). */
   sun::types::TypePtr resolveIntrinsicCallType(const GenericCallAST &call);
 

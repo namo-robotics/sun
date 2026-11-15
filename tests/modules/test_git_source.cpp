@@ -457,7 +457,8 @@ TEST_F(GitSourceTest, BuildsTransitiveDependenciesAndRefreshesOnce) {
   }
 }
 
-/** Direct and transitive imports share a build and accept each other's values. */
+/** Direct and transitive imports share a build and accept each other's values.
+ */
 TEST_F(GitSourceTest, SharesTypesAcrossDirectAndTransitiveDependencies) {
   write(dir / "sun-config.json", readConfigFixture("consumer.json"));
   write(dir / "repos/top.git/sun-config.json", readConfigFixture("top.json"));
@@ -659,6 +660,7 @@ pathlib.Path(os.environ['SUN_OUTPUT']).write_text('#!/bin/sh\n/bin/cp "$1" "$2"\
   EXPECT_TRUE(std::filesystem::exists(installed / "bin/tool"));
   EXPECT_TRUE(std::filesystem::exists(installed / "bin/tool.data/value.txt"));
 }
+
 /** Git generators use host settings while their consumer builds for another
  * target. */
 TEST_F(GitSourceTest, UsesHostGitGeneratorForForeignTarget) {
@@ -690,6 +692,7 @@ pathlib.Path(os.environ['SUN_OUTPUT']).write_text('#!/bin/sh\n/bin/cp "$1" "$2"\
   options.noTest = true;
   EXPECT_EQ(sun::cli::runConfigBuildCommand(options), 0);
 }
+
 /** Distinct Git selections do not publish each other's accumulated products. */
 TEST_F(GitSourceTest, CombinesSelectionsFromOneRepository) {
   write(dir / "sun-config.json", readConfigFixture("consumer.json"));
@@ -705,6 +708,7 @@ TEST_F(GitSourceTest, CombinesSelectionsFromOneRepository) {
   EXPECT_TRUE(std::filesystem::exists(installed / "lib/second.moon"));
   EXPECT_TRUE(std::filesystem::exists(installed / "share/NOTICE"));
 }
+
 /** Selecting a library and its dependent reuses the generated declarations. */
 TEST_F(GitSourceTest, SharesGeneratedPrerequisitesAcrossSelections) {
   const auto repository = dir / "repos/workspace.git";

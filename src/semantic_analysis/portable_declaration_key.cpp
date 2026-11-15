@@ -400,6 +400,4 @@ PortableTypeKey PortableTypeKey::function(
                   integer(requiresUnsafe)}));
 }
 
-
-
 }  // namespace sun::semantic_analysis

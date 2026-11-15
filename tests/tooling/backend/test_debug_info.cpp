@@ -18,6 +18,7 @@
 #include "driver/compiler.h"
 #include "driver/driver.h"
 #include "driver/execution_utils.h"
+#include "moon_bundling/moon.h"
 #include "moon_bundling/moon_builder.h"
 
 using sun::driver::Driver;
@@ -224,7 +225,7 @@ TEST(Tooling_Backend_DebugInfo, moon_bundle_carries_debug_info_into_g_compile) {
   options.optimize = false;
   sun::moon_bundling::MoonBuilder::build(source.string(), bundle, options);
   auto driver = Driver::createForAOT("moon_debug_test", "", /*debugInfo=*/true,
-                                    /*optimize=*/false);
+                                     /*optimize=*/false);
   driver->setMoonImports({{std::filesystem::absolute(bundle).string(), {}}});
   driver->compileString(R"(
     /** Calls a function whose debug information was loaded from a bundle. */
@@ -232,7 +233,8 @@ TEST(Tooling_Backend_DebugInfo, moon_bundle_carries_debug_info_into_g_compile) {
   )");
   llvm::DISubprogram* imported = nullptr;
   for (auto& function : driver->getModule()) {
-    if (auto* info = function.getSubprogram(); info && info->getName() == "increment") {
+    if (auto* info = function.getSubprogram();
+        info && info->getName() == "increment") {
       imported = info;
     }
   }
@@ -261,27 +263,22 @@ function main() i32 {
 )");
   auto& module = driver->getModule();
 
-  // The stdlib bundle is built with -g, but a non-g compile must not keep it:
-  // no compile units, no subprograms, and no "Debug Info Version" flag (which
-  // would drop the backend to CodeGenOptLevel::None).
-  EXPECT_EQ(module.getNamedMetadata("llvm.dbg.cu"), nullptr);
-  EXPECT_EQ(module.getModuleFlag("Debug Info Version"), nullptr);
-  for (auto& func : module) {
-    EXPECT_EQ(func.getSubprogram(), nullptr)
-        << func.getName().str() << " kept its subprogram";
-  }
+  EXPECT_NE(module.getNamedMetadata("llvm.dbg.cu"), nullptr);
+  EXPECT_NE(module.getModuleFlag("Debug Info Version"), nullptr);
+  EXPECT_EQ(printModule(module).find("!DILocalVariable"), std::string::npos);
 }
 
-TEST(Tooling_Backend_DebugInfo, no_debug_metadata_without_g) {
+TEST(Tooling_Backend_DebugInfo, source_locations_without_g) {
   initTestEnvironment();
   auto driver = Driver::createForAOT("no_debug_test");
   driver->compileString(kSimpleProgram);
   auto& module = driver->getModule();
 
-  EXPECT_EQ(module.getModuleFlag("Debug Info Version"), nullptr);
-  EXPECT_EQ(module.getModuleFlag("Dwarf Version"), nullptr);
-  EXPECT_EQ(module.getNamedMetadata("llvm.dbg.cu"), nullptr);
-  EXPECT_EQ(printModule(module).find("!dbg"), std::string::npos);
+  EXPECT_NE(module.getModuleFlag("Debug Info Version"), nullptr);
+  EXPECT_NE(module.getModuleFlag("Dwarf Version"), nullptr);
+  EXPECT_NE(module.getNamedMetadata("llvm.dbg.cu"), nullptr);
+  EXPECT_NE(printModule(module).find("!dbg"), std::string::npos);
+  EXPECT_EQ(printModule(module).find("!DILocalVariable"), std::string::npos);
 }
 
 TEST(Tooling_Backend_DebugInfo, jit_executes_with_debug_info) {
@@ -380,7 +377,8 @@ std::string linkSimpleDebugBinary(const std::string& name,
 
 }  // namespace
 
-/** Collects runtime debug symbols before removing the archive used by the linker. */
+/** Collects runtime debug symbols before removing the archive used by the
+ * linker. */
 TEST(Tooling_Backend_DebugInfo, dsym_collection_keeps_runtime_archive_alive) {
   if (!llvm::Triple(llvm::sys::getDefaultTargetTriple()).isOSDarwin() ||
       !haveTool("dsymutil")) {
@@ -390,7 +388,8 @@ TEST(Tooling_Backend_DebugInfo, dsym_collection_keeps_runtime_archive_alive) {
                               "sun_dbg_runtime_archive_bin.dSYM");
   std::string skipReason;
   ::testing::internal::CaptureStderr();
-  const auto binary = linkSimpleDebugBinary("sun_dbg_runtime_archive", skipReason);
+  const auto binary =
+      linkSimpleDebugBinary("sun_dbg_runtime_archive", skipReason);
   const auto diagnostics = ::testing::internal::GetCapturedStderr();
   ASSERT_FALSE(binary.empty()) << skipReason;
   EXPECT_EQ(diagnostics.find("warning:"), std::string::npos) << diagnostics;
@@ -558,8 +557,7 @@ function main() i32 {
       std::string ir = printModule(module);
       EXPECT_EQ(ir.find("alloca i32") == std::string::npos, optimize);
       EXPECT_EQ(ir.find("ret i32 7") != std::string::npos, optimize);
-      EXPECT_EQ(module.getModuleFlag("Debug Info Version") != nullptr,
-                debugInfo);
+      EXPECT_NE(module.getModuleFlag("Debug Info Version"), nullptr);
       if (debugInfo) {
         auto* sp = module.getFunction("main")->getSubprogram();
         ASSERT_NE(sp, nullptr);
@@ -605,4 +603,47 @@ TEST(Tooling_Backend_DebugInfo, EnumUnderlyingTypeMetadata) {
   EXPECT_NE(
       ir.find("name: \"Max\", value: 18446744073709551615, isUnsigned: true"),
       std::string::npos);
+}
+
+/** Release bundles retain portable locations, including bodies specialized by
+ * importers. */
+TEST(Tooling_Backend_DebugInfo, moon_release_paths_are_relative) {
+  initTestEnvironment();
+  const auto directory =
+      std::filesystem::absolute("tmp/moon_relative_metadata");
+  std::filesystem::create_directories(directory);
+  const auto source = directory / "library.sun";
+  const auto bundle = directory / "library.moon";
+  std::ofstream(source) << R"(
+    /** Supplies a generic exception source for an importing program. */
+    public module relative_library {
+      /** Identifies the failure. */
+      public exception Failure {}
+      /** Retains a body that the importing compiler must specialize. */
+      public function fail<T>(value: T) void throws { throw Failure(); }
+    }
+  )";
+  sun::moon_bundling::MoonBuildOptions options;
+  options.optimize = false;
+  sun::moon_bundling::MoonBuilder::build(source.string(), bundle, options);
+  auto reader = sun::moon_bundling::MoonReader::open(bundle);
+  ASSERT_TRUE(reader);
+  for (const auto& key : reader->listModules()) {
+    const auto* metadata = reader->getMetadata(key);
+    ASSERT_NE(metadata, nullptr);
+    EXPECT_EQ(metadata->source_path(), "library.sun");
+    EXPECT_EQ(metadata->DebugString().find(directory.string()),
+              std::string::npos);
+  }
+  std::filesystem::remove(source);
+  auto driver = Driver::createForAOT("relative_import", "", false, false);
+  driver->setMoonImports({{bundle.string(), {}}});
+  driver->compileString(R"(
+    /** Instantiates the library body without its original source file. */
+    function main() void throws { relative_library.fail<i64>(1i64); }
+  )");
+  const auto ir = printModule(driver->getModule());
+  EXPECT_EQ(ir.find(directory.string()), std::string::npos);
+  EXPECT_NE(ir.find("library.sun"), std::string::npos);
+  std::filesystem::remove_all(directory);
 }

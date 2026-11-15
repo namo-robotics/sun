@@ -6,6 +6,7 @@
 #include <iostream>
 #include <set>
 
+#include "abi/exception_layout.h"
 #include "driver/build_graph.h"
 #include "driver/git_source.h"
 #include "driver/manifest_processor.h"
@@ -19,6 +20,19 @@ using sun::moon_bundling::LibraryCache;
 
 /** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
+
+unsigned resolveExceptionTraceDepth(const SharedOptions& shared,
+                                    const std::string& input,
+                                    const std::string& target) {
+  if (shared.exceptionTraceDepth) {
+    return *shared.exceptionTraceDepth;
+  }
+  auto config = SunConfig::findFrom(
+      std::filesystem::absolute(input).parent_path(), target);
+  return config && config->exceptionTraceDepth
+             ? *config->exceptionTraceDepth
+             : sun::abi::exceptions::defaultTraceDepth;
+}
 
 DependencyPathVariables::DependencyPathVariables(
     const SunConfig& config, const sun::driver::ConfigEntrypoint& entry)

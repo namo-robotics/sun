@@ -2,8 +2,8 @@
 
 #include <memory>
 
+#include "driver/exception_sources.h"
 #include "driver/jit/unwind_registration.h"
-
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
@@ -28,6 +28,38 @@ using namespace llvm::orc;
  */
 namespace sun::driver {
 
+/** Creates independent target machines using instruction selection with valid
+ * EH spills. */
+class ExceptionSafeIRCompiler final : public IRCompileLayer::IRCompiler {
+ public:
+  /** Retains target settings without sharing mutable machine state between
+   * compilations. */
+  explicit ExceptionSafeIRCompiler(JITTargetMachineBuilder builder)
+      : IRCompiler(irManglingOptionsFromTargetOptions(builder.getOptions())),
+        builder_(std::move(builder)) {}
+
+  /** Compiles with SelectionDAG or FastISel after overriding target defaults.
+   */
+  Expected<std::unique_ptr<MemoryBuffer>> operator()(Module& module) override {
+    auto machine = builder_.createTargetMachine();
+    if (!machine) {
+      return machine.takeError();
+    }
+    // AArch64 GlobalISel at O0 can omit reloads of values live into landing
+    // pads.
+    (*machine)->setGlobalISel(false);
+    prepareExceptionSources(module, true);
+    auto object = SimpleCompiler(**machine)(module);
+    if (!object) {
+      return object.takeError();
+    }
+    return indexExceptionSources(module, (*object)->getMemBufferRef());
+  }
+
+ private:
+  JITTargetMachineBuilder builder_;
+};
+
 /**
  * The ORC JIT behind `sun file.sun`: one dylib, host-targeted, resolving
  * unknown symbols from the compiler's own process. The object-linking layer
@@ -45,6 +77,8 @@ class SunJIT {
   Triple TT;
   MangleAndInterner Mangle;
 
+  std::shared_ptr<ExceptionSourceCallbacks> sourceCallbacks_ =
+      std::make_shared<ExceptionSourceCallbacks>();
   std::unique_ptr<ObjectLayer> ObjLayer;
   IRCompileLayer CompileLayer;
 
@@ -60,9 +94,12 @@ class SunJIT {
    * modules are debuggable under the JIT; it is a no-op when no debugger is
    * attached and for non-ELF objects.
    */
-  static std::unique_ptr<ObjectLayer> makeObjectLayer(ExecutionSession& ES) {
+  static std::unique_ptr<ObjectLayer> makeObjectLayer(
+      ExecutionSession& ES,
+      std::shared_ptr<ExceptionSourceCallbacks> callbacks) {
     auto Layer = std::make_unique<ObjectLinkingLayer>(ES);
     jit::addUnwindRegistration(*Layer, ES);
+    addExceptionSourceRegistration(*Layer, std::move(callbacks));
     // The registrar calls straight into this process's copy of LLVM's gdb
     // loader, the same way the eh-frame registrar above does. Every object is
     // registered, not only those with debug sections, so gdb can still place
@@ -84,9 +121,10 @@ class SunJIT {
         DL(std::move(DL)),
         TT(JTMB.getTargetTriple()),
         Mangle(*this->ES, this->DL),
-        ObjLayer(makeObjectLayer(*this->ES)),
-        CompileLayer(*this->ES, *ObjLayer,
-                     std::make_unique<ConcurrentIRCompiler>(std::move(JTMB))),
+        ObjLayer(makeObjectLayer(*this->ES, sourceCallbacks_)),
+        CompileLayer(
+            *this->ES, *ObjLayer,
+            std::make_unique<ExceptionSafeIRCompiler>(std::move(JTMB))),
         MainJD(this->ES->createBareJITDylib("<main>")) {
     MainJD.addGenerator(
         cantFail(DynamicLibrarySearchGenerator::GetForCurrentProcess(
@@ -145,6 +183,11 @@ class SunJIT {
 
     return std::make_unique<SunJIT>(std::move(ES), std::move(JTMB),
                                     std::move(*DL));
+  }
+
+  /** Selects the native runtime that owns indexes for this JIT instance. */
+  void setExceptionSourceCallbacks(ExceptionSourceCallbacks callbacks) {
+    *sourceCallbacks_ = callbacks;
   }
 
   /** Returns the data layout stored by this object. */

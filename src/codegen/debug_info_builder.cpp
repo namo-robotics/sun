@@ -11,6 +11,8 @@
 #include <filesystem>
 #include <set>
 
+#include "support/source_path.h"
+
 using sun::types::TypePtr;
 
 using sun::support::Position;
@@ -21,9 +23,9 @@ namespace sun::codegen {
 using namespace llvm;
 
 DebugInfoBuilder::DebugInfoBuilder(llvm::Module* module, bool enabled,
-                                   bool optimized)
-    : module_(module), optimized_(optimized) {
-  if (!enabled || !module) {
+                                   bool optimized, bool traceLocations)
+    : module_(module), optimized_(optimized), fullDebug_(enabled) {
+  if ((!enabled && !traceLocations) || !module) {
     return;
   }
   di_ = std::make_unique<DIBuilder>(*module);
@@ -37,6 +39,65 @@ DebugInfoBuilder::DebugInfoBuilder(llvm::Module* module, bool enabled,
     // there.
     bool darwin = llvm::Triple(module->getTargetTriple()).isOSDarwin();
     module->addModuleFlag(Module::Warning, "Dwarf Version", darwin ? 4 : 5);
+  }
+}
+
+void DebugInfoBuilder::relativizeSourcePaths(
+    Module& module, const std::string& entrypointDirectory) {
+  module.setSourceFileName(sun::support::relativeSourcePath(
+      module.getSourceFileName(), entrypointDirectory));
+  DebugInfoFinder finder;
+  finder.processModule(module);
+  std::set<DIFile*> files;
+  /** Collects files before mutation can merge identical metadata nodes. */
+  auto collect = [&](DIScope* scope) {
+    if (scope && scope->getFile()) {
+      files.insert(scope->getFile());
+    }
+  };
+  for (auto* unit : finder.compile_units()) {
+    collect(unit);
+  }
+  for (auto* function : finder.subprograms()) {
+    collect(function);
+  }
+  for (auto* scope : finder.scopes()) {
+    collect(scope);
+  }
+  for (auto* type : finder.types()) {
+    collect(type);
+  }
+  for (auto* global : finder.global_variables()) {
+    if (auto* file = global->getVariable()->getFile()) {
+      files.insert(file);
+    }
+  }
+  std::vector<TrackingMDRef> tracked;
+  for (auto* file : files) {
+    tracked.emplace_back(file);
+  }
+  for (auto& reference : tracked) {
+    auto* file = cast<DIFile>(reference.get());
+    const auto path = (std::filesystem::path(file->getDirectory().str()) /
+                       file->getFilename().str())
+                          .lexically_normal();
+    if (!path.is_absolute()) {
+      continue;
+    }
+    const auto relative =
+        sun::support::relativeSourcePath(path.string(), entrypointDirectory);
+    file->replaceOperandWith(0, MDString::get(module.getContext(), relative));
+    cast<DIFile>(reference.get())
+        ->replaceOperandWith(1, MDString::get(module.getContext(), "."));
+  }
+  if (auto* sites = module.getNamedMetadata("sun.trace.throws")) {
+    for (auto* site : sites->operands()) {
+      const auto path = cast<MDString>(site->getOperand(0))->getString().str();
+      site->replaceOperandWith(
+          0,
+          MDString::get(module.getContext(), sun::support::relativeSourcePath(
+                                                 path, entrypointDirectory)));
+    }
   }
 }
 
@@ -207,6 +268,9 @@ void DebugInfoBuilder::declareParameter(llvm::IRBuilderBase& builder,
                                         const TypePtr& type,
                                         const Position& loc, unsigned argNo,
                                         bool artificial) {
+  if (!fullDebug_) {
+    return;
+  }
   if (!di_ || !alloca || !builder.GetInsertBlock()) {
     return;
   }
@@ -225,6 +289,9 @@ void DebugInfoBuilder::declareParameter(llvm::IRBuilderBase& builder,
 void DebugInfoBuilder::declareThisParameter(llvm::IRBuilderBase& builder,
                                             llvm::AllocaInst* alloca,
                                             const TypePtr& classType) {
+  if (!fullDebug_) {
+    return;
+  }
   if (!di_ || !alloca || !builder.GetInsertBlock()) {
     return;
   }
@@ -244,6 +311,9 @@ void DebugInfoBuilder::declareLocal(llvm::IRBuilderBase& builder,
                                     llvm::AllocaInst* alloca,
                                     const std::string& name,
                                     const TypePtr& type, const Position& loc) {
+  if (!fullDebug_) {
+    return;
+  }
   if (!di_ || !alloca || !builder.GetInsertBlock()) {
     return;
   }

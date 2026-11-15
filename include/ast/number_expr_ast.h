@@ -45,18 +45,22 @@ class NumberExprAST : public ExprAST {
       : value_(
             IntegerValue{magnitude, sign == Sign::Negative && magnitude != 0}),
         suffix_(std::move(suffix)) {}
+
   /** Creates this syntax node and takes ownership of any supplied child
    * expressions. */
   explicit NumberExprAST(int64_t intVal)
       : NumberExprAST(intVal < 0 ? uint64_t(0) - static_cast<uint64_t>(intVal)
                                  : static_cast<uint64_t>(intVal),
                       intVal < 0 ? Sign::Negative : Sign::Positive) {}
+
   /** Creates this syntax node and takes ownership of any supplied child
    * expressions. */
   explicit NumberExprAST(double floatVal, std::string suffix = "")
       : value_(floatVal), suffix_(std::move(suffix)) {}
+
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::NUMBER; }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     if (isInteger()) {
@@ -64,6 +68,7 @@ class NumberExprAST : public ExprAST {
     }
     return std::to_string(getFloatVal()) + suffix_;
   }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "Number\n" + toString(); }
 
@@ -71,11 +76,13 @@ class NumberExprAST : public ExprAST {
   bool isInteger() const {
     return std::holds_alternative<IntegerValue>(value_);
   }
+
   /** Reports whether the semantic type is a floating-point number. */
   bool isFloat() const { return std::holds_alternative<double>(value_); }
 
   /** Reports whether this object has suffix. */
   bool hasSuffix() const { return !suffix_.empty(); }
+
   /** Returns the suffix stored by this object. */
   const std::string& getSuffix() const { return suffix_; }
 
@@ -85,10 +92,12 @@ class NumberExprAST : public ExprAST {
   uint64_t getMagnitude() const {
     return std::get<IntegerValue>(value_).magnitude;
   }
+
   /**
    * True when the integer literal is negative; never true for a zero.
    */
   bool isNegative() const { return std::get<IntegerValue>(value_).negative; }
+
   /**
    * The integer literal's two's-complement bit pattern, 64 bits wide. Every
    * integer type the literal was range-checked against reads its value from
@@ -98,6 +107,7 @@ class NumberExprAST : public ExprAST {
     const auto& v = std::get<IntegerValue>(value_);
     return v.negative ? uint64_t(0) - v.magnitude : v.magnitude;
   }
+
   /**
    * The integer literal as written, without its suffix ("-129", "42").
    */
@@ -105,6 +115,7 @@ class NumberExprAST : public ExprAST {
     const auto& v = std::get<IntegerValue>(value_);
     return (v.negative ? "-" : "") + std::to_string(v.magnitude);
   }
+
   /** Returns the floating-point literal value. */
   double getFloatVal() const { return std::get<double>(value_); }
 

@@ -30,6 +30,7 @@ class DeclarationTable;
 /** Structural type identity for independently compiled generic instances. */
 class PortableTypeKey {
   std::string encoded_;
+
   /** Stores an encoded type identity that can cross compilation sessions. */
   explicit PortableTypeKey(std::string encoded)
       : encoded_(std::move(encoded)) {}
@@ -57,8 +58,10 @@ class PortableTypeKey {
       const std::vector<PortableTypeKey>& parameters, bool canThrow,
       bool isLambda = false, bool hasRefEnvironment = false,
       bool requiresUnsafe = false);
+
   /** Return the canonical structural encoding. */
   const std::string& encoding() const { return encoded_; }
+
   /** Compares the stored values for equality. */
   bool operator==(const PortableTypeKey& other) const {
     return encoded_ == other.encoded_;
@@ -68,6 +71,7 @@ class PortableTypeKey {
 /** An opaque declaration identifier shared across compiler sessions. */
 class PortableDeclarationKey {
   std::string encoded_;
+
   /** Stores an encoded declaration identity that can cross compilation
    * sessions. */
   explicit PortableDeclarationKey(std::string encoded)
@@ -104,16 +108,21 @@ class PortableDeclarationKey {
   static PortableDeclarationKey generated(const PortableDeclarationKey& origin,
                                           const std::string& role,
                                           uint64_t slot);
+
   /** Return the canonical printable identity. */
   const std::string& encoding() const { return encoded_; }
+
   /** Report whether the portable identity has been established. */
   bool empty() const { return encoded_.empty(); }
+
   /** Derive a linker symbol for one explicitly named emission role. */
   std::string symbol(const std::string& role) const;
+
   /** Compares the stored values for equality. */
   bool operator==(const PortableDeclarationKey& other) const {
     return encoded_ == other.encoded_;
   }
+
   /** Order opaque identifiers for use in sorted containers. */
   bool operator<(const PortableDeclarationKey& other) const {
     return encoded_ < other.encoded_;

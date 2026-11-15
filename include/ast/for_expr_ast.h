@@ -38,6 +38,7 @@ class ForExprAST : public ExprAST {
     fn(Increment);
     fn(Body);
   }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string result = "for (";
@@ -58,10 +59,13 @@ class ForExprAST : public ExprAST {
 
   /** Returns the loop initialization expression. */
   const ExprAST* getInit() const { return Init.get(); }
+
   /** Returns the condition expression. */
   const ExprAST* getCondition() const { return Condition.get(); }
+
   /** Returns the loop update expression. */
   const ExprAST* getIncrement() const { return Increment.get(); }
+
   /** Provides access to the expressions that make up the body. */
   const ExprAST* getBody() const { return Body.get(); }
 

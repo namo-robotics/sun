@@ -23,61 +23,73 @@ class Types {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::Void);
     return t;
   }
+
   /** Returns the shared semantic type descriptor for Sun bool values. */
   static TypePtr Bool() {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::Bool);
     return t;
   }
+
   /** Returns the shared semantic type descriptor for Sun int8 values. */
   static TypePtr Int8() {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::Int8);
     return t;
   }
+
   /** Returns the shared semantic type descriptor for Sun int16 values. */
   static TypePtr Int16() {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::Int16);
     return t;
   }
+
   /** Returns the shared semantic type descriptor for Sun int32 values. */
   static TypePtr Int32() {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::Int32);
     return t;
   }
+
   /** Returns the shared semantic type descriptor for Sun int64 values. */
   static TypePtr Int64() {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::Int64);
     return t;
   }
+
   /** Returns the shared semantic type descriptor for Sun uint8 values. */
   static TypePtr UInt8() {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::UInt8);
     return t;
   }
+
   /** Returns the shared semantic type descriptor for Sun uint16 values. */
   static TypePtr UInt16() {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::UInt16);
     return t;
   }
+
   /** Returns the shared semantic type descriptor for Sun uint32 values. */
   static TypePtr UInt32() {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::UInt32);
     return t;
   }
+
   /** Returns the shared semantic type descriptor for Sun uint64 values. */
   static TypePtr UInt64() {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::UInt64);
     return t;
   }
+
   /** Returns the shared semantic type descriptor for Sun float32 values. */
   static TypePtr Float32() {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::Float32);
     return t;
   }
+
   /** Returns the shared semantic type descriptor for Sun float64 values. */
   static TypePtr Float64() {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::Float64);
     return t;
   }
+
   /** Returns the shared semantic type descriptor for Sun char values. */
   static TypePtr Char() {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::Char);

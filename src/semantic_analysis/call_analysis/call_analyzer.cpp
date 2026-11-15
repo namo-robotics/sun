@@ -124,7 +124,8 @@ std::string calleeDisplayName(const CallExprAST& callExpr) {
 // analyzeCall
 // -------------------------------------------------------------------
 
-/** Applies contextual integer literal types before deducing promoted operands. */
+/** Applies contextual integer literal types before deducing promoted operands.
+ */
 static void coercePromotedIntegerArguments(
     const GenericFunctionInfo& generic,
     const std::vector<std::unique_ptr<ExprAST>>& args) {
@@ -137,8 +138,10 @@ static void coercePromotedIntegerArguments(
                            const sun::ast::TypeAnnotation& annotation) -> bool {
     if (annotation.baseName == "_promoted_integer" &&
         annotation.typeArguments.size() == 2 &&
-        annotation.typeArguments[0]->baseName == generic.params[0].second.baseName &&
-        annotation.typeArguments[1]->baseName == generic.params[1].second.baseName) {
+        annotation.typeArguments[0]->baseName ==
+            generic.params[0].second.baseName &&
+        annotation.typeArguments[1]->baseName ==
+            generic.params[1].second.baseName) {
       return true;
     }
     for (const auto& argument : annotation.typeArguments) {
@@ -163,70 +166,10 @@ static void coercePromotedIntegerArguments(
 }
 
 void CallAnalyzer::analyzeCall(CallExprAST& callExpr, TypePtr expectedType) {
-  // Non-generic intrinsics. The generic ones (_load<T>, _to_ref<T>, ...) are a
-  // GenericCallAST and go through analyzeGenericCall, which applies the same
-  // predicate.
-  auto calleeASTType = callExpr.getCallee()->getType();
-  if (calleeASTType == ASTNodeType::VARIABLE_REFERENCE) {
-    const auto& varRef =
-        static_cast<const VariableReferenceAST&>(*callExpr.getCallee());
-    checkRequiresUnsafeBlock(varRef.getName(), callExpr.getLocation());
-    if (varRef.getName() == "_assert_c_target") {
-      if (!ctx_.isAtModuleLevel() || callExpr.getArgs().size() != 1 ||
-          callExpr.getArgs()[0]->getType() != ASTNodeType::STRING_LITERAL) {
-        logAndThrowError(
-            "_assert_c_target requires one string literal at module scope",
-            callExpr.getLocation());
-      }
-    }
-    const bool userDefined =
-        ctx_.currentScope().lookupVariable(varRef.getName()) ||
-        !ctx_.currentScope().getAllFunctions(varRef.getName()).empty() ||
-        ctx_.currentScope().lookupGenericFunction(varRef.getName());
-    if (!userDefined && varRef.getName() == "_division_overflows") {
-      if (callExpr.getArgs().size() != 2) {
-        logAndThrowError(varRef.getName() + " expects two integer operands",
-                         callExpr.getLocation());
-      }
-      auto& left = *callExpr.getArgs()[0];
-      auto& right = *callExpr.getArgs()[1];
-      sema_.analyzeExpr(left);
-      sema_.analyzeExpr(right);
-      auto leftType = unwrapRef(left.getResolvedType());
-      auto rightType = unwrapRef(right.getResolvedType());
-      if (leftType->isIntegral()) {
-        tryCoerceIntegerLiteral(&right, leftType, false);
-      }
-      if (rightType->isIntegral()) {
-        tryCoerceIntegerLiteral(&left, rightType, false);
-      }
-      leftType = unwrapRef(left.getResolvedType());
-      rightType = unwrapRef(right.getResolvedType());
-      if ((!leftType->isIntegral() && !leftType->isTypeParameter()) ||
-          (!rightType->isIntegral() && !rightType->isTypeParameter())) {
-        logAndThrowError(varRef.getName() + " requires integer operands",
-                         callExpr.getLocation());
-      }
-      auto numeric =
-          sun::semantic_analysis::type_analysis::TypeInferer::numeric(
-              leftType, rightType);
-      auto valueType = std::get_if<TypePtr>(&numeric);
-      if (!valueType) {
-        logAndThrowError("Incompatible checked arithmetic operands",
-                         callExpr.getLocation());
-      }
-      auto result = Types::Bool();
-      const_cast<ExprAST*>(callExpr.getCallee())
-          ->setResolvedType(std::make_shared<FunctionType>(
-              result, std::vector<TypePtr>{*valueType, *valueType}));
-      callExpr.setResolvedType(result);
-      callExpr.setArgConversions(
-          {sun::semantic_analysis::ArgConversion::PassValue,
-           sun::semantic_analysis::ArgConversion::PassValue});
-      return;
-    }
-
+  if (analyzeSpecialIntrinsicCall(callExpr)) {
+    return;
   }
+  const auto calleeASTType = callExpr.getCallee()->getType();
 
   // Enum variant construction: EnumName.Variant(args...) for concrete and
   // generic enums; intercepted before generic callee analysis.
@@ -451,10 +394,9 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveNamedCallee(
   if (const GenericFunctionInfo* genericFunc =
           ctx_.lookupGenericFunction(resolved.baseName)) {
     coercePromotedIntegerArguments(*genericFunc, callExpr.getArgs());
-    GenericCallTarget target =
-        resolveGenericCallTarget(*genericFunc, resolvedTypesOf(callExpr.getArgs()),
-                                 /*writtenTypeArgs=*/{}, varRef.getName(),
-                                 callExpr.getLocation());
+    GenericCallTarget target = resolveGenericCallTarget(
+        *genericFunc, resolvedTypesOf(callExpr.getArgs()),
+        /*writtenTypeArgs=*/{}, varRef.getName(), callExpr.getLocation());
     out.takesPack = target.takesPack;
     if (target.specialized) {
       out.function = target.specialized->asFunctionInfo();
@@ -852,8 +794,9 @@ void CallAnalyzer::checkThrowPropagation(const CallExprAST& callExpr,
   bool calleeThrows = callee.function && callee.function->canThrow;
   if (callee.classType) {
     for (const auto& method : callee.classType->getMethods()) {
-      if (method.declarationId == callExpr.getTargetDeclarationId())
+      if (method.declarationId == callExpr.getTargetDeclarationId()) {
         calleeThrows = calleeThrows || method.canThrow;
+      }
     }
   }
   if (!calleeThrows) {
@@ -869,8 +812,13 @@ void CallAnalyzer::checkThrowPropagation(const CallExprAST& callExpr,
   }
   if (calleeThrows) {
     auto* function = ctx_.currentFunctionScope();
-    if ((function && function->functionCanThrow) || ctx_.currentScope().hasExceptionHandler()) return;
-    logAndThrowError("Call to throwing function '" + funcName + "' requires a try block or a throws declaration", callExpr.getLocation());
+    if ((function && function->functionCanThrow) ||
+        ctx_.currentScope().hasExceptionHandler()) {
+      return;
+    }
+    logAndThrowError("Call to throwing function '" + funcName +
+                         "' requires a try block or a throws declaration",
+                     callExpr.getLocation());
   }
 }
 
@@ -1049,6 +997,11 @@ CallAnalyzer::GenericCallTarget CallAnalyzer::resolveGenericCallTarget(
     const std::vector<TypePtr>& writtenTypeArgs, const std::string& displayName,
     std::optional<Position> loc) {
   GenericCallTarget target;
+  if (genericInfo.intrinsicPrototype) {
+    target.calleeType = resolveDeclaredIntrinsicSignature(genericInfo, argTypes,
+                                                          writtenTypeArgs, loc);
+    return target;
+  }
   target.typeArgs = writtenTypeArgs;
   if (target.typeArgs.size() < genericInfo.typeParameters.size()) {
     target.typeArgs = sun::semantic_analysis::resolveGenericTypeArguments(
@@ -1174,147 +1127,6 @@ void CallAnalyzer::analyzeGenericCall(GenericCallAST& genericCall) {
   }
 }
 
-void CallAnalyzer::analyzeIntrinsicCall(GenericCallAST& genericCall) {
-  // Intrinsics are handled at codegen time - just analyze arguments
-  for (const auto& arg : genericCall.getArgs()) {
-    sema_.analyzeExpr(const_cast<ExprAST&>(*arg));
-  }
-  // Expand any variadic pack into concrete typed args (e.g. _init<T>(p,
-  // args...))
-  expandPackArguments(genericCall.getArgsMutable());
-  genericCall.setResolvedType(resolveIntrinsicCallType(genericCall));
-
-  // _spawn is the one intrinsic that passes its arguments on to something
-  // else — the spawned lambda — so, like any other call, how each argument
-  // reaches its parameter is decided here rather than in codegen. A compound
-  // argument moves: the thread owns it from the moment it starts.
-  if (genericCall.getFunctionName() == "_spawn") {
-    recordSpawnArgumentConversions(genericCall);
-  }
-  // _init likewise forwards its arguments to the constructor they select.
-  if (genericCall.getFunctionName() == "_init") {
-    recordInitArgumentConversions(genericCall);
-  }
-}
-
-// Argument 0 is the destination pointer and stands in for itself; the rest
-// fill the parameters of the `init` overload they match. Without a matching
-// class constructor, codegen reports unexpected arguments. Non-class values
-// accept either no argument for zero initialization or one value of the target
-// type.
-void CallAnalyzer::recordInitArgumentConversions(GenericCallAST& genericCall) {
-  const auto& args = genericCall.getArgs();
-  if (args.empty()) {
-    return;  // codegen reports the missing pointer
-  }
-
-  std::vector<TypePtr> argTypes = resolvedTypesOf(args);
-  std::vector<TypePtr> ctorArgTypes(argTypes.begin() + 1, argTypes.end());
-
-  const ClassMethod* init = nullptr;
-  const auto& typeArgs = genericCall.getResolvedTypeArgs();
-  if (!typeArgs.empty() && typeArgs[0] && typeArgs[0]->isClass()) {
-    init = static_cast<const ClassType&>(*typeArgs[0])
-               .getMethodForArgs("init", ctorArgTypes);
-  }
-
-  if (!typeArgs.empty() && typeArgs[0] && !typeArgs[0]->isClass() &&
-      !typeArgs[0]->isTypeParameter()) {
-    auto targetType = typeArgs[0];
-    if (ctorArgTypes.size() > 1) {
-      logAndThrowError("_init<T> for a non-class type takes at most one value",
-                       genericCall.getLocation());
-    }
-    if (!ctorArgTypes.empty() && !isAssignableTo(ctorArgTypes[0], targetType)) {
-      logAndThrowError("_init<T> value must be assignable to " +
-                           targetType->toDisplayString(),
-                       genericCall.getLocation());
-    }
-    std::vector<TypePtr> paramTypes{argTypes[0], targetType};
-    genericCall.setArgConversions(sun::semantic_analysis::classifyArguments(
-        argTypes, paramTypes, /*cVariadic=*/false, "_init",
-        genericCall.getLocation()));
-    return;
-  }
-
-  if (init) {
-    const auto* function = ctx_.currentFunctionScope();
-    if (init->canThrow && !(function && function->functionCanThrow) &&
-        !ctx_.currentScope().hasExceptionHandler()) {
-      logAndThrowError("Initializing a throwing constructor requires a try block or a throws declaration",
-                       genericCall.getLocation());
-    }
-    genericCall.setTargetDeclarationId(init->declarationId);
-    genericCall.setResolvedType(init->returnType);
-  }
-  std::vector<TypePtr> paramTypes{argTypes[0]};
-  for (size_t i = 0; i < ctorArgTypes.size(); ++i) {
-    paramTypes.push_back(init ? init->paramTypes[i] : ctorArgTypes[i]);
-  }
-  genericCall.setArgConversions(sun::semantic_analysis::classifyArguments(
-      argTypes, paramTypes, /*cVariadic=*/false, "_init",
-      genericCall.getLocation()));
-}
-
-// The callee is argument 0 and is taken apart rather than passed on, so it
-// stands in for itself; everything after it fills the callee's parameters.
-// F may be a lambda or a named-function value.
-void CallAnalyzer::recordSpawnArgumentConversions(GenericCallAST& genericCall) {
-  const auto& typeArgs = genericCall.getResolvedTypeArgs();
-  auto* lambda =
-      typeArgs.empty()
-          ? nullptr
-          : sun::codegen::support::tryGetType<LambdaType>(typeArgs[0]);
-  auto* namedFn =
-      typeArgs.empty()
-          ? nullptr
-          : sun::codegen::support::tryGetType<sun::types::FunctionType>(
-                typeArgs[0]);
-  if (!lambda && !namedFn) {
-    logAndThrowError("_spawn<F> requires a lambda or function type argument",
-                     genericCall.getLocation());
-  }
-
-  // The trampoline that runs the thread has no unwind handling, so an error
-  // escaping the spawned function would take the process down mid-unwind.
-  if (lambda ? lambda->requiresUnsafe() : namedFn->requiresUnsafe()) {
-    logAndThrowError(
-        "a spawned function must be safe to call; wrap the unsafe call in a "
-        "lambda",
-        genericCall.getLocation());
-  }
-  if (lambda ? lambda->canThrow() : namedFn->canThrow()) {
-    logAndThrowError(
-        "a spawned function must not throw; catch errors inside it and "
-        "return them as part of its result",
-        genericCall.getLocation());
-  }
-
-  const auto& args = genericCall.getArgs();
-  std::vector<TypePtr> paramTypes{typeArgs[0]};
-  const auto& calleeParams =
-      lambda ? lambda->getParamTypes() : namedFn->getParamTypes();
-  for (const auto& param : calleeParams) {
-    paramTypes.push_back(param);
-  }
-  if (args.size() != paramTypes.size()) {
-    logAndThrowError(
-        "_spawn<F> takes the function and one argument per parameter it "
-        "declares: " +
-            std::to_string(paramTypes.size()) + " in all, got " +
-            std::to_string(args.size()),
-        genericCall.getLocation());
-  }
-
-  // Whatever the thread takes over cannot be used here afterwards.
-  for (const auto& arg : args) {
-    sema_.expressions().checkMoveSource(*arg, genericCall.getLocation());
-  }
-  genericCall.setArgConversions(sun::semantic_analysis::classifyArguments(
-      resolvedTypesOf(args), paramTypes, /*cVariadic=*/false, "_spawn",
-      genericCall.getLocation()));
-}
-
 void CallAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
   const std::string& funcName = genericCall.getFunctionName();
   const auto& args = genericCall.getArgs();
@@ -1327,6 +1139,11 @@ void CallAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
   if (!genFuncInfo) {
     logAndThrowError("Unknown generic function '" + funcName + "'",
                      genericCall.getLocation());
+  }
+
+  if (genFuncInfo->intrinsicPrototype) {
+    analyzeDeclaredIntrinsicCall(genericCall, *genFuncInfo);
+    return;
   }
 
   // Store the generic function AST on the call node for codegen
@@ -1489,7 +1306,6 @@ void CallAnalyzer::analyzeGenericClassConstruction(
   }
 
   genericCall.setResolvedType(specializedClass);
-
 }
 
 }  // namespace sun::semantic_analysis

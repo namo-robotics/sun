@@ -120,6 +120,7 @@ std::optional<EntrypointConfig> EntrypointManager::parseEntrypoint(
 
   return config;
 }
+
 EntrypointManager entrypointManager;
 
 // Config files the editor pointed the server at (the sun_configs setting).

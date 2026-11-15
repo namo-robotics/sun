@@ -90,10 +90,12 @@ void DeclarationAnalyzer::analyzeGlobal(sun::ast::VariableCreationAST& global,
   SemanticContext::LifetimeScopeGuard lifetimes(ctx_, false, true);
   ctx_.setCurrentClass(nullptr);
   globalsInProgress_.push_back(&global);
+
   /** Puts back the analysis state of the code that used the global. */
   struct Restore {
     DeclarationAnalyzer& sema;
     std::shared_ptr<sun::types::ClassType> currentClass;
+
     /** Restores the saved state, including when an error unwinds. */
     ~Restore() {
       sema.ctx_.setCurrentClass(currentClass);

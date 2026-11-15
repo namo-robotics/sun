@@ -37,6 +37,7 @@ struct InterfaceMethodDecl {
   std::unique_ptr<FunctionAST> function;
   bool hasDefaultImpl;   // true if method has a body (default implementation)
   bool isConst = false;  // `const function`: does not mutate `this`
+
   /** Returns the access level recorded on this member declaration. */
   Visibility visibility() const { return function->getVisibility(); }
 };
@@ -94,6 +95,7 @@ class InterfaceDefinitionAST : public ExprAST {
   ASTNodeType getType() const override {
     return ASTNodeType::INTERFACE_DEFINITION;
   }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string result =
@@ -118,6 +120,7 @@ class InterfaceDefinitionAST : public ExprAST {
   /** Returns the written parent interface, when this declaration extends one.
    */
   const std::optional<TypeAnnotation>& getParent() const { return parent_; }
+
   /** Records the single parent annotation for resolution and serialization. */
   void setParent(std::optional<TypeAnnotation> parent) {
     parent_ = std::move(parent);
@@ -125,48 +128,60 @@ class InterfaceDefinitionAST : public ExprAST {
 
   /** Returns the declared name used to identify this object. */
   const std::string& getName() const { return name; }
+
   /**
    * Qualified name (after semantic analysis qualifies it)
    */
   const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
     return ifaceAnalysis().qualifiedName;
   }
+
   /** Records the declaration name together with its enclosing scopes. */
   void setQualifiedName(sun::semantic_analysis::QualifiedName qname) {
     ifaceAnalysis().qualifiedName = std::move(qname);
   }
+
   /** Reports whether a name including the enclosing scopes has been assigned.
    */
   bool hasQualifiedName() const {
     return analysis_ &&
            !static_cast<InterfaceAnalysis&>(*analysis_).qualifiedName.empty();
   }
+
   /** Stores the declared lifetime parameters used to check borrowed values. */
   void setLifetimeParameters(std::vector<LifetimeParameter> params) {
     lifetimeParameters = std::move(params);
   }
+
   /** Provides the declared lifetime parameters used to check borrowed values.
    */
   const std::vector<LifetimeParameter>& getLifetimeParameters() const {
     return lifetimeParameters;
   }
+
   /** Provides the generic parameters declared by this type or function. */
   const std::vector<TypeParameter>& getTypeParameters() const {
     return typeParameters;
   }
+
   /** Returns the names used to bind generic arguments during specialization. */
   std::vector<std::string> getTypeParameterNames() const {
     return typeParameterNames(typeParameters);
   }
+
   /** Reports whether this declaration still has unbound type parameters. */
   bool isGeneric() const { return !typeParameters.empty(); }
+
   /** Provides the field declarations belonging to this type. */
   const std::vector<InterfaceFieldDecl>& getFields() const { return fields; }
+
   /** Provides the method declarations belonging to this type. */
   const std::vector<InterfaceMethodDecl>& getMethods() const { return methods; }
+
   /** Provides mutable access to field declarations for later compiler passes.
    */
   std::vector<InterfaceFieldDecl>& getMutableFields() { return fields; }
+
   /** Provides mutable access to method declarations for later compiler passes.
    */
   std::vector<InterfaceMethodDecl>& getMutableMethods() { return methods; }
@@ -175,6 +190,7 @@ class InterfaceDefinitionAST : public ExprAST {
    * Comment written above the interface (see doc_comments.h)
    */
   const std::string& getDoc() const { return doc_; }
+
   /** Stores the source documentation comment for this declaration. */
   void setDoc(std::string doc) { doc_ = std::move(doc); }
 
@@ -213,6 +229,7 @@ class InterfaceDefinitionAST : public ExprAST {
     }
     return required;
   }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "Interface\n" + name; }
 };

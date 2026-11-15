@@ -16,6 +16,7 @@ class TypeResolver {
   TypeResolver(SemanticContext &ctx, GenericSpecializer &generics,
                SemanticAnalyzer &sema)
       : ctx_(ctx), generics_(generics), sema_(sema) {}
+
   /** Resolve an interface requirement with the current parameter bindings. */
   std::shared_ptr<sun::types::InterfaceType> resolveConstraintInterface(
       const sun::ast::TypeConstraint &constraint);

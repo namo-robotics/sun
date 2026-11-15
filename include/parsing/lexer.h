@@ -1113,6 +1113,7 @@ class Lexer {
 
   /** Controls whether the lexer emits comments as tokens. */
   void setEmitComments(bool emit) { emitComments_ = emit; }
+
   /** Reports whether scanning retains comments as tokens. */
   bool emitComments() const { return emitComments_; }
 

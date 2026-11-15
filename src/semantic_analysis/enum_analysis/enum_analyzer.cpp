@@ -515,7 +515,8 @@ void EnumAnalyzer::analyzeEnumMatch(sun::ast::MatchExprAST& matchExpr,
         reachable |= coveredTags.insert(variant.value).second;
       }
       const auto* functionScope = ctx_.currentFunctionScope();
-      const bool optionalPattern = functionScope && functionScope->isGenericSpecialization;
+      const bool optionalPattern =
+          functionScope && functionScope->isGenericSpecialization;
       if (arm.matchedVariantTags.empty() && !optionalPattern) {
         logAndThrowError("Typed match pattern matches no variant payloads: '" +
                              bindingType->toDisplayString() + "'",

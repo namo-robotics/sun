@@ -1,0 +1,19 @@
+/** Borrows an array through the ordinary C ABI for runtime reporting. */
+extern "C" function print_trace(frames: const ref array<u64>, status: u32) void as "sun_eh_print_trace";
+
+/** Carries a bounded failure. */
+exception Failure {
+  var code: i32;
+}
+
+/** Captures and prints one original trace. */
+function main() i32 {
+  try {
+    var error: Failure = { code: 42 };
+    throw error;
+  } catch (error: Failure) {
+    unsafe { print_trace(_exception_trace_frames(error), _exception_trace_status(error)); };
+    return error.code;
+  }
+  return 0;
+}

@@ -51,6 +51,7 @@ class BlockExprAST : public ExprAST {
 
   /** Returns the type category used for semantic checks and dispatch. */
   BlockKind getKind() const { return Kind; }
+
   /** Updates the kind stored by this object. */
   void setKind(BlockKind kind) { Kind = kind; }
 
@@ -78,11 +79,13 @@ class BlockExprAST : public ExprAST {
 
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::BLOCK; }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override { return "{ ... }"; }
 
   /** Provides access to the expressions that make up the body. */
   const std::vector<std::unique_ptr<ExprAST>>& getBody() const { return Body; }
+
   /** Provides mutable access to the body so compiler passes can rewrite it. */
   std::vector<std::unique_ptr<ExprAST>>& mutableBody() { return Body; }
 
@@ -105,6 +108,7 @@ class BlockExprAST : public ExprAST {
   const ExprAST* getLastExpr() const {
     return Body.empty() ? nullptr : Body.back().get();
   }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "Block"; }
 };

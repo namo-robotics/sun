@@ -43,6 +43,7 @@ class ParenExprAST : public ExprAST {
   std::string toString() const override {
     return "(" + (inner_ ? inner_->toString() : "") + ")";
   }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "ParenExpr"; }
 };

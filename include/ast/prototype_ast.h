@@ -79,11 +79,13 @@ class PrototypeAST {
   void setCaptures(const std::vector<Capture>& caps) {
     analysis().captures = caps;
   }
+
   /** Return computed captures, or an empty list before analysis. */
   const std::vector<Capture>& getCaptures() const {
     static const std::vector<Capture> empty;
     return analysis_ ? analysis_->captures : empty;
   }
+
   /** Report whether analysis found a closure environment. */
   bool hasClosure() const { return !getCaptures().empty(); }
 
@@ -94,18 +96,22 @@ class PrototypeAST {
   void setRefCaptureNames(std::vector<std::string> names) {
     refCaptureNames = std::move(names);
   }
+
   /** Returns the names of borrowed captures. */
   const std::vector<std::string>& getRefCaptureNames() const {
     return refCaptureNames;
   }
+
   /** Updates the names of captures borrowed without write access. */
   void setConstRefCaptureNames(std::vector<std::string> names) {
     constRefCaptureNames = std::move(names);
   }
+
   /** Returns the names of captures borrowed without write access. */
   const std::vector<std::string>& getConstRefCaptureNames() const {
     return constRefCaptureNames;
   }
+
   /**
    * True if `name` was written `[const ref name]` rather than `[ref name]`
    */
@@ -113,14 +119,17 @@ class PrototypeAST {
     return std::find(constRefCaptureNames.begin(), constRefCaptureNames.end(),
                      name) != constRefCaptureNames.end();
   }
+
   /** Updates the names of captures whose ownership was transferred. */
   void setOwnedCaptureNames(std::vector<std::string> names) {
     ownedCaptureNames = std::move(names);
   }
+
   /** Returns the names of captures whose ownership was transferred. */
   const std::vector<std::string>& getOwnedCaptureNames() const {
     return ownedCaptureNames;
   }
+
   /**
    * True if `name` was written in the capture list without `ref`
    */
@@ -128,6 +137,7 @@ class PrototypeAST {
     return std::find(ownedCaptureNames.begin(), ownedCaptureNames.end(),
                      name) != ownedCaptureNames.end();
   }
+
   /**
    * True if the closure holds state bound to the frame that built it: a
    * borrow of a local, or a value it owns and drops there. Either way the
@@ -141,15 +151,19 @@ class PrototypeAST {
     }
     return false;
   }
+
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const { return ASTNodeType::PROTOTYPE; }
+
   /** Returns the declared name used to identify this object. */
   const std::string& getName() const { return Name; }
+
   /** Updates the name stored by this object. */
   void setName(std::string name) { Name = std::move(name); }
 
   /** Sets the source position used for diagnostics. */
   void setLocation(sun::support::Position loc) { location_ = std::move(loc); }
+
   /** Returns the source position used for diagnostics. */
   const sun::support::Position& getLocation() const { return location_; }
 
@@ -157,24 +171,29 @@ class PrototypeAST {
    * Comment written above the function (see doc_comments.h)
    */
   const std::string& getDoc() const { return doc_; }
+
   /** Stores the source documentation comment for this declaration. */
   void setDoc(std::string doc) { doc_ = std::move(doc); }
 
   // Analysis data access
   /** Reports whether this object has analysis. */
   bool hasAnalysis() const { return analysis_ != nullptr; }
+
   /** Return this function's identity in the current analysis session. */
   DeclarationId getDeclarationId() const {
     return analysis_ ? analysis_->declaration.id : DeclarationId{};
   }
+
   /** Assign the identity shared by the function and its prototype. */
   void setDeclarationId(DeclarationId id) const {
     analysis().declaration.id = id;
   }
+
   /** Access identities for the function and its parameters. */
   sun::semantic_analysis::DeclarationIdentity& declarationIdentity() const {
     return analysis().declaration;
   }
+
   /** Clear the resolved signature while retaining declaration identities. */
   void clearComputedAnalysis() const {
     if (!analysis_) {
@@ -184,6 +203,7 @@ class PrototypeAST {
     analysis_ = std::make_unique<PrototypeAnalysis>();
     analysis_->declaration = std::move(identity);
   }
+
   /** Drop all annotations when discarding the owning session. */
   void resetAnalysisSession() const {
     if (!analysis_) {
@@ -195,6 +215,7 @@ class PrototypeAST {
       analysis().declaration.imported = std::move(imported);
     }
   }
+
   /** Returns the analysis stored by this object. */
   const PrototypeAnalysis* getAnalysis() const { return analysis_.get(); }
 
@@ -204,10 +225,12 @@ class PrototypeAST {
   const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
     return analysis().qualifiedName;
   }
+
   /** Records the declaration name together with its enclosing scopes. */
   void setQualifiedName(sun::semantic_analysis::QualifiedName qname) {
     analysis().qualifiedName = std::move(qname);
   }
+
   /** Reports whether a name including the enclosing scopes has been assigned.
    */
   bool hasQualifiedName() const {
@@ -220,6 +243,7 @@ class PrototypeAST {
   void setLifetimeParameters(std::vector<LifetimeParameter> params) {
     lifetimeParameters = std::move(params);
   }
+
   /** Provides the declared lifetime parameters used to check borrowed values.
    */
   const std::vector<LifetimeParameter>& getLifetimeParameters() const {
@@ -232,12 +256,15 @@ class PrototypeAST {
   const std::vector<TypeParameter>& getTypeParameters() const {
     return typeParameters;
   }
+
   /** Returns the names used to bind generic arguments during specialization. */
   std::vector<std::string> getTypeParameterNames() const {
     return typeParameterNames(typeParameters);
   }
+
   /** Reports whether this declaration still has unbound type parameters. */
   bool isGeneric() const { return !typeParameters.empty(); }
+
   /**
    * Emitted as one function per specialization: either because it has type
    * parameters, or because its `args...` pack is keyed on the call's argument
@@ -250,6 +277,7 @@ class PrototypeAST {
   bool isTemplate() const {
     return isGeneric() || (hasVariadicParam() && !hasResolvedVariadicTypes());
   }
+
   /** Removes generic parameters after a declaration is specialized. */
   void clearTypeParameters() { typeParameters.clear(); }
 
@@ -276,6 +304,7 @@ class PrototypeAST {
   const std::optional<TypeAnnotation>& getReturnType() const {
     return returnType;
   }
+
   /** Reports whether this object has return type. */
   bool hasReturnType() const { return returnType.has_value(); }
 
@@ -289,8 +318,10 @@ class PrototypeAST {
    * that only want a piece of it have the three shorthands below.
    */
   bool hasVariadicParam() const { return variadicParam_.has_value(); }
+
   /** Returns the variadic parameter declaration. */
   const VariadicParam& getVariadicParam() const { return *variadicParam_; }
+
   /**
    * The pack's name, or empty when the signature declares no pack.
    */
@@ -298,10 +329,12 @@ class PrototypeAST {
     static const std::string none;
     return variadicParam_ ? variadicParam_->name : none;
   }
+
   /** Reports whether this object has variadic type annotation. */
   bool hasVariadicTypeAnnotation() const {
     return variadicParam_ && variadicParam_->hasTypeAnnotation();
   }
+
   /** Returns the variadic parameter type annotation. */
   const TypeAnnotation& getVariadicTypeAnnotation() const {
     return *variadicParam_->typeAnnotation;
@@ -313,11 +346,13 @@ class PrototypeAST {
    * LLVM function type's isVarArg flag. Extern declarations only.
    */
   bool isCVariadic() const { return cVariadic_; }
+
   /** Updates the C variadic-call setting. */
   void setCVariadic(bool v) { cVariadic_ = v; }
 
   /** Whether callers must uphold this method's safety contract. */
   bool isUnsafeMethod() const { return unsafeMethod_; }
+
   /** Mark a method as requiring an unsafe block at each call. */
   void setUnsafeMethod(bool v) { unsafeMethod_ = v; }
 
@@ -326,6 +361,7 @@ class PrototypeAST {
    * change `this`, and it may be called on a constant receiver.
    */
   bool isConstMethod() const { return constMethod_; }
+
   /** Marks whether the method receives its object without write access. */
   void setConstMethod(bool v) { constMethod_ = v; }
 
@@ -334,8 +370,10 @@ class PrototypeAST {
    * Lets a Sun-side name differ from the symbol actually linked against.
    */
   bool hasLinkName() const { return linkName_.has_value(); }
+
   /** Updates the link name stored by this object. */
   void setLinkName(std::string name) { linkName_ = std::move(name); }
+
   /**
    * The symbol to emit: the `as` name when given, otherwise the Sun name.
    */
@@ -352,10 +390,12 @@ class PrototypeAST {
     analysis().resolvedParamTypes = std::move(types);
     analysis().resolvedParamTypesSet = true;
   }
+
   /** Returns the parameter types selected by analysis. */
   const std::vector<TypePtr>& getResolvedParamTypes() const {
     return analysis().resolvedParamTypes;
   }
+
   /** Reports whether this object has resolved param types. */
   bool hasResolvedParamTypes() const {
     return analysis_ && analysis_->resolvedParamTypesSet;
@@ -365,10 +405,12 @@ class PrototypeAST {
   void setResolvedReturnType(TypePtr type) {
     analysis().resolvedReturnType = std::move(type);
   }
+
   /** Returns the resolved return type stored by this object. */
   TypePtr getResolvedReturnType() const {
     return analysis_ ? analysis_->resolvedReturnType : nullptr;
   }
+
   /** Reports whether this object has resolved return type. */
   bool hasResolvedReturnType() const {
     return analysis_ && analysis_->resolvedReturnType != nullptr;
@@ -382,10 +424,12 @@ class PrototypeAST {
     analysis().resolvedVariadicTypes = std::move(types);
     analysis().resolvedVariadicTypesSet = true;
   }
+
   /** Returns the concrete variadic parameter types. */
   const std::vector<TypePtr>& getResolvedVariadicTypes() const {
     return analysis().resolvedVariadicTypes;
   }
+
   /** Reports whether this object has resolved variadic types. */
   bool hasResolvedVariadicTypes() const {
     return analysis_ && analysis_->resolvedVariadicTypesSet;
@@ -455,10 +499,12 @@ class PrototypeAST {
   void setTypeBindings(std::vector<std::pair<std::string, TypePtr>> bindings) {
     analysis().typeBindings = std::move(bindings);
   }
+
   /** Returns the type bindings stored by this object. */
   const std::vector<std::pair<std::string, TypePtr>>& getTypeBindings() const {
     return analysis().typeBindings;
   }
+
   /** Reports whether this object has type bindings. */
   bool hasTypeBindings() const {
     return analysis_ && !analysis_->typeBindings.empty();

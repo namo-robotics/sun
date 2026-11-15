@@ -329,6 +329,7 @@ TEST(Tooling_Frontend_TypeSpans, FnType) {
   ASSERT_EQ(args.size(), 1u);
   EXPECT_EQ(spanText(src, args[0].second.span), "function (i32, bool) void");
 }
+
 TEST(Tooling_Frontend_TypeSpans, ThrowingFunctionType) {
   std::string src = "function g(cb: function (i32) Result<i32>) void {}";
   auto block = parseSource(src);

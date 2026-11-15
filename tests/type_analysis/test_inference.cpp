@@ -15,6 +15,7 @@ TypePtr computed(TypeResult result) {
   EXPECT_NE(type, nullptr);
   return type ? *type : nullptr;
 }
+
 /** Check a structured failure without invoking diagnostic machinery. */
 void fails(TypeResult result, InferenceFailure::Kind kind) {
   auto* failure = std::get_if<InferenceFailure>(&result);

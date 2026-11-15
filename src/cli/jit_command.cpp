@@ -56,42 +56,45 @@ int runJitCommand(const BuildRunOptions& options) {
       options.configInput
           ? std::filesystem::absolute(options.inputFiles.at(0)).parent_path()
           : std::filesystem::path{});
-  sun::driver::GitDependencyBuildScope dependencyScope(
-      options.shared.debugInfo, options.shared.optimize, options.forceRebuild,
-      options.refreshSources);
-  std::string inputFile = options.inputFiles[0];
-  if (options.configInput) {
-    std::optional<std::string> binary = findConfigBinary(inputFile);
-    if (!binary) {
-      return 1;
-    }
-    inputFile = *binary;
-  }
-
-  sun::support::logPathMessage("info", "Compiling for JIT: ", inputFile);
-
-  // argv[0] = script name, followed by the arguments after --
-  ProgramArguments programArgs(inputFile, options.programArgs);
-
-  // dlopen any -l shared libraries into this process first: the JIT resolves
-  // extern symbols by searching the current process, so they have to be
-  // loaded before the module referencing them is materialized. A -l name
-  // that resolves to a static archive instead cannot be dlopen'd; it is
-  // registered with the JIT's own linker below, once the JIT exists.
-  // A library that fails to load is only a warning: libc/libm are already
-  // resident (and glibc's libm.so is a linker script dlopen cannot read), so
-  // their symbols resolve anyway. If one is genuinely missing, the JIT
-  // reports the unresolved symbol with more precision than a guess here.
-  auto nativeLibs = sun::driver::loadNativeLibraries(options.linkOptions);
-  for (const auto& lib : nativeLibs.failed) {
-    sun::support::messageStream("warning")
-        << "could not load library '" << lib
-        << "'; continuing in case its symbols are already present\n";
-  }
-
   try {
+    const auto traceDepth =
+        resolveExceptionTraceDepth(options.shared, options.inputFiles.front());
+    sun::driver::GitDependencyBuildScope dependencyScope(
+        options.shared.debugInfo, options.shared.optimize, options.forceRebuild,
+        options.refreshSources, traceDepth);
+    std::string inputFile = options.inputFiles[0];
+    if (options.configInput) {
+      std::optional<std::string> binary = findConfigBinary(inputFile);
+      if (!binary) {
+        return 1;
+      }
+      inputFile = *binary;
+    }
+
+    sun::support::logPathMessage("info", "Compiling for JIT: ", inputFile);
+
+    // argv[0] = script name, followed by the arguments after --
+    ProgramArguments programArgs(inputFile, options.programArgs);
+
+    // dlopen any -l shared libraries into this process first: the JIT resolves
+    // extern symbols by searching the current process, so they have to be
+    // loaded before the module referencing them is materialized. A -l name
+    // that resolves to a static archive instead cannot be dlopen'd; it is
+    // registered with the JIT's own linker below, once the JIT exists.
+    // A library that fails to load is only a warning: libc/libm are already
+    // resident (and glibc's libm.so is a linker script dlopen cannot read), so
+    // their symbols resolve anyway. If one is genuinely missing, the JIT
+    // reports the unresolved symbol with more precision than a guess here.
+    auto nativeLibs = sun::driver::loadNativeLibraries(options.linkOptions);
+    for (const auto& lib : nativeLibs.failed) {
+      sun::support::messageStream("warning")
+          << "could not load library '" << lib
+          << "'; continuing in case its symbols are already present\n";
+    }
+
     auto driver = sun::driver::Driver::createForJIT(
-        "main_module", options.shared.debugInfo, options.shared.optimize);
+        "main_module", options.shared.debugInfo, options.shared.optimize,
+        traceDepth);
     for (const auto& archive : nativeLibs.archives) {
       driver->addJITStaticLibrary(archive);
     }

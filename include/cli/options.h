@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -40,6 +41,7 @@ struct SharedOptions {
   // last value
   std::vector<std::pair<std::string, std::string>> pathVariables;
   bool debugMode = false;  // --debug
+  std::optional<unsigned> exceptionTraceDepth;
   bool optimize = true;    // cleared by -O0
   bool emitIR = false;     // --emit-ir
   bool debugInfo = false;  // -g

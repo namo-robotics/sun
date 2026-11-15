@@ -8,8 +8,8 @@
 
 #include "driver/execution_utils.h"
 
-using sun::driver::compileString;
 using sun::driver::analyzeString;
+using sun::driver::compileString;
 using sun::driver::executeString;
 using sun::driver::executeStringWithStdlib;
 using sun::support::SunError;
@@ -1834,11 +1834,12 @@ TEST(Classes_FieldInitializers,
 
 /** A field default must have the declared field type. */
 TEST(Classes_FieldInitializers, incompatible_default_type_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(analyzeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      analyzeString(R"(
     /** Contains a boolean default for an integer field. */
     class Foo { var x: i32 = true; }
   )"),
-                                "Cannot assign value of type 'bool' to field 'x' of type 'i32'");
+      "Cannot assign value of type 'bool' to field 'x' of type 'i32'");
 }
 
 /** A default does not replace the required field type annotation. */

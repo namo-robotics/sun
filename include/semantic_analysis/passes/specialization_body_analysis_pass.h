@@ -12,6 +12,7 @@ class SpecializationBodyAnalysisPass {
   /** Borrow the analyzer; its specializer is accessed only when running. */
   explicit SpecializationBodyAnalysisPass(SemanticAnalyzer& analyzer)
       : analyzer_(analyzer) {}
+
   /** Drain queued bodies, including specializations requested by those bodies.
    */
   void run();

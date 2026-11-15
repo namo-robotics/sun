@@ -682,7 +682,6 @@ void InterfaceAnalyzer::prepareInterfaceShape(
   validateNotReserved(interfaceDef.getName(), "Interface name",
                       interfaceDef.getLocation());
 
-
   // Validate field names and reject duplicates, on the same terms as classes:
   // a name-only comparison, ahead of the generic early-return below.
   validateFieldNames(interfaceDef.getFields(), "Interface field name",

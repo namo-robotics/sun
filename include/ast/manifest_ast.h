@@ -96,30 +96,38 @@ class ManifestAST : public ExprAST {
 
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::MANIFEST; }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override { return "manifest"; }
 
   /** Returns a legacy serialized identity; current source manifests have none.
    */
   const std::optional<std::string>& getId() const { return id; }
+
   /** Returns the source dependencies. */
   const std::vector<ManifestSunDependency>& getSuns() const { return suns; }
+
   /** Returns the compiled-library dependencies. */
   const std::vector<ManifestMoonDependency>& getMoons() const { return moons; }
+
   /** Returns the protobuf dependencies. */
   const std::vector<ManifestProtoDependency>& getProtos() const {
     return protos;
   }
+
   /** Returns the archives stored by this object. */
   const std::vector<ManifestArchiveDependency>& getArchives() const {
     return archives;
   }
+
   /** Returns the target-specific dependency settings. */
   const std::vector<ManifestTargetBlock>& getTargets() const { return targets; }
+
   /** Returns the test-source dependencies. */
   const std::vector<ManifestSunDependency>& getTestSuns() const {
     return testSuns;
   }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "Manifest"; }
 };

@@ -29,10 +29,12 @@ std::string integer(uint64_t value) {
   }
   return result;
 }
+
 /** Frames arbitrary semantic bytes without ambiguity. */
 std::string field(uint64_t tag, const std::string& bytes) {
   return integer(tag) + integer(bytes.size()) + bytes;
 }
+
 /** Excludes source diagnostics and metadata already represented elsewhere. */
 bool omitted(const google::protobuf::FieldDescriptor& descriptor) {
   if (descriptor.name() == "source_file_id" || descriptor.name() == "doc" ||
@@ -51,6 +53,7 @@ bool omitted(const google::protobuf::FieldDescriptor& descriptor) {
          name == "source_hash" || name == "version" || name == "content_hash" ||
          name == "target_triple" || name == "dependencies";
 }
+
 /** Declaration maps are sorted; field lists, statements and parameters stay
  * ordered. */
 bool unordered(const google::protobuf::FieldDescriptor& descriptor) {
@@ -61,6 +64,7 @@ bool unordered(const google::protobuf::FieldDescriptor& descriptor) {
   return name == "declarations" || name == "functions" || name == "classes" ||
          name == "interfaces" || name == "enums" || name == "globals";
 }
+
 /** Encodes known semantic fields and rejects unknown enum or syntax-node
  * semantics. */
 std::string encode(const google::protobuf::Message& message, unsigned depth) {
@@ -167,6 +171,7 @@ std::string encode(const google::protobuf::Message& message, unsigned depth) {
   }
   return result;
 }
+
 /** Uses the same builtin identities as a fresh semantic analysis session. */
 const std::vector<moon::DeclarationRecord>& builtinDeclarations() {
   static const auto records = [] {
@@ -188,6 +193,7 @@ const std::vector<moon::DeclarationRecord>& builtinDeclarations() {
   }();
   return records;
 }
+
 /** Finds code that an importer must interpret, excluding module using records.
  */
 bool hasRetainedCode(const google::protobuf::Message& message,
@@ -329,6 +335,7 @@ void validateReferences(
 std::string describeSemantics(const moon::ModuleMetadata& metadata) {
   return field(0, "sun.abi.metadata.v1") + encode(metadata, 0);
 }
+
 void validateDeclarationGraph(
     const std::vector<const moon::ModuleMetadata*>& modules,
     bool completeImportSet) {
@@ -409,6 +416,7 @@ void validateDeclarationGraph(
     }
   }
 }
+
 void validateSpecializationPayload(const moon::ModuleMetadata& metadata,
                                    const llvm::Module& module) {
   for (const auto& cls : metadata.classes()) {

@@ -6,9 +6,9 @@
 #include <filesystem>
 #include <fstream>
 
-#include "cli/config_build_command.h"
-#include "cli/compile_command.h"
 #include "cli/command_support.h"
+#include "cli/compile_command.h"
+#include "cli/config_build_command.h"
 #include "driver/build_graph.h"
 #include "driver/manifest_processor.h"
 #include "driver/package.h"
@@ -25,6 +25,7 @@ using sun::support::SunError;
 class BuildGraph : public testing::Test {
  protected:
   fs::path dir;
+
   /** Reads this test's JSON fixture from the source tree. */
   std::string readConfigFixture(const std::string& filename) {
     const auto path =
@@ -48,8 +49,10 @@ class BuildGraph : public testing::Test {
     fs::create_directories(dir);
     sun::driver::ManifestProcessor::clearPathVariables();
   }
+
   /** Removes callbacks holding references to this fixture. */
   void TearDown() override { sun::driver::setProductCompiler({}); }
+
   /** Writes a config or source fixture relative to this test's directory. */
   void put(const fs::path& relative, const std::string& contents) {
     auto path = dir / relative;
@@ -102,7 +105,8 @@ TEST_F(BuildGraph, CompositionIsExplicitAndDoesNotMergeSettings) {
 
 /** Unsupported projects warn once and never resolve their paths or children. */
 TEST_F(BuildGraph, SkipsUnsupportedProjects) {
-  put("sun-config.json", R"({"projects":["linux.json","linux.json","portable.json"]})");
+  put("sun-config.json",
+      R"({"projects":["linux.json","linux.json","portable.json"]})");
   put("linux.json", R"({
     "supported_targets":["x86_64-linux-gnu","x86_64-linux-musl"],
     "projects":["missing.json"],
@@ -110,8 +114,8 @@ TEST_F(BuildGraph, SkipsUnsupportedProjects) {
   })");
   put("portable.json", R"({"package_id":"example/portable"})");
   testing::internal::CaptureStderr();
-  const auto graph = sun::driver::loadConfigGraph(
-      dir / "sun-config.json", "arm64-apple-darwin");
+  const auto graph = sun::driver::loadConfigGraph(dir / "sun-config.json",
+                                                  "arm64-apple-darwin");
   const auto warning = testing::internal::GetCapturedStderr();
   ASSERT_EQ(graph.projects.size(), 2u);
   EXPECT_EQ(graph.projects.back(), fs::canonical(dir / "portable.json"));
@@ -125,8 +129,8 @@ TEST_F(BuildGraph, SkipsUnsupportedProjects) {
 TEST_F(BuildGraph, IncludesSupportedProjects) {
   put("sun-config.json", R"({"projects":["linux.json"]})");
   put("linux.json", R"({"supported_targets":["x86_64-linux-musl"]})");
-  const auto graph = sun::driver::loadConfigGraph(
-      dir / "sun-config.json", "x86_64-unknown-linux-musl");
+  const auto graph = sun::driver::loadConfigGraph(dir / "sun-config.json",
+                                                  "x86_64-unknown-linux-musl");
   EXPECT_EQ(graph.projects.size(), 2u);
   EXPECT_TRUE(graph.skippedProjects.empty());
 }
@@ -134,9 +138,10 @@ TEST_F(BuildGraph, IncludesSupportedProjects) {
 /** A build with only unsupported projects completes after its warning. */
 TEST_F(BuildGraph, UnsupportedRootBuildSucceedsWithoutProducts) {
   put("sun-config.json", R"({"supported_targets":["x86_64-linux-musl"]})");
-  EXPECT_EQ(sun::cli::runBuildCommand(
-                {"--config", (dir / "sun-config.json").string(),
-                 "--target", "arm64-apple-darwin"}), 0);
+  EXPECT_EQ(
+      sun::cli::runBuildCommand({"--config", (dir / "sun-config.json").string(),
+                                 "--target", "arm64-apple-darwin"}),
+      0);
 }
 
 /** Artifact filenames resolve beneath the selected root, including child

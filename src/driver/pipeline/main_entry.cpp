@@ -1,8 +1,7 @@
 /** Adapts fallible entrypoints to native or JIT return values. */
-#include "driver/driver.h"
-
 #include <sstream>
 
+#include "driver/driver.h"
 #include "moon_bundling/moon.h"
 #include "parsing/lowering_pass.h"
 #include "semantic_analysis/semantic_pipeline.h"
@@ -19,10 +18,12 @@ static bool supportsJITReturn(const sun::types::TypePtr& type) {
   if (type->isPrimitive()) {
     return true;
   }
-  if (auto pointer = std::dynamic_pointer_cast<sun::types::StaticPointerType>(type)) {
+  if (auto pointer =
+          std::dynamic_pointer_cast<sun::types::StaticPointerType>(type)) {
     return pointer->getPointeeType()->isUInt8();
   }
-  if (auto pointer = std::dynamic_pointer_cast<sun::types::RawPointerType>(type)) {
+  if (auto pointer =
+          std::dynamic_pointer_cast<sun::types::RawPointerType>(type)) {
     return pointer->getPointeeType()->isUInt8() ||
            pointer->getPointeeType()->isInt8();
   }
@@ -30,7 +31,7 @@ static bool supportsJITReturn(const sun::types::TypePtr& type) {
 }
 
 sun::ast::FunctionAST* Driver::prepareMainEntry(sun::ast::BlockExprAST& block,
-                                             bool execute) {
+                                                bool execute) {
   using namespace sun::ast;
   using sun::support::logAndThrowError;
   // Bundles retain the source function's ordinary ABI for their importers.
@@ -50,31 +51,37 @@ sun::ast::FunctionAST* Driver::prepareMainEntry(sun::ast::BlockExprAST& block,
   }
   const auto& proto = main->getProto();
   const auto valueType = proto.getResolvedReturnType();
-  if (auto enumeration = std::dynamic_pointer_cast<sun::types::EnumType>(valueType);
+  if (auto enumeration =
+          std::dynamic_pointer_cast<sun::types::EnumType>(valueType);
       enumeration && !enumeration->hasPayload() && !proto.canThrow()) {
     return nullptr;
   }
-  if (!valueType || (execute ? !supportsJITReturn(valueType)
-                            : !(valueType->isVoid() || valueType->isInt32()))) {
-    logAndThrowError("Unsupported return type for 'main': '" +
-                        (valueType ? valueType->toString() : "unknown") + "'" +
-                        (execute ? "" : "; compiled programs require i32 or void"),
-                    main->getLocation());
+  if (!valueType ||
+      (execute ? !supportsJITReturn(valueType)
+               : !(valueType->isVoid() || valueType->isInt32()))) {
+    logAndThrowError(
+        "Unsupported return type for 'main': '" +
+            (valueType ? valueType->toString() : "unknown") + "'" +
+            (execute ? "" : "; compiled programs require i32 or void"),
+        main->getLocation());
   }
-  if (!proto.canThrow()) return nullptr;
+  if (!proto.canThrow()) {
+    return nullptr;
+  }
   const auto& args = proto.getResolvedParamTypes();
-  auto argv = args.size() == 2
-                  ? std::dynamic_pointer_cast<sun::types::RawPointerType>(args[1])
-                  : nullptr;
-  auto argument = argv
-                      ? std::dynamic_pointer_cast<sun::types::RawPointerType>(
-                            argv->getPointeeType())
-                      : nullptr;
-  if (!args.empty() &&
-      (args.size() != 2 || !args[0]->isInt32() || !argument ||
-       !argument->getPointeeType()->isInt8())) {
-    logAndThrowError("Fallible 'main' must take no arguments or "
-                     "(argc: i32, argv: raw_ptr<raw_ptr<i8>>)", main->getLocation());
+  auto argv =
+      args.size() == 2
+          ? std::dynamic_pointer_cast<sun::types::RawPointerType>(args[1])
+          : nullptr;
+  auto argument = argv ? std::dynamic_pointer_cast<sun::types::RawPointerType>(
+                             argv->getPointeeType())
+                       : nullptr;
+  if (!args.empty() && (args.size() != 2 || !args[0]->isInt32() || !argument ||
+                        !argument->getPointeeType()->isInt8())) {
+    logAndThrowError(
+        "Fallible 'main' must take no arguments or "
+        "(argc: i32, argv: raw_ptr<raw_ptr<i8>>)",
+        main->getLocation());
   }
 
   auto& scope = analyzer->context().currentScope();
@@ -96,22 +103,29 @@ sun::ast::FunctionAST* Driver::prepareMainEntry(sun::ast::BlockExprAST& block,
     returnName = "static_ptr<u8>";
     fallback = "\"\"";
   } else if (auto pointer =
-                 std::dynamic_pointer_cast<sun::types::RawPointerType>(valueType)) {
+                 std::dynamic_pointer_cast<sun::types::RawPointerType>(
+                     valueType)) {
     returnName = "raw_ptr<" + pointer->getPointeeType()->toString() + ">";
     fallback = "null";
   }
   std::ostringstream source;
-  source << "/** Exits after the entrypoint has unwound its owned resources. */\n"
-         << "extern \"C\" function " << prefix << "_exit(code: i32) void as \"exit\";\n"
-         << "/** Reports an uncaught entrypoint exception without allocating. */\n"
-         << "function " << prefix << "_entry(";
-  if (!args.empty()) source << "argc: i32, argv: raw_ptr<raw_ptr<i8>>";
+  source
+      << "/** Exits after the entrypoint has unwound its owned resources. */\n"
+      << "extern \"C\" function " << prefix
+      << "_exit(code: i32) void as \"exit\";\n"
+      << "/** Reports an uncaught entrypoint exception without allocating. */\n"
+      << "function " << prefix << "_entry(";
+  if (!args.empty()) {
+    source << "argc: i32, argv: raw_ptr<raw_ptr<i8>>";
+  }
   source << ") " << returnName << " {\ntry {\n"
          << (unit ? "" : "return ") << "main("
          << (args.empty() ? "" : "argc, argv") << ");\n";
-  if (unit) source << (execute ? "return;\n" : "return 0;\n");
-  source << "} catch {\nunsafe { __file_write(2, \"Unhandled main exception\\n\"); "
-         << prefix << "_exit(1); };\n"
+  if (unit) {
+    source << (execute ? "return;\n" : "return 0;\n");
+  }
+  source << "} catch {\n_report_unhandled_exception();\nunsafe { " << prefix
+         << "_exit(1); };\n"
          << (unit && execute ? "return;\n" : "return " + fallback + ";\n")
          << "}\n}\n";
   auto parser = sun::parsing::Parser::createStringParser(source.str());
@@ -130,7 +144,8 @@ sun::ast::FunctionAST* Driver::prepareMainEntry(sun::ast::BlockExprAST& block,
   for (auto& statement : generated->mutableBody()) {
     analyzer->analyzeExpr(*statement);
   }
-  sun::semantic_analysis::passes::SpecializationBodyAnalysisPass(*analyzer).run();
+  sun::semantic_analysis::passes::SpecializationBodyAnalysisPass(*analyzer)
+      .run();
   auto* adapter = static_cast<FunctionAST*>(generated->getBody().back().get());
   for (auto& statement : generated->mutableBody()) {
     block.addExpression(std::move(statement));

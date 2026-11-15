@@ -19,6 +19,7 @@
 namespace {
 /** Names filesystem operations on fixture paths. */
 namespace fs = std::filesystem;
+
 /** Reads source or binary artifacts without interpreting their contents. */
 std::string read(const fs::path& path) {
   std::ifstream input(path, std::ios::binary);
@@ -26,19 +27,23 @@ std::string read(const fs::path& path) {
   contents << input.rdbuf();
   return contents.str();
 }
+
 /** Writes a fixture, creating its parent directory when necessary. */
 void write(const fs::path& path, const std::string& contents) {
   fs::create_directories(path.parent_path());
   std::ofstream(path, std::ios::binary) << contents;
 }
+
 /** Captures exit status and separate compiler output streams. */
 struct Result {
   int status;
   std::string out;
   std::string err;
+
   /** Combines output for assertion diagnostics. */
   std::string diagnostics() const { return out + err; }
 };
+
 /** Owns one temporary project and restores its environment after each test. */
 class Tooling_Bindgen : public testing::Test {
  protected:
@@ -62,6 +67,7 @@ class Tooling_Bindgen : public testing::Test {
     setenv("SUN_PATH", fs::current_path().c_str(), 1);
     write(dir / "sun-config.json", R"({"root":true})");
   }
+
   /** Restores environment variables and removes artifacts after failures too.
    */
   void TearDown() override {
@@ -76,6 +82,7 @@ class Tooling_Bindgen : public testing::Test {
       fs::remove_all(dir);
     }
   }
+
   /** Executes the built compiler directly, with captured output and a timeout.
    */
   Result run(std::vector<std::string> arguments) {
@@ -93,6 +100,7 @@ class Tooling_Bindgen : public testing::Test {
     EXPECT_GE(status, 0) << error;
     return {status, read(out), read(err) + error};
   }
+
   /** Generates selected declarations for one explicit target ABI. */
   Result generate(const std::string& header,
                   const std::vector<std::string>& names,
@@ -109,11 +117,13 @@ class Tooling_Bindgen : public testing::Test {
     }
     return run(std::move(args));
   }
+
   /** Compiles bindings without requiring a target linker or runner. */
   Result compile(const fs::path& source, const std::string& target) {
     return run({"--target", target, "--emit-obj", "-o",
                 (dir / "bindings.o").string(), source.string()});
   }
+
   /** Writes JSON without shell quoting or escaping fixture paths manually. */
   void config(llvm::json::Object object, const fs::path& folder = {}) {
     std::string text;
@@ -121,6 +131,7 @@ class Tooling_Bindgen : public testing::Test {
     stream << llvm::json::Value(std::move(object));
     write((folder.empty() ? dir : folder) / "sun-config.json", text);
   }
+
   /** Configures a module, supplying a default output for each selected branch.
    */
   void configure(llvm::json::Object binding) {
@@ -138,12 +149,14 @@ class Tooling_Bindgen : public testing::Test {
         {"root", true},
         {"c_bindings", llvm::json::Object{{"native", std::move(binding)}}}});
   }
+
   /** Provides a minimal binding config for a named record. */
   llvm::json::Object binding(const std::string& header = "native.h",
                              const std::string& record = "Reading") {
     return llvm::json::Object{{"header", header},
                               {"allow", llvm::json::Array{record}}};
   }
+
   /** Writes a program that either consumes the generated record or exits. */
   fs::path mainSource(bool usesBinding = false) {
     const auto source = dir / "main.sun";
@@ -157,6 +170,7 @@ class Tooling_Bindgen : public testing::Test {
                 "}\n");
     return source;
   }
+
   /** Builds a native object, optionally bypassing the build cache. */
   Result object(const fs::path& source, bool force = false) {
     std::vector<std::string> args = {

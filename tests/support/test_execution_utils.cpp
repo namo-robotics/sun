@@ -53,7 +53,8 @@ TEST(Support_Analysis, preloads_stdlib_when_requested) {
                                              true));
 }
 
-/** Duplicate native bindings produce a diagnostic instead of aborting the host. */
+/** Duplicate native bindings produce a diagnostic instead of aborting the host.
+ */
 TEST(Support_JIT, duplicate_native_symbol_is_diagnosed) {
   sun::driver::initTestEnvironment();
   auto driver = sun::driver::Driver::createForJIT();

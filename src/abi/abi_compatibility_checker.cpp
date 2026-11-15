@@ -48,17 +48,19 @@ bool AbiCompatibilityChecker::hasValidationScope() {
 
 void AbiCompatibilityChecker::prepareCompilation(
     const std::string& targetTriple, NativeExecution execution, bool debugInfo,
-    bool optimize) {
+    bool optimize, unsigned exceptionTraceDepth) {
   auto& checker = current();
   const auto& context = checker.context();
   if (AbiValidationScope::currentChecker_ &&
       context.targetTriple == targetTriple && context.execution == execution &&
-      context.debugInfo == debugInfo && context.optimize == optimize) {
+      context.debugInfo == debugInfo && context.optimize == optimize &&
+      context.exceptionTraceDepth == exceptionTraceDepth) {
     return;
   }
   checker.beginCompilation(targetTriple, execution);
   checker.context_.debugInfo = debugInfo;
   checker.context_.optimize = optimize;
+  checker.context_.exceptionTraceDepth = exceptionTraceDepth;
 }
 
 void AbiCompatibilityChecker::configure(CompilationContext context) {
@@ -187,8 +189,9 @@ void AbiCompatibilityChecker::collectCompatibleRevisions(
         for (const auto& key : candidate->listModules()) {
           modules.push_back(candidate->getMetadata(key));
         }
-        if (matchesLibraryAbiSnapshot(required, contract, hash, modules,
-                                      retaining->getLibrary().bundle_contract())) {
+        if (matchesLibraryAbiSnapshot(
+                required, contract, hash, modules,
+                retaining->getLibrary().bundle_contract())) {
           compatibleRevisions_.emplace(hash, required.artifact_hash());
         }
       }
@@ -198,7 +201,8 @@ void AbiCompatibilityChecker::collectCompatibleRevisions(
 
 bool AbiCompatibilityChecker::acceptsNominalBorrow(
     const sun::semantic_analysis::QualifiedName& source,
-    const sun::semantic_analysis::QualifiedName& target, NominalKind kind) const {
+    const sun::semantic_analysis::QualifiedName& target,
+    NominalKind kind) const {
   const auto sourceHash = source.bundleHash();
   const auto targetHash = target.bundleHash();
   if (!compatibleRevisions_.count({sourceHash, targetHash})) {
@@ -219,8 +223,8 @@ bool AbiCompatibilityChecker::acceptsNominalBorrow(
   const auto declared = [&](const proto::LibraryAbiSnapshot& revision) {
     return std::any_of(revision.declarations().begin(),
                        revision.declarations().end(), [&](const auto& item) {
-      return item.identity() == identity.encoding();
-    });
+                         return item.identity() == identity.encoding();
+                       });
   };
   return declared(from) && declared(to);
 }
@@ -407,9 +411,8 @@ void AbiCompatibilityChecker::validateContract(
   if (hashBundleContract(contract) != contract.compatibility_hash()) {
     fail("contract description does not match its hash");
   }
-  const auto resolvedTarget = targetTriple.empty()
-                                  ? llvm::sys::getDefaultTargetTriple()
-                                  : targetTriple;
+  const auto resolvedTarget =
+      targetTriple.empty() ? llvm::sys::getDefaultTargetTriple() : targetTriple;
   auto expected = compatibilityTarget(resolvedTarget);
   if (!compatibleTargetProfiles(expected, contract.target())) {
     fail("incompatible target profile for current target '" + resolvedTarget +
@@ -469,6 +472,16 @@ void AbiCompatibilityChecker::validateContract(
   for (const auto& rule : contract.requirements()) {
     if (!seen.insert(rule.name()).second) {
       fail("duplicate required rule '" + rule.name() + "'");
+    }
+    if (rule.name() == "sun.exceptions.trace_depth") {
+      if (rule.implementation() !=
+          std::to_string(context_.exceptionTraceDepth)) {
+        fail("exception trace depth mismatch: module requires " +
+             rule.implementation() + ", compilation uses " +
+             std::to_string(context_.exceptionTraceDepth));
+      }
+      *derived.add_requirements() = rule;
+      continue;
     }
     const auto found = supportedImplementations.find(rule.name());
     if (found == supportedImplementations.end()) {
@@ -558,6 +571,7 @@ void AbiCompatibilityChecker::validateContract(
     fail("derived contract hash differs");
   }
 }
+
 void AbiCompatibilityChecker::validatePayload(
     const BundleContract& contract, const llvm::Module& module,
     const std::string& bundle, const std::string& targetTriple) const {

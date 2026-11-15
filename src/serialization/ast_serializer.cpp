@@ -413,7 +413,9 @@ pbc::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
     case ASTNodeType::THROW: {
       const auto& value = static_cast<const sun::ast::ThrowAST&>(expr).value;
       auto* output = node.mutable_native_throw();
-      if (value) *output->mutable_error_expr() = serialize(*value);
+      if (value) {
+        *output->mutable_error_expr() = serialize(*value);
+      }
       break;
     }
     case ASTNodeType::TRY_CATCH: {
@@ -422,7 +424,9 @@ pbc::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
       *output->mutable_body() = serialize(*input.body);
       for (const auto& handler : input.handlers) {
         auto* target = output->add_handlers();
-        if (handler.binding) *target->mutable_binding() = serialize(*handler.binding);
+        if (handler.binding) {
+          *target->mutable_binding() = serialize(*handler.binding);
+        }
         *target->mutable_body() = serialize(*handler.body);
       }
       break;
@@ -924,8 +928,10 @@ void ASTSerializer::serializeClassDef(const sun::ast::ClassDefinitionAST& expr,
   auto* cls = node->mutable_class_def();
   cls->set_name(expr.getName());
   cls->set_is_exception(expr.isException());
-  if (expr.getExceptionParent())
-    *cls->mutable_exception_parent() = serializeTypeAnnotation(*expr.getExceptionParent());
+  if (expr.getExceptionParent()) {
+    *cls->mutable_exception_parent() =
+        serializeTypeAnnotation(*expr.getExceptionParent());
+  }
   for (const auto& name : expr.getCompiledSpecializations()) {
     cls->add_compiled_specializations()->set_declaration_key(name);
   }
@@ -1045,10 +1051,6 @@ void ASTSerializer::serializeMemberAccess(const sun::ast::MemberAccessAST& expr,
     *access->add_type_arguments() = serializeTypeAnnotation(*typeArg);
   }
 }
-
-
-
-
 
 void ASTSerializer::serializeDeclareType(const sun::ast::DeclareTypeAST& expr,
                                          pbc::ASTNode* node) const {

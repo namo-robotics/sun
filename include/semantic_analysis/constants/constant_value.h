@@ -33,21 +33,27 @@ struct ConstantValue {
 
   /** Reports whether the value is held as an integer. */
   bool isInteger() const { return std::holds_alternative<llvm::APInt>(data); }
+
   /** Reports whether the value is a floating-point number. */
   bool isFloat() const { return std::holds_alternative<llvm::APFloat>(data); }
+
   /** Reports whether the value is the text of a string literal. */
   bool isString() const { return std::holds_alternative<std::string>(data); }
+
   /** Reports whether the value is an array of values. */
   bool isArray() const { return std::holds_alternative<Elements>(data); }
 
   /** The integer bits; the value must be held as an integer. */
   const llvm::APInt& getInteger() const { return std::get<llvm::APInt>(data); }
+
   /** The floating-point number; the value must be a float. */
   const llvm::APFloat& getFloat() const {
     return std::get<llvm::APFloat>(data);
   }
+
   /** The text; the value must be a string. */
   const std::string& getString() const { return std::get<std::string>(data); }
+
   /** The elements; the value must be an array. */
   const Elements& getElements() const { return std::get<Elements>(data); }
 

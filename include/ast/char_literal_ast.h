@@ -35,6 +35,7 @@ class CharLiteralAST : public ExprAST {
 
   /** Returns the value represented by this object. */
   uint32_t getValue() const { return value_; }
+
   /** Reports whether this syntax node represents a byte literal rather than a
    * Unicode character. */
   bool isByte() const { return isByte_; }

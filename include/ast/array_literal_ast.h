@@ -22,6 +22,7 @@ class ArrayLiteralAST : public ExprAST {
    * expressions. */
   explicit ArrayLiteralAST(std::vector<std::unique_ptr<ExprAST>> elems)
       : elements(std::move(elems)) {}
+
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::ARRAY_LITERAL; }
 
@@ -32,6 +33,7 @@ class ArrayLiteralAST : public ExprAST {
       fn(elem);
     }
   }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string result = "[";
@@ -43,12 +45,15 @@ class ArrayLiteralAST : public ExprAST {
     }
     return result + "]";
   }
+
   /** Returns the elements stored by this object. */
   const std::vector<std::unique_ptr<ExprAST>>& getElements() const {
     return elements;
   }
+
   /** Returns the number of stored entries. */
   size_t size() const { return elements.size(); }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "ArrayLiteral"; }
 };

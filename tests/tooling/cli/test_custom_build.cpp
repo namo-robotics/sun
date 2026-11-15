@@ -208,10 +208,10 @@ set -eu
 printf '#!/bin/sh\nprintf "%%s\\n" "%s"\n' "$SUN_TARGET" > "$SUN_OUTPUT"
 )sh");
     fs::permissions(root / "lib/make_tool.sh", fs::perms::owner_all);
-    config["dependencies"] =
-        llvm::json::Array{llvm::json::Object{{"package", "example/helper"},
-                                             {"entrypoints", llvm::json::Array{"helper"}},
-                                             {"path", "missing.moon"}}};
+    config["dependencies"] = llvm::json::Array{
+        llvm::json::Object{{"package", "example/helper"},
+                           {"entrypoints", llvm::json::Array{"helper"}},
+                           {"path", "missing.moon"}}};
     entry()["type"] = "library";
     save();
     write("app/main.sun", "/** A target library. */ public module api {}\n");
@@ -241,7 +241,8 @@ TEST_F(CustomBuild, OrderContextAndLocalDependency) {
   EXPECT_EQ(fs::last_write_time(artifact), timestamp);
 }
 
-/** All builds internal runners without changing exports or enabling disabled entries. */
+/** All builds internal runners without changing exports or enabling disabled
+ * entries. */
 TEST_F(CustomBuild, AllEntrypointsIncludesInternalTests) {
   config = document(R"({"package_id":"example/app","entrypoints":[
     {"name":"app","path":"main.sun","export":true,"compile_args":["--dynamic"]},
@@ -263,8 +264,8 @@ TEST_F(CustomBuild, AllEntrypointsIncludesInternalTests) {
   const auto selected = describe();
   const fs::path output(selected.getString("build_root")->str());
   const auto helperOutput = output.parent_path() / "helper";
-  const std::vector<std::string> base{
-      "build", "--config", (root / "sun-config.json").string()};
+  const std::vector<std::string> base{"build", "--config",
+                                      (root / "sun-config.json").string()};
   ASSERT_EQ(invoke(compiler, base), 0) << diagnostics();
   EXPECT_FALSE(fs::exists(output / "checks_test"));
   EXPECT_FALSE(fs::exists(helperOutput / "checks_test"));
@@ -318,7 +319,8 @@ TEST_F(CustomBuild, FailurePreservesInstallation) {
 
 /** Shell queries return selected project values without building products. */
 TEST_F(CustomBuild, DescribeFieldPrintsPlainText) {
-  const std::vector<std::string> flags{"--target", foreignTarget(), "-g", "-O0"};
+  const std::vector<std::string> flags{"--target", foreignTarget(), "-g",
+                                       "-O0"};
   auto selected = describe(flags);
   for (const auto* field : {"build_root", "install_root", "package_id"}) {
     auto arguments = flags;
@@ -400,7 +402,6 @@ TEST_F(CustomBuild, TargetOnlyBinaryNeedsNoHostVariant) {
 
 }  // namespace
 
-
 /** Custom builds keep short progress labels and the workspace display base. */
 TEST_F(CustomBuild, WorkspaceRelativeBuildPaths) {
   ASSERT_EQ(command("build"), 0) << diagnostics();
@@ -418,21 +419,27 @@ TEST_F(CustomBuild, WorkspaceRelativeBuildPaths) {
 
 /** Diagnostics from custom compiler children use the selected config base. */
 TEST_F(CustomBuild, WorkspaceRelativeErrorPaths) {
-  write("app/main.sun", "/** Requires an unavailable interface. */\n"
-                        "class Broken implements Missing {}\n");
+  write("app/main.sun",
+        "/** Requires an unavailable interface. */\n"
+        "class Broken implements Missing {}\n");
   EXPECT_NE(command("build"), 0);
   const auto log = diagnostics();
   EXPECT_NE(log.find("app/main.sun:2:25"), std::string::npos) << log;
   EXPECT_NE(log.find("class 'Broken'"), std::string::npos) << log;
-  EXPECT_EQ(log.find((root / "app/main.sun").string()), std::string::npos) << log;
+  EXPECT_EQ(log.find((root / "app/main.sun").string()), std::string::npos)
+      << log;
 }
 
-/** A direct source command displays files relative to its invocation directory. */
+/** A direct source command displays files relative to its invocation directory.
+ */
 TEST_F(CustomBuild, DirectSourceUsesInvocationDirectory) {
-  write("broken.sun", "/** Requires an unavailable interface. */\n"
-                      "class Broken implements Missing {}\n");
-  EXPECT_NE(invoke(compiler, {"-c", (root / "broken.sun").string(), "--no-test"}), 0);
-  const auto expected = (root / "broken.sun").lexically_relative(fs::current_path()).string();
+  write("broken.sun",
+        "/** Requires an unavailable interface. */\n"
+        "class Broken implements Missing {}\n");
+  EXPECT_NE(
+      invoke(compiler, {"-c", (root / "broken.sun").string(), "--no-test"}), 0);
+  const auto expected =
+      (root / "broken.sun").lexically_relative(fs::current_path()).string();
   const auto log = diagnostics();
   EXPECT_NE(log.find(expected + ":2:25"), std::string::npos) << log;
   EXPECT_EQ(log.find((root / "broken.sun").string()), std::string::npos) << log;

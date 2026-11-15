@@ -801,6 +801,7 @@ function main() i32 throws {
   // Concrete elements are borrowed through the interface during iteration.
   EXPECT_EQ(value, 23);
 }
+
 TEST(Interfaces_DynamicDispatch, extra_argument_to_interface_method_is_error) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     interface IShape { method area() i32; }
@@ -2077,7 +2078,8 @@ TEST(Interfaces, throwing_method_requires_error_handling) {
 
 /** Implementations cannot add failure to an infallible interface contract. */
 TEST(Interfaces, throwing_method_cannot_implement_nonthrowing_contract) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
     /** Promises an infallible operation. */
     interface Operation { /** Runs without failure. */ method run() void; }
     /** Attempts to weaken the contract. */
@@ -2087,7 +2089,7 @@ TEST(Interfaces, throwing_method_cannot_implement_nonthrowing_contract) {
     }
     /** Supplies an entry point. */ function main() i32 { return 0; }
   )"),
-                                "cannot implement a non-throwing interface method");
+      "cannot implement a non-throwing interface method");
 }
 
 /** Child interfaces cannot add failure to an inherited method. */

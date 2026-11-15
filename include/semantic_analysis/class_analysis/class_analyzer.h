@@ -6,9 +6,11 @@
 #include <vector>
 
 #include "semantic_analysis/semantic_context.h"
+
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 class SemanticAnalyzer;
+
 /** Checks class definitions, partial classes, and packed layout restrictions.
  */
 class ClassAnalyzer {
@@ -16,6 +18,7 @@ class ClassAnalyzer {
   /** Borrows the session context and the cooperating analysis services. */
   ClassAnalyzer(SemanticContext &context, SemanticAnalyzer &analyzer)
       : ctx_(context), sema_(analyzer) {}
+
   /** Checks a class definition, its members, and its method bodies. */
   void analyzeClassDefinition(sun::ast::ClassDefinitionAST &classDef);
 

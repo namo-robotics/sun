@@ -60,16 +60,22 @@ class TypeParameterType : public Type {
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::TypeParameter;
+
   /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
+
   /** Returns the declared name used to identify this object. */
   const std::string& getName() const { return name; }
+
   /** Returns the projection base stored by this object. */
   const std::string& getProjectionBase() const { return base_; }
+
   /** Returns the projection stored by this object. */
   TypeProjection getProjection() const { return projection_; }
+
   /** The complete requirement carried by this parameter. */
   const TypeConstraint& getConstraint() const { return constraint_; }
+
   /** Reports whether this object has constraint. */
   bool hasConstraint() const { return !constraint_.name.empty(); }
 

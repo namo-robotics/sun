@@ -26,16 +26,21 @@ class UnaryExprAST : public ExprAST {
    * expressions. */
   UnaryExprAST(Token op, std::unique_ptr<ExprAST> operand)
       : ExprAST(op.start), op(op), Operand(std::move(operand)) {}
+
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::UNARY; }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     return op.text + Operand->toString();
   }
+
   /** Returns the operator applied by this expression. */
   Token getOp() const { return op; }
+
   /** Returns the operand stored by this object. */
   const ExprAST* getOperand() const { return Operand.get(); }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "Unary\n" + op.text; }
 };

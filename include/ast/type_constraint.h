@@ -36,6 +36,7 @@ struct TypeConstraint {
   /** Creates a named constraint on the types accepted by a generic parameter.
    */
   TypeConstraint() = default;
+
   /** Creates a named constraint on the types accepted by a generic parameter.
    */
   explicit TypeConstraint(std::string n) : name(std::move(n)) {}

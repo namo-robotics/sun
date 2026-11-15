@@ -155,14 +155,19 @@ class FunctionTable {
 
   /** Returns the iterator marking the end of the stored entries. */
   const_iterator end() const { return bySig_.end(); }
+
   /** Returns an iterator to the first stored entry. */
   const_iterator begin() const { return bySig_.begin(); }
+
   /** Returns the iterator marking the end of the stored entries. */
   iterator end() { return bySig_.end(); }
+
   /** Returns an iterator to the first stored entry. */
   iterator begin() { return bySig_.begin(); }
+
   /** Reports whether this object contains no entries. */
   bool empty() const { return bySig_.empty(); }
+
   /** Returns the number of stored entries. */
   size_t size() const { return bySig_.size(); }
 
@@ -263,12 +268,14 @@ struct ImportBinding {
 
   /** Creates a binding from a local import name to its source declaration. */
   ImportBinding() : sourceScope(nullptr), isWildcard(false) {}
+
   /** Creates a binding from a local import name to its source declaration. */
   ImportBinding(std::string local, SemanticScopeBase* src, std::string srcName)
       : localName(std::move(local)),
         sourceScope(src),
         sourceName(std::move(srcName)),
         isWildcard(false) {}
+
   /** Creates an import binding that exposes names from the supplied scope. */
   static ImportBinding wildcard(SemanticScopeBase* src) {
     ImportBinding b;
@@ -327,6 +334,7 @@ struct SymbolMatch {
 
   /** Reports whether this object contains no entries. */
   bool empty() const { return kind == SymbolKind::None; }
+
   /** Reports whether this lookup result refers to a declaration. */
   explicit operator bool() const { return kind != SymbolKind::None; }
 
@@ -385,7 +393,9 @@ struct GenericEnumInfo {
  * Information about a generic function definition (template)
  */
 struct GenericFunctionInfo {
-  const FunctionAST* AST;                               // Original AST node
+  const FunctionAST* AST = nullptr;  // Original AST node
+  const sun::ast::PrototypeAST* intrinsicPrototype =
+      nullptr;  // Compiler-owned signature
   std::vector<sun::ast::TypeParameter> typeParameters;  // <T, U: Trait>
   std::optional<sun::ast::TypeAnnotation> returnType;  // Return type annotation
   std::vector<std::pair<std::string, sun::ast::TypeAnnotation>>
@@ -472,8 +482,10 @@ struct AccessContext {
   /** Declaration ownership for this analysis session. */
   virtual const sun::semantic_analysis::DeclarationTable& declarationTable()
       const = 0;
+
   /** The source unit performing name lookup. */
   virtual SourceFileId currentSourceFileId() const { return 0; }
+
   /** Reports why the current scope cannot access the supplied declaration. */
   [[noreturn]] virtual void denyAccess(
       const sun::semantic_analysis::ItemRef& item) const = 0;
@@ -548,6 +560,10 @@ struct SemanticScopeBase
    * the same name in this scope is rejected.
    */
   void declareGenericFunction(FunctionAST& func);
+
+  /** Registers a compiler-owned generic signature without a body or emitted
+   * specialization. */
+  void declareGenericIntrinsic(const sun::ast::PrototypeAST& prototype);
 
   /**
    * Record a module-level variable by source name with its visibility.
@@ -624,11 +640,17 @@ struct SemanticScopeBase
   bool catchesExceptions = false;
   bool activeExceptionHandler = false;
 
-  /** Reports whether an enclosing try can intercept a throw in this function. */
+  /** Reports whether an enclosing try can intercept a throw in this function.
+   */
   bool hasExceptionHandler(bool activeCatch = false) const {
     for (auto* scope = this; scope; scope = scope->parent) {
-      if (scope->getType() == ScopeType::Function) break;
-      if (activeCatch ? scope->activeExceptionHandler : scope->catchesExceptions) return true;
+      if (scope->getType() == ScopeType::Function) {
+        break;
+      }
+      if (activeCatch ? scope->activeExceptionHandler
+                      : scope->catchesExceptions) {
+        return true;
+      }
     }
     return false;
   }
@@ -648,6 +670,7 @@ struct SemanticScopeBase
 
   // Set on the root scope by the analyzer; consulted by every lookup.
   const AccessContext* accessContext = nullptr;
+
   /** Returns the scope context used to check declaration visibility. */
   const AccessContext* accessCtx() const {
     auto* s = this;
@@ -875,8 +898,10 @@ struct GlobalScope : SemanticScopeBase {
  */
 struct ModuleScope : SemanticScopeBase {
   sun::semantic_analysis::DeclarationId declarationId;
+
   /** Returns the lexical scope category used for scope-specific lookup. */
   ScopeType getType() const override { return ScopeType::Module; }
+
   // Source spelling; the declaration record identifies the parent module.
   sun::semantic_analysis::QualifiedName qualifiedName;
   sun::semantic_analysis::Visibility visibility =
@@ -971,42 +996,49 @@ inline FunctionScope* SemanticScopeBase::asFunction() {
   }
   return nullptr;
 }
+
 inline const FunctionScope* SemanticScopeBase::asFunction() const {
   if (getType() == ScopeType::Function) {
     return static_cast<const FunctionScope*>(this);
   }
   return nullptr;
 }
+
 inline ClassScope* SemanticScopeBase::asClass() {
   if (getType() == ScopeType::Class) {
     return static_cast<ClassScope*>(this);
   }
   return nullptr;
 }
+
 inline const ClassScope* SemanticScopeBase::asClass() const {
   if (getType() == ScopeType::Class) {
     return static_cast<const ClassScope*>(this);
   }
   return nullptr;
 }
+
 inline InterfaceScope* SemanticScopeBase::asInterface() {
   if (getType() == ScopeType::Interface) {
     return static_cast<InterfaceScope*>(this);
   }
   return nullptr;
 }
+
 inline const InterfaceScope* SemanticScopeBase::asInterface() const {
   if (getType() == ScopeType::Interface) {
     return static_cast<const InterfaceScope*>(this);
   }
   return nullptr;
 }
+
 inline BlockScope* SemanticScopeBase::asBlock() {
   if (getType() == ScopeType::Block) {
     return static_cast<BlockScope*>(this);
   }
   return nullptr;
 }
+
 inline const BlockScope* SemanticScopeBase::asBlock() const {
   if (getType() == ScopeType::Block) {
     return static_cast<const BlockScope*>(this);
@@ -1042,6 +1074,7 @@ inline sun::semantic_analysis::ItemRef accessItem(
   return {"class", c->getDisplayName(), "", c->visibility,
           c->getDeclarationId()};
 }
+
 /** Wraps a declaration in the common representation used for visibility checks.
  */
 inline sun::semantic_analysis::ItemRef accessItem(const GenericClassInfo* g) {
@@ -1051,6 +1084,7 @@ inline sun::semantic_analysis::ItemRef accessItem(const GenericClassInfo* g) {
           g->AST ? g->AST->getDeclarationId()
                  : sun::semantic_analysis::DeclarationId{}};
 }
+
 /** Wraps a declaration in the common representation used for visibility checks.
  */
 inline sun::semantic_analysis::ItemRef accessItem(
@@ -1058,6 +1092,7 @@ inline sun::semantic_analysis::ItemRef accessItem(
   return {"interface", i->getBaseName(), "", i->visibility,
           i->getDeclarationId()};
 }
+
 /** Wraps a declaration in the common representation used for visibility checks.
  */
 inline sun::semantic_analysis::ItemRef accessItem(
@@ -1068,12 +1103,14 @@ inline sun::semantic_analysis::ItemRef accessItem(
           g->AST ? g->AST->getDeclarationId()
                  : sun::semantic_analysis::DeclarationId{}};
 }
+
 /** Wraps a declaration in the common representation used for visibility checks.
  */
 inline sun::semantic_analysis::ItemRef accessItem(
     const std::shared_ptr<sun::types::EnumType>& e) {
   return {"enum", e->getBaseName(), "", e->visibility, e->getDeclarationId()};
 }
+
 /** Wraps a declaration in the common representation used for visibility checks.
  */
 inline sun::semantic_analysis::ItemRef accessItem(const GenericEnumInfo* g) {
@@ -1083,6 +1120,7 @@ inline sun::semantic_analysis::ItemRef accessItem(const GenericEnumInfo* g) {
           g->AST ? g->AST->getDeclarationId()
                  : sun::semantic_analysis::DeclarationId{}};
 }
+
 /** Wraps a declaration in the common representation used for visibility checks.
  */
 inline sun::semantic_analysis::ItemRef accessItem(
@@ -1093,23 +1131,27 @@ inline sun::semantic_analysis::ItemRef accessItem(
           g->AST ? g->AST->getDeclarationId()
                  : sun::semantic_analysis::DeclarationId{}};
 }
+
 /** Wraps a declaration in the common representation used for visibility checks.
  */
 inline sun::semantic_analysis::ItemRef accessItem(const FunctionInfo& f) {
   return {"function", f.qualifiedName.baseName, "", f.visibility,
           f.declarationId};
 }
+
 /** Wraps a declaration in the common representation used for visibility checks.
  */
 inline sun::semantic_analysis::ItemRef accessItem(const FunctionInfo* f) {
   return accessItem(*f);
 }
+
 /** Wraps a declaration in the common representation used for visibility checks.
  */
 inline sun::semantic_analysis::ItemRef accessItem(const VariableInfo* v) {
   return {"variable", v->qualifiedName.baseName, "", v->visibility,
           v->declarationId};
 }
+
 /** Wraps a declaration in the common representation used for visibility checks.
  */
 inline sun::semantic_analysis::ItemRef accessItem(const ModuleScope& m) {
@@ -1140,6 +1182,7 @@ class AccessFilter {
 
   /** Reports whether lookups are subject to visibility filtering. */
   bool enabled() const { return ctx_ != nullptr; }
+
   /** Returns the scope from which declaration access is being checked. */
   sun::semantic_analysis::DeclarationId from() const { return from_; }
 
@@ -1154,6 +1197,7 @@ class AccessFilter {
     }
     return false;
   }
+
   /** Filters a lookup result according to the current scope's access rights. */
   template <typename T>
   bool admit(const T& result) {
@@ -1162,6 +1206,7 @@ class AccessFilter {
 
   /** Reports whether this object has denied. */
   bool hasDenied() const { return denied_.has_value(); }
+
   /**
    * Throws the recorded denial, if any.
    */

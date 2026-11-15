@@ -201,7 +201,7 @@ Value* IntrinsicsGenerator::codegenInitIntrinsic(
                               /*firstArg=*/1)) {
     return nullptr;
   }
-  gen_.errorGenerator().emitPossiblyThrowingCall(
+  gen_.exceptionGenerator().emitPossiblyThrowingCall(
       ctorFunc->getFunctionType(), ctorFunc, ctorArgs, ctor->canThrow, "");
 
   return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);

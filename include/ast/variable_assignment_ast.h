@@ -40,6 +40,7 @@ class VariableAssignmentAST : public ExprAST {
   explicit VariableAssignmentAST(std::string name,
                                  std::unique_ptr<ExprAST> value)
       : name(std::move(name)), value(std::move(value)) {}
+
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override {
     return ASTNodeType::VARIABLE_ASSIGNMENT;
@@ -48,14 +49,18 @@ class VariableAssignmentAST : public ExprAST {
   /** Visits replaceable child expressions so tree passes can rewrite them in
    * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override { fn(value); }
+
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     return name + " = " + value->toString();
   }
+
   /** Returns the declared name used to identify this object. */
   const std::string& getName() const { return name; }
+
   /** Returns the value represented by this object. */
   const ExprAST* getValue() const { return value.get(); }
+
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "VarAssign\n" + name; }
 
@@ -67,6 +72,7 @@ class VariableAssignmentAST : public ExprAST {
   const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
     return varAnalysis().qualifiedName;
   }
+
   /** Records the declaration name together with its enclosing scopes. */
   void setQualifiedName(sun::semantic_analysis::QualifiedName qname) {
     varAnalysis().qualifiedName = std::move(qname);

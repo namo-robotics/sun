@@ -80,7 +80,8 @@ struct ConfigDependency {
 
 /** An availability check for a native library or a host executable. */
 struct ConfigDependencyCheck {
-  /** Selects metadata-based library discovery or an executable lookup on PATH. */
+  /** Selects metadata-based library discovery or an executable lookup on PATH.
+   */
   enum class Type { PkgConfig, Executable };
   Type type = Type::PkgConfig;
   std::string name;
@@ -165,7 +166,8 @@ struct SunConfig {
   std::vector<ConfigBuildStep> steps;
   std::vector<ConfigResource> exports;
   std::string packageId;
-  bool targetSupported = true;  // selected target is allowed by supported_targets
+  bool targetSupported =
+      true;  // selected target is allowed by supported_targets
   std::filesystem::path configFile;  // selected configuration file
   std::filesystem::path configDir;   // directory of the nearest config file
   std::vector<std::string> sunPath;  // extra library search dirs (absolute)
@@ -178,6 +180,7 @@ struct SunConfig {
   std::string targetTriple;  // resolved compilation triple, retaining vendor
                              // and OS version
   std::vector<ConfigFmtIgnore> fmtIgnore;  // ancestor rules first, nearest last
+  std::optional<unsigned> exceptionTraceDepth;
   bool root = false;  // stop the upward search at this file
 
   /**
