@@ -6,7 +6,7 @@ namespace {
 /** Tracks the capture boundary without counting platform-specific helper
  * frames. */
 struct CaptureState {
-  sun::runtime::StackTraceHeader& trace;
+  sun::runtime::StackTrace& trace;
   std::uintptr_t callerReturnAddress;
   bool foundCaller = false;
 };
@@ -41,7 +41,7 @@ _Unwind_Reason_Code captureFrame(_Unwind_Context* context,
 }  // namespace
 
 void sun::runtime::captureStackTrace(
-    StackTraceHeader& trace, std::uintptr_t callerReturnAddress) noexcept {
+    StackTrace& trace, std::uintptr_t callerReturnAddress) noexcept {
   trace.count = 0;
   trace.status = sun::runtime::TraceStatus::Disabled;
   if (sun_exception_trace_depth > 0) {

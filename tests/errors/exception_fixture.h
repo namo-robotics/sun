@@ -15,11 +15,11 @@ void sun_fixture_escape();
 int sun_fixture_deep(int depth);
 /** Returns an independently owned payload and trace captured through recursive
  * frames. */
-void sun_fixture_capture(sun::runtime::ExceptionValueHeader* output, int depth);
+void sun_fixture_capture(sun::runtime::ExceptionValue* output, int depth);
 /** Handles a nested exception and then transfers the original trace through
  * rethrow. */
-void sun_fixture_trace_rethrow(sun::runtime::ExceptionValueHeader* original,
-                               sun::runtime::ExceptionValueHeader* output);
+void sun_fixture_trace_rethrow(sun::runtime::ExceptionValue* original,
+                               sun::runtime::ExceptionValue* output);
 }
 
 /** Borrows test entrypoints without owning their native or JIT code. */

@@ -6,6 +6,7 @@
 #include "abi/lowering_descriptors.h"
 #include "codegen/codegen_visitor.h"
 #include "codegen/exceptions/exception_generator.h"
+#include "codegen/exceptions/storage_types.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/TargetParser/Triple.h"
 #include "semantic_analysis/portable_declaration_key.h"
@@ -60,11 +61,10 @@ void ExceptionGenerator::emitDestructorCall(Function* callee, Value* receiver) {
   builder.SetInsertPoint(done);
 }
 
-AllocaInst* ExceptionGenerator::exceptionStorage(std::size_t size,
+AllocaInst* ExceptionGenerator::exceptionStorage(Type* type,
                                                  const Twine& name) {
   auto* function = ctx.builder->GetInsertBlock()->getParent();
-  auto* storage = gen_.createEntryBlockAlloca(
-      function, name.str(), ArrayType::get(ctx.builder->getInt8Ty(), size));
+  auto* storage = gen_.createEntryBlockAlloca(function, name.str(), type);
   storage->setAlignment(Align(layout::alignment));
   return storage;
 }
@@ -130,10 +130,8 @@ void ExceptionGenerator::protectDestructor(Function* function) {
   builder.SetInsertPoint(&function->getEntryBlock(),
                          function->getEntryBlock().begin());
   auto* nested = builder.CreateAlloca(
-      ArrayType::get(builder.getInt8Ty(),
-                     layout::unwindHeaderSize +
-                         layout::valueSizeForDepth(ctx.exceptionTraceDepth)),
-      nullptr, "destructor.exception");
+      storageTypes(*module, ctx.exceptionTraceDepth).record, nullptr,
+      "destructor.exception");
   nested->setAlignment(Align(layout::alignment));
   auto push = module->getOrInsertFunction("sun_eh_push", builder.getPtrTy(),
                                           builder.getPtrTy());
@@ -489,8 +487,9 @@ Value* ExceptionGenerator::codegen(const sun::ast::TryCatchAST& statement) {
     const auto& source = statement.handlers[i];
     const auto& handler = handlers[i];
     builder.SetInsertPoint(handler.block);
-    auto* caught = exceptionStorage(
-        layout::valueSizeForDepth(ctx.exceptionTraceDepth), "caught.exception");
+    auto* caught =
+        exceptionStorage(storageTypes(*module, ctx.exceptionTraceDepth).value,
+                         "caught.exception");
     auto take =
         module->getOrInsertFunction("sun_eh_take", builder.getVoidTy(),
                                     builder.getPtrTy(), builder.getPtrTy());

@@ -56,6 +56,9 @@ pool.
 
 Embedded values occupy storage inside their parent. A catch receives the
 `ExceptionValue`, including its trace; the native unwind header stays in place.
+The compiler generates these storage types with an inline address array sized
+to the configured trace depth. The precompiled runtime accesses their fixed
+fields and frame offsets; changing the depth does not recompile the runtime.
 The default trace depth is 16, with one extra frame inspected to detect
 truncation. Rethrows preserve the original trace.
 
@@ -216,7 +219,7 @@ function main() i32 {
 Each color identifies a function frame or thread-local storage. Callers appear
 above callees. Rows show logical storage, not byte sizes: an empty `error` row
 is reserved catch storage, and each exception includes its trace. Runtime names
-and pointer types are illustrative internals, not user-facing Sun declarations.
+are illustrative internals, not user-facing Sun declarations.
 
 ### Step 1: foo throws A
 

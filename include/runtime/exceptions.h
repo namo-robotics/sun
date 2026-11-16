@@ -8,12 +8,14 @@
 
 #include "abi/exception_layout.h"
 
-/** Describes the fixed headers inside storage reserved by generated Sun code.
+/** Provides fixed-field views of the complete structs generated for Sun code.
  *
  * Thread storage: [target + padding] [unwind header] [value header] [frames]
  * Catch storage:                                   [value header] [frames]
  *
- * Frame capacity comes from the linked program, not from sizeof these headers.
+ * Generated structs include inline frame arrays. These C++ views omit those
+ * arrays so one precompiled runtime supports every configured capacity.
+ * Frame capacity comes from the linked program, not from sizeof these views.
  * The base record lives for the thread's lifetime. Destructor records live on
  * the stack until their nested propagation finishes. Taking an exception moves
  * its payload and populated frames into catch storage and clears the source
@@ -48,7 +50,7 @@ enum class TraceStatus : std::uint32_t {
 };
 
 /** Describes inline frames placed immediately after this fixed-size header. */
-struct StackTraceHeader {
+struct StackTrace {
   std::uint64_t count;
   TraceStatus status;
   std::uint32_t reserved;
@@ -76,53 +78,52 @@ struct TraceFrameView {
  * frames. A null type marks consumed storage. Only sun_eh_take and sun_eh_raise
  * transfer ownership; copying this header alone does not copy the trace.
  */
-struct alignas(sun::abi::exceptions::alignment) ExceptionValueHeader {
+struct alignas(sun::abi::exceptions::alignment) ExceptionValue {
   const ExceptionTypeDescriptor* type;
   alignas(sun::abi::exceptions::alignment) unsigned char payload
       [exceptionPayloadCapacity];
-  StackTraceHeader trace;
+  StackTrace trace;
 };
 
-/** Remains at one address until its native propagation has completed. */
-struct alignas(sun::abi::exceptions::alignment) PropagationRecordHeader {
+/** Holds the fixed fields of an exception during native propagation. The caller
+ * reserves trailing stack-trace addresses beyond this structure and keeps the
+ * entire allocation at one address until propagation completes.
+ */
+struct alignas(sun::abi::exceptions::alignment) PropagationRecord {
   _Unwind_Exception unwind;
-  ExceptionValueHeader value;
+  ExceptionValue value;
 };
 
 /** Selects the throw target; a depth-sized base record follows this header. */
-struct alignas(sun::abi::exceptions::alignment) ThreadExceptionStateHeader {
-  PropagationRecordHeader* throwTarget;
+struct alignas(sun::abi::exceptions::alignment) ThreadExceptionState {
+  PropagationRecord* throwTarget;
 
   /** Returns the base record reserved immediately after this header. */
-  PropagationRecordHeader* base() noexcept {
-    return reinterpret_cast<PropagationRecordHeader*>(this + 1);
+  PropagationRecord* base() noexcept {
+    return reinterpret_cast<PropagationRecord*>(this + 1);
   }
 };
 
-static_assert(sizeof(ThreadExceptionStateHeader) ==
-              sun::abi::exceptions::alignment);
-static_assert(sizeof(StackTraceHeader) ==
-              sun::abi::exceptions::traceFramesOffset -
-                  sun::abi::exceptions::traceOffset);
+static_assert(sizeof(ThreadExceptionState) == sun::abi::exceptions::alignment);
+static_assert(sizeof(StackTrace) == sun::abi::exceptions::traceFramesOffset -
+                                        sun::abi::exceptions::traceOffset);
 static_assert(sizeof(void*) == 8);
 static_assert(sizeof(_Unwind_Exception) ==
               sun::abi::exceptions::unwindHeaderSize);
 static_assert(alignof(_Unwind_Exception) <= sun::abi::exceptions::alignment);
-static_assert(offsetof(ExceptionValueHeader, payload) ==
+static_assert(offsetof(ExceptionValue, payload) ==
               sun::abi::exceptions::payloadOffset);
-static_assert(offsetof(ExceptionValueHeader, trace) ==
+static_assert(offsetof(ExceptionValue, trace) ==
               sun::abi::exceptions::traceOffset);
-static_assert(offsetof(ExceptionValueHeader, trace) +
-                  offsetof(StackTraceHeader, status) ==
+static_assert(offsetof(ExceptionValue, trace) + offsetof(StackTrace, status) ==
               sun::abi::exceptions::traceStatusOffset);
-static_assert(offsetof(ExceptionValueHeader, trace) +
-                  sizeof(StackTraceHeader) ==
+static_assert(offsetof(ExceptionValue, trace) + sizeof(StackTrace) ==
               sun::abi::exceptions::traceFramesOffset);
-static_assert(sizeof(ExceptionValueHeader) ==
+static_assert(sizeof(ExceptionValue) ==
               sun::abi::exceptions::valueSizeForDepth(0));
-static_assert(offsetof(PropagationRecordHeader, value) ==
+static_assert(offsetof(PropagationRecord, value) ==
               sun::abi::exceptions::unwindHeaderSize);
-static_assert(sizeof(PropagationRecordHeader) ==
+static_assert(sizeof(PropagationRecord) ==
               sun::abi::exceptions::unwindHeaderSize +
                   sun::abi::exceptions::valueSizeForDepth(0));
 
@@ -144,12 +145,12 @@ void sun_eh_initialize() noexcept;
 /** Selects fresh stack storage before cleanup, returning the previous target.
  * The caller must catch all escaping exceptions before this storage expires.
  */
-sun::runtime::PropagationRecordHeader* sun_eh_push(
-    sun::runtime::PropagationRecordHeader* storage) noexcept;
+sun::runtime::PropagationRecord* sun_eh_push(
+    sun::runtime::PropagationRecord* storage) noexcept;
 
 /** Restores the previous throw target after all nested propagation completes.
  */
-void sun_eh_pop(sun::runtime::PropagationRecordHeader* previous) noexcept;
+void sun_eh_pop(sun::runtime::PropagationRecord* previous) noexcept;
 
 /** Copies a fully evaluated payload into reserved storage and captures its
  * original trace. */
@@ -158,11 +159,11 @@ void sun_eh_pop(sun::runtime::PropagationRecordHeader* previous) noexcept;
 
 /** Consumes a retained value, preserving its original trace, and starts
  * propagation. */
-[[noreturn]] void sun_eh_raise(sun::runtime::ExceptionValueHeader* value);
+[[noreturn]] void sun_eh_raise(sun::runtime::ExceptionValue* value);
 
 /** Reports the exception type and source call chain without consuming the
  * value. */
-void sun_eh_report(const sun::runtime::ExceptionValueHeader* value,
+void sun_eh_report(const sun::runtime::ExceptionValue* value,
                    std::uint32_t unhandled = 0) noexcept;
 
 /** Captures and reports the current stack without needing an active exception.
@@ -180,7 +181,7 @@ void sun_eh_print_trace(sun::runtime::TraceFrameView view,
 
 /** Consumes a handled record into independent catch storage and releases it. */
 void sun_eh_take(_Unwind_Exception* exception,
-                 sun::runtime::ExceptionValueHeader* destination) noexcept;
+                 sun::runtime::ExceptionValue* destination) noexcept;
 
 /** Matches a concrete exception or any ancestor by its full nominal identity.
  */

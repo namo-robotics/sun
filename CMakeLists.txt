@@ -378,6 +378,7 @@ add_library(sun_lib
     src/codegen/exceptions/exception_generator.cpp
     src/codegen/exceptions/exception_handling.cpp
     src/codegen/exceptions/exception_lowering.cpp
+    src/codegen/exceptions/storage_types.cpp
     src/semantic_analysis/body_analysis/exceptions.cpp
     src/codegen/abi/aapcs64/aapcs64.cpp
     src/codegen/abi/c_abi.cpp

@@ -7,6 +7,7 @@
 
 #include <fstream>
 
+#include "codegen/exceptions/storage_types.h"
 #include "driver/compiler.h"
 #include "runtime/exceptions.h"
 
@@ -36,8 +37,7 @@ bool defineExceptionRuntimeStorage(llvm::Module& module,
         "sun_exception_trace_depth");
   }
   if (!module.getNamedGlobal("sun_exception_state")) {
-    auto* type = llvm::ArrayType::get(llvm::Type::getInt8Ty(context),
-                                      layout::threadStateSizeForDepth(depth));
+    auto* type = sun::codegen::exceptions::storageTypes(module, depth).thread;
     auto* storage = new llvm::GlobalVariable(
         module, type, false, llvm::GlobalValue::WeakODRLinkage,
         llvm::ConstantAggregateZero::get(type), "sun_exception_state", nullptr,

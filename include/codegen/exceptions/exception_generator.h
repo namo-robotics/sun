@@ -105,7 +105,7 @@ class ExceptionGenerator {
   /** Emits immutable nominal metadata including the payload layout contract. */
   llvm::Constant* exceptionDescriptor(const sun::types::ClassType& type);
   /** Allocates bounded storage in the entry block instead of growing loops. */
-  llvm::AllocaInst* exceptionStorage(std::size_t size, const llvm::Twine& name);
+  llvm::AllocaInst* exceptionStorage(llvm::Type* type, const llvm::Twine& name);
   /** Emits an invoke and the cleanup edges needed for Sun-native exceptions. */
   llvm::Value* emitNativeCall(llvm::FunctionType* type, llvm::Value* callee,
                               llvm::ArrayRef<llvm::Value*> args,
