@@ -54,6 +54,19 @@ TEST_P(Errors_TraceDepth, capture_status) {
   }
 }
 
+/** Nested propagation preserves the outer exception at every storage boundary.
+ */
+TEST_P(Errors_TraceDepth, nested_cleanup) {
+  const auto source = fixture("source_exceptions.sun");
+  const auto setting =
+      "--exception-trace-depth=" + std::to_string(GetParam().depth);
+  if (GetParam().native) {
+    run({native(source, {setting})}, 42);
+  } else {
+    sun({setting, source}, 42);
+  }
+}
+
 /** Inspects one emitted layout per boundary rather than repeating it for each
  * backend. */
 class Errors_TraceLayout : public CompilerFixture,
@@ -72,8 +85,11 @@ TEST_P(Errors_TraceLayout, generated_storage) {
   const auto depth = GetParam();
   const auto text = ir(fixture("trace_capture.sun"),
                        {"--exception-trace-depth=" + std::to_string(depth)});
-  const auto size = sun::abi::exceptions::valueSizeForDepth(depth);
-  EXPECT_NE(text.find("alloca [" + std::to_string(size) + " x i8]"),
+  EXPECT_NE(text.find("alloca %sun.ExceptionValue." + std::to_string(depth)),
+            std::string::npos);
+  EXPECT_NE(text.find("%sun.StackTrace." + std::to_string(depth) +
+                      " = type { i64, i32, i32, [" + std::to_string(depth) +
+                      " x i64] }"),
             std::string::npos);
   EXPECT_NE(text.find("!\"sun.exceptions.trace_depth\", i32 " +
                       std::to_string(depth)),

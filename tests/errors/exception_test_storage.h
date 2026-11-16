@@ -9,13 +9,13 @@
 namespace sun::tests::exceptions {
 /** Owns one catch value and all of its reserved frame addresses. */
 struct OwnedExceptionStorage {
-  runtime::ExceptionValueHeader header;
+  runtime::ExceptionValue header;
   std::array<std::uintptr_t, abi::exceptions::defaultTraceDepth> frames;
 };
 
 /** Owns one stable unwind record and its reserved frame addresses. */
 struct OwnedPropagationStorage {
-  runtime::PropagationRecordHeader header;
+  runtime::PropagationRecord header;
   std::array<std::uintptr_t, abi::exceptions::defaultTraceDepth> frames;
 };
 

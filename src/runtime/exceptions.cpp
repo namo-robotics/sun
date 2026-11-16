@@ -12,19 +12,19 @@ namespace {
 /** Refers to compiler-emitted immutable exception metadata. */
 using sun::runtime::ExceptionTypeDescriptor;
 /** Refers to an owned inline exception value. */
-using sun::runtime::ExceptionValueHeader;
+using sun::runtime::ExceptionValue;
 /** Refers to storage that remains stable during native propagation. */
-using sun::runtime::PropagationRecordHeader;
+using sun::runtime::PropagationRecord;
 
 /** Interprets storage supplied by the linked program without allocating memory.
  */
-sun::runtime::ThreadExceptionStateHeader& reservedState() noexcept {
-  return *reinterpret_cast<sun::runtime::ThreadExceptionStateHeader*>(
+sun::runtime::ThreadExceptionState& reservedState() noexcept {
+  return *reinterpret_cast<sun::runtime::ThreadExceptionState*>(
       sun_exception_state);
 }
 
 /** Returns the thread's initialized transport state. */
-sun::runtime::ThreadExceptionStateHeader& threadState() noexcept {
+sun::runtime::ThreadExceptionState& threadState() noexcept {
   auto& state = reservedState();
   if (!state.throwTarget) {
     sun_eh_terminate();
@@ -35,7 +35,7 @@ sun::runtime::ThreadExceptionStateHeader& threadState() noexcept {
 /** Releases a record without moving or interpreting private native unwind
  * fields. */
 void releaseRecord(_Unwind_Reason_Code, _Unwind_Exception* exception) noexcept {
-  reinterpret_cast<PropagationRecordHeader*>(exception)->value.type = nullptr;
+  reinterpret_cast<PropagationRecord*>(exception)->value.type = nullptr;
 }
 
 /** Checks the compiler/runtime payload contract before accessing inline
@@ -50,8 +50,7 @@ void validateType(const ExceptionTypeDescriptor* type) noexcept {
 }
 
 /** Moves the bounded payload without invoking user code. */
-void moveValue(ExceptionValueHeader* destination,
-               ExceptionValueHeader* source) noexcept {
+void moveValue(ExceptionValue* destination, ExceptionValue* source) noexcept {
   validateType(source->type);
   destination->type = source->type;
   std::memcpy(destination->payload, source->payload, source->type->payloadSize);
@@ -69,7 +68,7 @@ void moveValue(ExceptionValueHeader* destination,
 
 /** Initializes the stable native header only after the value is ready to
  * propagate. */
-[[noreturn]] void propagate(PropagationRecordHeader* record) {
+[[noreturn]] void propagate(PropagationRecord* record) {
   record->unwind.exception_class = sun::runtime::exceptionClass;
   record->unwind.exception_cleanup = releaseRecord;
   (void)_Unwind_RaiseException(&record->unwind);
@@ -88,8 +87,7 @@ void sun_eh_initialize() noexcept {
   }
 }
 
-PropagationRecordHeader* sun_eh_push(
-    PropagationRecordHeader* storage) noexcept {
+PropagationRecord* sun_eh_push(PropagationRecord* storage) noexcept {
   sun_eh_initialize();
   auto& current = threadState();
   if (!storage || storage == current.throwTarget) {
@@ -101,7 +99,7 @@ PropagationRecordHeader* sun_eh_push(
   return previous;
 }
 
-void sun_eh_pop(PropagationRecordHeader* previous) noexcept {
+void sun_eh_pop(PropagationRecord* previous) noexcept {
   auto& current = threadState();
   if (!previous || previous == current.throwTarget ||
       current.throwTarget->value.type) {
@@ -126,7 +124,7 @@ __attribute__((noinline)) void sun_eh_throw(const ExceptionTypeDescriptor* type,
   propagate(record);
 }
 
-void sun_eh_raise(ExceptionValueHeader* value) {
+void sun_eh_raise(ExceptionValue* value) {
   auto* record = threadState().throwTarget;
   if (!value || record->value.type || value == &record->value) {
     sun_eh_terminate();
@@ -137,19 +135,18 @@ void sun_eh_raise(ExceptionValueHeader* value) {
 
 void sun_eh_terminate_exception(_Unwind_Exception* exception) noexcept {
   if (exception && exception->exception_class == sun::runtime::exceptionClass) {
-    sun_eh_report(&reinterpret_cast<PropagationRecordHeader*>(exception)->value,
-                  1);
+    sun_eh_report(&reinterpret_cast<PropagationRecord*>(exception)->value, 1);
   }
   sun_eh_terminate();
 }
 
 void sun_eh_take(_Unwind_Exception* exception,
-                 ExceptionValueHeader* destination) noexcept {
+                 ExceptionValue* destination) noexcept {
   if (!exception || !destination ||
       exception->exception_class != sun::runtime::exceptionClass) {
     sun_eh_terminate();
   }
-  auto* record = reinterpret_cast<PropagationRecordHeader*>(exception);
+  auto* record = reinterpret_cast<PropagationRecord*>(exception);
   if (destination == &record->value) {
     sun_eh_terminate();
   }

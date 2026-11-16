@@ -8,7 +8,7 @@ namespace {
 /** Refers to compiler-emitted nominal type metadata. */
 using sun::runtime::ExceptionTypeDescriptor;
 /** Refers to the native unwind header and its owned exception value. */
-using sun::runtime::PropagationRecordHeader;
+using sun::runtime::PropagationRecord;
 
 /** Reads a potentially unaligned fixed-width field from trusted unwind
  * metadata. */
@@ -219,8 +219,7 @@ _Unwind_Reason_Code sun_eh_personality(int version, _Unwind_Action actions,
               readEncodedPointer(typeEntry, typeEncoding, context));
           if (!selector &&
               sun_eh_matches(
-                  reinterpret_cast<PropagationRecordHeader*>(exception)
-                      ->value.type,
+                  reinterpret_cast<PropagationRecord*>(exception)->value.type,
                   handler)) {
             selector = filter;
           }

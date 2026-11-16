@@ -15,7 +15,7 @@
 /** Keeps bounded formatting and signal protection private to reporting. */
 namespace {
 /** Refers to the payload and trace metadata preceding the address storage. */
-using sun::runtime::ExceptionValueHeader;
+using sun::runtime::ExceptionValue;
 
 /** Writes a bounded buffer, retrying interruptions and stopping on output
  * failure. */
@@ -280,7 +280,7 @@ void writeTrace(const std::uintptr_t* frames, std::uint64_t count,
 
 }  // namespace
 
-void sun_eh_report(const ExceptionValueHeader* value,
+void sun_eh_report(const ExceptionValue* value,
                    std::uint32_t unhandled) noexcept {
   if (!value || !value->type ||
       value->trace.count > sun_exception_trace_depth) {
@@ -336,7 +336,7 @@ __attribute__((noinline)) void sun_report_stack_trace() noexcept {
   if (signals.ready()) {
     /** Reserves bounded capture storage on the calling thread's stack. */
     struct CurrentTrace {
-      sun::runtime::StackTraceHeader header;
+      sun::runtime::StackTrace header;
       std::uintptr_t frames[sun::abi::exceptions::maximumTraceDepth];
     } trace{};
 

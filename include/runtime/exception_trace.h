@@ -7,6 +7,6 @@
 namespace sun::runtime {
 /** Captures frames from the requested caller into the trailing address
  * storage. */
-void captureStackTrace(StackTraceHeader& trace,
+void captureStackTrace(StackTrace& trace,
                        std::uintptr_t callerReturnAddress) noexcept;
 }  // namespace sun::runtime

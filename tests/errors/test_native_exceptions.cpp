@@ -168,8 +168,8 @@ TEST(Errors_NativeExceptions, rethrow_preserves_original_trace) {
  */
 TEST_P(Errors_JITExceptions, deep_capture_is_bounded) {
   sun::tests::exceptions::OwnedExceptionStorage caught;
-  lookup<void (*)(sun::runtime::ExceptionValueHeader*, int)>(
-      "sun_fixture_capture")(&caught.header, 64);
+  lookup<void (*)(sun::runtime::ExceptionValue*, int)>("sun_fixture_capture")(
+      &caught.header, 64);
   ASSERT_EQ(caught.header.trace.count, sun_exception_trace_depth);
   EXPECT_EQ(caught.header.trace.status, sun::runtime::TraceStatus::Truncated);
 }

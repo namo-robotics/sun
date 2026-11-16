@@ -110,7 +110,8 @@ TEST_F(Errors_CompilerIntegration, native_unwind_instructions) {
  * throw. */
 TEST_F(Errors_CompilerIntegration, destructor_owns_nested_storage) {
   const auto text = ir(fixture("source_exceptions.sun"));
-  EXPECT_NE(text.find("destructor.exception"), std::string::npos);
+  EXPECT_NE(text.find("destructor.exception = alloca %sun.PropagationRecord."),
+            std::string::npos);
   EXPECT_EQ(text.find("cleanup.exception"), std::string::npos);
   EXPECT_EQ(text.find("thrown.exception"), std::string::npos);
 }
