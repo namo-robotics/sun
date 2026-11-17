@@ -539,9 +539,9 @@ TEST_P(Modules_NestedTypeArguments, DirectAndImported) {
       };
       replace("Option<T>", "Vec<T>");
       replace("var none: Vec<T> = Option.None;",
-              "var none = Vec<T>(global_allocator, 1);");
+              "var none = Vec<T>(std.mem.global_allocator, 1);");
       replace("out.push(Sample<T>(Info(), Option.Some(v)));",
-              "var some = Vec<T>(global_allocator, 1); some.push(v); "
+              "var some = Vec<T>(std.mem.global_allocator, 1); some.push(v); "
               "out.push(Sample<T>(Info(), some));");
       const auto match = source.find("match sample.data");
       const auto begin = source.rfind("return ", match);

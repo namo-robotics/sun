@@ -1652,7 +1652,7 @@ TEST(Modules_ProtoImport, moon_import_plus_same_proto_is_a_collision_error) {
   // Same schema listed again in a program that already imports the moon
   project.setProgram(
       "using std;\nusing t;\n"
-      "function main() i32 { var alloc = make_heap_allocator(); "
+      "function main() i32 { var alloc = std.mem.make_heap_allocator(); "
       "var s = Status(alloc); return 0; }\n");
   try {
     project.run({MoonImport(moonPath.string())});
