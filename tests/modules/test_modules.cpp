@@ -82,7 +82,7 @@ module spike {
   public class Path {
     var path: String;
 
-    init(alloc: const ref HeapAllocator)  throws {
+    init(alloc: const ref std.mem.HeapAllocator)  throws {
       this.path =  String(alloc, "/");
     }
 
@@ -96,7 +96,7 @@ module spike {
 /* Checks that the module class uses the imported string type. */
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var path =  spike.Path(alloc);
   return _convert<i32>(path.length());
 }
@@ -2384,4 +2384,73 @@ TEST(Modules, error_interfaces_keep_bundle_revision_identity) {
     )"),
               42);
   }
+}
+
+/** Owned interface layout and concrete cleanup survive compiled-library calls.
+ */
+TEST(Modules, moon_owned_interface_round_trip) {
+  initTestEnvironment();
+  auto moonPath = writeMoonLib("owned_interface", R"(
+    /** Supplies owning interface contracts across a library boundary. */
+    public module owned_api {
+      public var drops: i32 = 0;
+      /** Requires a readable value. */ public interface Value {
+        /** Reads the object. */ public const method read() i32;
+      }
+      /** Defines concrete destruction in the compiled library. */
+      public class Item implements Value {
+        /** Initializes the object. */ init() {}
+        /** Records concrete destruction. */ deinit() { drops += 1; }
+        /** Reads the object. */ public const method read() i32 { return 42; }
+      }
+      /** Transfers an owning handle without allocating. */
+      public function roundtrip(value: Value) Value { return value; }
+    }
+  )");
+  auto driver = Driver::createForJIT("owned_interface_consumer");
+  auto imports = sun::driver::getStdlibMoonImports();
+  imports.emplace_back(moonPath.string());
+  driver->setMoonImports(imports);
+  EXPECT_EQ(driver->executeString(R"(
+    using std;
+    using owned_api;
+    /** Moves a concrete library object through the library's owning signature. */
+    function run() i32 throws {
+      var value = roundtrip(std.mem.create_interface<Value>(std.mem.global_allocator, Item()));
+      return value.read();
+    }
+    /** Observes the library's concrete destructor after ownership returns. */
+    function main() i32 throws { var result = run(); return result + owned_api.drops * 100; }
+  )"),
+            142);
+}
+
+/** Imported owning signatures cannot erase a caller's arena dependency. */
+TEST(Modules, moon_owned_interface_preserves_arena_borrow) {
+  initTestEnvironment();
+  auto moonPath = writeMoonLib("owned_interface_lifetime", R"(
+    /** Supplies a compiled ownership-transfer boundary. */
+    public module owned_lifetime {
+      /** Defines an erased contract. */ public interface Value {}
+      /** Transfers ownership to the caller. */
+      public function roundtrip(value: Value) Value { return value; }
+    }
+  )");
+  auto driver = Driver::createForJIT("owned_interface_escape");
+  auto imports = sun::driver::getStdlibMoonImports();
+  imports.emplace_back(moonPath.string());
+  driver->setMoonImports(imports);
+  EXPECT_SUN_ERROR_WITH_MESSAGE(driver->compileString(R"(
+    using std;
+    using owned_lifetime;
+    /** Supplies a concrete implementation. */ class Item implements Value {
+      /** Initializes the object. */ init() {}
+    }
+    /** Attempts to return an owner whose local arena will be destroyed. */
+    function escape() Value throws {
+      var arena = std.mem.ArenaAllocator(64);
+      return roundtrip(std.mem.create_interface<Value>(arena, Item()));
+    }
+  )"),
+                                "local storage");
 }

@@ -1,3 +1,5 @@
+using std.mem;
+
 // Regression: a generic type that cannot be resolved must be a fatal compile
 // error. Nothing imports std here, so Vec is not visible where this return
 // type is written. That used to print an error and still emit a (hanging)
@@ -6,7 +8,7 @@
 public module namo {
 
   /** Creates an empty vector using types imported outside the declaring module. */
-  public function make(a: ref std.HeapAllocator) Vec<std.String> {
+  public function make(a: ref std.mem.HeapAllocator) Vec<std.String> {
     var v = Vec<std.String>(a, 4);
     return v;
   }
@@ -14,7 +16,7 @@ public module namo {
 
 /** Runs the regression scenario and returns its observable result to the test harness. */
 function main() i32 {
-  var alloc = std.make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v = namo.make(alloc);
   return _convert<i32>(v.size());
 }

@@ -74,7 +74,7 @@ public module std {
   /**
      * Builds a Shared value and hands out a clone; the original drops here.
      */
-  function hand_out(alloc: const ref HeapAllocator) Shared<Res> throws {
+  function hand_out(alloc: const ref std.mem.HeapAllocator) Shared<Res> throws {
     var s = Shared<Res>(alloc, Res(9));
     return s.clone();  // s drops here; the clone carries on
   }
@@ -102,14 +102,14 @@ public module std {
 
   /** Checks one handle starts at one. */
   test_function one_handle_starts_at_one() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var s = Shared<Res>(alloc, Res(5));
     std.test.assert_eq(s.count(), 1);
   }
 
   /** Checks clone raises and scope exit lowers the count. */
   test_function clone_raises_and_scope_exit_lowers_the_count() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var s = Shared<Res>(alloc, Res(5));
     var inner: i32 = 0;
     if (true) {
@@ -122,7 +122,7 @@ public module std {
 
   /** Checks value drops only when the lsyntax tree handle goes. */
   test_function value_drops_only_when_the_last_handle_goes() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var afterClone: i32 = 0;
     if (true) {
       var s = Shared<DropRes>(alloc, DropRes(5));
@@ -137,7 +137,7 @@ public module std {
 
   /** Checks a clone keeps the value alive. */
   test_function a_clone_keeps_the_value_alive() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var kept = hand_out(alloc);
     var g = kept.lock();
     std.test.assert_eq(g.get().v, 9);
@@ -146,7 +146,7 @@ public module std {
 
   /** Checks binding a handle to a new name moves it. */
   test_function binding_a_handle_to_a_new_name_moves_it() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var s = Shared<Res>(alloc, Res(3));
     var s2 = s;  // a move, not another owner
     std.test.assert_eq(s2.count(), 1);
@@ -157,7 +157,7 @@ public module std {
      * whichever handle happens to be last.
      */
   test_function an_owning_value_is_released_once() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var total: i64 = 0;
     if (true) {
       var s = Shared<Vec<i64>>(alloc, Vec<i64>(alloc, 4));
@@ -179,7 +179,7 @@ public module std {
 
   /** Checks write through the guard and read it back. */
   test_function write_through_the_guard_and_read_it_back() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var s = Shared<SharedCounter>(alloc, SharedCounter());
     if (true) {
       var g = s.lock();
@@ -194,7 +194,7 @@ public module std {
      * proceeds.
      */
   test_function the_guard_unlocks_at_scope_exit() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var s = Shared<SharedCounter>(alloc, SharedCounter());
     if (true) {
       var g = s.lock();
@@ -216,7 +216,7 @@ public module std {
      * Unwinding past a guard releases the lock on the way out.
      */
   test_function the_guard_unlocks_while_unwinding() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var s = Shared<SharedCounter>(alloc, SharedCounter());
     var got: i64 = 0;
     try {
@@ -233,7 +233,7 @@ public module std {
      * value.
      */
   test_function lock_works_through_a_const_ref_handle() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var s = Shared<SharedCounter>(alloc, SharedCounter());
     bump(s);
     bump(s);
@@ -250,7 +250,7 @@ public module std {
      * owns its own clone, moved in through the capture list.
      */
   test_function two_threads_write_one_value() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var s = Shared<SharedCounter>(alloc, SharedCounter());
     var c1 = s.clone();
     var c2 = s.clone();
@@ -284,7 +284,7 @@ public module std {
 
   /** Checks four threads write one value. */
   test_function four_threads_write_one_value() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var s = Shared<SharedCounter>(alloc, SharedCounter());
     var c1 = s.clone();
     var c2 = s.clone();
@@ -347,7 +347,7 @@ public module std {
      * it.
      */
   test_function threads_share_one_handle_by_const_ref() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var s = Shared<SharedCounter>(alloc, SharedCounter());
     var t1 = spawn(
       [const ref s]() => i32 {
@@ -383,7 +383,7 @@ public module std {
      * ran the other way round the thread would be reading freed memory.
      */
   test_function an_unjoined_thread_finishes_before_its_clone_drops() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var s = Shared<SharedCounter>(alloc, SharedCounter());
     if (true) {
       var c = s.clone();

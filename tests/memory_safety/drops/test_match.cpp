@@ -167,7 +167,7 @@ TEST(MemorySafety_Drops_Match, string_buffer_survives_match_and_return) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
 using std;
 
-function make(alloc: const ref HeapAllocator, flag: bool) String throws {
+function make(alloc: const ref std.mem.HeapAllocator, flag: bool) String throws {
   return
     match flag {
       true =>  String(alloc, "hello"),
@@ -178,7 +178,7 @@ function make(alloc: const ref HeapAllocator, flag: bool) String throws {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var s =  make(alloc, true);
   if (s.equals_literal("hello")) {
     return 1;

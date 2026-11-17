@@ -10,7 +10,7 @@ public module std.net {
 
   /** Complete a nonblocking dial through writable readiness and cancel by closing. */
   test_function nonblocking_connect_completes() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var listener = TcpListener();
     listener.bind_loopback(0);
     listener.listen(4);
@@ -48,7 +48,7 @@ public module std.net {
 
   /** A refused asynchronous connection reports failure and releases its descriptor. */
   test_function nonblocking_connect_refused() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var listener = TcpListener();
     listener.bind_loopback(0);
     var port = listener.local_port();
@@ -183,7 +183,7 @@ public module std.net {
 
   /** Check that removing and dropping a TcpStream preserves stdin. */
   test_function removed_stream_preserves_stdin() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var stdin_flags: i32 = unsafe { c_fcntl(0, F_GETFL); };
     std.test.assert(stdin_flags >= 0, "stdin is open before the test");
     if (true) {
@@ -216,7 +216,7 @@ public module std.net {
 
   /** Check that removing and dropping a TcpListener preserves stdin. */
   test_function removed_listener_preserves_stdin() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var stdin_flags: i32 = unsafe { c_fcntl(0, F_GETFL); };
     std.test.assert(stdin_flags >= 0, "stdin is open before the test");
     if (true) {
@@ -241,7 +241,7 @@ public module std.net {
 
   /** Check that removing and dropping a UdpSocket preserves stdin. */
   test_function removed_udp_socket_preserves_stdin() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var stdin_flags: i32 = unsafe { c_fcntl(0, F_GETFL); };
     std.test.assert(stdin_flags >= 0, "stdin is open before the test");
     if (true) {
@@ -269,7 +269,7 @@ public module std.net {
      * with a would-block code instead of waiting.
      */
   test_function nonblocking_recv_reports_would_block() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var listener = TcpListener();
     listener.bind_loopback(0);
     listener.listen(1);
@@ -303,7 +303,7 @@ public module std.net {
      * The error carries the real errno, whatever the operation.
      */
   test_function unopened_sockets_report_ebadf() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var stream = TcpStream();
     var buf = ContiguousBuffer<u8>(alloc, 1);
     var recv_code: i32 = 0;
@@ -339,14 +339,14 @@ public module std.net {
 
   /** Checks resolves localhost to loopback. */
   test_function resolves_localhost_to_loopback() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var host = String(alloc, "localhost");
     std.test.assert_eq(resolve_host_ipv4(host), INADDR_LOOPBACK);
   }
 
   /** Checks unresolvable host throws. */
   test_function unresolvable_host_throws() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var host = String(alloc, "no-such-host.invalid");
     var threw: bool = false;
     try {

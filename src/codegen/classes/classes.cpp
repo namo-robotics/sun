@@ -699,13 +699,15 @@ Value* ClassGenerator::codegen(const sun::ast::MemberAccessAST& expr) {
     // is its inline storage; a `ref array<T>` field holds a view value and
     // is loaded like any other reference.
     if (field->type->isClass() || field->type->isInterface() ||
+        (field->type->isReference() &&
+         sun::types::unwrapRef(field->type)->isInterface()) ||
         field->type->isArray() ||
         sun::codegen::CodegenVisitor::isPayloadEnum(field->type)) {
       return fieldPtr;
     }
 
     // Load the field value
-    llvm::Type* fieldLLVMType = field->type->toLLVMType(ctx.getContext());
+    llvm::Type* fieldLLVMType = field->storageType(ctx.getContext());
     return ctx.builder->CreateAlignedLoad(
         fieldLLVMType, fieldPtr,
         sun::codegen::support::fieldAlign(classType, fieldLLVMType,
@@ -859,16 +861,31 @@ Value* ClassGenerator::codegen(const sun::ast::MemberAssignmentAST& expr) {
     return nullptr;
   }
 
-  // Generate the value to assign
-  Value* value = codegen(*expr.getValue());
+  // Binding a reference field stores an address, not a read-through of the
+  // referenced value. Aggregate reference views retain their own lowering.
+  llvm::Type* fieldLLVMType = field->storageType(ctx.getContext());
+  Value* value = field->type->isReference() && fieldLLVMType->isPointerTy()
+                     ? gen_.codegenAddress(*expr.getValue())
+                     : codegen(*expr.getValue());
   if (!value) {
     return nullptr;
   }
 
-  // Get expected field type
-  llvm::Type* fieldLLVMType = field->type->toLLVMType(ctx.getContext());
-
   TypePtr valueSunType = expr.getValue()->getResolvedType();
+
+  if (field->type->isReference() &&
+      sun::types::unwrapRef(field->type)->isInterface()) {
+    auto source = sun::types::unwrapRef(valueSunType);
+    auto* target =
+        static_cast<InterfaceType*>(sun::types::unwrapRef(field->type).get());
+    if (source->isClass()) {
+      value = createInterfaceFatPointer(
+          value, static_cast<ClassType*>(source.get()), target);
+    } else {
+      value = upcastInterface(value, static_cast<InterfaceType*>(source.get()),
+                              target);
+    }
+  }
 
   // A `ref array<T>` field holds the view value; a view expression may
   // arrive as the value or as a pointer to where it is stored
@@ -920,6 +937,19 @@ Value* ClassGenerator::codegen(const sun::ast::MemberAssignmentAST& expr) {
     }
     ctx.builder->CreateStore(structVal, fieldPtr);
     return structVal;
+  }
+
+  if (field->type->isInterface()) {
+    auto sourceType = expr.getValue()->getResolvedType();
+    value = gen_.applyMoveSemantics(value, sourceType);
+    if (sun::types::areDifferentInterfaces(sourceType, field->type)) {
+      value =
+          upcastInterface(value, static_cast<InterfaceType*>(sourceType.get()),
+                          static_cast<InterfaceType*>(field->type.get()));
+    }
+    dropOverwrittenValue();
+    ctx.builder->CreateStore(value, fieldPtr);
+    return value;
   }
 
   // Handle class-typed fields: the source instance MOVES into the field.
@@ -1023,6 +1053,8 @@ Value* ClassGenerator::codegen(const sun::ast::GenericCallAST& expr) {
   switch (sun::codegen::intrinsics::getIntrinsic(funcName)) {
     case Intrinsic::Alignof:
       return intrinsics().codegenAlignofIntrinsic(getFirstTypeArg());
+    case Intrinsic::CreateInterface:
+      return intrinsics().codegenCreateInterfaceIntrinsic(expr);
     case Intrinsic::AlignedMalloc:
       return intrinsics().codegenAlignedMallocIntrinsic(expr);
     case Intrinsic::AssertCLayout:

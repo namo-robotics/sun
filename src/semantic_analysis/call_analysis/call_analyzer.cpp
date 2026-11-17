@@ -502,12 +502,6 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMemberCallee(
       }
     }
     if (selected) {
-      if (selected->returnType && selected->returnType->isInterface()) {
-        logAndThrowError(
-            "An interface return requirement can only be called on a concrete "
-            "implementation",
-            memberAccess.getLocation());
-      }
       ctx_.requireAccessible(methodRef(interface, *selected),
                              memberAccess.getLocation());
       memberAccess.setTargetDeclarationId(selected->declarationId);
@@ -832,6 +826,10 @@ std::optional<std::vector<TypePtr>> CallAnalyzer::resolveConstructorParams(
   const auto& loc = call.getLocation();
   if (const auto* initMethod =
           ctx_.accessibleMethodForArgs(classType, "init", argTypes, loc)) {
+    if (initMethod->isUnsafe && !ctx_.isInUnsafeBlock()) {
+      logAndThrowError("Calling an unsafe constructor requires an unsafe block",
+                       loc);
+    }
     call.setTargetDeclarationId(initMethod->declarationId);
     return initMethod->paramTypes;
   }
@@ -1101,7 +1099,7 @@ void CallAnalyzer::analyzeGenericCall(GenericCallAST& genericCall) {
   // Resolve type arguments to sun::types::TypePtr
   std::vector<TypePtr> typeArgs;
   for (const auto& ta : genericCall.getTypeArguments()) {
-    typeArgs.push_back(resolver_.typeAnnotationToType(*ta, funcName == "_is"));
+    typeArgs.push_back(resolver_.typeAnnotationToType(*ta));
   }
 
   // Store resolved type arguments on the AST for codegen
@@ -1303,6 +1301,10 @@ void CallAnalyzer::analyzeGenericClassConstruction(
     genericCall.setArgConversions(sun::semantic_analysis::classifyArguments(
         resolvedTypesOf(args), expectedParamTypes, /*cVariadic=*/false,
         displayName, genericCall.getLocation()));
+    // Borrow checking needs the substituted constructor parameters, including
+    // references introduced by type arguments such as Unique<T, const ref A>.
+    genericCall.setResolvedCalleeType(
+        Types::Function(specializedClass, expectedParamTypes));
   }
 
   genericCall.setResolvedType(specializedClass);

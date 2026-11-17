@@ -106,8 +106,15 @@ Value* EnumGenerator::codegenVariantConstruction(
       if (argVal->getType()->isPointerTy()) {
         argVal = gen_.applyMoveSemantics(argVal, payloadType);
       }
-      // Interface payloads (fat pointers) are copyable borrowed views: a
-      // variable arrives as a pointer to its fat pointer, so load it
+      if (sun::types::areDifferentInterfaces(args[i]->getResolvedType(),
+                                             payloadType)) {
+        argVal = gen_.classGenerator().upcastInterface(
+            argVal,
+            static_cast<sun::types::InterfaceType*>(
+                args[i]->getResolvedType().get()),
+            static_cast<sun::types::InterfaceType*>(payloadType.get()));
+      }
+      // Materialize any remaining compound storage before storing the payload.
       if (argVal->getType()->isPointerTy() && !fieldTy->isPointerTy()) {
         argVal = ctx.builder->CreateLoad(fieldTy, argVal, "payload.load");
       }

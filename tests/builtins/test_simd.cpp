@@ -126,7 +126,7 @@ using std.linalg;
 /** Runs register tiles and both row and column tails through bundled Matrix operators. */
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var a =  Matrix<f32>(
     [
       [1.0f32, 2.0f32],
@@ -265,7 +265,7 @@ using std.linalg;
 /** Crosses an inner-panel boundary with initialized inputs and fresh output. */
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var a =  Matrix<f32>(alloc, [16i64, 65i64]);
   var b =  Matrix<f32>(alloc, [65i64, 16i64]);
   var c =  Matrix<f32>(alloc, [16i64, 16i64]);

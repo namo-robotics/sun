@@ -37,7 +37,7 @@ public module std {
     /**
      * Constructor with allocator and capacity
      */
-    init(allocator: const ref HeapAllocator, capacity: i64) throws {
+    init(allocator: const ref std.mem.HeapAllocator, capacity: i64) throws {
       this.data = ContiguousBuffer<T>(allocator, capacity);
       this.capacity_ = capacity;
     }

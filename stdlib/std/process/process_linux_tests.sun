@@ -4,7 +4,7 @@ public module std.process {
   /** Tests for Linux process data and descriptor ownership. */
 
   /** Construct a stat fixture with a command name containing spaces and parentheses. */
-  function stat_fixture(alloc: ref HeapAllocator) String throws {
+  function stat_fixture(alloc: ref std.mem.HeapAllocator) String throws {
     var text = String(alloc, "42 (name ) with (parens)) S");
     for (var field: i32 = 4; field <= 24; field = field + 1) {
       text.append_char(b' ');
@@ -26,7 +26,7 @@ public module std.process {
 
   /** Parsing does not confuse command-name delimiters with stat field boundaries. */
   test_function stat_units_and_names() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var text = stat_fixture(alloc);
     var start = process_stat_field(text, 22);
     std.test.assert_eq(start, _convert<u64>(123456));
@@ -67,7 +67,7 @@ public module std.process {
 
   /** Repeated successful, failed, and moved handles release every pidfd. */
   test_function descriptors_are_closed() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var before = std.io.read_dir(alloc, "/proc/self/fd");
     var identity = process_identity(alloc, pid());
     var stale = ProcessIdentity(identity.pid, identity.start_marker + 1);

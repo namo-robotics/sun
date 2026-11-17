@@ -64,8 +64,8 @@ class Point {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
-  var p =  allocator.create<Point>();
+  var allocator = std.mem.make_heap_allocator();
+  var p =  std.mem.create<Point>(allocator);
   return 0;
 }
 )");
@@ -87,15 +87,15 @@ class B {
 class A {
   var b: raw_ptr<B>;
 
-  init(alloc: ref HeapAllocator)  throws {
-    this.b =  alloc.create<B>();
+  init(alloc: const ref std.mem.HeapAllocator) throws {
+    this.b =  std.mem.create<B>(alloc);
   }
 }
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
-  var a: raw_ptr<A> =  allocator.create<A>(allocator);
+  var allocator = std.mem.make_heap_allocator();
+  var a: raw_ptr<A> =  std.mem.create<A>(allocator, allocator);
   var b: raw_ptr<B> = unsafe { a.b; };
   return unsafe { b.c; };
 }
@@ -119,8 +119,8 @@ class Point {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
-  var p =  allocator.create<Point>(10, 20);
+  var allocator = std.mem.make_heap_allocator();
+  var p =  std.mem.create<Point>(allocator, 10, 20);
   return unsafe { p.x; };
 }
 )");
@@ -143,8 +143,8 @@ class Point {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
-  var p =  allocator.create<Point>(10, 20);
+  var allocator = std.mem.make_heap_allocator();
+  var p =  std.mem.create<Point>(allocator, 10, 20);
   return unsafe { p.y; };
 }
 )");
@@ -173,8 +173,8 @@ class Counter {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
-  var c =  allocator.create<Counter>(42);
+  var allocator = std.mem.make_heap_allocator();
+  var c =  std.mem.create<Counter>(allocator, 42);
   return unsafe { c.get(); };
 }
 )");
@@ -199,8 +199,8 @@ class Calculator {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
-  var calc =  allocator.create<Calculator>(10);
+  var allocator = std.mem.make_heap_allocator();
+  var calc =  std.mem.create<Calculator>(allocator, 10);
   return unsafe { calc.add(5); };
 }
 )");
@@ -225,8 +225,8 @@ class Value {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
-  var v1 =  allocator.create<Value>(5);
+  var allocator = std.mem.make_heap_allocator();
+  var v1 =  std.mem.create<Value>(allocator, 5);
   return unsafe { v1.double(); };
 }
 )");
@@ -255,8 +255,8 @@ class Counter {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
-  var c =  allocator.create<Counter>();
+  var allocator = std.mem.make_heap_allocator();
+  var c =  std.mem.create<Counter>(allocator);
   return unsafe { c.get(); };
 }
 )");
@@ -281,8 +281,8 @@ class Point3D {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
-  var p =  allocator.create<Point3D>(1, 2, 3);
+  var allocator = std.mem.make_heap_allocator();
+  var p =  std.mem.create<Point3D>(allocator, 1, 2, 3);
   return unsafe { p.x; } + unsafe { p.y; } + unsafe { p.z; };
 }
 )");
@@ -317,8 +317,8 @@ class Box {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
-  var box =  allocator.create<Box>(3, 4);
+  var allocator = std.mem.make_heap_allocator();
+  var box =  std.mem.create<Box>(allocator, 3, 4);
   return unsafe { box.area(); };
 }
 )");
@@ -343,9 +343,9 @@ class Number {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
-  var n1 =  allocator.create<Number>(10);
-  var n2 =  allocator.create<Number>(20);
+  var allocator = std.mem.make_heap_allocator();
+  var n1 =  std.mem.create<Number>(allocator, 10);
+  var n2 =  std.mem.create<Number>(allocator, 20);
   return unsafe { n1.get(); } + unsafe { n2.get(); };
 }
 )");
@@ -378,9 +378,9 @@ class Second {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
-  var f =  allocator.create<First>(5);
-  var s =  allocator.create<Second>(7);
+  var allocator = std.mem.make_heap_allocator();
+  var f =  std.mem.create<First>(allocator, 5);
+  var s =  std.mem.create<Second>(allocator, 7);
   return unsafe { f.a; } + unsafe { s.b; };
 }
 )");
@@ -407,8 +407,8 @@ class PointF {
 
 /** Runs the fixture with explicit error propagation. */
 function main() f64 throws {
-  var allocator = make_heap_allocator();
-  var p =  allocator.create<PointF>(1.5, 2.5);
+  var allocator = std.mem.make_heap_allocator();
+  var p =  std.mem.create<PointF>(allocator, 1.5, 2.5);
   return unsafe { p.x; } + unsafe { p.y; };
 }
 )");
@@ -1280,15 +1280,15 @@ class Widget {
 }
 
 function helper() i32 throws {
-  var alloc = make_heap_allocator();
-  var w = Unique<Widget>( alloc.create<Widget>(1));
+  var alloc = std.mem.make_heap_allocator();
+  var w = unsafe { std.mem.Unique<Widget, std.mem.HeapAllocator>( std.mem.create<Widget>(alloc, 1), std.mem.HeapAllocator()); };
   return w.get().id;
 }
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
   var result =  helper();
-  // Unique<Widget>.deinit() should have been called, which frees the allocation.
+  // Unique<Widget, HeapAllocator>.deinit() should have been called, which frees the allocation.
   // Widget.deinit() is called on the *Unique* wrapper (stack class), not directly on Widget.
   // counter tracks Widget.deinit calls.
   // The Unique wrapper's deinit frees the raw_ptr, but doesn't call Widget.deinit.
@@ -1317,9 +1317,9 @@ class Resource {
 }
 
 function helper() i32 throws {
-  var alloc = make_heap_allocator();
-  var r1 = Unique<Resource>( alloc.create<Resource>(10));
-  var r2 = Unique<Resource>( alloc.create<Resource>(20));
+  var alloc = std.mem.make_heap_allocator();
+  var r1 = unsafe { std.mem.Unique<Resource, std.mem.HeapAllocator>( std.mem.create<Resource>(alloc, 10), std.mem.HeapAllocator()); };
+  var r2 = unsafe { std.mem.Unique<Resource, std.mem.HeapAllocator>( std.mem.create<Resource>(alloc, 20), std.mem.HeapAllocator()); };
   return r1.get().value + r2.get().value;
 }
 
@@ -1354,7 +1354,7 @@ class Holder {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var h = Holder( String(alloc, "abc"));
   var t =  String(alloc, "hello");
   var h2 = Holder(t);
@@ -1378,7 +1378,7 @@ class Holder {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var t =  String(alloc, "hello");
   var h = Holder(t);
   return _convert<i32>(t.length());
@@ -1415,7 +1415,7 @@ class Box {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var a = Box(Value.Text( String(alloc, "four")));
   var n = Value.Num(10);
   var b = Box(n);
@@ -1446,7 +1446,7 @@ function items_of(h: ref Holder) ref Vec<i64> {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var h = Holder( Vec<i64>(alloc, 2));
    items_of(h).push(5);
    items_of(h).push(6);
@@ -1912,7 +1912,7 @@ class E {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  Vec<i64>(alloc, 4);
    v.push(7);
   var e = E(unsafe { v.get_unchecked(0); });

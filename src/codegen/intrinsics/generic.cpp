@@ -7,6 +7,7 @@
 #include "codegen/codegen_visitor.h"
 #include "codegen/intrinsics/intrinsics.h"
 #include "codegen/intrinsics/intrinsics_generator.h"
+#include "codegen/support/panic.h"
 #include "llvm/TargetParser/Triple.h"
 #include "support/error.h"
 
@@ -20,6 +21,90 @@ using namespace llvm;
 
 /** Provides the generator for built-in operations. */
 namespace sun::codegen::intrinsics {
+
+Value* IntrinsicsGenerator::codegenCreateInterfaceIntrinsic(
+    const sun::ast::GenericCallAST& expr) {
+  const auto ownerType = expr.getArgs()[0]->getResolvedType();
+  auto* unique = static_cast<sun::types::ClassType*>(ownerType.get());
+  const auto concrete = unique->getTypeArguments()[0];
+  const auto allocator = unique->getTypeArguments()[1];
+  auto* interface = static_cast<sun::types::InterfaceType*>(
+      expr.getResolvedTypeArgs()[0].get());
+  auto* storage = unique->getStructType(ctx.getContext());
+  const auto dataIndex = unique->getField("data")->index;
+  const auto allocatorIndex = unique->getField("allocator")->index;
+  auto* moved = gen_.applyMoveSemantics(codegen(*expr.getArgs()[0]), ownerType);
+  auto* object = ctx.builder->CreateExtractValue(moved, dataIndex);
+  auto* caller = ctx.builder->GetInsertBlock()->getParent();
+  auto* valid =
+      llvm::BasicBlock::Create(ctx.getContext(), "interface.valid", caller);
+  auto* empty =
+      llvm::BasicBlock::Create(ctx.getContext(), "interface.empty", caller);
+  ctx.builder->CreateCondBr(ctx.builder->CreateIsNotNull(object), valid, empty);
+  ctx.builder->SetInsertPoint(empty);
+  sun::codegen::support::emitPanic(
+      *ctx.builder, module, "cannot convert an empty Unique to an interface");
+  ctx.builder->SetInsertPoint(valid);
+  auto* pointer = llvm::PointerType::getUnqual(ctx.getContext());
+  Value* context = allocator->isReference()
+                       ? ctx.builder->CreateExtractValue(moved, allocatorIndex)
+                       : llvm::ConstantPointerNull::get(pointer);
+  Value* contextTable = llvm::ConstantPointerNull::get(pointer);
+  const bool interfaceAllocator =
+      allocator->isReference() &&
+      sun::types::unwrapRef(allocator)->isInterface();
+  if (interfaceAllocator) {
+    contextTable = ctx.builder->CreateExtractValue(context, 1);
+    context = ctx.builder->CreateExtractValue(context, 0);
+  }
+  auto* signature =
+      llvm::FunctionType::get(llvm::Type::getVoidTy(ctx.getContext()),
+                              {pointer, pointer, pointer}, false);
+  auto* cleanup =
+      llvm::Function::Create(signature, llvm::GlobalValue::InternalLinkage,
+                             "interface.cleanup", module);
+  {
+    llvm::IRBuilderBase::InsertPointGuard guard(*ctx.builder);
+    ctx.builder->SetInsertPoint(
+        llvm::BasicBlock::Create(ctx.getContext(), "entry", cleanup));
+    // Reconstruct the consumed owner on the stack and run its normal
+    // destructor. The allocator's deallocation policy remains entirely in Sun
+    // library code.
+    auto* slot = ctx.builder->CreateAlloca(storage, nullptr, "interface.owner");
+    Value* restored = llvm::Constant::getNullValue(storage);
+    restored =
+        ctx.builder->CreateInsertValue(restored, cleanup->getArg(0), dataIndex);
+    if (allocator->isReference()) {
+      Value* binding = cleanup->getArg(1);
+      if (interfaceAllocator) {
+        binding = llvm::UndefValue::get(
+            sun::types::InterfaceType::getFatPointerType(ctx.getContext()));
+        binding =
+            ctx.builder->CreateInsertValue(binding, cleanup->getArg(1), 0);
+        binding =
+            ctx.builder->CreateInsertValue(binding, cleanup->getArg(2), 1);
+      }
+      restored =
+          ctx.builder->CreateInsertValue(restored, binding, allocatorIndex);
+    }
+    ctx.builder->CreateStore(restored, slot);
+    scopes().emitDropInPlace(ownerType, slot, "interface.owner");
+    ctx.builder->CreateRetVoid();
+  }
+  auto* table = gen_.classGenerator().getOrCreateInterfaceVtable(
+      static_cast<sun::types::ClassType*>(concrete.get()), interface);
+  Value* owner = llvm::UndefValue::get(
+      sun::types::InterfaceType::getOwnerType(ctx.getContext()));
+  owner = ctx.builder->CreateInsertValue(owner, object, 0);
+  owner = ctx.builder->CreateInsertValue(owner, table, 1);
+  owner = ctx.builder->CreateInsertValue(owner, cleanup, 2);
+  owner = ctx.builder->CreateInsertValue(owner, context, 3);
+  owner = ctx.builder->CreateInsertValue(owner, contextTable, 4);
+  auto* result = gen_.materializeStructReturn(owner);
+  return expr.isMoved()
+             ? result
+             : scopes().trackCallTemporary(result, expr.getResolvedType());
+}
 
 // -------------------------------------------------------------------
 // Generic intrinsics codegen
@@ -392,6 +477,8 @@ Value* IntrinsicsGenerator::codegenDeinitIntrinsic(
 
     // Recursively deinit class fields that have deinit methods
     scopes().emitFieldDeinit(ptr, classType, "deinit.intrinsic");
+  } else if (typeArg && typeArg->isInterface()) {
+    scopes().emitDropInPlace(typeArg, ptr, "interface.element");
   } else if (typeArg && typeArg->isEnum()) {
     // Payload enums with owning payloads drop through their drop function
     gen_.enumGenerator().emitDrop(static_cast<EnumType&>(*typeArg), ptr);

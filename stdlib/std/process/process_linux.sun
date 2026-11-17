@@ -3,7 +3,7 @@ public module std.process {
 
   /** Build a procfs path with an explicitly supplied allocator. */
   function process_path(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     target: i32,
     leaf: static_ptr<u8>
   ) String throws {
@@ -54,7 +54,7 @@ public module std.process {
 
   /** Read the process's opaque start tick count from procfs. */
   function native_process_identity(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     target: i32
   ) ProcessIdentity throws {
     var path = process_path(alloc, target, "/stat");
@@ -63,7 +63,7 @@ public module std.process {
   }
 
   /** Enumerate numeric procfs entries; no per-process privileges are requested. */
-  function native_process_ids(alloc: const ref HeapAllocator) Vec<i32> throws {
+  function native_process_ids(alloc: const ref std.mem.HeapAllocator) Vec<i32> throws {
     var entries = std.io.read_dir(alloc, "/proc");
     var ids = Vec<i32>(alloc, entries.size());
     for (var i: i64 = 0; i < entries.size(); i = i + 1) {
@@ -115,7 +115,7 @@ public module std.process {
   }
 
   /** Grow readlink storage until the complete path fits, without silent truncation. */
-  function process_executable(alloc: const ref HeapAllocator, target: i32) String throws {
+  function process_executable(alloc: const ref std.mem.HeapAllocator, target: i32) String throws {
     var path = process_path(alloc, target, "/exe");
     var capacity: i64 = 256;
     while (capacity <= 1048576) {
@@ -134,7 +134,7 @@ public module std.process {
 
   /** Read argv bytes independently so access failures remain field-specific. */
   function native_process_arguments(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     target: i32
   ) Vec<String> throws {
     var path = process_path(alloc, target, "/cmdline");
@@ -144,7 +144,7 @@ public module std.process {
 
   /** Read resource fields from one stat record and collect optional text separately. */
   function native_process_snapshot(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     target: i32
   ) ProcessSnapshot throws {
     var path = process_path(alloc, target, "/stat");
@@ -180,7 +180,7 @@ public module std.process {
 
   /** Open a pidfd, then verify its still-live process matches the requested identity. */
   function native_process_open(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     identity: const ref ProcessIdentity
   ) i64 throws {
     // pidfd syscall numbers agree on the supported Linux x86_64 and aarch64 ABIs.
@@ -205,7 +205,7 @@ public module std.process {
 
   /** Signal only through the owned pidfd; errno includes EPERM, ESRCH and ENOSYS. */
   function native_process_signal(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     identity: const ref ProcessIdentity,
     token: i64,
     signal: i32

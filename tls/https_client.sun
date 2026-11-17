@@ -34,7 +34,7 @@ public module tls {
     public var body: String;  // decoded body
 
     /** Creates the client or response with storage from the supplied allocator. */
-    init(alloc: const ref HeapAllocator) throws {
+    init(alloc: const ref std.mem.HeapAllocator) throws {
       this.headers = String(alloc, "");
       this.body = String(alloc, "");
     }
@@ -136,7 +136,7 @@ public module tls {
    * itself can reuse the framing.
    */
   public function parse_response(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     raw: const ref String,
     resp: ref HttpClientResponse
   ) void throws {
@@ -205,10 +205,10 @@ public module tls {
 
   /** Sends HTTP requests over verified TLS connections and parses their responses. */
   public class HttpsClient {
-    var alloc: HeapAllocator;
+    var alloc: std.mem.HeapAllocator;
 
     /** Creates the client or response with storage from the supplied allocator. */
-    init(allocator: const ref HeapAllocator) {
+    init(allocator: const ref std.mem.HeapAllocator) {
       this.alloc = allocator.copy();
     }
 

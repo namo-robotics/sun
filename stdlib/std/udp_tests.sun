@@ -8,7 +8,7 @@ public module std.net {
 
   /** Checks roundtrip loopback. */
   test_function roundtrip_loopback() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var here = ipv4_loopback();
     var sender = UdpSocket();
     var receiver = UdpSocket();
@@ -97,7 +97,7 @@ public module std.net {
 
   /** Checks recv timeout reports would block. */
   test_function recv_timeout_reports_would_block() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var here = ipv4_loopback();
     var socket = UdpSocket();
     socket.bind(here, 0);
@@ -137,7 +137,7 @@ public module std.net {
 
   /** Checks ipv4addr roundtrip. */
   test_function ipv4addr_roundtrip() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var loopback = Ipv4Addr(127, 0, 0, 1);
     std.test.assert_eq(loopback.to_network_i32(), INADDR_LOOPBACK);
     std.test.assert_eq(_convert<i32>(loopback.octet(0)), 127);

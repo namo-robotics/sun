@@ -106,6 +106,9 @@ std::vector<BorrowError> BorrowChecker::check(const BlockExprAST& program) {
   frameLocalNames_.clear();
   declDepths_.clear();
   refHolderBounds_.clear();
+  retainedStorage_.clear();
+  declarationOrder_.clear();
+  nextDeclarationOrder_ = 0;
   matchResultLifetimes_.clear();
   refTypedParams_.clear();
   rawPointerLocals_.clear();
@@ -303,14 +306,27 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
           }
         }
       }
-      // Resolved value conversions transfer fresh results to the callee;
-      // they do not need an additional temporary owner in the caller.
+      checkRetainedCallStorage(gcall);
+      // Resolved move conversions transfer ownership to the callee, including
+      // named arguments passed through an explicit generic specialization.
       const auto& conversions = gcall.getArgConversions();
       for (size_t i = 0; i < gcall.getArgs().size() && i < conversions.size();
            ++i) {
         const auto& arg = gcall.getArgs()[i];
-        if (arg && arg->isTemporary() &&
-            conversions[i] == sun::semantic_analysis::ArgConversion::Move) {
+        if (!arg ||
+            conversions[i] != sun::semantic_analysis::ArgConversion::Move) {
+          continue;
+        }
+        noteFieldMove(*arg);
+        if (arg->getType() == ASTNodeType::VARIABLE_REFERENCE) {
+          const auto& variable = static_cast<const VariableReferenceAST&>(*arg);
+          if (checkMoveAllowed(variable.getName(), variable.getLocation()) &&
+              checkFieldsIntact(variable.getName(), variable.getLocation())) {
+            recordMove(variable.getName(), variable.getLocation());
+            clearFieldPaths(variable.getName());
+            arg->setMoved(true);
+          }
+        } else if (arg->isTemporary()) {
           arg->setMoved(true);
         }
       }
@@ -383,6 +399,8 @@ void BorrowChecker::checkVariableCreation(
   noteLoopLocal(var.getName());
   frameLocalNames_.insert(var.getName());
   declDepths_[var.getName()] = currentScope_;
+  declarationOrder_[var.getName()] = ++nextDeclarationOrder_;
+  retainedStorage_.erase(var.getName());
 
   // The new name holds a frame-bound value (see frameBoundVars_) when its
   // initializer is one: a spawn over a capture-list lambda, or another
@@ -735,6 +753,15 @@ void BorrowChecker::borrowRefCallInputs(const std::string& refName,
 void BorrowChecker::checkVariableWrite(const std::string& varName,
                                        const TypePtr& valueType,
                                        const Position& pos) {
+  if (valueType && sun::types::unwrapRef(valueType)->isCompound()) {
+    const auto target = resolveRefTarget(varName).actualTarget;
+    auto retained = state_.canMutateDirectly("$retained:" + target);
+    if (!retained.allowed) {
+      reportConflict(
+          "cannot modify '" + varName + "' while an owner retains its storage",
+          pos, retained.conflictingLoan);
+    }
+  }
   // Check if this is a ref or a regular variable
   auto refIt = refVariables_.find(varName);
   if (refIt != refVariables_.end()) {
@@ -1187,13 +1214,7 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
     paramTypes = funcType->getParamTypes();
   } else if (auto* lambdaCallee =
                  dynamic_cast<const LambdaType*>(calleeType.get())) {
-    // A call through a lambda value: its parameter types serve the escape
-    // checks. (Move semantics for lambda-callee arguments are a
-    // pre-existing gap, left as they are.)
-    forbidFrameBoundByValueArgs(call, lambdaCallee->getParamTypes());
-    checkErasedLifetimeLambdaArgs(call, lambdaCallee->getParamTypes());
-    checkNamedLifetimesAtCall(call, lambdaCallee->getParamTypes());
-    return;
+    paramTypes = lambdaCallee->getParamTypes();
   } else {
     return;
   }
@@ -1201,6 +1222,7 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
   forbidFrameBoundByValueArgs(call, paramTypes);
   checkErasedLifetimeLambdaArgs(call, paramTypes);
   checkNamedLifetimesAtCall(call, paramTypes);
+  checkRetainedCallStorage(call);
 
   checkCallMoveConflicts(call, paramTypes);
 
@@ -1721,8 +1743,12 @@ bool BorrowChecker::classStoresRefsWalk(
   if (!type || !visited.insert(type.get()).second) {
     return false;
   }
-  if (type->isReference()) {
+  if (type->isReference() || type->isInterface()) {
     return true;
+  }
+  if (const auto* array =
+          dynamic_cast<const sun::types::ArrayType*>(type.get())) {
+    return classStoresRefsWalk(array->getElementType(), visited);
   }
   if (auto* enumeration =
           sun::codegen::support::tryGetType<sun::types::EnumType>(type)) {
@@ -1738,6 +1764,11 @@ bool BorrowChecker::classStoresRefsWalk(
   const auto* classType = sun::codegen::support::tryGetType<ClassType>(type);
   if (!classType) {
     return false;
+  }
+  for (const auto& argument : classType->getTypeArguments()) {
+    if (classStoresRefsWalk(argument, visited)) {
+      return true;
+    }
   }
   for (const auto& field : classType->getFields()) {
     if (!field.type) {
@@ -1972,6 +2003,9 @@ void BorrowChecker::recordMove(const std::string& place, const Position& pos) {
     }
   }
   auto loans = state_.getActiveLoans(base);
+  auto retained =
+      state_.getActiveLoans("$retained:" + resolveRefTarget(base).actualTarget);
+  loans.insert(loans.end(), retained.begin(), retained.end());
   if (!loans.empty()) {
     std::string why =
         base == place ? "it is borrowed" : "'" + base + "' is borrowed";
@@ -2153,6 +2187,17 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
         ret.getLocation());
   }
 
+  // Hidden dependencies remain visible even across explicit generic forwarding.
+  if (!currentFunctionReturnsRef_) {
+    for (const auto& target : retainedStorage(*value)) {
+      if (!target.starts_with("param:") && target != "this" &&
+          lookupDeclDepth(target) > functionScopeDepth_) {
+        reportError("cannot return an owner that retains local storage '" +
+                        target + "'",
+                    ret.getLocation());
+      }
+    }
+  }
   // Check lifetime safety for reference returns
   checkReturnLifetime(ret);
 
@@ -2284,6 +2329,17 @@ void BorrowChecker::checkFunctionDef(const sun::ast::FunctionAST& func) {
   if (proto.hasReturnType() && proto.getReturnType()->isLambda() &&
       proto.getReturnType()->refEnv) {
     returnLifetimeName_ = proto.getReturnType()->lifetimeName;
+  }
+
+  for (size_t i = 0;
+       i < proto.getArgs().size() && i < proto.getResolvedParamTypes().size();
+       ++i) {
+    const auto& type = proto.getResolvedParamTypes()[i];
+    if (type && !type->isReference() && classStoresRefs(type)) {
+      const auto& name = proto.getArgs()[i].first;
+      retainedStorage_[name].insert("param:" + name);
+      refHolderBounds_[name] = functionScopeDepth_;
+    }
   }
 
   // Check the function body (skip for extern declarations)
@@ -2453,6 +2509,9 @@ bool BorrowChecker::nameOutlivesFrame(const std::string& base) const {
 // The declaration depth of the named storage. Ref aliases resolve to their
 // ultimate target; anything that outlives the frame ranks as 0.
 size_t BorrowChecker::lookupDeclDepth(const std::string& name) const {
+  if (name.starts_with("$temporary:")) {
+    return std::stoul(name.substr(11));
+  }
   if (name == "this") {
     return 0;
   }
@@ -3112,15 +3171,209 @@ void BorrowChecker::checkNamedLifetimesAtCall(
   }
 }
 
-// A ref-storing class value is landing in the named destination: a fresh
-// construction records the deepest declaration among the variables it
-// borrows, and a holder local moving between names carries its bound along.
-// A destination declared in an outer scope than the bound would keep the
-// borrowed storage's address past its death, so it is rejected. destDepth
-// of 0 means the destination outlives the frame.
+std::unordered_set<std::string> BorrowChecker::retainedStorage(
+    const ExprAST& expression) const {
+  const auto* value = unwrapFrameSource(expression);
+  std::unordered_set<std::string> result;
+  if (!classStoresRefs(value->getResolvedType())) {
+    return result;
+  }
+  auto merge = [&](const ExprAST& input) {
+    auto nested = retainedStorage(input);
+    result.insert(nested.begin(), nested.end());
+  };
+  auto borrow = [&](const ExprAST& input) {
+    if (const auto* base = getBaseVariableName(*unwrapFrameSource(input))) {
+      auto target = resolveRefTarget(*base).actualTarget;
+      const auto* source = unwrapFrameSource(input);
+      // Copying a reference field borrows its external referent, not the
+      // address of the reference slot inside the containing object.
+      const bool referenceField =
+          source->getType() == ASTNodeType::MEMBER_ACCESS &&
+          source->getResolvedType()->isReference();
+      if (!rawPointerLocals_.count(*base) && !referenceField) {
+        result.insert(target);
+      }
+      merge(input);
+    } else {
+      merge(input);
+      // Borrowed call temporaries are destroyed at this scope's exit even
+      // though they have no source variable name to record as a dependency.
+      if (input.getResolvedType() && !input.getResolvedType()->isReference()) {
+        result.insert("$temporary:" + std::to_string(currentScope_));
+      }
+    }
+  };
+  if (const auto* base = getBaseVariableName(*value)) {
+    auto found = retainedStorage_.find(*base);
+    if (found != retainedStorage_.end()) {
+      result = found->second;
+    }
+    return result;
+  }
+  if (value->getType() == ASTNodeType::BLOCK) {
+    const auto& body = static_cast<const BlockExprAST&>(*value).getBody();
+    if (!body.empty()) {
+      merge(*body.back());
+    }
+  } else if (value->getType() == ASTNodeType::UNSAFE_BLOCK) {
+    merge(static_cast<const UnsafeBlockAST&>(*value).getBody());
+  } else if (value->getType() == ASTNodeType::ARRAY_LITERAL) {
+    for (const auto& element :
+         static_cast<const ArrayLiteralAST&>(*value).getElements()) {
+      merge(*element);
+    }
+  } else if (value->getType() == ASTNodeType::CALL) {
+    const auto& call = static_cast<const CallExprAST&>(*value);
+    forEachHolderInput(call,
+                       [&](const ExprAST& input, bool) { borrow(input); });
+    for (const auto& argument : call.getArgs()) {
+      merge(*argument);
+    }
+  } else if (value->getType() == ASTNodeType::GENERIC_CALL) {
+    auto inputs = borrowedCall(*value);
+    const auto* signature =
+        dynamic_cast<const sun::types::FunctionType*>(inputs.signature.get());
+    for (size_t i = 0; i < inputs.args.size(); ++i) {
+      merge(*inputs.args[i]);
+      if (signature && i < signature->getParamTypes().size() &&
+          signature->getParamTypes()[i]->isReference()) {
+        borrow(*inputs.args[i]);
+      }
+    }
+  } else if (value->getType() == ASTNodeType::TERNARY) {
+    const auto& conditional = static_cast<const TernaryExprAST&>(*value);
+    merge(*conditional.getThen());
+    merge(*conditional.getElse());
+  } else if (value->getType() == ASTNodeType::MATCH) {
+    for (const auto& arm :
+         static_cast<const sun::ast::MatchExprAST&>(*value).getArms()) {
+      if (arm.body) {
+        merge(*arm.body);
+      }
+    }
+  }
+  return result;
+}
+
+void BorrowChecker::retainStorageIn(const std::string& destination,
+                                    size_t depth, const ExprAST& value,
+                                    const Position& pos) {
+  auto dependencies = retainedStorage(value);
+  for (const auto& target : dependencies) {
+    if (resolveRefTarget(destination).actualTarget == target) {
+      reportError("cannot store a borrow of '" + target +
+                      "' inside the same movable object; moving it would "
+                      "invalidate the reference",
+                  pos);
+      continue;
+    }
+    const bool parameter = target.starts_with("param:") || target == "this";
+    size_t bound = parameter ? functionScopeDepth_ : lookupDeclDepth(target);
+    // A caller-owned destination may retain caller-owned inputs. Every call
+    // checks this relationship again using the caller's concrete storage.
+    size_t destinationDepth = depth;
+    if (destination == "this" || refTypedParams_.count(destination)) {
+      destinationDepth = functionScopeDepth_;
+    }
+    const auto sourceOrder = declarationOrder_.find(target);
+    const auto destinationOrder = declarationOrder_.find(destination);
+    bool destroyedFirst = !parameter && bound == destinationDepth &&
+                          sourceOrder != declarationOrder_.end() &&
+                          destinationOrder != declarationOrder_.end() &&
+                          sourceOrder->second > destinationOrder->second;
+    if (bound > destinationDepth || destroyedFirst) {
+      reportError("cannot store this value in '" + destination +
+                      "' beyond the lifetime of borrowed storage '" + target +
+                      "'",
+                  pos);
+      continue;
+    }
+    retainedStorage_[destination].insert(target);
+    auto& holderBound = refHolderBounds_[destination];
+    holderBound = std::max(holderBound, bound);
+    state_.retainBorrows(target, depth);
+    state_.retainBorrows("$retained:" + target, depth);
+  }
+}
+
+void BorrowChecker::checkRetainedCallStorage(const ExprAST& call) {
+  auto inputs = borrowedCall(call);
+  const auto* signature =
+      dynamic_cast<const sun::types::FunctionType*>(inputs.signature.get());
+  const auto* lambda = dynamic_cast<const LambdaType*>(inputs.signature.get());
+  if (!signature && !lambda) {
+    return;
+  }
+  const auto& parameters =
+      signature ? signature->getParamTypes() : lambda->getParamTypes();
+  for (size_t i = 0; i < inputs.args.size() && i < parameters.size(); ++i) {
+    if (sun::types::isMutableRef(parameters[i])) {
+      if (const auto* base = getBaseVariableName(*inputs.args[i])) {
+        const auto target = resolveRefTarget(*base).actualTarget;
+        auto retained = state_.canMutateDirectly("$retained:" + target);
+        if (!retained.allowed) {
+          reportConflict(
+              "cannot pass '" + *base +
+                  "' by mutable reference while an owner retains its storage",
+              call.getLocation(), retained.conflictingLoan);
+        }
+      }
+    }
+  }
+  for (const auto& target : retainedStorage(call)) {
+    const auto& location = call.getLocation();
+    state_.addBorrow("$retained:" + target,
+                     "$owner@" + std::to_string(location.line) + ":" +
+                         std::to_string(location.column),
+                     BorrowKind::Shared, currentScope_, location);
+  }
+  std::vector<const ExprAST*> destinations;
+  if (const auto* access =
+          dynamic_cast<const MemberAccessAST*>(inputs.callee)) {
+    auto type = sun::types::unwrapRef(access->getObject()->getResolvedType());
+    if (const auto* cls = sun::codegen::support::tryGetType<ClassType>(type)) {
+      for (const auto& method : cls->getMethods()) {
+        if (method.declarationId == access->getTargetDeclarationId() &&
+            !method.isConst) {
+          destinations.push_back(access->getObject());
+          break;
+        }
+      }
+    } else if (const auto* iface =
+                   dynamic_cast<const sun::types::InterfaceType*>(type.get())) {
+      for (const auto& method : iface->getMethods()) {
+        if (method.declarationId == access->getTargetDeclarationId() &&
+            !method.isConst) {
+          destinations.push_back(access->getObject());
+          break;
+        }
+      }
+    }
+  }
+  for (size_t i = 0; i < inputs.args.size() && i < parameters.size(); ++i) {
+    if (sun::types::isMutableRef(parameters[i])) {
+      destinations.push_back(inputs.args[i].get());
+    }
+  }
+  for (const auto* destination : destinations) {
+    const auto* base = getBaseVariableName(*destination);
+    if (!base) {
+      continue;
+    }
+    for (size_t i = 0; i < inputs.args.size() && i < parameters.size(); ++i) {
+      if (!parameters[i]->isReference()) {
+        retainStorageIn(*base, lookupDeclDepth(*base), *inputs.args[i],
+                        call.getLocation());
+      }
+    }
+  }
+}
+
 void BorrowChecker::trackRefHolderStore(const std::string& destName,
                                         size_t destDepth, const ExprAST& value,
                                         const Position& pos) {
+  retainStorageIn(destName, destDepth, value, pos);
   const ExprAST* e = &value;
   while (e->getType() == ASTNodeType::PAREN_EXPR) {
     e = static_cast<const ParenExprAST&>(*e).getInner();
@@ -3333,8 +3586,14 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   auto savedDeclDepths = declDepths_;
   declDepths_.clear();
   auto savedRefHolderBounds = refHolderBounds_;
+  auto savedRetainedStorage = retainedStorage_;
+  auto savedDeclarationOrder = declarationOrder_;
+  auto savedNextDeclarationOrder = nextDeclarationOrder_;
   auto savedMatchResultLifetimes = matchResultLifetimes_;
   refHolderBounds_.clear();
+  retainedStorage_.clear();
+  declarationOrder_.clear();
+  nextDeclarationOrder_ = 0;
   matchResultLifetimes_.clear();
   auto savedRefTypedParams = refTypedParams_;
   auto savedParamEnvNames = paramEnvNames_;
@@ -3418,6 +3677,9 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   frameLocalNames_ = std::move(savedFrameLocalNames);
   declDepths_ = std::move(savedDeclDepths);
   refHolderBounds_ = std::move(savedRefHolderBounds);
+  retainedStorage_ = std::move(savedRetainedStorage);
+  declarationOrder_ = std::move(savedDeclarationOrder);
+  nextDeclarationOrder_ = savedNextDeclarationOrder;
   matchResultLifetimes_ = std::move(savedMatchResultLifetimes);
   refTypedParams_ = std::move(savedRefTypedParams);
   paramEnvNames_ = std::move(savedParamEnvNames);
@@ -3504,6 +3766,61 @@ void BorrowChecker::checkMemberAccess(const MemberAccessAST& access) {
   }
 }
 
+bool BorrowChecker::borrowsStorage(const ExprAST& expression,
+                                   const std::string& destination) const {
+  const auto* source = matchArmValue(&expression);
+  if (!source) {
+    return false;
+  }
+  if (source->getType() == ASTNodeType::MEMBER_ACCESS &&
+      source->getResolvedType()->isReference()) {
+    return retainedStorage(*source).count(destination) != 0;
+  }
+  if (const auto* name = getBaseVariableName(*source)) {
+    return resolveRefTarget(*name).actualTarget == destination;
+  }
+  if (source->getType() == ASTNodeType::TERNARY) {
+    const auto& conditional = static_cast<const TernaryExprAST&>(*source);
+    return borrowsStorage(*conditional.getThen(), destination) ||
+           borrowsStorage(*conditional.getElse(), destination);
+  }
+  if (source->getType() == ASTNodeType::MATCH) {
+    for (const auto& arm :
+         static_cast<const sun::ast::MatchExprAST&>(*source).getArms()) {
+      if (arm.body && borrowsStorage(*arm.body, destination)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  if (source->getType() == ASTNodeType::CALL ||
+      source->getType() == ASTNodeType::GENERIC_CALL) {
+    const auto inputs = borrowedCall(*source);
+    if (const auto* method =
+            dynamic_cast<const MemberAccessAST*>(inputs.callee)) {
+      if (!method->getObject()->getResolvedType()->isModule() &&
+          borrowsStorage(*method->getObject(), destination)) {
+        return true;
+      }
+    }
+    const auto* signature =
+        dynamic_cast<const sun::types::FunctionType*>(inputs.signature.get());
+    const auto* lambda =
+        dynamic_cast<const LambdaType*>(inputs.signature.get());
+    if (signature || lambda) {
+      const auto& parameters =
+          signature ? signature->getParamTypes() : lambda->getParamTypes();
+      for (size_t i = 0; i < inputs.args.size() && i < parameters.size(); ++i) {
+        if (parameters[i]->isReference() &&
+            borrowsStorage(*inputs.args[i], destination)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 void BorrowChecker::checkMemberAssignment(
     const sun::ast::MemberAssignmentAST& assign) {
   if (assign.getObject()) {
@@ -3523,6 +3840,27 @@ void BorrowChecker::checkMemberAssignment(
   }
   if (assign.getValue()) {
     checkExpr(*assign.getValue());
+    if (const auto* base = getBaseVariableName(*assign.getObject())) {
+      auto receiverType =
+          sun::types::unwrapRef(assign.getObject()->getResolvedType());
+      const auto* receiverClass =
+          dynamic_cast<const ClassType*>(receiverType.get());
+      const auto* field =
+          receiverClass
+              ? receiverClass->getField(assign.getTargetDeclarationId())
+              : nullptr;
+      if (field && field->type->isReference()) {
+        const auto destination = resolveRefTarget(*base).actualTarget;
+        if (borrowsStorage(*assign.getValue(), destination)) {
+          reportError(
+              "cannot store a sibling reference inside the same movable "
+              "object; moving it would invalidate the reference",
+              assign.getLocation());
+        }
+      }
+      retainStorageIn(*base, lookupDeclDepth(*base), *assign.getValue(),
+                      assign.getLocation());
+    }
 
     // A field lets the value outlive this frame with its object, so a
     // value-tracked frame-bound compound is rejected: a Thread handle from
@@ -3617,6 +3955,10 @@ void BorrowChecker::checkIndexedAssignment(
   }
   if (assign.getValue()) {
     checkExpr(*assign.getValue());
+    if (const auto* base = getBaseVariableName(*assign.getTarget())) {
+      retainStorageIn(*base, lookupDeclDepth(*base), *assign.getValue(),
+                      assign.getLocation());
+    }
 
     // An indexed slot is a container element: like a field, it can carry
     // the value past this frame's death, so a frame-bound value (a Thread
@@ -3751,6 +4093,9 @@ void BorrowChecker::exitFunctionScope() {
   frameLocalNames_.clear();
   declDepths_.clear();
   refHolderBounds_.clear();
+  retainedStorage_.clear();
+  declarationOrder_.clear();
+  nextDeclarationOrder_ = 0;
   matchResultLifetimes_.clear();
   refTypedParams_.clear();
   rawPointerLocals_.clear();
@@ -3946,6 +4291,11 @@ Lifetime BorrowChecker::inferExprLifetime(const ExprAST& expr) const {
         return *storedLt;
       }
 
+      // Names not declared in this frame refer to global storage, including
+      // globals imported from a compiled library.
+      if (nameOutlivesFrame(name)) {
+        return Lifetime::static_();
+      }
       // Local variable - bound to the scope it was declared in
       auto declIt = declDepths_.find(name);
       return Lifetime::local(
@@ -3953,9 +4303,14 @@ Lifetime BorrowChecker::inferExprLifetime(const ExprAST& expr) const {
     }
 
     case ASTNodeType::MEMBER_ACCESS: {
-      // Field access inherits the object's lifetime
+      // Module members have global storage; instance fields inherit the
+      // lifetime of their containing object.
       const auto& access = static_cast<const MemberAccessAST&>(expr);
       if (access.getObject()) {
+        const auto& objectType = access.getObject()->getResolvedType();
+        if (objectType && objectType->isModule()) {
+          return Lifetime::static_();
+        }
         return inferExprLifetime(*access.getObject());
       }
       break;

@@ -1,124 +1,204 @@
-/** Provides checked system heap allocation and the shared default allocator. */
-public module std {
+/** Provides allocator-independent storage and typed construction helpers. */
+public module std.mem {
 
-  /** Allocates storage explicitly; callers own successful allocations. */
+  using std;
+
+  /** Allocates aligned byte storage; owners retain a borrow of this allocator. */
   public interface IAllocator {
-    /** Allocate aligned storage for count elements, checking the byte size. */
-    public const method alloc<T>(count: i64) raw_ptr<T> throws;
+    /** Allocate bytes with a positive power-of-two alignment. */
+    public const method alloc_raw(size: i64, alignment: i64) raw_ptr<u8> throws;
 
-    /** Allocate uninitialized bytes, reporting invalid sizes and allocation failures. */
-    public const method alloc_raw(size: i64) raw_ptr<u8> throws;
-
-    /** Release typed storage after its initialized elements have been destroyed. */
-    public const method dealloc<T>(p: raw_ptr<T>, count: i64) void;
-
-    /** Release raw storage obtained from this allocator. */
-    public const method dealloc_raw(p: raw_ptr<u8>, size: i64) void;
-
-    /** Allocate and initialize a value, propagating supported constructor errors. */
-    public const method create<T>(args...: _params_of<T>) raw_ptr<T> throws;
-
-    /** Allocate an initialized value with automatic destruction and deallocation. */
-    public const method create_unique<T>(args...: _params_of<T>) Unique<T> throws;
+    /** Release storage using the size and alignment supplied when allocating. */
+    public const method dealloc_raw(pointer: raw_ptr<u8>, size: i64, alignment: i64) void;
   }
 
-  /** Owns uninitialized storage until construction succeeds or fails. */
-  class AllocationStorage {
-    var pointer: raw_ptr<u8>;
-
-    /** Take responsibility for freeing raw storage without destroying a value. */
-    init(pointer: raw_ptr<u8>) {
-      this.pointer = pointer;
-    }
-
-    /** Transfer storage to the successfully constructed value's owner. */
-    method release() raw_ptr<u8> {
-      var pointer = this.pointer;
-      this.pointer = null;
-      return pointer;
-    }
-
-    /** Free storage after failed construction; the constructor drops initialized fields. */
-    deinit() {
-      unsafe { _free(this.pointer); };
+  /** Reject invalid sizes and alignments before accessing allocator storage. */
+  function validate_layout(size: i64, alignment: i64) void throws {
+    if (size < 0 or alignment <= 0 or (alignment & (alignment - 1)) != 0) {
+      throw InvalidArgumentError("invalid allocation layout");
     }
   }
 
-  /** A stateless allocator backed by the system heap; copies are interchangeable. */
+  /** A stateless system heap allocator whose copies are interchangeable. */
   public class HeapAllocator implements IAllocator {
     /** Construct an allocator without allocating storage. */
     init() {}
 
-    /** Allocate aligned storage; zero-sized requests still own a freeable pointer. */
-    public const method alloc<T>(count: i64) raw_ptr<T> throws {
-      if (count < 0) {
-        throw InvalidArgumentError("negative size");
-      }
-      var width = _sizeof<T>();
-      if (width != 0 and count > std.I64_MAX / width) {
-        throw OverflowError();
-      }
-      var size = count * width;
+    /** Allocate aligned storage; zero bytes still produce a freeable allocation. */
+    public const method alloc_raw(size: i64, alignment: i64) raw_ptr<u8> throws {
+      validate_layout(size, alignment);
       var physical_size = size;
       if (physical_size == 0) {
         physical_size = 1;
       }
-      var pointer = unsafe { _aligned_malloc<T>(physical_size); };
-      if (pointer == null) {
-        throw AllocationError(size);
-      }
-      return unsafe { _ptr_as_raw<T>(pointer); };
-    }
-
-    /** Allocate bytes; negative requests fail and zero requests own one physical byte. */
-    public const method alloc_raw(size: i64) raw_ptr<u8> throws {
-      if (size < 0) {
-        throw InvalidArgumentError("negative size");
-      }
-      var physical_size = size;
-      if (physical_size == 0) {
-        physical_size = 1;
-      }
-      var pointer: raw_ptr<u8> = unsafe { _ptr_as_raw<u8>(_malloc(physical_size)); };
+      var pointer = unsafe { _aligned_alloc(physical_size, alignment); };
       if (pointer == null) {
         throw AllocationError(size);
       }
       return pointer;
     }
 
-    /** Release typed storage; the count does not affect system heap deallocation. */
-    public const method dealloc<T>(p: raw_ptr<T>, count: i64) void {
-      unsafe { _free(p); };
+    /** Release storage obtained from the system heap. */
+    public const method dealloc_raw(pointer: raw_ptr<u8>, size: i64, alignment: i64) void {
+      unsafe { _free(pointer); };
     }
 
-    /** Release raw storage; the size does not affect system heap deallocation. */
-    public const method dealloc_raw(p: raw_ptr<u8>, size: i64) void {
-      unsafe { _free(p); };
-    }
-
-    /** Construct a value only after allocation succeeds. Arguments are consumed normally. */
-    public const method create<T>(args...: _params_of<T>) raw_ptr<T> throws {
-      var pointer = this.alloc<T>(1);
-      var storage = AllocationStorage(unsafe { _ptr_as_raw<u8>(pointer); });
-      unsafe { _init<T>(pointer, args...); };
-      return unsafe { _ptr_as_raw<T>(storage.release()); };
-    }
-
-    /** Return sole ownership of a successfully initialized value. */
-    public const method create_unique<T>(args...: _params_of<T>) Unique<T> throws {
-      return Unique<T>(this.create<T>(args...));
-    }
-
-    /** Explicitly copy the stateless allocator without allocating. */
+    /** Copy the stateless allocator without allocating. */
     public const method copy() HeapAllocator {
       return HeapAllocator();
     }
   }
 
-  /** The immutable system heap allocator, passed explicitly to allocating APIs. */
+  /** The shared system allocator, passed explicitly to allocating operations. */
   public const global_allocator: HeapAllocator = HeapAllocator();
 
-  /** Construct an interchangeable system heap allocator without allocating. */
+  /** Allocate storage for count elements without initializing them. */
+  public function alloc<T>(allocator: const ref IAllocator, count: i64) raw_ptr<T> throws {
+    if (count < 0) {
+      throw InvalidArgumentError("negative size");
+    }
+    var width = _sizeof<T>();
+    if (width != 0 and count > std.I64_MAX / width) {
+      throw OverflowError();
+    }
+    return unsafe { _ptr_as_raw<T>(allocator.alloc_raw(count * width, _alignof<T>())); };
+  }
+
+  /** Release typed storage after its initialized elements have been destroyed. */
+  public function dealloc<T>(
+    allocator: const ref IAllocator,
+    pointer: raw_ptr<T>,
+    count: i64
+  ) void {
+    allocator.dealloc_raw(
+      unsafe { _ptr_as_raw<u8>(pointer); },
+      count * _sizeof<T>(),
+      _alignof<T>()
+    );
+  }
+
+  /** Releases uninitialized storage if construction fails. */
+  class AllocationStorage<T> {
+    var pointer: raw_ptr<T>;
+    var allocator: const ref IAllocator;
+
+    /** Adopt storage until construction succeeds. */
+    init(pointer: raw_ptr<T>, allocator: const ref IAllocator) {
+      this.pointer = pointer;
+      this.allocator = allocator;
+    }
+
+    /** Transfer storage to the successfully constructed value's owner. */
+    method release() raw_ptr<T> {
+      var pointer = this.pointer;
+      this.pointer = null;
+      return pointer;
+    }
+
+    /** Release storage without running the failed value's destructor. */
+    deinit() {
+      if (this.pointer != null) {
+        dealloc<T>(this.allocator, this.pointer, 1);
+      }
+    }
+  }
+
+  /** Allocate and construct a value; release its storage if construction throws. */
+  public function create<T>(
+    allocator: const ref IAllocator,
+    args...: _params_of<T>
+  ) raw_ptr<T> throws {
+    var pointer = alloc<T>(allocator, 1);
+    var storage = AllocationStorage<T>(pointer, allocator);
+    unsafe { _init<T>(pointer, args...); };
+    return storage.release();
+  }
+
+  /** Construct a value owned together with a borrow of its allocator. */
+  public function create_unique<T>(
+    allocator: const ref IAllocator,
+    args...: _params_of<T>
+  ) Unique<T, const ref IAllocator> throws {
+    return unsafe { Unique<T, const ref IAllocator>(create<T>(allocator, args...), allocator); };
+  }
+
+  /** Move a concrete value into an interface owner that borrows its allocator. */
+  public function create_interface<I: interface, T: I>(
+    allocator: const ref IAllocator,
+    value: T
+  ) I throws {
+    var owner = Unique<T, const ref IAllocator>(value, allocator);
+    return _create_interface<I>(owner);
+  }
+
+  /** Stores the synchronized bump cursor separately from the arena handle. */
+  class ArenaState {
+    var storage: raw_ptr<u8>;
+    var capacity: i64;
+    var used: i64 = 0;
+    var mutex: std.thread.Mutex = std.thread.Mutex();
+
+    /** Allocate the fixed backing buffer. */
+    init(capacity: i64) throws {
+      this.capacity = capacity;
+      this.storage = alloc<u8>(global_allocator, capacity);
+    }
+
+    /** Release the backing buffer after all arena owners have been destroyed. */
+    deinit() {
+      dealloc<u8>(global_allocator, this.storage, this.capacity);
+    }
+
+    /** Reserve aligned bytes without moving earlier allocations. */
+    method allocate(size: i64, alignment: i64) raw_ptr<u8> throws {
+      validate_layout(size, alignment);
+      this.mutex.lock();
+      var next = unsafe { _ptr_as_raw<u8>(_ptr_offset(this.storage, this.used)); };
+      var padding = unsafe { _alignment_padding(next, alignment); };
+      var physical_size = size;
+      if (physical_size == 0) {
+        physical_size = 1;
+      }
+      var available = this.capacity - this.used;
+      if (padding > available or physical_size > available - padding) {
+        this.mutex.unlock();
+        throw AllocationError(size);
+      }
+      var result = unsafe { _ptr_as_raw<u8>(_ptr_offset(next, padding)); };
+      this.used += padding + physical_size;
+      this.mutex.unlock();
+      return result;
+    }
+  }
+
+  /** Owns fixed-capacity storage reclaimed after its borrowers expire. */
+  public class ArenaAllocator implements IAllocator {
+    var state: Unique<ArenaState, HeapAllocator>;
+
+    /** Allocate a fixed capacity. Negative capacities are invalid. */
+    init(capacity: i64) throws {
+      if (capacity < 0) {
+        throw InvalidArgumentError("negative arena capacity");
+      }
+      this.state = Unique<ArenaState, HeapAllocator>(ArenaState(capacity), HeapAllocator());
+    }
+
+    /** Reserve aligned storage while preserving earlier allocations. */
+    public const method alloc_raw(size: i64, alignment: i64) raw_ptr<u8> throws {
+      var state = unsafe { _to_ref<ArenaState>(this.state.get_raw()); };
+      return state.allocate(size, alignment);
+    }
+
+    /** Individual allocations remain reserved until reset or destruction. */
+    public const method dealloc_raw(pointer: raw_ptr<u8>, size: i64, alignment: i64) void {}
+
+    /** Reclaim storage after all owners and views borrowing this arena expire. */
+    public method reset() void {
+      this.state.get().used = 0;
+    }
+  }
+
+  /** Construct an interchangeable system allocator without allocating. */
   public function make_heap_allocator() HeapAllocator {
     return HeapAllocator();
   }

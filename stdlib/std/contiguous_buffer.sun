@@ -23,17 +23,25 @@ public module std {
 
   /** Owns a fixed-size allocation of contiguous element storage. */
   public class ContiguousBuffer<T> implements IIterable<ref T, ContiguousBuffer<T>> {
-    var data: Unique<u8>;  // Element storage (owned, auto-freed)
-    var alloc: HeapAllocator;  // Allocator (stored via copy)
+    var data: raw_ptr<u8>;  // Storage owned and released by this buffer
+    var alloc: std.mem.HeapAllocator;  // Allocator (stored via copy)
     var size_: i64;  // Number of elements (fixed after init)
 
     /**
      * Constructor with allocator and size
      */
-    init(allocator: const ref HeapAllocator, size: i64) throws {
+    init(allocator: const ref std.mem.HeapAllocator, size: i64) throws {
       this.alloc = allocator.copy();
       this.size_ = size;
-      this.data = Unique<u8>(_bitcast<raw_ptr<u8>>(this.alloc.alloc<T>(size)));
+      this.data = unsafe { _bitcast<raw_ptr<u8>>(std.mem.alloc<T>(this.alloc, size)); };
+    }
+
+    /** Release the backing allocation. Containers destroy their initialized elements first. */
+    deinit() {
+      if (this.data != null) {
+        std.mem.dealloc<T>(this.alloc, unsafe { _ptr_as_raw<T>(this.data); }, this.size_);
+        this.data = null;
+      }
     }
 
     // ========================================================================
@@ -65,7 +73,7 @@ public module std {
       if (index >= this.size_) {
         throw IndexOutOfBoundsError(index);
       }
-      unsafe { _store<T>(this.data.get_raw(), index, value); };
+      unsafe { _store<T>(this.data, index, value); };
       return;
     }
 
@@ -76,16 +84,16 @@ public module std {
     /** Borrow an element. The caller must provide an initialized, in-bounds index. */
     public const unsafe method get_unchecked(index: i64) ref T {
       return unsafe {
-        _to_ref<T>(_ptr_as_raw<T>(_ptr_offset(this.data.get_raw(), index * _sizeof<T>())));
+        _to_ref<T>(_ptr_as_raw<T>(_ptr_offset(this.data, index * _sizeof<T>())));
       };
     }
 
     /** Extract raw storage that a container must exclude from future drops. */
     unsafe method take_unchecked(index: i64) T {
-      var value: T = unsafe { _load<T>(this.data.get_raw(), index); };
+      var value: T = unsafe { _load<T>(this.data, index); };
       unsafe {
         _memset(
-          _ptr_offset(this.data.get_raw(), index * _sizeof<T>()),
+          _ptr_offset(this.data, index * _sizeof<T>()),
           0,
           _sizeof<T>()
         );
@@ -95,7 +103,7 @@ public module std {
 
     /** Store an element. The caller must provide an in-bounds index. */
     public unsafe method set_unchecked(index: i64, value: T) void {
-      unsafe { _store<T>(this.data.get_raw(), index, value); };
+      unsafe { _store<T>(this.data, index, value); };
     }
 
     // ========================================================================
@@ -123,7 +131,7 @@ public module std {
       var copy: ContiguousBuffer<T> = ContiguousBuffer<T>(this.alloc, this.size_);
       var byte_count: i64 = this.size_ * _sizeof<T>();
       unsafe {
-        _memcpy(copy.raw_data(), this.data.get_raw(), byte_count);
+        _memcpy(copy.raw_data(), this.data, byte_count);
       };
       return copy;
     }
@@ -133,7 +141,7 @@ public module std {
      */
     public method fill(value: T) void {
       for (var i: i64 = 0; i < this.size_; i = i + 1) {
-        unsafe { _store<T>(this.data.get_raw(), i, value); };
+        unsafe { _store<T>(this.data, i, value); };
       }
     }
 
@@ -163,7 +171,7 @@ public module std {
       // Copy elements using fast memcpy
       var byte_count: i64 = count * _sizeof<T>();
       var src_ptr: raw_ptr<u8> = source.raw_data();
-      var dst_ptr: raw_ptr<u8> = this.data.get_raw();
+      var dst_ptr: raw_ptr<u8> = this.data;
       var src_byte_offset: i64 = src_offset * _sizeof<T>();
       var dst_byte_offset: i64 = dst_offset * _sizeof<T>();
       unsafe {
@@ -180,7 +188,7 @@ public module std {
      * Get raw data pointer (escape hatch for interop)
      */
     public const method raw_data() raw_ptr<u8> {
-      return this.data.get_raw();
+      return this.data;
     }
 
     /**
@@ -193,7 +201,7 @@ public module std {
       }
 
       // Allocate new buffer
-      var new_data: raw_ptr<u8> = _bitcast<raw_ptr<u8>>(this.alloc.alloc<T>(new_size));
+      var new_data: raw_ptr<u8> = _bitcast<raw_ptr<u8>>(std.mem.alloc<T>(this.alloc, new_size));
 
       // Copy existing elements (up to min of old and new size)
       var copy_count: i64 = this.size_;
@@ -201,11 +209,13 @@ public module std {
         copy_count = new_size;
       }
       unsafe {
-        _memcpy(new_data, this.data.get_raw(), copy_count * _sizeof<T>());
+        _memcpy(new_data, this.data, copy_count * _sizeof<T>());
       };
 
-      // Replace old data with new (Unique handles freeing old buffer)
-      this.data = Unique<u8>(new_data);
+      // Allocation succeeded and the elements have been transferred. Release
+      // the old storage without destroying the transferred elements.
+      std.mem.dealloc<T>(this.alloc, unsafe { _ptr_as_raw<T>(this.data); }, this.size_);
+      this.data = new_data;
       this.size_ = new_size;
 
       return;

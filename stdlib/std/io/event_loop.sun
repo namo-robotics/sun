@@ -79,7 +79,7 @@ public module std.io {
     var ready: Vec<ReadyEvent>;
 
     /** Reserve wait buffers; open rejects nonpositive capacities. */
-    init(alloc: const ref HeapAllocator, capacity: i32) throws {
+    init(alloc: const ref std.mem.HeapAllocator, capacity: i32) throws {
       this.capacity = capacity;
       this.registrations = Map<i64, EventRegistration>(alloc, 16);
       var slots: i64 = capacity > 0 ? _convert<i64>(capacity) : 1;

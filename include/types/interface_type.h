@@ -342,12 +342,27 @@ class InterfaceType : public NominalType {
   }
 
   /**
-   * Interfaces are represented as fat pointers: { ptr data, ptr vtable }.
-   * The vtable contains methods and an optional parent table link.
-   * Views borrow the concrete object and never run its cleanup.
+   * Owned interfaces carry concrete storage, dispatch, cleanup, and owner
+   * context. Borrowed views use a separate layout and never run concrete
+   * cleanup.
    */
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
-    return getFatPointerType(ctx);
+    return getOwnerType(ctx);
+  }
+
+  /** Stores the concrete address, dispatch table, cleanup function, and
+   * allocator context and its optional dispatch table. Borrowed views use
+   * getFatPointerType and never carry cleanup responsibility.
+   */
+  static llvm::StructType* getOwnerType(llvm::LLVMContext& ctx) {
+    if (auto* existing =
+            llvm::StructType::getTypeByName(ctx, "sun.interface.owner")) {
+      return existing;
+    }
+    auto* pointer = llvm::PointerType::getUnqual(ctx);
+    return llvm::StructType::create(
+        ctx, {pointer, pointer, pointer, pointer, pointer},
+        "sun.interface.owner");
   }
 
   // ===================================================================

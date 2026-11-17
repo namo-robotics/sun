@@ -7,6 +7,13 @@
 
 /** Implements shared type descriptions and queries. */
 namespace sun::types {
+llvm::Type* ClassField::storageType(llvm::LLVMContext& ctx) const {
+  if (type->isReference() && unwrapRef(type)->isInterface()) {
+    return InterfaceType::getFatPointerType(ctx);
+  }
+  return type->toLLVMType(ctx);
+}
+
 void ClassType::addImplementedInterface(const InterfaceType& interface) {
   if (!sameSession(interface)) {
     logAndThrowError(

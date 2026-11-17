@@ -10,6 +10,7 @@
 #include "ast/ast_children.h"
 #include "lsp/name_ranges.h"
 #include "support/source_manager.h"
+#include "support/sun_path.h"
 
 using sun::semantic_analysis::QualifiedName;
 
@@ -36,6 +37,21 @@ std::string normalizePath(const std::string& path) {
   try {
     if (std::filesystem::exists(path)) {
       return std::filesystem::canonical(path).string();
+    }
+    // Bundles record paths relative to their source entrypoint. Look for
+    // installed sources and the standard library's source directory without
+    // making the bundle depend on the machine that built it.
+    if (std::filesystem::path(path).is_relative()) {
+      auto roots = sun::support::SunPath::getPaths();
+      auto installed = sun::support::SunPath::systemInstallDirs();
+      roots.insert(roots.end(), installed.begin(), installed.end());
+      for (const auto& root : roots) {
+        for (const auto& candidate : {root / path, root / "stdlib" / path}) {
+          if (std::filesystem::is_regular_file(candidate)) {
+            return std::filesystem::canonical(candidate).string();
+          }
+        }
+      }
     }
   } catch (const std::filesystem::filesystem_error&) {
   }

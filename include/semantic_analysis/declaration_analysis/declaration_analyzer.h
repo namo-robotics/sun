@@ -24,11 +24,9 @@ class DeclarationAnalyzer {
    * type). Sets captures on the prototype and handles auto-ref conversion for
    * params. Does NOT register the function — caller is responsible for that.
    * Returns FunctionInfo with returnType set if explicit, nullptr if needs
-   * inference. Only bodyless interface requirements may allow an interface
-   * return contract; executable functions must return concrete values or views.
+   * inference. Interface return types describe owned values.
    */
-  FunctionInfo getFunctionInfo(sun::ast::FunctionAST &func,
-                               bool allowInterfaceReturn = false);
+  FunctionInfo getFunctionInfo(sun::ast::FunctionAST &func);
 
   /** The same for a lambda: parameter types, captures, and return type. */
   FunctionInfo getLambdaInfo(sun::ast::LambdaAST &lambda);

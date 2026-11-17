@@ -612,7 +612,7 @@ public module std.json {
     /**
      * Render this node as compact JSON text in a new String.
      */
-    public method to_string(alloc: const ref HeapAllocator) String throws {
+    public method to_string(alloc: const ref std.mem.HeapAllocator) String throws {
       var out = String(alloc, "");
       this.write(out);
       return out;
@@ -621,7 +621,10 @@ public module std.json {
     /**
      * Render this node as JSON text with newlines and `indent` spaces per level.
      */
-    public method to_pretty_string(alloc: const ref HeapAllocator, indent: i64) String throws {
+    public method to_pretty_string(
+      alloc: const ref std.mem.HeapAllocator,
+      indent: i64
+    ) String throws {
       var out = String(alloc, "");
       this.write_pretty(out, indent);
       return out;
@@ -631,14 +634,14 @@ public module std.json {
   /**
    * Empty array
    */
-  public function create_json_array(alloc: const ref HeapAllocator) Json throws {
+  public function create_json_array(alloc: const ref std.mem.HeapAllocator) Json throws {
     return Json(JsonValue.Array(Vec<Json>(alloc, 4)));
   }
 
   /**
    * Empty object
    */
-  public function create_json_object(alloc: const ref HeapAllocator) Json throws {
+  public function create_json_object(alloc: const ref std.mem.HeapAllocator) Json throws {
     return Json(JsonValue.Object(Vec<JsonMember>(alloc, 4)));
   }
 
@@ -646,7 +649,7 @@ public module std.json {
    * String value from a literal
    */
   public function create_json_string(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     text: static_ptr<u8>
   ) Json throws {
     return Json(String(alloc, text));
@@ -657,7 +660,7 @@ public module std.json {
    * Use Json(s) instead to hand the String over without a copy.
    */
   public function create_json_string(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     text: const ref String
   ) Json throws {
     return Json(text.clone(alloc));
@@ -834,12 +837,12 @@ public module std.json {
   class JsonParser {
     var pos: i64 = 0;
     var depth: i64 = 0;
-    var alloc: HeapAllocator;
+    var alloc: std.mem.HeapAllocator;
 
     /**
      * Build a parser positioned at the start of the text.
      */
-    init(alloc: const ref HeapAllocator) {
+    init(alloc: const ref std.mem.HeapAllocator) {
       this.alloc = alloc.copy();
     }
 
@@ -1207,7 +1210,10 @@ public module std.json {
    * Parse a complete JSON text. Trailing whitespace is allowed, anything else
    * after the value is an error.
    */
-  public function parse_json(alloc: const ref HeapAllocator, text: const ref String) Json throws {
+  public function parse_json(
+    alloc: const ref std.mem.HeapAllocator,
+    text: const ref String
+  ) Json throws {
     var parser = JsonParser(alloc);
     parser.skip_whitespace(text);
     var value: Json = parser.parse_value(text);
@@ -1221,7 +1227,10 @@ public module std.json {
   /**
    * Parse a JSON literal into a tree. Returns JsonError on malformed text.
    */
-  public function parse_json(alloc: const ref HeapAllocator, text: static_ptr<u8>) Json throws {
+  public function parse_json(
+    alloc: const ref std.mem.HeapAllocator,
+    text: static_ptr<u8>
+  ) Json throws {
     var owned = String(alloc, text);
     return (parse_json(alloc, owned));
   }

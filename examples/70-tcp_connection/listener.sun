@@ -6,7 +6,7 @@ using std;
 
 /** Performs the operation and propagates exceptions. */
 function run() void throws {
-  var buf = ContiguousBuffer<u8>(global_allocator, 256);
+  var buf = ContiguousBuffer<u8>(std.mem.global_allocator, 256);
 
   var listener = TcpListener();
   listener.bind_loopback(8080);
@@ -22,7 +22,7 @@ function run() void throws {
       println("Connection closed");
       break;
     }
-    var str = String(global_allocator, buf, n);
+    var str = String(std.mem.global_allocator, buf, n);
     println(str);
   }
 

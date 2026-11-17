@@ -270,29 +270,6 @@ void DeclarationAnalyzer::analyzeVariableDeclaration(
                      varCreate.getLocation());
   }
 
-  if (type && type->isInterface()) {
-    // A call on an unbound generic receiver has only its return contract here.
-    // Specialization checks the concrete return type before generating storage.
-    bool deferredContract = false;
-    if (!declaredType && varCreate.getValue()->getType() == ASTNodeType::CALL) {
-      const auto& call =
-          static_cast<const sun::ast::CallExprAST&>(*varCreate.getValue());
-      if (call.getCallee()->getType() == ASTNodeType::MEMBER_ACCESS) {
-        const auto& member =
-            static_cast<const sun::ast::MemberAccessAST&>(*call.getCallee());
-        auto receiver =
-            sun::types::unwrapRef(member.getObject()->getResolvedType());
-        deferredContract = receiver && receiver->isTypeParameter();
-      }
-    }
-    if (!deferredContract) {
-      logAndThrowError("Interface '" + type->toDisplayString() +
-                           "' cannot own a value; use ref or const ref, or own "
-                           "a concrete type",
-                       varCreate.getLocation());
-    }
-  }
-
   validateTypeParameter(type, varCreate);
 
   // A global outlives every stack frame, so it cannot have a type that may

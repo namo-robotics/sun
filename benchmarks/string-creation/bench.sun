@@ -33,9 +33,9 @@ function verify(buf: const ref Vec<String>, n: i64) i64 throws {
 
 /** Warm up, time repeated conversions, and report throughput and a checksum. */
 function run_benchmark() void throws {
-  var buf = Vec<String>(global_allocator, RING_SIZE);
+  var buf = Vec<String>(std.mem.global_allocator, RING_SIZE);
   for (var slot: i64 = 0; slot < RING_SIZE; slot = slot + 1) {
-    buf.push(String(global_allocator, ""));
+    buf.push(String(std.mem.global_allocator, ""));
   }
   from_int(buf, 1000000);
   verify(buf, 1000000);

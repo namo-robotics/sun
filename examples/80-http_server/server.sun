@@ -6,7 +6,7 @@ using std;
 
 /** Runs the example that serves HTTP requests. */
 function main() i32 throws {
-  var server = HttpServer(global_allocator);
+  var server = HttpServer(std.mem.global_allocator);
   server.bind_loopback(8080);
   println("Serving on http://127.0.0.1:8080");
 

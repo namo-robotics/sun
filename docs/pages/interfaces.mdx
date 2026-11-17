@@ -58,29 +58,56 @@ classes to supply the method. The nearest default wins, and a class method
 takes precedence over every default. Calls through a parent use the same
 selected implementation. Inherited field names cannot be redeclared.
 
-Interfaces do not own values. Use `ref Interface` or `const ref Interface` to
-borrow an existing concrete object. Creating a view or converting a child view
-to a parent view never allocates on the heap or copies the object. The concrete
-owner remains responsible for destruction, and a view cannot outlive it.
-A borrowed interface allows method calls but cannot replace the concrete object
-through assignment. Conversion from parent to child is not supported.
+An interface type such as `INode` is a move-only owner. Create it explicitly
+through `std.mem.create_interface`:
 
-Bare interface types cannot be used for variables, fields, parameters, ordinary
-returns, or owned container elements. Store a concrete type, use a generic type
-parameter constrained by the interface, or store a borrowed view with a suitable
-lifetime.
+```sun
+var node = std.mem.create_interface<INode>(std.mem.global_allocator, EchoNode(config));
+var nodes = Vec<INode>(std.mem.global_allocator, 0);
+nodes.push(node);
+```
 
-Inheritance preserves member visibility: private members remain accessible
-only within their defining module. Multiple parents and inheritance cycles
-are rejected. A class may still implement several unrelated interfaces, but
-conflicting defaults require an explicit class implementation.
+The factory signature uses `<I: interface, T: I>`: `I` must be an interface,
+and the inferred concrete type `T` must implement it. The implementation must
+also support dynamic dispatch through `I`.
 
-Borrowed views share one static dispatch table per concrete class and interface.
-The table contains method pointers and a parent table pointer when the interface
-extends another interface. Views have no destruction slot.
+Implicit conversion from a concrete value to an
+owned interface is rejected, including assignments, calls, returns, and collection
+insertion. Moving an existing owner transfers its handle without allocating or
+moving the concrete object. A child owner may move into its parent interface.
 
-Rebuild existing `.moon` libraries: owning interface values have been removed,
-and the interface dispatch-table layout has changed.
+`create_interface` consumes its argument at the call boundary. If allocation
+fails, the consumed argument is destroyed during unwinding. If the argument's
+constructor throws, the allocator method is never entered. Owners run the concrete
+destructor and owned-field cleanup exactly once.
+
+Use `ref Interface` or `const ref Interface` to borrow a concrete object or an
+existing interface owner. These conversions and borrowed child-to-parent conversions
+allocate nothing. A borrowed view cannot outlive its owner or replace its concrete
+object. Conversion from parent to child is not supported.
+
+`create_interface<I>(arena, value)` accepts an `ArenaAllocator(capacity)`. Each owner borrows the
+arena until it is destroyed. Its concrete destructor runs normally, but its slot
+is reclaimed only by arena reset or destruction. Reset requires exclusive access;
+it is rejected while owners or views retain a borrow of the arena. References
+inside the concrete object retain their own lifetime restrictions under either
+allocator. Moving owners into collections preserves those restrictions.
+
+Inheritance preserves member visibility: private members remain accessible only
+within their defining module. Multiple parents and inheritance cycles are rejected.
+A class may implement several unrelated interfaces, but conflicting defaults require
+an explicit class implementation.
+
+Borrowed views contain object and dispatch-table pointers. Owners also
+carry the allocator address and dispatch table, plus a cleanup function that reconstructs and
+destroys the transferred `Unique<T, A>`. `_create_interface<I>(owner)` consumes
+that owner without allocating or changing its lifetime dependencies. Callers
+cannot supply an arbitrary cleanup callback; adopting raw storage into `Unique`
+requires `unsafe`. Dispatch tables contain method pointers
+and an optional parent-table pointer, without a destruction slot.
+
+Rebuild existing `.moon` libraries after updating: the owned-interface representation
+and bundle format have changed.
 
 ## Visibility
 
@@ -193,12 +220,14 @@ handler as `ref Handler`.
 
 ### Interface Return Requirements
 
-A bodyless interface method may name an interface as its return requirement.
-Each implementation must return a concrete class implementing that interface.
-This is a compile-time contract used by generic code, including
-`IIterable.iter()`. Such an implementation cannot be converted to a borrowed
-view of that interface for dynamic dispatch. An ordinary function or a default
-method body cannot return an owning interface value.
+A method may return an owning interface, including through dynamic dispatch.
+Its implementation must explicitly construct or move an existing owner.
+
+A bodyless interface method can also serve as a compile-time return requirement:
+an implementation may return a concrete class implementing the requested interface.
+Generic code uses this contract, including `IIterable.iter()`. An implementation
+with a concrete return type cannot be converted to a view or owner of that
+interface for dynamic dispatch, because the return representations differ.
 
 ## Default Implementations
 

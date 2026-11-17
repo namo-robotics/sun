@@ -116,7 +116,7 @@ TEST(MemorySafety_AllocationFailure, raw_allocation_reports_failure) {
     /** Request storage after exhausting the test allocation budget. */
     function main() i32 {
       unsafe { allocation_fail_after(0); };
-      try { global_allocator.alloc_raw(64);
+      try { std.mem.global_allocator.alloc_raw(64, 1);
 return -1; } catch (error: AllocationError) { return _convert<i32>(error.requested_size()); } catch { return -1; }
     }
   )"),
@@ -131,9 +131,9 @@ TEST(MemorySafety_AllocationFailure, invalid_sizes_are_rejected) {
     function main() i32 {
       unsafe { allocation_fail_after(0); };
       var negative: i32 = 0;
-      try { global_allocator.alloc_raw(-1); } catch (error: InvalidArgumentError) { negative = 1; }
+      try { std.mem.global_allocator.alloc_raw(-1, 1); } catch (error: InvalidArgumentError) { negative = 1; }
       var overflow: i32 = 0;
-      try { global_allocator.alloc<i64>(std.I64_MAX); } catch (error: OverflowError) { overflow = 2; }
+      try { std.mem.alloc<i64>(std.mem.global_allocator, std.I64_MAX); } catch (error: OverflowError) { overflow = 2; }
       return negative + overflow;
     }
   )"),
@@ -145,9 +145,9 @@ TEST(MemorySafety_AllocationFailure, zero_size_has_freeable_storage) {
   EXPECT_EQ(executeWithAllocationFailures(R"(
     /** Allocate and release zero logical bytes through the global allocator. */
     function main() i32 {
-      try { var pointer = global_allocator.alloc_raw(0);
+      try { var pointer = std.mem.global_allocator.alloc_raw(0, 1);
 var valid = pointer != null;
-          global_allocator.dealloc_raw(pointer, 0);return valid ? 1 : 0; } catch { return 0; }
+          std.mem.global_allocator.dealloc_raw(pointer, 0, 1);return valid ? 1 : 0; } catch { return 0; }
     }
   )"),
             1);
@@ -166,7 +166,7 @@ TEST(MemorySafety_AllocationFailure, allocation_failure_skips_constructor) {
     function main() i32 {
       unsafe { allocation_fail_after(0); };
       var failed: i32 = 0;
-      try { global_allocator.create<Value>(); } catch (error: AllocationError) { failed = 1; }
+      try { std.mem.create<Value>(std.mem.global_allocator); } catch (error: AllocationError) { failed = 1; }
       return failed - constructions;
     }
   )"),
@@ -178,7 +178,7 @@ TEST(MemorySafety_AllocationFailure, vector_growth_preserves_contents) {
   EXPECT_EQ(executeWithAllocationFailures(R"(
     /** Fill a vector, then fail its next growth. */
     function check() i32 throws {
-      var values =  Vec<i32>(global_allocator, 1);
+      var values =  Vec<i32>(std.mem.global_allocator, 1);
        values.push(42);
       unsafe { allocation_fail_after(0); };
       var failed: i32 = 0;
@@ -203,7 +203,7 @@ TEST(MemorySafety_AllocationFailure, aligned_allocation_reports_failure) {
     /** Fail aligned storage allocation deterministically. */
     function main() i32 {
       unsafe { allocation_fail_after(0); };
-      try { global_allocator.alloc<Aligned>(1);
+      try { std.mem.alloc<Aligned>(std.mem.global_allocator, 1);
 return 0; } catch (ignored_error: AllocationError) { return 1; } catch { return 0; }
     }
   )"),
@@ -234,7 +234,7 @@ TEST(MemorySafety_AllocationFailure, failed_constructor_releases_storage) {
     /** Observe the propagated error and partial-object cleanup. */
     function main() i32 {
       var failed: i32 = 0;
-      try { global_allocator.create_unique<Value>(); } catch (error: IndexOutOfBoundsError) { failed = 1; }
+      try { std.mem.create_unique<Value>(std.mem.global_allocator); } catch (error: IndexOutOfBoundsError) { failed = 1; }
       return failed == 1 and field_drops == 1 and object_drops == 0 ? 1 : 0;
     }
   )"),
@@ -246,7 +246,7 @@ TEST(MemorySafety_AllocationFailure, map_growth_preserves_contents) {
   EXPECT_EQ(executeWithAllocationFailures(R"(
     /** Fail the second replacement allocation during rehashing. */
     function check() i32 throws {
-      var values =  Map<i64, i32>(global_allocator, 2);
+      var values =  Map<i64, i32>(std.mem.global_allocator, 2);
        values.insert(1, 42);
       unsafe { allocation_fail_after(1); };
       var failed: i32 = 0;
@@ -322,11 +322,11 @@ TEST(MemorySafety_AllocationFailure, global_allocator_across_modules) {
     /** Provides allocation operations across a module boundary. */
     module client {
       /** Allocate typed storage through a const allocator reference. */
-      public function allocate(allocator: const ref HeapAllocator) i32 throws {
-        var pointer =  allocator.alloc<i32>(1);
+      public function allocate(allocator: const ref std.mem.HeapAllocator) i32 throws {
+        var pointer =  std.mem.alloc<i32>(allocator, 1);
         unsafe { _store<i32>(pointer, 0, 42); };
         var value = unsafe { _load<i32>(pointer, 0); };
-        allocator.dealloc(pointer, 1);
+        std.mem.dealloc<i32>(allocator, pointer, 1);
         var values =  Vec<i32>(allocator, 1);
          values.push(value);
         return values.size() == 1 ? value : 0;
@@ -334,7 +334,7 @@ TEST(MemorySafety_AllocationFailure, global_allocator_across_modules) {
     }
     /** Pass the immutable standard allocator into another module. */
     function main() i32 {
-      try { var value = client.allocate(global_allocator);
+      try { var value = client.allocate(std.mem.global_allocator);
 return value; } catch { return -1; }
     }
   )"),
@@ -355,7 +355,7 @@ TEST(MemorySafety_AllocationFailure,
     }
     /** Checks propagation while the native fixture checks for leaked storage. */
     function main() i32 {
-      try { global_allocator.create<Object>(); }
+      try { std.mem.create<Object>(std.mem.global_allocator); }
       catch (error: CustomError) { return error.code; }
       return -1;
     }
@@ -392,9 +392,9 @@ TEST(MemorySafety_AllocationFailure, zero_size_aligned_storage) {
     class Aligned { alignment: 256 var value: i64 = 0; }
     /** Release aligned storage without constructing an element. */
     function main() i32 {
-      try { var pointer = global_allocator.alloc<Aligned>(0);
+      try { var pointer = std.mem.alloc<Aligned>(std.mem.global_allocator, 0);
 var valid = pointer != null;
-          global_allocator.dealloc<Aligned>(pointer, 0);return valid ? 1 : 0; } catch { return 0; }
+          std.mem.dealloc<Aligned>(std.mem.global_allocator, pointer, 0);return valid ? 1 : 0; } catch { return 0; }
     }
   )"),
             1);
@@ -406,7 +406,7 @@ TEST(MemorySafety_AllocationFailure, negative_typed_count) {
     /** Distinguish invalid input from an exhausted allocation budget. */
     function main() i32 {
       unsafe { allocation_fail_after(0); };
-      try { global_allocator.alloc<i64>(-1);
+      try { std.mem.alloc<i64>(std.mem.global_allocator, -1);
 return 0; } catch (ignored_error: InvalidArgumentError) { return 1; } catch { return 0; }
     }
   )"),
@@ -418,7 +418,7 @@ TEST(MemorySafety_AllocationFailure, interpolation_releases_partial_string) {
   EXPECT_EQ(executeWithAllocationFailures(R"(
     /** Permit the first expansion and fail the next expansion. */
     function check() i32 throws {
-      var part =  String(global_allocator, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefgh");
+      var part =  String(std.mem.global_allocator, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefgh");
       unsafe { allocation_fail_after(1); };
       try { `${part}${part}`;
 return 0; } catch (ignored_error: AllocationError) { return 1; } catch { return 0; }
@@ -446,4 +446,90 @@ TEST(MemorySafety_AllocationFailure,
     }
   )"),
             42);
+}
+
+/** An allocation failure destroys a consumed interface argument exactly once.
+ */
+TEST(MemorySafety_AllocationFailure, interface_allocation_consumes_argument) {
+  EXPECT_EQ(executeWithAllocationFailures(R"(
+    var drops: i32 = 0;
+    /** Defines the erased contract. */ interface Value {}
+    /** Records destruction of a moved argument. */ class Item implements Value {
+      /** Initializes the argument. */ init() {}
+      /** Records destruction. */ deinit() { drops += 1; }
+    }
+    /** Exhausts allocation after constructing the argument. */
+    function main() i32 {
+      var item = Item();
+      unsafe { allocation_fail_after(0); };
+      try { var owner = std.mem.create_interface<Value>(std.mem.global_allocator, item); }
+      catch (error: AllocationError) { return drops; }
+      return 0;
+    }
+  )"),
+            1);
+}
+
+/** Moving and borrowing owners do not allocate new concrete objects. */
+TEST(MemorySafety_AllocationFailure, interface_moves_do_not_allocate) {
+  EXPECT_EQ(executeWithAllocationFailures(R"(
+    /** Requires a readable value. */ interface Value {
+      /** Reads the object. */ public const method read() i32;
+    }
+    /** Owns a readable object. */ class Item implements Value {
+      /** Initializes the object. */ init() {}
+      /** Reads the object. */ public const method read() i32 { return 42; }
+    }
+    /** Transfers ownership without allocation. */ function move(value: Value) Value { return value; }
+    /** Disallows further allocations after constructing one owner. */
+    function main() i32 throws {
+      var owner = std.mem.create_interface<Value>(std.mem.global_allocator, Item());
+      unsafe { allocation_fail_after(0); };
+      var moved = move(owner);
+      var borrowed: const ref Value = moved;
+      return borrowed.read();
+    }
+  )"),
+            42);
+}
+
+/** Exception unwinding destroys the erased concrete object and its owned
+ * fields. */
+TEST(MemorySafety_AllocationFailure, interface_unwind_drops_fields) {
+  EXPECT_EQ(executeWithAllocationFailures(R"(
+    var drops: i32 = 0;
+    /** Defines an erased owner. */ interface Value {}
+    /** Records recursive field cleanup. */ class Payload {
+      /** Initializes the field. */ init() {}
+      /** Records field destruction. */ deinit() { drops += 10; }
+    }
+    /** Owns a field in addition to its concrete destructor. */ class Item implements Value {
+      var payload: Payload;
+      /** Constructs the owned field. */ init() { this.payload = Payload(); }
+      /** Records concrete destruction. */ deinit() { drops += 1; }
+    }
+    /** Throws with a live owner that must be unwound. */ function fail() void throws {
+      var owner = std.mem.create_interface<Value>(std.mem.global_allocator, Item());
+      throw InvalidArgumentError("unwind");
+    }
+    /** Checks both levels of destruction after the catch. */ function main() i32 {
+      try { fail(); } catch (error: InvalidArgumentError) { return drops; }
+      return 0;
+    }
+  )"),
+            11);
+}
+
+/** Arena backing-buffer failure releases the already allocated state. */
+TEST(MemorySafety_AllocationFailure, arena_constructor_failure_releases_state) {
+  EXPECT_EQ(executeWithAllocationFailures(R"(
+    /** Fails the second allocation made by the arena constructor. */
+    function main() i32 {
+      unsafe { allocation_fail_after(1); };
+      try { var arena = std.mem.ArenaAllocator(64); }
+      catch (error: AllocationError) { return 1; }
+      return 0;
+    }
+  )"),
+            1);
 }

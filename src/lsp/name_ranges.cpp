@@ -177,7 +177,7 @@ std::optional<std::string> textOf(const Position& location,
   if (!location.filePath) {
     return std::nullopt;
   }
-  std::ifstream file(*location.filePath);
+  std::ifstream file(normalizePath(*location.filePath));
   if (!file.is_open()) {
     return std::nullopt;
   }

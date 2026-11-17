@@ -65,7 +65,7 @@ public module std.byte_order {
      * the way a binary wire format uses these helpers.
      */
   test_function round_trip_through_a_byte_buffer() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var buf = Vec<u8>(alloc, 4);
 
     var length: u16 = 1024;

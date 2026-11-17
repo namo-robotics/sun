@@ -563,7 +563,7 @@ public module std {
     /**
      * Read `n` bytes into a fresh Vec<u8>
      */
-    public method read_bytes(alloc: const ref HeapAllocator, n: i64) Vec<u8> throws {
+    public method read_bytes(alloc: const ref std.mem.HeapAllocator, n: i64) Vec<u8> throws {
       if (this.pos + n > this.len) {
         throw ProtoDecodeError("length exceeds buffer");
       }
@@ -578,7 +578,7 @@ public module std {
     /**
      * Read a length-prefixed byte field
      */
-    public method read_bytes_field(alloc: const ref HeapAllocator) Vec<u8> throws {
+    public method read_bytes_field(alloc: const ref std.mem.HeapAllocator) Vec<u8> throws {
       var n: i64 = _convert<i64>((this.read_varint()));
       return (this.read_bytes(alloc, n));
     }
@@ -586,7 +586,7 @@ public module std {
     /**
      * Read a length-prefixed string field
      */
-    public method read_string_field(alloc: const ref HeapAllocator) String throws {
+    public method read_string_field(alloc: const ref std.mem.HeapAllocator) String throws {
       var n: i64 = _convert<i64>((this.read_varint()));
       if (n < 0) {
         throw ProtoDecodeError("negative length");

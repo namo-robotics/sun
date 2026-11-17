@@ -37,7 +37,7 @@ public module std.io {
 
   /** Checks bounded offsets, short reads, EOF, and that borrowed handles never close their pipes. */
   test_function borrowed_stream_short_read_and_ownership() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var pipe = std.process.open_pipe(alloc);
     var input = ContiguousBuffer<u8>(alloc, 8);
     input.fill(90);
@@ -79,7 +79,7 @@ public module std.io {
 
   /** Empty slices do no I/O even on invalid descriptors; nonempty slices report errors. */
   test_function borrowed_stream_empty_and_errors() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var buffer = ContiguousBuffer<u8>(alloc, 8);
     buffer.fill(0);
     var stream = std.io.BorrowedStream(-1);
@@ -119,7 +119,7 @@ public module std.io {
 
   /** Nonblocking writes preserve the exact prefix count, and reads distinguish would-block from EOF. */
   test_function borrowed_stream_would_block_preserves_progress() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var pipe = std.process.open_pipe(alloc);
     nonblocking(pipe.read_fd());
     nonblocking(pipe.write_fd());
@@ -168,7 +168,7 @@ public module std.io {
 
   /** File methods use the same bounded I/O contract as borrowed streams. */
   test_function file_bounded_io() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var td = std.tests.TempDir(alloc, "bounded_io");
     var path = td.file("bytes");
     var file = std.io.File();
@@ -242,7 +242,7 @@ public module std.io {
 
   /** Retries interrupted reads and returns the first successful short read. */
   test_function interrupted_read_retries() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var buffer = ContiguousBuffer<u8>(alloc, 4);
     var bytes = MutableByteSlice(buffer);
     var operation = InterruptedReader();
@@ -253,7 +253,7 @@ public module std.io {
 
   /** Retries interruptions between short writes and retains progress on errors or zero writes. */
   test_function interrupted_writes_preserve_progress() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var buffer = ContiguousBuffer<u8>(alloc, 4);
     buffer.fill(0);
     buffer.set(2, 73);

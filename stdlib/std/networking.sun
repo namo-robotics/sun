@@ -135,7 +135,7 @@ public module std.net {
       c_getaddrinfo(host.c_str(), null, null, _address_of<raw_ptr<u8>>(list));
     };
     if (rc != 0) {
-      var msg: String = from_c_str(global_allocator, unsafe { c_gai_strerror(rc); });
+      var msg: String = from_c_str(std.mem.global_allocator, unsafe { c_gai_strerror(rc); });
       throw Error(rc, msg);
     }
     var entry: raw_ptr<u8> = list;
@@ -201,7 +201,7 @@ public module std.net {
     /**
      * Format as dotted-quad text, e.g. "192.168.1.10".
      */
-    public const method to_string(alloc: const ref HeapAllocator) String throws {
+    public const method to_string(alloc: const ref std.mem.HeapAllocator) String throws {
       var text: String = String(alloc, "");
       text.append(this.octet(0));
       text.append_char(46);  // '.'

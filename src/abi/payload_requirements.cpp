@@ -145,7 +145,7 @@ class MetadataLayouts {
       return element;
     }
     if (interfaces_.contains(annotation.declaration_key())) {
-      return sun::types::InterfaceType::getFatPointerType(context_);
+      return sun::types::InterfaceType::getOwnerType(context_);
     }
     if (const auto enumeration = enums_.find(annotation.declaration_key());
         enumeration != enums_.end()) {
@@ -214,7 +214,7 @@ class MetadataLayouts {
     }
     std::vector<llvm::Type*> fields;
     for (const auto& field : cls.fields()) {
-      auto* type = decode(field.type(), false, arguments, depth + 1);
+      auto* type = decode(field.type(), true, arguments, depth + 1);
       if (!type || !type->isSized()) {
         active_.erase(identity);
         return nullptr;

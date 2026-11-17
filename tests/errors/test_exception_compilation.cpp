@@ -39,7 +39,7 @@ using std;
 using std.json;
 /** Handles malformed input after parser-owned storage has been cleaned up. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   try {
     var value = parse_json(alloc, "[1, 2,]");
   } catch (error: JsonError) {

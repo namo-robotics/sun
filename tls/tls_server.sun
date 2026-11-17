@@ -186,7 +186,7 @@ public module tls {
 
     /** Allocates a socket adapter whose borrowed descriptor survives stream moves. */
     method attach_socket() void throws {
-      var socket_data = ContiguousBuffer<i32>(global_allocator, 1);
+      var socket_data = ContiguousBuffer<i32>(std.mem.global_allocator, 1);
       unsafe { _store<i32>(socket_data.raw_data(), 0, this.tcp.get_fd()); };
       // This private method is never looked up by type, so no global index is needed.
       this.bio_method = unsafe { c_bio_meth_new(BIO_TYPE_SOURCE_SINK, "Sun TLS socket".raw()); };

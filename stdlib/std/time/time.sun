@@ -295,7 +295,7 @@ public module std.time {
    * than 256 bytes comes back empty.
    */
   public function format(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     dt: const ref DateTime,
     fmt: raw_ptr<u8>
   ) String throws {

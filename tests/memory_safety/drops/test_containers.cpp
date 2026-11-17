@@ -43,7 +43,7 @@ TEST(MemorySafety_Drops_Containers, vec_deinit_drops_all_elements) {
 using std;
 
 function helper() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  Vec<Owner>(alloc, 4);
    v.push(Owner(1));
    v.push(Owner(2));
@@ -66,7 +66,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  Vec<Owner>(alloc, 4);
    v.push(Owner(1));
    v.push(Owner(2));
@@ -83,7 +83,7 @@ using std;
 
     /** Checks container ownership and propagates operation failures. */
     function check() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       var v =  Vec<Owner>(alloc, 4);
        v.push(Owner(1));
        v.push(Owner(2));
@@ -108,7 +108,7 @@ TEST(MemorySafety_Drops_Containers, vec_pop_moves_ownership_no_double_drop) {
 using std;
 
 function helper() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  Vec<Owner>(alloc, 4);
    v.push(Owner(1));
    v.push(Owner(2));
@@ -144,7 +144,7 @@ using std;
 
     /** Checks container ownership and propagates operation failures. */
     function helper() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       var v =  Vec<Owner>(alloc, 4);
        v.push(Owner(1));
        v.push(Owner(2));
@@ -181,7 +181,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   if (true) {
     var outer =  Vec<Vec<Owner>>(alloc, 2);
     var inner1 =  Vec<Owner>(alloc, 2);
@@ -205,7 +205,7 @@ using std;
 
     /** Checks container ownership and propagates operation failures. */
     function helper() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       var m =  Map<i64, Owner>(alloc, 8);
        m.insert(1, Owner(10));
        m.insert(2, Owner(20));
@@ -233,7 +233,7 @@ using std;
 
     /** Checks container ownership and propagates operation failures. */
     function check() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       var m =  Map<i64, Owner>(alloc, 8);
        m.insert(1, Owner(10));
        m.insert(1, Owner(11));
@@ -256,7 +256,7 @@ using std;
 
     /** Checks container ownership and propagates operation failures. */
     function helper() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       var m =  Map<i64, Owner>(alloc, 8);
        m.insert(1, Owner(10));
       var removed =  m.remove(1);
@@ -292,7 +292,7 @@ using std;
 
     /** Checks container ownership and propagates operation failures. */
     function check() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       var m =  Map<i64, Owner>(alloc, 8);
        m.insert(1, Owner(10));
        m.insert(2, Owner(20));
@@ -315,7 +315,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var list = LinkedList<Owner>(alloc);
    list.push_back(Owner(1));
    list.push_back(Owner(2));
@@ -331,7 +331,7 @@ TEST(MemorySafety_Drops_Containers, linked_list_deinit_drops_payloads) {
 using std;
 
 function helper() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var list = LinkedList<Owner>(alloc);
    list.push_back(Owner(1));
    list.push_back(Owner(2));
@@ -354,7 +354,7 @@ using std;
 
     /** Checks container ownership and propagates operation failures. */
     function check() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       var list = LinkedList<Owner>(alloc);
        list.push_back(Owner(1));
       if (true) {
@@ -378,7 +378,7 @@ using std;
 
     /** Checks container ownership and propagates operation failures. */
     function helper() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       var list = LinkedList<Owner>(alloc);
        list.push_back(Owner(1));
        list.push_back(Owner(2));
@@ -414,7 +414,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  Vec<String>(alloc, 4);
    v.push( String(alloc, "hello"));
    v.push( String(alloc, "world"));
@@ -443,7 +443,7 @@ using std;
 
 /** Checks container ownership and propagates operation failures. */
 function check() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  Vec<String>(alloc, 4);
    v.push( String(alloc, "hello"));
    v.push( String(alloc, "world"));
@@ -472,7 +472,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  Vec<String>(alloc, 4);
    v.push( String(alloc, "aa"));
    v.push( String(alloc, "bbb"));
@@ -503,7 +503,7 @@ using std;
 
 /** Checks container ownership and propagates operation failures. */
 function check() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var m =  Map<i64, String>(alloc, 16);
    m.insert(1,  String(alloc, "alpha"));
   var total: i64 = 0;
@@ -548,7 +548,7 @@ TEST(MemorySafety_Drops_Containers,
 
     /** Checks container ownership and propagates operation failures. */
     function check() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       var v =  Vec<i32>(alloc, 4);
        v.push(10);
        v.push(20);
@@ -578,7 +578,7 @@ using std;
 
 /** Checks container ownership and propagates operation failures. */
 function check() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  Vec<String>(alloc, 4);
    v.push( String(alloc, "hello"));
    v.push( String(alloc, "hi"));
@@ -616,7 +616,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  Vec<String>(alloc, 4);
    v.push( String(alloc, "hello"));
   var s: String = unsafe { v.get_unchecked(0); };
@@ -637,7 +637,7 @@ function by_value(s: String) i64 {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  Vec<String>(alloc, 4);
    v.push( String(alloc, "hello"));
   return by_value(unsafe { v.get_unchecked(0); });
@@ -675,7 +675,7 @@ TEST(MemorySafety_Drops_Containers, borrowed_element_is_not_stored_in_a_field) {
     using std;
     class Holder {
       var s: String;
-      init(alloc: ref HeapAllocator)  throws { this.s =  String(alloc, ""); }
+      init(alloc: ref std.mem.HeapAllocator)  throws { this.s =  String(alloc, ""); }
       public method set_from(v: ref Vec<String>) void {
         this.s = unsafe { v.get_unchecked(0); };
       }
@@ -696,7 +696,7 @@ function by_value(n: i32) i32 {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  Vec<i32>(alloc, 4);
    v.push(41);
   var copied: i32 = unsafe { v.get_unchecked(0); };
@@ -746,7 +746,7 @@ using std;
 class Bag implements IIterable<String, Bag> {
   var items: Vec<String>;
 
-  init(alloc: ref HeapAllocator)  throws {
+  init(alloc: ref std.mem.HeapAllocator)  throws {
     this.items =  Vec<String>(alloc, 4);
   }
 
@@ -783,7 +783,7 @@ class BagIter implements IIterator<String, Bag> {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var b =  Bag(alloc);
    b.add( String(alloc, "hello"));
   var total: i64 = 0;
@@ -804,7 +804,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  Vec<String>(alloc, 4);
    v.push( String(alloc, "hello"));
   var n: i64 = 0;
@@ -826,7 +826,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  Vec<String>(alloc, 4);
    v.push( String(alloc, "hello"));
    v.push( String(alloc, "hi"));
@@ -859,7 +859,7 @@ class Draining implements IIterator<String, Vec<String>> {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  Vec<String>(alloc, 4);
    v.push( String(alloc, "hello"));
    v.push( String(alloc, "hi"));

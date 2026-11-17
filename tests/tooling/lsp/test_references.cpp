@@ -513,6 +513,7 @@ TEST(Tooling_Lsp_References, StdlibReferences) {
     GTEST_SKIP() << "stdlib.moon not built";
   }
   std::string source = R"(
+using std.mem;
 using std;
 function main() i64 throws {
     var allocator = make_heap_allocator();

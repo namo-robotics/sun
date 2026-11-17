@@ -172,7 +172,7 @@ the operation returns successfully:
 ```sun
 /** Checks that invalid indexing throws the expected exception type. */
 test_function rejects_invalid_index() {
-  var values = std.Vec<i32>(std.global_allocator, 1);
+  var values = std.Vec<i32>(std.mem.global_allocator, 1);
   try {
     values.at(10);
     std.test.fail("expected an out-of-bounds exception");

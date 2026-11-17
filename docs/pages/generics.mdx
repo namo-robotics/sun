@@ -104,6 +104,7 @@ name of an interface the type argument must implement. The built-in traits are:
 | `_Lambda` | any closure type |
 | `_Function` | a named-function value (`function (Args) T`) |
 | `_Callable` | `_Lambda` and `_Function` |
+| `interface` | Interface types |
 
 Constraints work on every generic declaration, not only functions:
 
@@ -266,7 +267,7 @@ var point = build<Point>(3, 4);
 
 <Callout type="info">
   A pack on a **class method** still needs its type argument written out —
-  `alloc.create<Point>(3, 4)`, never `alloc.create(3, 4)`. Free functions infer
+  `std.mem.create<Point>(alloc, 3, 4)`, never `alloc.create(3, 4)`. Free functions infer
   it from their fixed arguments.
 </Callout>
 

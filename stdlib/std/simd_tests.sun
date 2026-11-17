@@ -38,7 +38,7 @@ public module std.simd {
 
   /** Checks four-byte-offset loads and stores and untouched surrounding lanes. */
   test_function buffer_access() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var buffer = ContiguousBuffer<f32>(alloc, 7);
     buffer.fill(-1.0f32);
     var value = std.simd.F32x4(1.0f32, 2.0f32, 3.0f32, 4.0f32);
@@ -78,7 +78,7 @@ public module std.simd {
 
   /** Checks eight-lane arithmetic and misaligned buffer access, including bounds failures. */
   test_function eight_lane_arithmetic_and_access() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var buffer = ContiguousBuffer<f32>(alloc, 10);
     for (var i: i64 = 0; i < 10; i = i + 1) {
       buffer[i] = _convert<f32>(i);
@@ -147,7 +147,7 @@ public module std.simd {
 
   /** Distinguishes fused rounding from separate operations in every lane. */
   test_function fused_rounding() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var x = _bitcast<f32>(1065353217u32);
     var y = _bitcast<f32>(1065353214u32);
     var a = std.simd.splat(x);

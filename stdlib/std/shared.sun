@@ -1,6 +1,6 @@
 // Shared ownership smart pointer, safe to hand to several threads.
 //
-// Unique<T> is one owner; Shared<T> is many. The value lives in a heap box
+// Unique<T, HeapAllocator> is one owner; Shared<T> is many. The value lives in a heap box
 // alongside a reference count and a Mutex. clone() adds an owner, deinit
 // removes one, and the last one out drops the value and frees the box.
 // Sun has no implicit copies, so every extra owner is a visible clone() and
@@ -124,9 +124,9 @@ public module std {
     /**
      * Take ownership of a value and put it behind a shared, locked box.
      */
-    init(allocator: const ref HeapAllocator, value: T) throws {
+    init(allocator: const ref std.mem.HeapAllocator, value: T) throws {
       var a = allocator.copy();
-      var pointer = a.alloc<SharedBox<T>>(1);
+      var pointer = std.mem.alloc<SharedBox<T>>(a, 1);
       unsafe { _init<SharedBox<T>>(pointer, value); };
       this.box = pointer;
     }

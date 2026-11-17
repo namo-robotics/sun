@@ -19,7 +19,7 @@ public module std.process {
      * output() captures stdout, leaves stderr empty, and reports status 0.
      */
   test_function output_captures_stdout_and_status() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var cmd = std.process.Command(alloc, "/bin/sh");
     cmd.add_arg("-c");
     cmd.add_arg("printf hello");
@@ -33,7 +33,7 @@ public module std.process {
      * A child's non-zero exit code comes back through output().status().
      */
   test_function non_zero_exit_is_reported() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var cmd = std.process.Command(alloc, "/bin/sh");
     cmd.add_arg("-c");
     cmd.add_arg("exit 3");
@@ -44,7 +44,7 @@ public module std.process {
      * stdout and stderr are captured into separate Strings.
      */
   test_function stderr_is_captured_separately() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var cmd = std.process.Command(alloc, "/bin/sh");
     cmd.add_arg("-c");
     cmd.add_arg("printf out; printf err >&2");
@@ -59,7 +59,7 @@ public module std.process {
      * stderr would wedge here.
      */
   test_function large_output_does_not_deadlock() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var cmd = std.process.Command(alloc, "/bin/sh");
     cmd.add_arg("-c");
     cmd.add_arg("yes abcdefgh | head -c 200000; printf e >&2");
@@ -75,7 +75,7 @@ public module std.process {
      * with SIGPIPE ignored, which is how this was first noticed.
      */
   test_function child_starts_with_default_sigpipe() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var previous: i64 = unsafe { c_signal(SIGPIPE, 1); };
     var cmd = std.process.Command(alloc, "/bin/sh");
     cmd.add_arg("-c");
@@ -91,7 +91,7 @@ public module std.process {
      * inside it, with no re-parsing by a shell.
      */
   test_function arguments_are_passed_separately_not_reparsed() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var cmd = std.process.Command(alloc, "/bin/sh");
     cmd.add_arg("-c");
     cmd.add_arg("printf '%s|%s' \"$1\" \"$2\"");
@@ -107,7 +107,7 @@ public module std.process {
      * caller still owns the String afterwards.
      */
   test_function string_arguments_are_accepted() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var script = String(alloc, "printf built-at-runtime");
     var cmd = std.process.Command(alloc, "/bin/sh");
     cmd.add_arg("-c");
@@ -124,7 +124,7 @@ public module std.process {
      * status() runs with inherited streams and returns the exit code.
      */
   test_function status_runs_with_inherited_streams() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var cmd = std.process.Command(alloc, "/bin/sh");
     cmd.add_arg("-c");
     cmd.add_arg("exit 7");
@@ -135,7 +135,7 @@ public module std.process {
      * start() gives a Child with a real pid; wait() returns the exit code.
      */
   test_function start_then_wait_gives_the_exit_code() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var cmd = std.process.Command(alloc, "/bin/sh");
     cmd.add_arg("-c");
     cmd.add_arg("exit 5");
@@ -149,7 +149,7 @@ public module std.process {
      * program that echoes its input.
      */
   test_function child_stdin_can_be_written() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var cmd = std.process.Command(alloc, "/bin/sh");
     cmd.add_arg("-c");
     cmd.add_arg("cat");
@@ -168,7 +168,7 @@ public module std.process {
      * A child killed by a signal reports 128 + the signal, as a shell does.
      */
   test_function a_signalled_child_reports_128_plus_the_signal() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var cmd = std.process.Command(alloc, "/bin/sh");
     cmd.add_arg("-c");
     cmd.add_arg("kill -9 $$");
@@ -182,7 +182,7 @@ public module std.process {
      * "command not found".
      */
   test_function missing_program_exits_127() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var cmd = std.process.Command(alloc, "/no/such/program/anywhere");
     cmd.set_stderr(Stdio.Null);
     std.test.assert_eq(cmd.status(), 127);
@@ -197,7 +197,7 @@ public module std.process {
      * getpid(); here a shell child reports its parent's pid instead.
      */
   test_function ids_match_the_host_process() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var cmd = std.process.Command(alloc, "/bin/sh");
     cmd.add_arg("-c");
     cmd.add_arg("echo $PPID");
@@ -228,7 +228,7 @@ public module std.process {
      * Bytes written into a pipe's write end read back from its read end.
      */
   test_function pipe_round_trips_bytes() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var p = std.process.open_pipe(alloc);
     var writer = std.io.File();
     writer.adopt(p.write_fd());
@@ -269,7 +269,7 @@ public module std.process {
      * concurrently running test's own descriptors are not clobbered.
      */
   test_function dup_fd_redirects_a_descriptor() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var p = std.process.open_pipe(alloc);
     std.process.dup_fd(p.write_fd(), 199);
     var writer = std.io.File();

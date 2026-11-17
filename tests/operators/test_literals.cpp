@@ -530,7 +530,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i64 throws {
-  var alloc = HeapAllocator();
+  var alloc = std.mem.HeapAllocator();
   var s =  String(alloc, "\x00\x7f\x80\xfF\x41F\\x08");
   if (s.length() != 10) {
     return 1;

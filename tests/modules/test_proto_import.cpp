@@ -380,7 +380,7 @@ TEST(Modules_ProtoImport, wire_varint_roundtrip_small_and_multibyte) {
     using std;
     /** Checks a protobuf operation and propagates errors. */
     function check() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       var buf =  Vec<u8>(alloc, 16);
        proto_write_varint(buf, 1);
        proto_write_varint(buf, 300);
@@ -434,7 +434,7 @@ TEST(Modules_ProtoImport, wire_negative_int32_is_ten_bytes_and_roundtrips) {
     using std;
     /** Checks a protobuf operation and propagates errors. */
     function check() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       var buf =  Vec<u8>(alloc, 16);
       var neg: i32 = -1;
        proto_write_int32(buf, neg);
@@ -465,7 +465,7 @@ TEST(Modules_ProtoImport, wire_zigzag_sint_roundtrip) {
     using std;
     /** Checks a protobuf operation and propagates errors. */
     function check() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       var buf =  Vec<u8>(alloc, 16);
       var m1: i32 = -1;
       var p2: i32 = 2;
@@ -515,7 +515,7 @@ TEST(Modules_ProtoImport, wire_fixed_and_float_roundtrip) {
     using std;
     /** Checks a protobuf operation and propagates errors. */
     function check() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       var buf =  Vec<u8>(alloc, 32);
       var u: u32 = 305419896;  // 0x12345678
       var d: f64 = 3.5;
@@ -572,7 +572,7 @@ TEST(Modules_ProtoImport, wire_string_and_bytes_roundtrip) {
     using std;
     /** Checks a protobuf operation and propagates errors. */
     function check() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       var buf =  Vec<u8>(alloc, 32);
       var s =  String(alloc, "hello");
       var raw =  Vec<u8>(alloc, 4);
@@ -621,7 +621,7 @@ TEST(Modules_ProtoImport, wire_tags_limits_and_skip_unknown) {
     using std;
     /** Checks a protobuf operation and propagates errors. */
     function check() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       var buf =  Vec<u8>(alloc, 32);
       // field 3, varint 150 ; field 4, len-delimited "ab" ; field 5 fixed32 1
        proto_write_tag(buf, 3, 0);
@@ -681,7 +681,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var buf =  Vec<u8>(alloc, 4);
    buf.push(128);  // continuation bit set, then EOF
   var r = ProtoReader(buf);
@@ -698,7 +698,7 @@ using std;
 
 /** Checks a protobuf operation and propagates errors. */
 function check() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var m =  Map<String, i32>(alloc, 8);
    m.insert( String(alloc, "one"), 1);
    m.insert( String(alloc, "two"), 2);
@@ -763,7 +763,7 @@ using t;
 
 /** Checks a protobuf operation and propagates errors. */
 function check() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var st =  Status(alloc);
   st.robot_id = 7;
   st.name =  String(alloc, "rover");
@@ -855,7 +855,7 @@ TEST(Modules_ProtoImport, zero_values_encode_to_empty_and_decode_defaults) {
     using t;
     /** Checks a protobuf operation and propagates errors. */
     function check() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       var st =  Status(alloc);
       var buf =  Vec<u8>(alloc, 8);
        st.encode(buf);
@@ -901,7 +901,7 @@ TEST(Modules_ProtoImport, unknown_fields_survive_reencode) {
     using t;
     /** Checks a protobuf operation and propagates errors. */
     function check() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       // Hand-built: field 1 = 9, then unknown field 99 (varint 5), then
       // unknown field 100 (len-delimited "xy")
       var wire =  Vec<u8>(alloc, 16);
@@ -952,7 +952,7 @@ TEST(Modules_ProtoImport, unpacked_repeated_scalars_decode) {
     using t;
     /** Checks a protobuf operation and propagates errors. */
     function check() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       // samples (field 3) written unpacked: three separate varint records
       var wire =  Vec<u8>(alloc, 16);
        proto_write_tag(wire, 3, 0);
@@ -989,7 +989,7 @@ TEST(Modules_ProtoImport, unknown_enum_value_maps_to_zero_variant) {
     using t;
     /** Checks a protobuf operation and propagates errors. */
     function check() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       var wire =  Vec<u8>(alloc, 8);
        proto_write_tag(wire, 4, 0);
        proto_write_int32(wire, 42);  // not a declared Mode value
@@ -1014,7 +1014,7 @@ using t;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var wire =  Vec<u8>(alloc, 8);
    proto_write_tag(wire, 2, 0 + 2);
    proto_write_varint(wire, 50);  // claims 50 bytes, provides none
@@ -1043,7 +1043,7 @@ TEST(Modules_ProtoImport, nested_message_types_flatten_with_underscore) {
     using n;
     /** Checks a protobuf operation and propagates errors. */
     function check() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       var o =  Outer(alloc);
       o.inner.v = 5;
       o.kind = Outer_Kind.B;
@@ -1086,7 +1086,7 @@ TEST(Modules_ProtoImport, delimited_stream_framing) {
     using t;
     /** Checks a protobuf operation and propagates errors. */
     function check() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       var a =  Pose(alloc);
       a.x = 1.0;
       var b =  Pose(alloc);
@@ -1197,7 +1197,7 @@ using t;
 /** Encode bytes while propagating setup failures. */
 /** Runs the fixture with explicit error propagation. */
 function test_main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var st =  Status(alloc);
   st.robot_id = 7;
   st.name =  String(alloc, "rover");
@@ -1279,7 +1279,7 @@ using f;
 
 /** Checks a protobuf operation and propagates errors. */
 function check() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var b =  Bag(alloc);
   var buf0 =  Vec<u8>(alloc, 8);
    b.encode(buf0);
@@ -1338,7 +1338,7 @@ using std;
 using f;
 
 /** Checks a protobuf operation and propagates errors. */
-function roundtrip(alloc: ref HeapAllocator, b: ref Bag) i32 throws {
+function roundtrip(alloc: ref std.mem.HeapAllocator, b: ref Bag) i32 throws {
   var buf =  Vec<u8>(alloc, 32);
    b.encode(buf);
   var back =  Bag_decode(alloc, buf);
@@ -1354,7 +1354,7 @@ function roundtrip(alloc: ref HeapAllocator, b: ref Bag) i32 throws {
 
 /** Checks a protobuf operation and propagates errors. */
 function check() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var b =  Bag(alloc);
 
   if (( roundtrip(alloc, b)) != 0) {
@@ -1395,7 +1395,7 @@ TEST(Modules_ProtoImport, oneof_last_field_on_wire_wins) {
     using f;
     /** Checks a protobuf operation and propagates errors. */
     function check() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       // Two members of the same oneof on the wire: protobuf keeps the last
       var wire =  Vec<u8>(alloc, 16);
        proto_write_tag(wire, 3, 0);
@@ -1437,7 +1437,7 @@ enum DecodeTestError {
 
 /** Checks a protobuf operation and propagates errors. */
 function check() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var b =  Bag(alloc);
    b.scores.insert( String(alloc, "alice"), 10);
    b.scores.insert( String(alloc, "bob"), 20);
@@ -1501,7 +1501,7 @@ TEST(Modules_ProtoImport, proto_imports_generate_dependency_modules) {
     using common;
     /** Checks a protobuf operation and propagates errors. */
     function check() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       var e =  Event(alloc);
       e.when.secs = 1700000000;
       e.level = Level.HIGH;
@@ -1545,7 +1545,7 @@ using f;
 /** Encode bytes while propagating setup failures. */
 /** Runs the fixture with explicit error propagation. */
 function test_main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var b =  Bag(alloc);
   b.nickname = Option.Some( String(alloc, "nick"));
   b.count = Option.Some(0);
@@ -1606,7 +1606,7 @@ TEST(Modules_ProtoImport, moon_exports_proto_messages_to_importers) {
     using t;
     /** Checks a protobuf operation and propagates errors. */
     function check() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       var st =  Status(alloc);
       st.robot_id = 7;
       st.name =  String(alloc, "rover");
@@ -1684,7 +1684,7 @@ TEST(Modules_ProtoImport, moon_exports_nested_dotted_package_modules) {
     using namo.telemetry;
     /** Checks a protobuf operation and propagates errors. */
     function check() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       var p =  Ping(alloc);
       p.seq = 9;
       var buf =  Vec<u8>(alloc, 8);

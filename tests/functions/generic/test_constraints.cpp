@@ -1031,3 +1031,40 @@ TEST(Functions_Generic_Constraints,
   )"),
                                 "does not implement required method 'handle'");
 }
+
+/** Interface requirements can refer to another generic type parameter. */
+TEST(Functions_Generic_Constraints, dependent_interface_requirement) {
+  EXPECT_EQ(executeString(R"(
+    /** Defines the required nominal interface. */ interface Contract {}
+    /** Implements the selected interface. */ class Item implements Contract { /** Constructs an item. */ init() {} }
+    /** Checks both constraints without relying on operations in its body. */
+    function accept<I: interface, T: I>(value: T) i32 { return 42; }
+    /** Supplies the interface explicitly and infers the implementation. */
+    function main() i32 { return accept<Contract>(Item()); }
+  )"),
+            42);
+}
+
+/** The interface trait rejects a concrete class as the interface argument. */
+TEST(Functions_Generic_Constraints, interface_trait_rejects_class) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    /** Defines a concrete type without interface semantics. */ class Item { /** Constructs an item. */ init() {} }
+    /** Requires an interface type even though its body does not use it. */
+    function accept<I: interface>() i32 { return 42; }
+    /** Supplies an invalid type argument. */ function main() i32 { return accept<Item>(); }
+  )"),
+                                "does not satisfy constraint 'interface'");
+}
+
+/** A dependent requirement rejects classes that do not implement it. */
+TEST(Functions_Generic_Constraints,
+     dependent_interface_rejects_nonimplementor) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    /** Defines the required nominal interface. */ interface Contract {}
+    /** Does not implement the required interface. */ class Item { /** Constructs an item. */ init() {} }
+    /** Requires the concrete argument to implement the selected interface. */
+    function accept<I: interface, T: I>(value: T) i32 { return 42; }
+    /** Supplies an invalid implementation. */ function main() i32 { return accept<Contract>(Item()); }
+  )"),
+                                "does not satisfy constraint 'I'");
+}

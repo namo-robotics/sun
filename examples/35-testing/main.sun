@@ -1,5 +1,4 @@
 using std.io;
-
 using std;
 
 // The code under test: distance helpers in a module. `half` is private, but
@@ -41,7 +40,7 @@ class ScratchBuffer {
 
   /** Initializes the fixture fields used by this example or regression test. */
   init() throws {
-    this.data = Vec<i64>(global_allocator, 4);
+    this.data = Vec<i64>(std.mem.global_allocator, 4);
     this.data.push(1);
   }
 

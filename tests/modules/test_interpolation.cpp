@@ -1,7 +1,7 @@
 // tests/modules/test_interpolation.cpp - Where an interpolated string's
 // names come from
 //
-// A template literal desugars to std.String and std.HeapAllocator calls
+// A template literal desugars to std.String and std.mem.HeapAllocator calls
 // (parsing/lowering_pass.cpp), and those names resolve like any other module
 // name: from stdlib.moon without the program writing `using std;`, from
 // sources that declare the classes themselves (the standard library's own
@@ -27,7 +27,7 @@ TEST(Modules_Interpolation, fails_without_stdlib) {
 }
 
 TEST(Modules_Interpolation, allowed_when_sources_declare_sun_string) {
-  // No stdlib.moon: interpolation needs std.String and std.HeapAllocator to
+  // No stdlib.moon: interpolation needs std.String and std.mem.HeapAllocator to
   // exist, and this compilation declares them itself.
   auto value = sun::driver::executeString(R"(
     /** Provides interpolation support from sources instead of a bundle. */

@@ -170,7 +170,7 @@ TEST(Lambdas_FrameBoundHandles,
 using std;
 using std.thread;
 
-function makeThreads(alloc: const ref HeapAllocator) Vec<Thread<i32>> throws {
+function makeThreads(alloc: const ref std.mem.HeapAllocator) Vec<Thread<i32>> throws {
   var x = 3;
   var v =  Vec<Thread<i32>>(alloc, 4);
    v.push( spawn([ref x]() => i32 { return x; }));
@@ -179,7 +179,7 @@ function makeThreads(alloc: const ref HeapAllocator) Vec<Thread<i32>> throws {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  makeThreads(alloc);
   match (v.pop()) {
     Option.Some(t) => {

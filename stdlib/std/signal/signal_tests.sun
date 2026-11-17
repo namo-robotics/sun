@@ -18,7 +18,7 @@ public module std.signal {
 
   /** Coalescing, full-pipe safety, pollers, moves, restoration, and exclusive ownership. */
   test_function signal_subscription_lifecycle() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var subscription = SignalSubscription();
     var fd = subscription.fd();
     std.test.assert(fd >= 0);

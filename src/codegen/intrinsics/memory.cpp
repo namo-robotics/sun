@@ -16,6 +16,55 @@ using namespace llvm;
 /** Provides the generator for built-in operations. */
 namespace sun::codegen::intrinsics {
 
+Value* IntrinsicsGenerator::codegenAlignmentPaddingIntrinsic(
+    const CallExprAST& expr) {
+  auto* integer = llvm::Type::getInt64Ty(ctx.getContext());
+  auto* address =
+      ctx.builder->CreatePtrToInt(codegen(*expr.getArgs()[0]), integer);
+  auto* alignment = codegen(*expr.getArgs()[1]);
+  return ctx.builder->CreateAnd(
+      ctx.builder->CreateNeg(address),
+      ctx.builder->CreateSub(alignment, llvm::ConstantInt::get(integer, 1)));
+}
+
+Value* IntrinsicsGenerator::codegenAlignedAllocIntrinsic(
+    const CallExprAST& expr) {
+  auto* bytes = codegen(*expr.getArgs()[0]);
+  auto* alignment = codegen(*expr.getArgs()[1]);
+  auto* integer = llvm::Type::getInt64Ty(ctx.getContext());
+  auto* pointer = llvm::PointerType::getUnqual(ctx.getContext());
+  auto* function = ctx.builder->GetInsertBlock()->getParent();
+  auto* ordinary = llvm::BasicBlock::Create(ctx.getContext(),
+                                            "allocation.ordinary", function);
+  auto* aligned = llvm::BasicBlock::Create(ctx.getContext(),
+                                           "allocation.aligned", function);
+  auto* done =
+      llvm::BasicBlock::Create(ctx.getContext(), "allocation.done", function);
+  auto natural = module->getDataLayout().getPointerABIAlignment(0).value();
+  ctx.builder->CreateCondBr(
+      ctx.builder->CreateICmpULE(alignment,
+                                 llvm::ConstantInt::get(integer, natural)),
+      ordinary, aligned);
+  ctx.builder->SetInsertPoint(ordinary);
+  auto* basic = allocateAlignedBytes(bytes, natural);
+  ctx.builder->CreateBr(done);
+  ctx.builder->SetInsertPoint(aligned);
+  auto* slot = gen_.createEntryBlockAlloca(function, "aligned.memory", pointer);
+  ctx.builder->CreateStore(llvm::ConstantPointerNull::get(pointer), slot);
+  auto allocate = module->getOrInsertFunction(
+      "posix_memalign",
+      llvm::FunctionType::get(llvm::Type::getInt32Ty(ctx.getContext()),
+                              {pointer, integer, integer}, false));
+  ctx.builder->CreateCall(allocate, {slot, alignment, bytes});
+  auto* result = ctx.builder->CreateLoad(pointer, slot);
+  ctx.builder->CreateBr(done);
+  ctx.builder->SetInsertPoint(done);
+  auto* merged = ctx.builder->CreatePHI(pointer, 2);
+  merged->addIncoming(basic, ordinary);
+  merged->addIncoming(result, aligned);
+  return merged;
+}
+
 // -------------------------------------------------------------------
 // Non-generic memory intrinsics: _load_i64, _store_i64, _malloc, _free
 // -------------------------------------------------------------------

@@ -19,10 +19,10 @@ public module m {
 
   /** Stores a decoding callback. */
   public class TypeSupport<T> {
-    public var decode: function (ref Decoder, const ref HeapAllocator) T;
+    public var decode: function (ref Decoder, const ref std.mem.HeapAllocator) T;
 
     /** Initializes the fixture fields used by this example or regression test. */
-    init(decode: function (ref Decoder, const ref HeapAllocator) T) {
+    init(decode: function (ref Decoder, const ref std.mem.HeapAllocator) T) {
       this.decode = decode;
     }
   }
@@ -52,12 +52,12 @@ public module m {
 
     /** Returns an empty sample vector. */
     public method empty() Vec<Sample<T>> throws {
-      return Vec<Sample<T>>(global_allocator, 2);
+      return Vec<Sample<T>>(std.mem.global_allocator, 2);
     }
 
     /** Wraps a value in a populated sample vector. */
     public method make(v: T) Vec<Sample<T>> throws {
-      var out = Vec<Sample<T>>(global_allocator, 2);
+      var out = Vec<Sample<T>>(std.mem.global_allocator, 2);
       var none: Option<T> = Option.None;
       out.push(Sample<T>(Info(), none));
       out.push(Sample<T>(Info(), Option.Some(v)));
@@ -88,7 +88,7 @@ class Msg {
 }
 
 /** Returns a message fixture through the generic decoder callback signature. */
-function decode(d: ref m.Decoder, a: const ref HeapAllocator) Msg {
+function decode(d: ref m.Decoder, a: const ref std.mem.HeapAllocator) Msg {
   return Msg(7);
 }
 
@@ -97,7 +97,7 @@ function run_main() i32 throws {
   var s = m.Subscriber();
   var r = s.create_datareader<Msg>(
     m.TypeSupport<Msg>(decode),
-    Shared<m.Info>(global_allocator, m.Info())
+    Shared<m.Info>(std.mem.global_allocator, m.Info())
   );
   var e = r.empty();
   var out = r.make(Msg(7));

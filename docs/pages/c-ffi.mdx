@@ -337,7 +337,7 @@ public module wrap {
   // Private: importers get the wrapper, not the raw call.
   extern "C" function c_getenv(name: raw_ptr<u8>) raw_ptr<u8> as "getenv";
 
-  public function lookup(alloc: ref HeapAllocator, name: raw_ptr<u8>) Option<String> {
+  public function lookup(alloc: ref std.mem.HeapAllocator, name: raw_ptr<u8>) Option<String> {
     var value = unsafe { c_getenv(name); };
     if (value == null) { return Option.None; }
     return Option.Some(from_c_str(alloc, value));

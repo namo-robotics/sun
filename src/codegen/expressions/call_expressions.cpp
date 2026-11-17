@@ -70,6 +70,13 @@ Value* CodegenVisitor::applyMoveSemantics(Value* argVal, TypePtr argSunType) {
     return storageVal;
   }
 
+  if (argSunType && argSunType->isInterface()) {
+    auto* storage = InterfaceType::getOwnerType(ctx.getContext());
+    auto* owner = ctx.builder->CreateLoad(storage, argVal, "move.interface");
+    ctx.builder->CreateStore(llvm::Constant::getNullValue(storage), argVal);
+    return owner;
+  }
+
   // Only apply move semantics to class types that are pointers (addressable)
   auto* classType = sun::codegen::support::tryGetType<ClassType>(argSunType);
   if (!classType) {
@@ -961,6 +968,11 @@ bool CodegenVisitor::emitCallArguments(
           return false;
         }
         argVal = applyMoveSemantics(argVal, argSunType);
+        if (sun::types::areDifferentInterfaces(argSunType, paramType)) {
+          argVal = classes.upcastInterface(
+              argVal, static_cast<InterfaceType*>(argSunType.get()),
+              static_cast<InterfaceType*>(paramType.get()));
+        }
         if (i + 1 < args.size() && sun::types::typeNeedsDrop(argSunType)) {
           auto* storage =
               createEntryBlockAlloca(ctx.builder->GetInsertBlock()->getParent(),

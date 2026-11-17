@@ -90,7 +90,7 @@ void GenericSpecializer::checkTypeParameterConstraints(
     TypePtr requirement =
         constraint.typeArguments.empty()
             ? sema_.typeResolver().typeAnnotationToType(
-                  constraint.toAnnotation(), true)
+                  constraint.toAnnotation())
             : sema_.typeResolver().resolveConstraintInterface(constraint);
     if (mentionsTypeParameter(arg)) {
       continue;
@@ -637,17 +637,20 @@ void GenericSpecializer::applyVariadicParamTypes(
   const std::string got =
       "(" + sun::types::formatTypeList(variadicArgTypes) + ")";
 
-  // `_params_of<C>` for a class: the parameters of C's constructor. Which
-  // overload is selected happens downstream at _init, via lookupConstructor;
-  // here we only check that one of them matches.
+  // Preserve the selected constructor's reference parameters. Treating them
+  // as value arguments would move their sources into temporary pack storage.
   if (target->isClass()) {
     auto* targetClass = static_cast<ClassType*>(target.get());
-    if (targetClass->getMethod("init") &&
-        !targetClass->getMethodForArgs("init", variadicArgTypes)) {
+    const auto* constructor =
+        targetClass->getMethodForArgs("init", variadicArgTypes);
+    if (targetClass->getMethod("init") && !constructor) {
       logAndThrowError("No matching constructor for '" +
                            target->toDisplayString() + "' with arguments " +
                            got,
                        loc);
+    }
+    if (constructor) {
+      clonedProto.setResolvedVariadicTypes(constructor->paramTypes);
     }
     return;
   }
@@ -676,6 +679,7 @@ void GenericSpecializer::applyVariadicParamTypes(
                            got,
                        loc);
     }
+    clonedProto.setResolvedVariadicTypes(*params);
   }
 }
 
@@ -842,6 +846,10 @@ GenericSpecializer::instantiateGenericFunction(
     if (variadicArgTypes) {
       applyVariadicParamTypes(clonedProto, proto, *variadicArgTypes,
                               genericFunc->getLocation());
+      result.paramTypes = paramTypes;
+      const auto& pack = clonedProto.getResolvedVariadicTypes();
+      result.paramTypes.insert(result.paramTypes.end(), pack.begin(),
+                               pack.end());
     }
 
     // Clear resolved types for fresh analysis
@@ -1081,8 +1089,8 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
   result.returnType = returnType;
   result.paramTypes = paramTypes;
   if (variadicArgTypes) {
-    result.paramTypes.insert(result.paramTypes.end(), variadicArgTypes->begin(),
-                             variadicArgTypes->end());
+    const auto& pack = clonedProto.getResolvedVariadicTypes();
+    result.paramTypes.insert(result.paramTypes.end(), pack.begin(), pack.end());
   }
   result.specializedAST = clonedFunc;
   genericMethodAST->addSpecialization(instanceId, clonedFunc);
@@ -1201,8 +1209,8 @@ std::shared_ptr<InterfaceType> GenericSpecializer::instantiateGenericInterface(
       // Get return type with substitution
       TypePtr returnType;
       if (proto.getReturnType()) {
-        returnType = sema_.typeResolver().typeAnnotationToType(
-            *proto.getReturnType(), !methodDecl.hasDefaultImpl);
+        returnType =
+            sema_.typeResolver().typeAnnotationToType(*proto.getReturnType());
       } else {
         returnType = Types::Void();
       }
@@ -1223,10 +1231,9 @@ std::shared_ptr<InterfaceType> GenericSpecializer::instantiateGenericInterface(
       method.genericArguments = methodArguments;
       for (const auto& parameter : proto.getTypeParameters()) {
         method.genericConstraints.push_back(
-            parameter.constraint
-                ? sema_.typeResolver().typeAnnotationToType(
-                      parameter.constraint->toAnnotation(), true)
-                : nullptr);
+            parameter.constraint ? sema_.typeResolver().typeAnnotationToType(
+                                       parameter.constraint->toAnnotation())
+                                 : nullptr);
       }
       method.visibility = methodVisibility(*methodDecl.function);
       method.isConst = methodDecl.isConst;

@@ -8,7 +8,7 @@ public module std.process {
 
   /** Current-process snapshots expose identity, text, and explicit resource units. */
   test_function snapshot_and_system_units() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var snapshot = inspect_process(alloc, pid());
     var identity = process_identity(alloc, pid());
     std.test.assert(
@@ -48,7 +48,7 @@ public module std.process {
 
   /** Snapshot CPU units agree with the OS process clock, allowing Linux tick rounding. */
   test_function cpu_time_is_nanoseconds() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var start = cpu_clock_ns();
     while ((cpu_clock_ns()) - start < 100000000) {}
     var before = cpu_clock_ns();
@@ -61,7 +61,7 @@ public module std.process {
 
   /** Invalid PIDs and stale start markers never target a process group or reused PID. */
   test_function invalid_and_reused_identity() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var caught_failure_1 = false;
     try {
       process_identity(alloc, 0);
@@ -101,7 +101,7 @@ public module std.process {
 
   /** Closing twice and moving a handle do not signal or lose the owned reference. */
   test_function handle_move_and_close() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var identity = process_identity(alloc, pid());
     var original = ProcessHandle(alloc);
     original.open(identity);
@@ -131,7 +131,7 @@ public module std.process {
 
   /** A bound handle kills its child, then rejects signaling after the child is reaped. */
   test_function handle_exit_and_kill() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var cmd = Command(alloc, "/bin/sleep");
     cmd.add_arg("30");
     var child = cmd.start();
@@ -169,7 +169,7 @@ public module std.process {
 
   /** SIGTERM is delivered through an identity-bound handle. */
   test_function handle_terminate() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var cmd = Command(alloc, "/bin/sleep");
     cmd.add_arg("30");
     var child = cmd.start();
@@ -182,7 +182,7 @@ public module std.process {
 
   /** NUL-delimited argv keeps spaces and empty arguments without a trailing fake argument. */
   test_function argument_boundaries() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var bytes = String(alloc, "program\0two words\0\0last\0");
     var args = std.process.process_arguments(alloc, bytes);
     std.test.assert_eq(args.size(), 4);

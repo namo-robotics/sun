@@ -31,10 +31,11 @@ freeing its storage are separate operations.
 | Memory from allocator A is incorrectly returned to allocator B. | MUST | Use a compatible deallocation operation with the required alignment and allocator state. |
 | A value still needs its destructor after its creating component shuts down. | MUST | Keep destruction and deallocation services available for the allocation's lifetime. |
 
-For example, `Unique<T>` currently stores a pointer, destroys `T`, and then calls
-`_free`. It stores no allocator identity. Passing it across a boundary requires
-compatible allocation and free operations; matching pointer layouts do not make
-custom allocators interchangeable.
+For example, `Unique<T, A>` retains its allocator binding, destroys `T`, and
+returns storage through that allocator. Erasing it to an owned interface retains
+the allocator context and generated owner cleanup. Crossing a library boundary
+must preserve that behavior and any allocator lifetime dependency; matching
+pointer layouts alone do not establish compatibility.
 
 ## Open decisions
 

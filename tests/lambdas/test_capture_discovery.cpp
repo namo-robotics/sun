@@ -41,8 +41,8 @@ class Holder {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
-  var sp: raw_ptr<Holder> =  alloc.create<Holder>();
+  var alloc = std.mem.make_heap_allocator();
+  var sp: raw_ptr<Holder> =  std.mem.create<Holder>(alloc);
   unsafe { sp.counter = 42; };
   var f = () => i64 { unsafe { return sp.counter; }; };
   var result = f();

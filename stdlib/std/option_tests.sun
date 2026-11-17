@@ -49,7 +49,7 @@ public module std {
      * find() borrows the stored value: the map still owns it
      */
   test_function MapFind() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var m = Map<i64, i32>(allocator, 16);
     m.insert(1, 40);
     var hit = match m.find(1) {
@@ -65,7 +65,7 @@ public module std {
 
   /** Checks string find char. */
   test_function StringFindChar() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var s = String(allocator, "hello world");
     // first 'o' at 4
     var first = match s.find_char(111) {
@@ -89,7 +89,7 @@ public module std {
      * first()/last() borrow the element: the Vec still owns it
      */
   test_function VecFirstLast() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<i32>(allocator, 8);
     var empty = match v.first() {
       Option.Some(x) => 0,
@@ -112,7 +112,7 @@ public module std {
      * A new user specialization of a stdlib generic whose methods return Option
      */
   test_function NewVecSpecializationWithOption() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<u32>(allocator, 4);
     v.push(42);
     var got: u32 = match v.last() {
@@ -161,7 +161,7 @@ public module std {
 
   /** Checks linked list first lsyntax tree. */
   test_function LinkedListFirstLast() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var ll = LinkedList<i32>(allocator);
     var empty = match ll.first() {
       Option.Some(x) => 0,
@@ -182,7 +182,7 @@ public module std {
 
   /** Checks vec pop. */
   test_function VecPop() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<i32>(allocator, 4);
     v.push(30);
     v.push(10);
@@ -205,7 +205,7 @@ public module std {
      * Iterators are driven by next() -> Option<T>; the sequence ends at None
      */
   test_function IteratorNextReturnsOption() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<i32>(allocator, 4);
     v.push(20);
     v.push(22);
@@ -235,7 +235,7 @@ public module std {
      * for-in over every stdlib container goes through next() -> Option<T>
      */
   test_function ForInOverStdlibContainers() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<i32>(allocator, 4);
     v.push(1);
     v.push(2);
@@ -268,7 +268,7 @@ public module std {
      * for-in over an empty container never enters the body
      */
   test_function ForInOverEmptyContainer() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var ll = LinkedList<i32>(allocator);
     var count: i32 = 42;
     for (var x: i32 in ll) {

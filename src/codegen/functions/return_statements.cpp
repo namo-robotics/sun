@@ -106,6 +106,19 @@ Value* FunctionGenerator::codegen(const sun::ast::ReturnExprAST& expr) {
           retVal, expr.getValue()->getResolvedType());
     }
 
+    if (expr.getTargetType() && expr.getTargetType()->isInterface()) {
+      retVal =
+          gen_.applyMoveSemantics(retVal, expr.getValue()->getResolvedType());
+      if (sun::types::areDifferentInterfaces(expr.getValue()->getResolvedType(),
+                                             expr.getTargetType())) {
+        retVal = gen_.classGenerator().upcastInterface(
+            retVal,
+            static_cast<sun::types::InterfaceType*>(
+                expr.getValue()->getResolvedType().get()),
+            static_cast<sun::types::InterfaceType*>(
+                expr.getTargetType().get()));
+      }
+    }
     scopes().emitScopeCleanup();
 
     // A void function may still be written `return <expr>;` when the

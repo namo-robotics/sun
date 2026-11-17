@@ -18,7 +18,7 @@ public module std.env {
      * sign only, and an empty value round-trips as an empty String.
      */
   test_function captures_lookup_empty_and_equals_values() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var environment = std.env.Env(alloc);
     environment.set("SUN_TEST_ENV_CAPTURES", "left=right");
     var value_matches: bool = match environment.get("SUN_TEST_ENV_CAPTURES") {
@@ -40,7 +40,7 @@ public module std.env {
      * Env) is invisible until refresh() rebuilds it.
      */
   test_function refresh_observes_external_mutation() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var snapshot = std.env.Env(alloc);
     var outside = std.env.Env(alloc);
     std.test.assert(not snapshot.has("SUN_TEST_ENV_REFRESH"), "variable absent at start");
@@ -67,7 +67,7 @@ public module std.env {
      * and iteration visits the entry exactly once.
      */
   test_function set_remove_and_iteration_stay_synchronized() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var environment = std.env.Env(alloc);
     environment.set("SUN_TEST_ENV_SYNC", "one=two");
     std.test.assert(environment.has("SUN_TEST_ENV_SYNC"), "set makes has() true");
@@ -94,7 +94,7 @@ public module std.env {
      * like the literal ones.
      */
   test_function string_name_and_value_overloads() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var environment = std.env.Env(alloc);
     var name = String(alloc, "SUN_TEST_ENV_OVERLOADS");
     var value = String(alloc, "runtime");
@@ -116,7 +116,7 @@ public module std.env {
      * the suite).
      */
   test_function cwd_and_set_cwd_are_methods() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var environment = std.env.Env(alloc);
     var before = environment.cwd();
     environment.set_cwd("/");
@@ -133,7 +133,7 @@ public module std.env {
      * from NUL-terminated Strings.
      */
   test_function args_copies_argv() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var environment = std.env.Env(alloc);
     var arg0 = String(alloc, "prog");
     var arg1 = String(alloc, "alpha");
@@ -162,7 +162,7 @@ public module std.env {
 
   /** A rejected name returns the system error without adding an entry. */
   test_function invalid_name_returns_system_error() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var environment = std.env.Env(alloc);
     try {
       environment.set("SUN_TEST_INVALID=NAME", "value");

@@ -536,7 +536,7 @@ TEST(Interfaces_DynamicDispatch, interface_typed_field_dispatch) {
 }
 
 TEST(Interfaces_DynamicDispatch, owning_interface_field_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_THROW(executeString(R"(
     var dropped: i32 = 0;
 
     interface IClickHandler {
@@ -568,7 +568,7 @@ TEST(Interfaces_DynamicDispatch, owning_interface_field_is_rejected) {
       return dropped;
     }
   )"),
-                                "cannot own a value");
+               sun::support::SunError);
 }
 
 TEST(Interfaces_DynamicDispatch, interface_param_dispatch) {
@@ -782,7 +782,7 @@ class NumB implements IValue {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var items =  Vec<NumA>(alloc, 8);
   var a = NumA(10);
   var b = NumA(10);
@@ -877,7 +877,7 @@ TEST(Interfaces, borrowed_class_passes_to_ref_interface_parameter) {
 }
 
 TEST(Interfaces, borrowed_class_does_not_pass_to_by_value_interface) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_THROW(executeString(R"(
     interface IShape { method area() i32; }
     class Sq implements IShape {
       var s: i32;
@@ -891,11 +891,11 @@ TEST(Interfaces, borrowed_class_does_not_pass_to_by_value_interface) {
         return via_borrow(q);
     }
   )"),
-                                "cannot own a value");
+               sun::support::SunError);
 }
 
 TEST(Interfaces, borrowed_class_does_not_assign_to_interface_variable) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_THROW(executeString(R"(
     interface IShape { method area() i32; }
     class Sq implements IShape {
       var s: i32;
@@ -911,7 +911,7 @@ TEST(Interfaces, borrowed_class_does_not_assign_to_interface_variable) {
         return via_borrow(q);
     }
   )"),
-                                "cannot own a value");
+               sun::support::SunError);
 }
 
 // ============================================================================
@@ -936,7 +936,7 @@ constexpr const char* kHandler = R"(
 }  // namespace
 
 TEST(Interfaces, owning_interface_constructor_parameter_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(std::string(kHandler) + R"(
+  EXPECT_THROW(executeString(std::string(kHandler) + R"(
     class W {
         var h: IHandler;
         init(h: IHandler) { this.h = h; }
@@ -949,13 +949,13 @@ TEST(Interfaces, owning_interface_constructor_parameter_is_rejected) {
         return w.run() + v.run();
     }
   )"),
-                                "cannot own a value");
+               sun::support::SunError);
 }
 
 // The constructor would store the borrow in an owning field, so a borrowed
 // class does not select an interface-typed constructor parameter.
 TEST(Interfaces, borrowed_class_does_not_match_interface_constructor) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(std::string(kHandler) + R"(
+  EXPECT_THROW(executeString(std::string(kHandler) + R"(
     class W {
         var h: IHandler;
         init(h: IHandler) { this.h = h; }
@@ -966,7 +966,7 @@ TEST(Interfaces, borrowed_class_does_not_match_interface_constructor) {
         return wrap(b);
     }
   )"),
-                                "cannot own a value");
+               sun::support::SunError);
 }
 
 TEST(Interfaces, class_passes_to_ref_interface_constructor_parameter) {
@@ -1021,7 +1021,7 @@ TEST(Interfaces, exact_class_overload_beats_interface_overload) {
 // The frame-carrying ban carries over: a class that can hold a '<'_>'
 // lambda still does not become an interface value through a constructor.
 TEST(Interfaces, frame_carrying_class_does_not_match_interface_constructor) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_THROW(executeString(R"(
     interface ICallable { method call() i32; }
     class Holder {
         var f: <'_>() => i32;
@@ -1039,7 +1039,7 @@ TEST(Interfaces, frame_carrying_class_does_not_match_interface_constructor) {
         return 0;
     }
   )"),
-                                "cannot own a value");
+               sun::support::SunError);
 }
 
 // A pack forwarded through _params_of<C> selects the interface overload too.
@@ -1227,7 +1227,7 @@ TEST(Interfaces, generic_parent_and_ancestor_constraint) {
 
 /** Rejects functions that would transfer erased interface ownership. */
 TEST(Interfaces, owned_ancestor_conversion_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_THROW(executeString(R"(
     /** Requires a value. */ interface Base { /** Reads the value. */ method value() i32; }
     /** Adds a separate dispatch slot. */ interface Child extends Base { /** Reads another value. */ method extra() i32; }
     /** Supplies both methods. */
@@ -1245,7 +1245,7 @@ TEST(Interfaces, owned_ancestor_conversion_is_rejected) {
       return read(e);
     }
   )"),
-                                "cannot own a value");
+               sun::support::SunError);
 }
 
 /** Checks that returned parent views live in the caller's frame. */
@@ -1454,7 +1454,7 @@ TEST(Interfaces, inherited_generic_method_override) {
 
 /** An owning upcast is rejected before it can transfer ownership. */
 TEST(Interfaces, owning_upcast_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_THROW(executeString(R"(
     /** Base contract. */ interface Base { /** Reads a value. */ method value() i32; }
     /** Child contract. */ interface Child extends Base {}
     /** Concrete implementation. */ class Item implements Child {
@@ -1465,7 +1465,7 @@ TEST(Interfaces, owning_upcast_is_rejected) {
       var child: Child = Item(); var parent: Base = child; return child.value();
     }
   )"),
-                                "cannot own a value");
+               sun::support::SunError);
 }
 
 /** Parent borrowing must not discard the source's constness. */
@@ -1617,7 +1617,7 @@ TEST(Interfaces, matching_generic_override_constraints) {
 
 /** Rejects replacement of an erased owner. */
 TEST(Interfaces, owning_ancestor_assignment_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_THROW(executeString(R"(
     /** Requires a readable value. */ interface Base { /** Reads the value. */ method read() i32; }
     /** Inherits the contract. */ interface Child extends Base {}
     /** Stores a concrete value. */ class Item implements Child {
@@ -1629,7 +1629,7 @@ TEST(Interfaces, owning_ancestor_assignment_is_rejected) {
       var value: Base = Item(1); value = Item(42); return value.read();
     }
   )"),
-                                "cannot own a value");
+               sun::support::SunError);
 }
 
 /** Borrowing concrete and erased objects must leave destruction to their
@@ -1752,56 +1752,43 @@ TEST(Interfaces, shared_dispatch_table_layout) {
             nullptr);
 }
 
-/** Rejects erased owners in declarations, nested storage, and callable types.
+/** Rejects implicit allocation in declarations, returns, fields, and payloads.
  */
-TEST(Interfaces, owning_value_positions_are_rejected) {
+TEST(Interfaces, implicit_owning_conversions_are_rejected) {
   const std::string contract = R"(
-    /** Provides a value through a borrowed view. */
-    interface View { /** Reads the value. */ method read() i32; }
-    /** Owns the implementation directly. */
-    class Item implements View {
-      /** Constructs an item. */ init() {}
+    /** Requires a readable value. */ interface View { /** Reads it. */ method read() i32; }
+    /** Supplies the concrete implementation. */ class Item implements View {
+      /** Initializes an item. */ init() {}
       /** Reads the value. */ method read() i32 { return 42; }
     }
   )";
-  for (const auto* declaration : {
-           "/** Exercises the declaration. */ function main() i32 { var value: "
-           "View = Item(); return 0; }",
-           "/** Attempts to accept an erased owner. */ function take(value: "
-           "View) void {} /** Exercises the declaration. */ function main() "
-           "i32 { return 0; }",
-           "/** Attempts to return an erased owner. */ function make() View { "
-           "return Item(); } /** Exercises the declaration. */ function main() "
-           "i32 { return 0; }",
-           "/** Attempts to store an erased owner. */ class Owner { var value: "
-           "View; /** Initializes the forbidden field. */ init() { this.value "
-           "= Item(); } } /** Exercises the declaration. */ function main() "
-           "i32 { return 0; }",
-           "/** Attempts to store an erased payload. */ enum Value { "
-           "Some(View), None } /** Exercises the declaration. */ function "
-           "main() i32 { return 0; }",
-           "/** Attempts to accept an erased owner. */ function take(values: "
-           "array<View, 2>) void {} /** Exercises the declaration. */ function "
-           "main() i32 { return 0; }",
-           "/** Attempts to accept an erased owner. */ function take(callback: "
-           "(View) => i32) void {} /** Exercises the declaration. */ function "
-           "main() i32 { return 0; }",
-           "/** Attempts to accept an erased owner. */ function take(callback: "
-           "() => View) void {} /** Exercises the declaration. */ function "
-           "main() i32 { return 0; }",
-           "/** Owns a generic payload. */ class Box<T> { var item: T; /** "
-           "Moves the payload. */ init(item: T) { this.item = item; } } /** "
-           "Exercises the declaration. */ function main() i32 { var box = "
-           "Box<View>(Item()); return 0; }",
-           "/** Attempts to supply an erased default. */ interface Factory { "
-           "/** Attempts to return an erased owner. */ method make() View { "
-           "return Item(); } } /** Exercises the declaration. */ function "
-           "main() i32 { return 0; }",
-       }) {
+  for (const auto* declaration :
+       {"/** Attempts implicit boxing. */ function main() void { var value: "
+        "View = Item(); }",
+        "/** Attempts implicit boxing. */ function make() View { return "
+        "Item(); }",
+        "/** Holds an owner. */ class Owner { var value: View; /** Attempts "
+        "implicit boxing. */ init() { this.value = Item(); } }",
+        "/** Holds an owner. */ enum Value { Some(View), None } /** Attempts "
+        "implicit boxing. */ function main() void { var value = "
+        "Value.Some(Item()); }",
+        "/** Accepts ownership. */ function take(value: View) void {} /** "
+        "Attempts implicit boxing. */ function main() void { take(Item()); "
+        "}"}) {
     SCOPED_TRACE(declaration);
-    EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(contract + declaration),
-                                  "cannot own a value");
+    EXPECT_THROW(sun::driver::compileString(contract + declaration),
+                 sun::support::SunError);
   }
+}
+
+/** Owner types are valid in callable signatures and aggregate storage. */
+TEST(Interfaces, owning_value_positions_are_supported) {
+  EXPECT_NO_THROW(analyzeString(R"(
+    /** Defines a dynamically dispatched contract. */ interface View {}
+    /** Stores an optional owner. */ enum Value { Some(View), None }
+    /** Accepts owners and owner-producing callbacks. */
+    function take(values: array<View, 2>, callback: () => View) void {}
+  )"));
 }
 
 /** Interface return requirements remain available for static generic calls. */
@@ -1832,18 +1819,15 @@ TEST(Interfaces, interface_return_contract_preserves_concrete_ownership) {
             42);
 }
 
-/** Static return requirements cannot produce erased owners through dispatch. */
-TEST(Interfaces, interface_return_contract_cannot_dispatch) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      executeString(R"(
+/** Dynamic interface methods may return an explicitly constructed owner. */
+TEST(Interfaces, interface_return_contract_can_dispatch) {
+  EXPECT_NO_THROW(analyzeString(R"(
     /** Defines a returned contract. */ interface View {}
-    /** Requires a concrete implementation result. */
-    interface Factory { /** Describes the result. */ method make() View; }
-    /** Attempts dynamic dispatch without a known concrete result type. */
+    /** Requires an owning result. */
+    interface Factory { /** Returns ownership. */ method make() View; }
+    /** Calls through the dynamic contract. */
     function use(factory: ref Factory) void { factory.make(); }
-    /** Supplies an entry point. */ function main() i32 { return 0; }
-  )"),
-      "can only be called on a concrete implementation");
+  )"));
 }
 
 /** Throwing interface calls reach a local catch through the vtable. */

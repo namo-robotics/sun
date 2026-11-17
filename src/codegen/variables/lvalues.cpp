@@ -198,9 +198,18 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
         return nullptr;
       }
 
-      return sun::codegen::support::fieldPtr(
+      auto* address = sun::codegen::support::fieldPtr(
           *ctx.builder, classType, objectPtr, *field,
           memberAccess.getMemberName() + ".addr");
+      auto* fieldType = field->storageType(ctx.getContext());
+      if (field->type->isReference() && fieldType->isPointerTy()) {
+        return ctx.builder->CreateAlignedLoad(
+            fieldType, address,
+            sun::codegen::support::fieldAlign(classType, fieldType,
+                                              module->getDataLayout()),
+            memberAccess.getMemberName() + ".referent");
+      }
+      return address;
     }
 
     case ASTNodeType::INDEX: {

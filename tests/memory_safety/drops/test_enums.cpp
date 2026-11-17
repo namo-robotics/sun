@@ -14,7 +14,7 @@ using sun::driver::executeString;
 namespace {
 
 // Owner models a resource holder: deinit is a no-op on moved-from (zeroed)
-// storage, exactly like Unique<T> in the stdlib.
+// storage, exactly like Unique<T, HeapAllocator> in the stdlib.
 const char* kOwnerPreamble = R"(
     var counter: i32 = 0;
 
@@ -465,7 +465,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var maybe = Option.Some( String(alloc, "hello"));
   var len: i64 = match maybe {
     Option.Some(s) => s.length(),
@@ -485,7 +485,7 @@ TEST(MemorySafety_Drops_Enums, vec_of_option_of_owner_drops_elements) {
 using std;
 
 function helper() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  Vec<Holder>(alloc, 4);
    v.push(Holder.Hold(Owner(1)));
    v.push(Holder.Nothing);

@@ -14,8 +14,8 @@ using sun::driver::executeStringWithStdlib;
 /** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
-// Owner models a heap-owning class: like Unique<T>, deinit is a no-op on
-// moved-from (zeroed) storage.
+// Owner models a heap-owning class: like Unique<T, HeapAllocator>, deinit is a
+// no-op on moved-from (zeroed) storage.
 const char* kOwnerPreamble = R"(
     var counter: i32 = 0;
 
@@ -102,13 +102,13 @@ using std;
 
 /** Handles this global initializer’s failure at the startup boundary. */
 function initialize_g() String {
-  try { var value = String(make_heap_allocator(), "");
+  try { var value = String(std.mem.make_heap_allocator(), "");
 return value; } catch { std.panic("unexpected global initialization failure");return initialize_g(); }
 }
 var g: String = initialize_g();
 
 function replace() void throws {
-  var a = make_heap_allocator();
+  var a = std.mem.make_heap_allocator();
   var rebuilt =  String(a, "new contents");
   g = rebuilt;
 
@@ -138,7 +138,7 @@ using std;
 
 /** Handles this global initializer’s failure at the startup boundary. */
 function initialize_g_queue() String {
-  try { var value = String(make_heap_allocator(), "");
+  try { var value = String(std.mem.make_heap_allocator(), "");
 return value; } catch { std.panic("unexpected global initialization failure");return initialize_g_queue(); }
 }
 var g_queue: String = initialize_g_queue();
@@ -149,7 +149,7 @@ function append(q: ref String, s: ref String) void throws {
   return;
 }
 
-function queue_pop(alloc: ref HeapAllocator) String throws {
+function queue_pop(alloc: ref std.mem.HeapAllocator) String throws {
   var out =  String(alloc, "");
   if (g_queue.length() > 0) {
     var nl: i64 = 0;
@@ -170,7 +170,7 @@ function queue_pop(alloc: ref HeapAllocator) String throws {
   return out;
 }
 
-function fill(alloc: ref HeapAllocator) void throws {
+function fill(alloc: ref std.mem.HeapAllocator) void throws {
   var q =  String(alloc, "");
   g_queue = q;
   var a =  String(alloc, "alpha\n");
@@ -183,7 +183,7 @@ function fill(alloc: ref HeapAllocator) void throws {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i64 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
    fill(alloc);
   var p1 =  queue_pop(alloc);
   if (p1.length() != 5 or unsafe { p1.unsafe_at(0); } != 97) {
@@ -240,7 +240,7 @@ TEST(MemorySafety_GlobalAssignment, generic_class_global_runs_constructor) {
 TEST(MemorySafety_GlobalAssignment, vec_global_is_constructed) {
   auto value = executeStringWithStdlib(R"(
 using std;
-var alloc: HeapAllocator = HeapAllocator();
+var alloc: std.mem.HeapAllocator = std.mem.HeapAllocator();
 /** Handles this global initializer’s failure at the startup boundary. */
 function initialize_v() Vec<i64> {
   try { var value = Vec<i64>(alloc, 8);
@@ -266,7 +266,7 @@ function main() i64 throws {
 TEST(MemorySafety_GlobalAssignment, map_global_is_constructed) {
   auto value = executeStringWithStdlib(R"(
 using std;
-var alloc: HeapAllocator = HeapAllocator();
+var alloc: std.mem.HeapAllocator = std.mem.HeapAllocator();
 /** Handles this global initializer’s failure at the startup boundary. */
 function initialize_m() Map<String, i32> {
   try { var value = Map<String, i32>(alloc, 64);
@@ -301,7 +301,7 @@ TEST(MemorySafety_GlobalAssignment, global_initialized_from_factory_call) {
   auto value = executeStringWithStdlib(R"(
 
     using std;
-    var alloc: HeapAllocator = HeapAllocator();
+    var alloc: std.mem.HeapAllocator = std.mem.HeapAllocator();
 
     function make() Vec<i64> throws {
       var v =  Vec<i64>(alloc, 4);
@@ -329,7 +329,7 @@ var g: Vec<i64> = initialize_g();
 TEST(MemorySafety_GlobalAssignment, constructor_takes_global_by_ref) {
   auto value = executeStringWithStdlib(R"(
 using std;
-var alloc: HeapAllocator = HeapAllocator();
+var alloc: std.mem.HeapAllocator = std.mem.HeapAllocator();
 
 /** Runs the fixture with explicit error propagation. */
 function main() i64 throws {

@@ -79,7 +79,7 @@ const char* toString(ArgConversion conversion) {
 std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
                                               const TypePtr& paramType,
                                               bool cVariadicTail) {
-  if (!argType || (paramType && paramType->isInterface())) {
+  if (!argType) {
     return std::nullopt;
   }
 

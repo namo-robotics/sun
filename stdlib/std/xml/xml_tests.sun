@@ -7,13 +7,13 @@ public module std.xml {
   enum XmlChecks { Ok, Assertion(std.test.AssertionError), Xml(XmlError), Bounds(IndexOutOfBoundsError), Allocation(AllocationError), InvalidArgument(InvalidArgumentError), Overflow(OverflowError), System(Error), NotFound(NotFoundError), Empty(EmptyError), Io(IOError), Conversion(ConversionError), DivisionByZero(DivisionByZeroError), Arithmetic(ArithmeticError), Json(std.json.JsonError), Decode(ProtoDecodeError) }
 
   /** Constructs an unqualified owned name using the test allocator. */
-  function name(alloc: ref HeapAllocator, local: static_ptr<u8>) XmlName throws {
+  function name(alloc: ref std.mem.HeapAllocator, local: static_ptr<u8>) XmlName throws {
     return XmlName(String(alloc, ""), String(alloc, local), String(alloc, ""));
   }
 
   /** Asserts that a complete input is rejected. */
   function rejects(text: static_ptr<u8>) void throws {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var rejected: bool = false;
     try {
       parse_xml(alloc, text);
@@ -29,7 +29,7 @@ public module std.xml {
 
   /** Checks ordered text and elements, references, CDATA, and independent storage. */
   test_function mixed_content() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var input = String(alloc, "<p>Hello <b>Sun</b>!<![CDATA[<&]]>&#x1F600;</p>");
     var doc = parse_xml(alloc, input);
     input.clear();
@@ -59,7 +59,7 @@ public module std.xml {
 
   /** Checks BOMs, Unicode names, declaration fields, and surrounding content. */
   test_function unicode_and_prolog() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var doc = parse_xml(
       alloc,
       "\xef\xbb\xbf<?xml version='1.0' encoding='uTf-8' standalone='yes'?>\n<!--before--><?run value?><é 名='Ω'><𐀀/></é>\n<!--after-->"
@@ -81,7 +81,7 @@ public module std.xml {
 
   /** Checks namespace identity, default namespaces, shadowing, and empty values. */
   test_function namespaces() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var doc = parse_xml(
       alloc,
       "<r xmlns='urn:one' xmlns:p='urn:attr' p:a='' a='plain'><p:c xmlns:p='urn:two'/><u xmlns=''/></r>"
@@ -121,7 +121,7 @@ public module std.xml {
 
   /** Checks XML whitespace and reference normalization without changing source input. */
   test_function normalization() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var input = String(
       alloc,
       "<r a='x\r\ny\tz&#9;&#10;&#13;'>&lt;&gt;&amp;&quot;&apos;\r\nX\rY</r>"
@@ -216,7 +216,7 @@ public module std.xml {
 
   /** Checks original byte offsets and Unicode columns across CRLF. */
   test_function error_locations_and_sticky_reader() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var input = String(alloc, "<r>\r\né</r>!");
     var reader = XmlReader(alloc, input);
     var a = reader.next();
@@ -259,7 +259,7 @@ public module std.xml {
 
   /** Checks empty-element event pairs and successful repeated EOF. */
   test_function reader_events() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var input = String(alloc, "<r/>");
     var reader = XmlReader(alloc, input);
     var first = match (reader.next()) {
@@ -307,7 +307,7 @@ public module std.xml {
 
   /** Exercises all tree mutations and explicit independent cloning. */
   test_function editing() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var doc = parse_xml(alloc, "<r a='old'><a/>tail</r>");
     doc.root().set_attribute(name(alloc, "a"), String(alloc, "new"));
     doc.root().set_attribute(name(alloc, "b"), String(alloc, ""));
@@ -354,7 +354,7 @@ public module std.xml {
 
   /** Moves a subtree into conflicting namespaces without changing expanded names. */
   test_function namespace_repair() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var source = parse_xml(alloc, "<r xmlns:p='urn:one'><p:item p:a='v'/></r>");
     var target = parse_xml(alloc, "<r xmlns='urn:default' xmlns:p='urn:two'/>");
     var moved = source.root().remove(0);
@@ -381,7 +381,7 @@ public module std.xml {
 
   /** Generates escaped SVG with automatic namespaces and verifies the result. */
   test_function svg_writer() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var out = String(alloc, "");
     if (true) {
       var writer = XmlWriter(alloc, out);
@@ -414,7 +414,7 @@ public module std.xml {
 
   /** Rejects writer sequencing errors and keeps failure sticky. */
   test_function writer_errors() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var out = String(alloc, "");
     var key = name(alloc, "r");
     var text = String(alloc, "x");
@@ -527,7 +527,7 @@ public module std.xml {
 
   /** Checks the parsing and mutation depth boundary. */
   test_function depth_limit() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var input = String(alloc, "");
     for (var i: i64 = 0; i < 256; i += 1) {
       input.append("<r>");
@@ -585,7 +585,7 @@ public module std.xml {
 
   /** Queries GIR-shaped metadata using namespace URIs rather than conventional prefixes. */
   test_function gir_metadata() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var doc = parse_xml(
       alloc,
       "<repository xmlns='http://www.gtk.org/introspection/core/1.0' xmlns:abi='http://www.gtk.org/introspection/c/1.0'><namespace name='Tiny'><class name='Thing' abi:type='TinyThing'/></namespace></repository>"
@@ -608,7 +608,7 @@ public module std.xml {
   }
 
   /** Attempts to append below the deepest existing element. */
-  function append_at_leaf(alloc: ref HeapAllocator, element: ref XmlElement) void throws {
+  function append_at_leaf(alloc: ref std.mem.HeapAllocator, element: ref XmlElement) void throws {
     if (element.child_count() != 0) {
       return append_at_leaf(alloc, (element.child(0)).element());
     }
@@ -619,7 +619,7 @@ public module std.xml {
 
   /** Checks whitespace outside the root and rejects invalid writer content. */
   test_function writer_content_validation() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var out = String(alloc, "");
     var root = name(alloc, "r");
     if (true) {
@@ -704,7 +704,7 @@ public module std.xml {
 
   /** Checks error positions after decoded references without using decoded offsets. */
   test_function reference_source_location() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     try {
       parse_xml(alloc, "<r>&amp;\r\né</r>!");
 
@@ -720,7 +720,7 @@ public module std.xml {
   }
 
   /** Returns a reader error after its input and reader have been destroyed. */
-  function detached_reader_error(alloc: ref HeapAllocator) void throws {
+  function detached_reader_error(alloc: ref std.mem.HeapAllocator) void throws {
     var input = String(alloc, "<r>\r\né</r>!");
     var reader = XmlReader(alloc, input, String(alloc, "metadata.gir"));
     while (true) {
@@ -731,7 +731,7 @@ public module std.xml {
 
   /** Checks filename ownership, unnamed input, and both named parsing overloads. */
   test_function source_filenames() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     try {
       detached_reader_error(alloc);
 
@@ -807,7 +807,7 @@ public module std.xml {
 
   /** Keeps ranges in original bytes across declarations, references, and empty tags. */
   test_function reader_source_spans() {
-    var a = make_heap_allocator();
+    var a = std.mem.make_heap_allocator();
     var input = String("<?xml version=\"1.0\"?>\r\n<r value=\"&amp;\"/><s/>");
     var reader = XmlReader(a, input);
     match reader.next() {

@@ -48,7 +48,9 @@ bool isAssignableTo(const TypePtr& from, const TypePtr& to) {
   }
 
   if (to->isInterface()) {
-    return false;
+    return from->isInterface() &&
+           static_cast<const InterfaceType&>(*from).extendsInterface(
+               static_cast<const InterfaceType&>(*to));
   }
 
   // Exact equality always works

@@ -125,7 +125,7 @@ void DeclarationAnalyzer::analyzeDeclareType(
     sun::ast::DeclareTypeAST& declareExpr) {
   // Trigger generic instantiation by resolving the type annotation
   TypePtr resolvedType = sema_.typeResolver().typeAnnotationToType(
-      declareExpr.getTypeAnnotation(), true);
+      declareExpr.getTypeAnnotation());
   declareExpr.setResolvedDeclaredType(resolvedType);
 
   // If there's an alias, register it

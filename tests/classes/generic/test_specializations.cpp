@@ -23,7 +23,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
+  var allocator = std.mem.make_heap_allocator();
   var v =  Vec<u32>(allocator, 4);
    v.push(100);
    v.push(200);
@@ -59,7 +59,7 @@ class Point {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
+  var allocator = std.mem.make_heap_allocator();
   // Just instantiate Vec<Point> to test specialization is created
   var v =  Vec<Point>(allocator, 4);
   return _convert<i32>(v.capacity());
@@ -72,7 +72,7 @@ function main() i32 throws {
 // Generic Method: New Specialization
 // ============================================================================
 
-// Test using allocator.create<T>() with a custom class type
+// Test using std.mem.create<T>(allocator) with a custom class type
 TEST(Classes_Generic_Specializations, generic_method_new_specialization) {
   auto value = executeStringWithStdlib(R"(
 using std;
@@ -91,8 +91,8 @@ class Counter {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
-  var counter_ptr =  allocator.create<Counter>(42);
+  var allocator = std.mem.make_heap_allocator();
+  var counter_ptr =  std.mem.create<Counter>(allocator, 42);
   return unsafe { counter_ptr.get(); };
 }
 )");
@@ -111,7 +111,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
+  var allocator = std.mem.make_heap_allocator();
   var m =  Map<i32, i32>(allocator, 16);
    m.insert(1, 100);
    m.insert(2, 200);

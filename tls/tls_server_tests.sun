@@ -68,7 +68,7 @@ public module tls {
 
   /** Skips integration cases when the optional certificate tool is unavailable. */
   function have_openssl() bool throws {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var command = std.process.Command(alloc, "openssl");
     command.add_arg("version");
     command.set_stdout(std.process.Stdio.Null);
@@ -105,7 +105,7 @@ public module tls {
       this.cert = String("");
       this.key = String("");
       this.encrypted_key = String("");
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       this.listener.bind_loopback(0);
       this.listener.listen(4);
       var port: i32 = this.listener.local_port();
@@ -278,7 +278,7 @@ public module tls {
 
     /** Writes an encrypted private key to test noninteractive loading failure. */
     public method encrypt_key() void throws {
-      var command = std.process.Command(make_heap_allocator(), "openssl");
+      var command = std.process.Command(std.mem.make_heap_allocator(), "openssl");
       command.add_arg("pkey");
       command.add_arg("-in");
       command.add_arg(this.key);
@@ -357,7 +357,7 @@ public module tls {
     peer.server.close();
     peer.handshake(stream);
     std.test.assert((stream.alpn()).equals_literal("h2"), "server preference chooses h2");
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var buf = ContiguousBuffer<u8>(alloc, 2);
     std.test.assert(
       match stream.read(buf) {
@@ -427,7 +427,7 @@ public module tls {
     peer.handshake(stream);
     std.test.assert_eq((stream.alpn()).length(), 0);
     peer.disconnect();
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var buf = ContiguousBuffer<u8>(alloc, 16);
     var failed: bool = false;
     var attempts: i32 = 0;
@@ -563,7 +563,7 @@ public module tls {
       attempts = attempts + 1;
     }
     std.test.assert(blocked, "a peer that does not read must apply backpressure");
-    var buf = ContiguousBuffer<u8>(make_heap_allocator(), 65536);
+    var buf = ContiguousBuffer<u8>(std.mem.make_heap_allocator(), 65536);
     var resumed: bool = false;
     attempts = 0;
     while (not resumed and attempts < 1000) {

@@ -12,8 +12,8 @@ using sun_serve;
 
 /** Checks polling results and HTTP helpers from the imported library. */
 function check_library() i32 throws {
-  var layout = probe_epoll_layout(global_allocator);
-  var poller = Epoll(global_allocator, layout, 1);
+  var layout = probe_epoll_layout(std.mem.global_allocator);
+  var poller = Epoll(std.mem.global_allocator, layout, 1);
   if (poller.wait(0)) != 0 {
     return 3;
   }

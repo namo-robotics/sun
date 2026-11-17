@@ -10,7 +10,7 @@ public module std.http {
   /**
      * Builds "GET /index.html HTTP/1.1\r\nHost: x\r\n\r\n"
      */
-  function build_request(alloc: ref HeapAllocator) String throws {
+  function build_request(alloc: ref std.mem.HeapAllocator) String throws {
     var raw = String(alloc, "GET /index.html HTTP/1.1");
     append_crlf(raw);
     raw.append("Host: x");
@@ -21,7 +21,7 @@ public module std.http {
 
   /** Checks parse request method and path. */
   test_function parse_request_method_and_path() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var raw = build_request(alloc);
     var req = HttpRequest(alloc);
     parse_http_request(raw, req);
@@ -32,7 +32,7 @@ public module std.http {
 
   /** Checks find header end finds terminator. */
   test_function find_header_end_finds_terminator() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var complete = build_request(alloc);
     var incomplete = String(alloc, "GET / HTTP/1.1");
     append_crlf(incomplete);
@@ -51,7 +51,7 @@ public module std.http {
      * must not match, and the index returned is the start of the run.
      */
   test_function find_header_end_returns_the_run_start() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var s = String(alloc, "GET / HTTP/1.1\r\nHost: x\r\n\r\nbody");
     // The run starts at the CRLF that ends the last header line, not
     // after it: "GET / HTTP/1.1" (14) + CRLF (2) + "Host: x" (7) = 23.
@@ -76,7 +76,7 @@ public module std.http {
 
   /** Checks response defaults and setters. */
   test_function response_defaults_and_setters() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var resp = HttpResponse(alloc);
     std.test.assert_eq(resp.status, 200);
     std.test.assert(
@@ -98,7 +98,7 @@ public module std.http {
 
   /** Checks status reason phrases. */
   test_function status_reason_phrases() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var ok = String(alloc, "");
     append_reason_phrase(ok, 200);
     std.test.assert(ok.equals_literal("OK"), "200 is OK");
@@ -116,7 +116,7 @@ public module std.http {
   test_function server_handler_lambda_compiles() {
     // Full serve() loop needs a live socket; this verifies the lambda-based
     // API wires up (bind to port 0 is skipped - just construct and stop).
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var server = HttpServer(alloc);
     var req = HttpRequest(alloc);
     var resp = HttpResponse(alloc);

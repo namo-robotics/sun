@@ -287,11 +287,10 @@ void validateEnumPayloadType(const TypePtr& type,
     logAndThrowError(context + " cannot be void", location);
   }
   // Allowlist: primitives, pointers, enums, classes (including owning ones —
-  // payload enums carry drop glue), interfaces (fat pointers are copyable
-  // borrowed views), and references (the variant stores the referent's
-  // address and owns nothing — this is what lets a container hand back
-  // `Option<ref T>` for a peek instead of a copy of an element it still
-  // owns). Arrays, slices, lambdas, threads etc. are deferred.
+  // payload enums carry drop glue), owning interfaces, and references (the
+  // variant stores the referent's address and owns nothing — this is what lets
+  // a container hand back `Option<ref T>` for a peek instead of a copy of an
+  // element it still owns). Arrays, slices, lambdas, threads etc. are deferred.
   bool allowed = type->isPrimitive() || type->isRawPointer() ||
                  type->isStaticPointer() || type->isEnum() || type->isClass() ||
                  type->isInterface() || type->isReference();

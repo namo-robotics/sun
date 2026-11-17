@@ -22,6 +22,9 @@ using sun::ast::TypeConstraint;
  * Class field information
  */
 struct ClassField {
+  /** Returns inline field storage, embedding interface views instead of
+   * borrowing their temporary slots. */
+  llvm::Type* storageType(llvm::LLVMContext& ctx) const;
   std::string name;
   TypePtr type;
   size_t index;  // Index in the struct
@@ -469,7 +472,7 @@ class ClassType : public NominalType {
         auto* classType = static_cast<const ClassType*>(field.type.get());
         fieldTypes.push_back(classType->getStructType(ctx));
       } else {
-        fieldTypes.push_back(field.type->toLLVMType(ctx));
+        fieldTypes.push_back(field.storageType(ctx));
       }
     }
     cachedLLVMType = sun::abi::AggregateLayout::build(ctx, fieldTypes,

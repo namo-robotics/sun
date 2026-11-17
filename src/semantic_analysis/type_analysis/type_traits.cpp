@@ -54,6 +54,8 @@ bool satisfies(const TypePtr& type, const TypePtr& requirement) {
       return valueType->isFunction();
     case TypeTrait::Callable:
       return valueType->isLambda() || valueType->isFunction();
+    case TypeTrait::Interface:
+      return valueType->isInterface();
     case TypeTrait::None:
       break;
   }

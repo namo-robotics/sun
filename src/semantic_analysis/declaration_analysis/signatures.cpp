@@ -84,8 +84,7 @@ std::vector<TypePtr> DeclarationAnalyzer::validateAndResolveParamTypes(
   return paramTypes;
 }
 
-FunctionInfo DeclarationAnalyzer::getFunctionInfo(FunctionAST& func,
-                                                  bool allowInterfaceReturn) {
+FunctionInfo DeclarationAnalyzer::getFunctionInfo(FunctionAST& func) {
   SemanticContext::SourceFileGuard sourceFile(ctx_, func.getSourceFileId());
   PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
 
@@ -116,8 +115,8 @@ FunctionInfo DeclarationAnalyzer::getFunctionInfo(FunctionAST& func,
   // Resolve return type if specified; Void for constructors (no return type)
   TypePtr returnType = Types::Void();
   if (proto.hasReturnType()) {
-    returnType = sema_.typeResolver().typeAnnotationToType(
-        *proto.getReturnType(), allowInterfaceReturn);
+    returnType =
+        sema_.typeResolver().typeAnnotationToType(*proto.getReturnType());
     if (!returnType) {
       logAndThrowError("Failed to resolve return type for function '" +
                            proto.getName() + "'",

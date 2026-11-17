@@ -407,7 +407,7 @@ using std.io;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
+  var allocator = std.mem.make_heap_allocator();
   var s =  String(allocator, "hi");
   print(s);
   println(s);
@@ -639,7 +639,7 @@ function main() i32 throws {
   eprintln(1.2345678901234567);
   eprintln('é');
   eprintln(true);
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var s =  String(alloc, "borrowed");
   eprintln(s);
   return 0;
@@ -676,7 +676,7 @@ function check_empty(s: const ref String) bool {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var s =  String(alloc, "A\0B");
   var empty =  String(alloc, "");
   if (not check(s) or not check_empty(empty)) {
@@ -701,7 +701,7 @@ using std.linalg;
 /** Runs both floating-point specializations from the imported bundle. */
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var a =  Matrix<f64>([[1.0, 2.0], [3.0, 4.0]], alloc);
   var c =  Matrix<f64>(alloc, [2, 2]);
   try { std.linalg.gemm<f64>(
@@ -757,7 +757,7 @@ using std.linalg;
 /** Attempts an unsupported integer multiplication. */
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var a =  Matrix<i32>([[2]], alloc);
   var c =  Matrix<i32>(alloc, [1, 1]);
   var result = std.linalg.gemm<i32>(
@@ -784,7 +784,7 @@ using std.linalg;
 
 /** Returns an owning product after its local operands have been destroyed. */
 function calculate() Matrix<f64> throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var a =  Matrix<f64>([[1.0, 2.0], [3.0, 4.0]], alloc);
   var square =  (a * a);
   return square * a;
@@ -793,7 +793,7 @@ function calculate() Matrix<f64> throws {
 /** Exercises output methods and explicit operator error propagation. */
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var a =  Matrix<f32>([[1.0f32, 2.0f32], [3.0f32, 4.0f32]], alloc);
   var output =  Matrix<f32>(alloc, [2, 2]);
   try { a.matmul_into(a, output);
@@ -845,7 +845,7 @@ TEST(EndToEnd_Programs, matrix_multiplication_methods_reject_integer) {
       using std.linalg;
       /** Attempts a floating-point-only operation on integer matrices. */
       function main() i32 throws {
-        var alloc = make_heap_allocator();
+        var alloc = std.mem.make_heap_allocator();
         var a =  Matrix<i32>([[2]], alloc);
         var c =  Matrix<i32>(alloc, [1, 1]);
         )" + call + R"(;
@@ -865,7 +865,7 @@ using std.linalg;
 /** Attempts to multiply matrices with different element types. */
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var a =  Matrix<f32>([[2.0f32]], alloc);
   var b =  Matrix<f64>([[3.0]], alloc);
   var result = a * b;

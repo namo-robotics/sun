@@ -355,6 +355,26 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
     }
   }
 
+  if (varSunType && varSunType->isInterface()) {
+    auto* storage = createEntryBlockAlloca(func, expr.getName(), varType);
+    if (value->getType()->isPointerTy()) {
+      value = gen_.applyMoveSemantics(value, varSunType);
+    }
+    if (sun::types::areDifferentInterfaces(expr.getValue()->getResolvedType(),
+                                           varSunType)) {
+      value = classes().upcastInterface(
+          value,
+          static_cast<sun::types::InterfaceType*>(
+              expr.getValue()->getResolvedType().get()),
+          static_cast<sun::types::InterfaceType*>(varSunType.get()));
+    }
+    ctx.builder->CreateStore(value, storage);
+    scope[expr.getDeclarationId()] = storage;
+    scopes().trackClassAllocation(storage, expr.getName(), varSunType);
+    debugDeclareLocal(storage, expr.getName(), varSunType, expr.getLocation());
+    return storage;
+  }
+
   // Fresh call results can be adopted; named sources must transfer ownership.
   if (varSunType && varSunType->isClass()) {
     auto valueKind = expr.getValue()->getType();
