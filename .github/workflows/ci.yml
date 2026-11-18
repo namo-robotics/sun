@@ -1010,7 +1010,7 @@ jobs:
           using tls;
           /** Verify HTTPS transport and certificate trust regardless of HTTP status. */
           function main() i32 throws {
-              var alloc = make_heap_allocator();
+              var alloc = std.mem.make_heap_allocator();
               var client = HttpsClient(alloc);
               var host = String(alloc, "example.com");
               var response = client.get(host, "/");
@@ -1171,7 +1171,7 @@ jobs:
           using tls;
           /** Verify HTTPS transport and certificate trust regardless of HTTP status. */
           function main() i32 throws {
-              var alloc = make_heap_allocator();
+              var alloc = std.mem.make_heap_allocator();
               var client = HttpsClient(alloc);
               var host = String(alloc, "example.com");
               var response = client.get(host, "/");
