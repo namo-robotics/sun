@@ -181,17 +181,17 @@ class A {
 /** Allocates and frees a typed value and a typed array. */
 /** Runs the fixture with explicit error propagation. */
 function main() i64 throws {
-  var alloc = HeapAllocator();
-  var one =  alloc.create<A>(42);
-  var many =  alloc.alloc<A>(3);
+  var alloc = std.mem.HeapAllocator();
+  var one =  std.mem.create<A>(alloc, 42);
+  var many =  std.mem.alloc<A>(alloc, 3);
   var result: i64 = 0;
   unsafe {
     result = sun_test_alignment_remainder(_bitcast<raw_ptr<u8>>(one), 256) +
       sun_test_alignment_remainder(_bitcast<raw_ptr<u8>>(many), 256);
     _deinit<A>(one);
   };
-  alloc.dealloc<A>(one, 1);
-  alloc.dealloc<A>(many, 3);
+  std.mem.dealloc<A>(alloc, one, 1);
+  std.mem.dealloc<A>(alloc, many, 3);
   return result;
 }
 )"),
@@ -236,4 +236,40 @@ function main() i64 throws {
 }
 )"),
             42);
+}
+
+/** Arena padding aligns concrete objects even after smaller allocations. */
+TEST(Classes_Alignment, arena_interface_storage) {
+  registerAlignmentProbe();
+  EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
+    using std;
+    /** Checks the concrete address against a native alignment requirement. */
+    extern function sun_test_alignment_remainder(p: raw_ptr<u8>, alignment: i64) i64;
+    /** Exposes a concrete object's alignment through dynamic dispatch. */
+    interface Probe { /** Reports the address remainder. */ public method remainder() i64; }
+    /** Occupies a byte before the aligned allocation. */
+    class Small implements Probe {
+      var value: u8 = 0;
+      /** Constructs a small object. */ init() {}
+      /** Reports no alignment requirement. */ public method remainder() i64 { return 0; }
+    }
+    /** Requires more alignment than a normal heap buffer guarantees. */
+    class Aligned implements Probe {
+      alignment: 256
+      var value: i64 = 42;
+      /** Constructs the aligned object. */ init() {}
+      /** Checks the address of the erased concrete object. */
+      public method remainder() i64 {
+        return unsafe { sun_test_alignment_remainder(_bitcast<raw_ptr<u8>>(_address_of<Aligned>(this)), 256); };
+      }
+    }
+    /** Allocates differently sized objects in one arena. */
+    function main() i64 throws {
+      var arena = std.mem.ArenaAllocator(1024);
+      var small = std.mem.create_interface<Probe>(arena, Small());
+      var aligned = std.mem.create_interface<Probe>(arena, Aligned());
+      return aligned.remainder();
+    }
+  )"),
+            0);
 }

@@ -329,6 +329,18 @@ Value* VariableGenerator::codegen(const sun::ast::VariableAssignmentAST& expr) {
 
   auto generateValue = [&]() {
     Value* value = codegen(*expr.getValue());
+    if (sun::types::areDifferentInterfaces(expr.getValue()->getResolvedType(),
+                                           expr.getResolvedType()) &&
+        !expr.getResolvedType()->isReference()) {
+      value =
+          gen_.applyMoveSemantics(value, expr.getValue()->getResolvedType());
+      value = gen_.classGenerator().upcastInterface(
+          value,
+          static_cast<sun::types::InterfaceType*>(
+              expr.getValue()->getResolvedType().get()),
+          static_cast<sun::types::InterfaceType*>(
+              expr.getResolvedType().get()));
+    }
     return sun::codegen::support::widenNumericIfNeeded(
         *ctx.builder, typeResolver, value,
         sun::types::unwrapRef(expr.getResolvedType()),
@@ -417,10 +429,8 @@ Value* VariableGenerator::codegen(const sun::ast::VariableAssignmentAST& expr) {
 void VariableGenerator::assignToVariableSlot(Value* slot, Value* value,
                                              const TypePtr& varType,
                                              const std::string& name) {
-  bool compound = varType &&
-                  (varType->isClass() || varType->isInterface() ||
-                   CodegenVisitor::isPayloadEnum(varType)) &&
-                  value->getType()->isPointerTy();
+  bool compound = varType && (varType->isClass() || varType->isInterface() ||
+                              CodegenVisitor::isPayloadEnum(varType));
   if (compound) {
     // Self-assignment would drop the object and then copy from the corpse;
     // it has no effect, so emit nothing.
@@ -428,7 +438,9 @@ void VariableGenerator::assignToVariableSlot(Value* slot, Value* value,
       return;
     }
     scopes().emitDropInPlace(varType, slot, name);
-    value = gen_.applyMoveSemantics(value, varType);
+    if (value->getType()->isPointerTy()) {
+      value = gen_.applyMoveSemantics(value, varType);
+    }
   }
   // A sized array moves its inline storage in after the old elements drop
   if (auto* arrayType =

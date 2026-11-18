@@ -70,6 +70,13 @@ Value* CodegenVisitor::applyMoveSemantics(Value* argVal, TypePtr argSunType) {
     return storageVal;
   }
 
+  if (argSunType && argSunType->isInterface()) {
+    auto* storage = InterfaceType::getOwnerType(ctx.getContext());
+    auto* owner = ctx.builder->CreateLoad(storage, argVal, "move.interface");
+    ctx.builder->CreateStore(llvm::Constant::getNullValue(storage), argVal);
+    return owner;
+  }
+
   // Only apply move semantics to class types that are pointers (addressable)
   auto* classType = sun::codegen::support::tryGetType<ClassType>(argSunType);
   if (!classType) {
@@ -347,6 +354,11 @@ Value* CodegenVisitor::prepareRefArgument(const ExprAST* argExpr,
     logAndThrowError(
         "Reference parameter must be passed an addressable expression");
     return nullptr;
+  }
+
+  // An interface-valued call already materializes and tracks the owner.
+  if (argSunType && argSunType->isInterface()) {
+    return codegen(*argExpr);
   }
 
   // A sized array temporary (a literal, a returned array) already sits in
@@ -736,6 +748,8 @@ Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
   // Handle interface dispatch
   if (auto* ifaceType =
           sun::codegen::support::tryGetType<InterfaceType>(objectType)) {
+    objectPtr = classes.interfaceViewAddress(
+        objectPtr, memberAccess.getObject()->getResolvedType());
     return codegenInterfaceMethodCall(expr, objectPtr, ifaceType, methodName);
   }
 
@@ -932,27 +946,18 @@ bool CodegenVisitor::emitCallArguments(
       }
 
       case ArgConversion::RawPtrAsRef:
-        // The pointer value is the referent's address
-        argVal = codegen(*argExpr);
+        argVal = classes.interfaceViewAddress(
+            codegen(*argExpr),
+            sun::codegen::support::getPointeeType(argSunType));
         break;
 
-      case ArgConversion::ClassToRefInterface: {
-        Value* classPtr = prepareRefArgument(argExpr, argSunType);
-        if (!classPtr) {
-          return false;
-        }
-        argVal = classes.prepareClassForRefInterface(
-            classPtr, sun::types::unwrapRef(argSunType), paramType);
-        break;
-      }
-
-      case ArgConversion::InterfaceRefUpcast:
+      case ArgConversion::BorrowInterface:
         argVal = prepareRefArgument(argExpr, argSunType);
         if (!argVal) {
           return false;
         }
-        argVal = classes.createBorrowedInterfaceUpcast(argVal, argSunType,
-                                                       paramType);
+        argVal =
+            classes.prepareInterfaceReference(argVal, argSunType, paramType);
         break;
 
       case ArgConversion::Move:
@@ -961,6 +966,11 @@ bool CodegenVisitor::emitCallArguments(
           return false;
         }
         argVal = applyMoveSemantics(argVal, argSunType);
+        if (sun::types::areDifferentInterfaces(argSunType, paramType)) {
+          argVal = classes.upcastInterface(
+              argVal, static_cast<InterfaceType*>(argSunType.get()),
+              static_cast<InterfaceType*>(paramType.get()));
+        }
         if (i + 1 < args.size() && sun::types::typeNeedsDrop(argSunType)) {
           auto* storage =
               createEntryBlockAlloca(ctx.builder->GetInsertBlock()->getParent(),
@@ -1017,6 +1027,7 @@ bool CodegenVisitor::emitCallArguments(
             argVal->getType()->isPointerTy()) {
           llvm::StructType* fatPtrType =
               InterfaceType::getFatPointerType(ctx.getContext());
+          argVal = classes.interfaceViewAddress(argVal, argSunType);
           argVal =
               ctx.builder->CreateLoad(fatPtrType, argVal, "iface.arg.load");
         }

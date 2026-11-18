@@ -145,6 +145,16 @@ BorrowCheckResult BorrowState::canRead(const std::string& var,
   return BorrowCheckResult::ok();
 }
 
+void BorrowState::retainBorrows(const std::string& target, size_t scopeDepth) {
+  auto found = loans_.find(target);
+  if (found == loans_.end()) {
+    return;
+  }
+  for (auto& loan : found->second) {
+    loan.scopeDepth = std::min(loan.scopeDepth, scopeDepth);
+  }
+}
+
 void BorrowState::exitScope(size_t scopeDepth) {
   // Invalidate all borrows at or deeper than scopeDepth
   for (auto& [var, varLoans] : loans_) {

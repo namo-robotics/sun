@@ -228,7 +228,7 @@ public module std.io {
      * buffer sizes. The byte limit excludes LF; zero permits only empty lines.
      */
     init(
-      alloc: const ref HeapAllocator,
+      alloc: const ref std.mem.HeapAllocator,
       file: ref File,
       max_line_length: i64,
       buffer_size: i64
@@ -562,7 +562,7 @@ public module std.io {
     /**
      * Read the rest of the file into a String
      */
-    public method read_all(alloc: const ref HeapAllocator) String throws {
+    public method read_all(alloc: const ref std.mem.HeapAllocator) String throws {
       var out: String = String(alloc, "");
       var chunk: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 4096);
       var n: i64 = unsafe { c_read(this.fd, chunk.raw_data(), 4096); };
@@ -688,7 +688,7 @@ public module std.io {
 
   /** Reads an entire file into an owned string and returns Error on an I/O failure. */
   public function read_to_string(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     path: static_ptr<u8>
   ) String throws {
     var f: File = File();
@@ -701,7 +701,10 @@ public module std.io {
   /**
    * Read a whole file named at runtime into a new String.
    */
-  public function read_to_string(alloc: const ref HeapAllocator, path: ref String) String throws {
+  public function read_to_string(
+    alloc: const ref std.mem.HeapAllocator,
+    path: ref String
+  ) String throws {
     var f: File = File();
     f.open(path, FileMode.Read);
     var text: String = f.read_all(alloc);
@@ -1057,7 +1060,10 @@ public module std.io {
    * List a directory. "." and ".." are left out; the order is whatever the
    * filesystem gives, not sorted.
    */
-  function read_dir_cstr(alloc: const ref HeapAllocator, path: raw_ptr<u8>) Vec<DirEntry> throws {
+  function read_dir_cstr(
+    alloc: const ref std.mem.HeapAllocator,
+    path: raw_ptr<u8>
+  ) Vec<DirEntry> throws {
     var dir: raw_ptr<u8> = unsafe { c_opendir(path); };
     if (dir == null) {
       throw Error(errno(), "failed to open directory");
@@ -1086,7 +1092,7 @@ public module std.io {
    * out.
    */
   public function read_dir(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     path: static_ptr<u8>
   ) Vec<DirEntry> throws {
     return (read_dir_cstr(alloc, path.raw()));
@@ -1095,7 +1101,10 @@ public module std.io {
   /**
    * List the entries of a directory at a path built at runtime.
    */
-  public function read_dir(alloc: const ref HeapAllocator, path: ref String) Vec<DirEntry> throws {
+  public function read_dir(
+    alloc: const ref std.mem.HeapAllocator,
+    path: ref String
+  ) Vec<DirEntry> throws {
     return (read_dir_cstr(alloc, path.c_str()));
   }
 
@@ -1108,7 +1117,7 @@ public module std.io {
    * input with nothing read. Unbuffered on purpose: a buffered reader would
    * swallow bytes a later child process expects to find on the descriptor.
    */
-  public function read_line(alloc: const ref HeapAllocator) Option<String> throws {
+  public function read_line(alloc: const ref std.mem.HeapAllocator) Option<String> throws {
     var line: String = String(alloc, "");
     var byte: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 1);
     var got_any: bool = false;
@@ -1139,13 +1148,13 @@ public module std.io {
    * positions, so revents(i) answers for the fd added i-th.
    */
   public class Poller {
-    var alloc: HeapAllocator;
+    var alloc: std.mem.HeapAllocator;
     var fds: Vec<PollFd>;
 
     /**
      * Build an empty poller. Add descriptors before waiting.
      */
-    init(alloc: const ref HeapAllocator) throws {
+    init(alloc: const ref std.mem.HeapAllocator) throws {
       this.alloc = alloc.copy();
       this.fds = Vec<PollFd>(alloc, 4);
     }

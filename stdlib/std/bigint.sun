@@ -19,12 +19,12 @@ public module std {
   /** An arbitrary-precision unsigned integer that owns its limb storage. */
   public class BigUint {
     var limbs: Vec<u64>;
-    var alloc: HeapAllocator;
+    var alloc: std.mem.HeapAllocator;
 
     /**
      * Zero
      */
-    init(allocator: const ref HeapAllocator) throws {
+    init(allocator: const ref std.mem.HeapAllocator) throws {
       this.alloc = allocator.copy();
       this.limbs = Vec<u64>(allocator, 4);
     }
@@ -32,7 +32,7 @@ public module std {
     /**
      * From a machine word
      */
-    init(allocator: const ref HeapAllocator, value: u64) throws {
+    init(allocator: const ref std.mem.HeapAllocator, value: u64) throws {
       this.alloc = allocator.copy();
       this.limbs = Vec<u64>(allocator, 4);
       if (value != 0) {

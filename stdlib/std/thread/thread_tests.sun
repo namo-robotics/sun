@@ -765,7 +765,7 @@ public module std.thread {
      * Handles over capture-free lambdas own everything they touch, so a
      * pool of them may live in a container and leave the frame with it.
      */
-  function make_thread_pool(alloc: const ref HeapAllocator) Vec<Thread<i32>> throws {
+  function make_thread_pool(alloc: const ref std.mem.HeapAllocator) Vec<Thread<i32>> throws {
     var v = Vec<Thread<i32>>(alloc, 4);
     v.push(spawn(() => i32 { return 20; }));
     v.push(spawn(() => i32 { return 22; }));
@@ -774,7 +774,7 @@ public module std.thread {
 
   /** Checks capture free handles may leave in a vec. */
   test_function capture_free_handles_may_leave_in_a_vec() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var v = make_thread_pool(alloc);
     var total = 0;
     match (v.pop()) {

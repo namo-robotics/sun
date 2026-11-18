@@ -49,8 +49,8 @@ bool decaysToView(const TypePtr& value, const TypePtr& target) {
 /** Returns a readable representation for diagnostics and debugging. */
 const char* toString(ArgConversion conversion) {
   switch (conversion) {
-    case ArgConversion::InterfaceRefUpcast:
-      return "borrowed interface upcast";
+    case ArgConversion::BorrowInterface:
+      return "borrow interface";
     case ArgConversion::PassValue:
       return "pass by value";
     case ArgConversion::Move:
@@ -61,8 +61,6 @@ const char* toString(ArgConversion conversion) {
       return "array to view";
     case ArgConversion::RawPtrAsRef:
       return "raw pointer as reference";
-    case ArgConversion::ClassToRefInterface:
-      return "class to ref interface";
     case ArgConversion::WidenNumeric:
       return "numeric widening";
     case ArgConversion::StaticToRawPtr:
@@ -79,7 +77,7 @@ const char* toString(ArgConversion conversion) {
 std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
                                               const TypePtr& paramType,
                                               bool cVariadicTail) {
-  if (!argType || (paramType && paramType->isInterface())) {
+  if (!argType) {
     return std::nullopt;
   }
 
@@ -108,12 +106,9 @@ std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
         return ArgConversion::RawPtrAsRef;
       }
     }
-    if (value && value->isClass() && target && target->isInterface()) {
-      return ArgConversion::ClassToRefInterface;
-    }
-    if (value && value->isInterface() && target && target->isInterface() &&
-        !value->equals(*target)) {
-      return ArgConversion::InterfaceRefUpcast;
+    if (target && target->isInterface() && value &&
+        (value->isClass() || value->isInterface())) {
+      return ArgConversion::BorrowInterface;
     }
     if (decaysToView(value, target)) {
       return ArgConversion::ArrayToView;

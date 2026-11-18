@@ -29,7 +29,7 @@ using std;
 /** Attempts to move storage while a slice still borrows it. */
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var buffer =  ContiguousBuffer<u8>(alloc, 4);
   var bytes = ByteSlice(buffer);
   var moved = buffer;
@@ -47,7 +47,7 @@ using std;
 /** Attempts to acquire write access through a const buffer. */
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   const buffer =  ContiguousBuffer<u8>(alloc, 4);
   var bytes = MutableByteSlice(buffer);
   return _convert<i32>(bytes.size());
@@ -64,7 +64,7 @@ using std;
 /** Attempts to replace the allocation while its slice is alive. */
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var buffer =  ContiguousBuffer<u8>(alloc, 4);
   var bytes = ByteSlice(buffer);
    buffer.resize_to(1);
@@ -82,7 +82,7 @@ using std;
 /** Reads both sizes while the shared borrow is alive. */
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var buffer =  ContiguousBuffer<u8>(alloc, 4);
   var bytes = ByteSlice(buffer);
   return _convert<i32>(buffer.size() + bytes.size());
@@ -99,7 +99,7 @@ using std;
 /** Resizes only after the slice and its borrow have ended. */
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var buffer =  ContiguousBuffer<u8>(alloc, 4);
   if (true) {
     var bytes = ByteSlice(buffer);
@@ -121,7 +121,7 @@ using std;
 
 /** Attempts to return a dangling slice. */
 function escape() MutableByteSlice throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var buffer =  ContiguousBuffer<u8>(alloc, 4);
   return MutableByteSlice(buffer);
 }
@@ -145,7 +145,7 @@ using std;
 /** Reads initialized bytes through a File imported from stdlib.moon. */
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var file = std.io.File();
   try { file.open("/dev/zero", std.io.FileMode.Read);
  } catch (ignored_error: Error) {

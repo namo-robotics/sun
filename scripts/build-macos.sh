@@ -25,8 +25,8 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
     exit 1
 fi
 
-LLVM_PREFIX=$(brew --prefix llvm@20 2>/dev/null || brew --prefix llvm 2>/dev/null)
-if [[ -z "$LLVM_PREFIX" ]]; then
+LLVM_PREFIX=$(brew --prefix llvm@20 2>/dev/null || true)
+if [[ -z "$LLVM_PREFIX" || ! -x "$LLVM_PREFIX/bin/clang" || ! -x "$LLVM_PREFIX/bin/clang++" ]]; then
     echo "[build-macos] Homebrew LLVM not found: brew install llvm@20" >&2
     exit 1
 fi

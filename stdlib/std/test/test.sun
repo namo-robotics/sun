@@ -285,7 +285,7 @@ public module std.test {
    * ("--test-sequential" anywhere in argv).
    */
   public function wants_sequential(argc: i32, argv: raw_ptr<raw_ptr<i8>>) bool throws {
-    var env = std.env.Env(global_allocator);
+    var env = std.env.Env(std.mem.global_allocator);
     var cli = env.args(argc, argv);
     var i: i64 = 0;
     while (i < cli.size()) {
@@ -333,7 +333,7 @@ public module std.test {
     argc: i32,
     argv: raw_ptr<raw_ptr<i8>>
   ) bool throws {
-    var env = std.env.Env(global_allocator);
+    var env = std.env.Env(std.mem.global_allocator);
     var cli = env.args(argc, argv);
     var name_text = String(name);
     var saw_filter = false;

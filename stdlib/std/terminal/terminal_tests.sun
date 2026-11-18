@@ -92,7 +92,7 @@ public module std.terminal {
 
   /** Checks isatty is true for a pty slave and false for everything else. */
   test_function is_terminal_reports_pty_slave_and_not_pipe() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var pty = Pty();
     std.test.assert(is_terminal(pty.slave), "a pty slave is a terminal");
 
@@ -125,7 +125,7 @@ public module std.terminal {
 
   /** Checks asking a pipe for its size fails with ENOTTY. */
   test_function get_size_throws_on_a_non_tty() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var pipe = std.process.open_pipe(alloc);
     var code: i32 = 0;
     var threw: bool = false;
@@ -258,7 +258,7 @@ public module std.terminal {
 
   /** Checks entering a mode on a pipe fails with ENOTTY and changes nothing. */
   test_function entering_a_mode_on_a_non_tty_throws_enotty() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var pipe = std.process.open_pipe(alloc);
     var code: i32 = 0;
     var threw: bool = false;
@@ -381,7 +381,7 @@ public module std.terminal {
      * after fork in a multi-threaded process: no allocation, no locks.
      */
   function run_as_foreground_process(pty: ref Pty, as_input: bool) i32 throws {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var ready = std.process.open_pipe(alloc);
     var pid: i32 = std.process.fork();
     if (pid == 0) {

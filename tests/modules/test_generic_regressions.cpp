@@ -109,7 +109,7 @@ TEST_F(Modules_GenericRegressions, RawByteStringLiterals) {
   const std::string body = R"(
 
     using std;
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var value = String(alloc, "\xff\xfe\0\x80");
     if (value.length() != 4) { return 1; }
     if (value.at(0) != 255u8) { return 2; }
@@ -446,7 +446,7 @@ public module lib {
 
   /** Exercises explicit, inferred and nested generic calls. */
   public function check() i32 throws {
-    var a = make_heap_allocator();
+    var a = std.mem.make_heap_allocator();
     var v =  Vec<i64>(a, 3);
      v.push(1);
      v.push(2);
@@ -539,9 +539,9 @@ TEST_P(Modules_NestedTypeArguments, DirectAndImported) {
       };
       replace("Option<T>", "Vec<T>");
       replace("var none: Vec<T> = Option.None;",
-              "var none = Vec<T>(global_allocator, 1);");
+              "var none = Vec<T>(std.mem.global_allocator, 1);");
       replace("out.push(Sample<T>(Info(), Option.Some(v)));",
-              "var some = Vec<T>(global_allocator, 1); some.push(v); "
+              "var some = Vec<T>(std.mem.global_allocator, 1); some.push(v); "
               "out.push(Sample<T>(Info(), some));");
       const auto match = source.find("match sample.data");
       const auto begin = source.rfind("return ", match);
@@ -749,7 +749,7 @@ TEST_F(Modules_GenericRegressions, GlobalAllocatorWithGenericVector) {
   write("consumer.sun", R"(
 
     using std;
-    var alloc: HeapAllocator = HeapAllocator();
+    var alloc: std.mem.HeapAllocator = std.mem.HeapAllocator();
     /** Handles this global initializer’s failure at the startup boundary. */
 function initialize_values() Vec<i64> {
  try { var value = Vec<i64>(alloc, 8);

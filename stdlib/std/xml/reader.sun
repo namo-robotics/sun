@@ -34,7 +34,7 @@ public module std.xml {
 
   /** Borrows input and owns only parser state and returned event payloads. */
   public class XmlReader {
-    var alloc: HeapAllocator;
+    var alloc: std.mem.HeapAllocator;
     var input: const ref String;
     var filename: Option<String> = Option.None;
     var pos: i64 = 0;
@@ -47,14 +47,14 @@ public module std.xml {
     var failure: Option<XmlError> = Option.None;
 
     /** Borrows complete input until the reader is destroyed. */
-    init(alloc: const ref HeapAllocator, input: const ref String) throws {
+    init(alloc: const ref std.mem.HeapAllocator, input: const ref String) throws {
       this.alloc = alloc.copy();
       this.input = input;
       this.stack = Vec<XmlFrame>(alloc, 4);
     }
 
     /** Borrows input and takes ownership of a diagnostic filename; performs no file I/O. */
-    init(alloc: const ref HeapAllocator, input: const ref String, filename: String) throws {
+    init(alloc: const ref std.mem.HeapAllocator, input: const ref String, filename: String) throws {
       this.alloc = alloc.copy();
       this.input = input;
       this.stack = Vec<XmlFrame>(alloc, 4);
@@ -636,7 +636,7 @@ public module std.xml {
 
   /** Parses complete input into an independent editable document. */
   public function parse_xml(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     input: const ref String
   ) XmlDocument throws {
     var reader = XmlReader(alloc, input);
@@ -694,7 +694,7 @@ public module std.xml {
 
   /** Parses literal input, releasing the temporary input after the tree is built. */
   public function parse_xml(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     input: static_ptr<u8>
   ) XmlDocument throws {
     var text = String(alloc, input);
@@ -703,7 +703,7 @@ public module std.xml {
 
   /** Parse input and attach the owned filename only to XML diagnostics. */
   public function parse_xml(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     input: const ref String,
     filename: String
   ) XmlDocument throws {
@@ -717,7 +717,7 @@ public module std.xml {
 
   /** Parses literal input with an owned diagnostic filename; performs no file I/O. */
   public function parse_xml(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     input: static_ptr<u8>,
     filename: String
   ) XmlDocument throws {

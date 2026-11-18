@@ -1209,7 +1209,7 @@ function boom(path: ref String) void throws {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var a = make_heap_allocator();
+  var a = std.mem.make_heap_allocator();
   var path =  String(a, "/tmp/");
    path.append("computed.txt");
   /** Executes a fallible operation. */
@@ -1260,7 +1260,7 @@ using std;
 
 // The String is built, moved into the Error and dropped here; only the
 // Error's copy is left for the caller to read.
-function make(a: ref HeapAllocator) void throws {
+function make(a: ref std.mem.HeapAllocator) void throws {
   var msg =  String(a, "gone");
    msg.append(" by now");
   throw  Error(3, msg);
@@ -1270,7 +1270,7 @@ function make(a: ref HeapAllocator) void throws {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var a = make_heap_allocator();
+  var a = std.mem.make_heap_allocator();
   /** Executes a fallible operation. */
   var attempt_0 = [ref a]() => void throws {
      make(a);

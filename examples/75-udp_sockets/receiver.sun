@@ -6,19 +6,19 @@ using std;
 
 /** Performs the operation and propagates exceptions. */
 function run() void throws {
-  var buf = ContiguousBuffer<u8>(global_allocator, 256);
+  var buf = ContiguousBuffer<u8>(std.mem.global_allocator, 256);
 
   var socket = UdpSocket();
   socket.bind(ipv4_loopback(), 9090);
   println("Waiting on 127.0.0.1:9090...");
 
   var datagram = socket.recv_from(buf);
-  var text = String(global_allocator, buf, datagram.length());
+  var text = String(std.mem.global_allocator, buf, datagram.length());
   println(text);
 
   var from = datagram.addr();
   println("From address:");
-  println(from.to_string(global_allocator));
+  println(from.to_string(std.mem.global_allocator));
 
   socket.close();
 

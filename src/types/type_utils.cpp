@@ -21,6 +21,9 @@ bool typeNeedsDropImpl(const Type* type,
   if (!type || !visited.insert(type).second) {
     return false;
   }
+  if (type->isInterface()) {
+    return true;
+  }
   if (type->isClass()) {
     auto* c = static_cast<const ClassType*>(type);
     if (c->getMethod("deinit")) {

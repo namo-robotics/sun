@@ -168,14 +168,14 @@ public module std {
     var keys: ContiguousBuffer<K>;  // Key storage
     var values: ContiguousBuffer<V>;  // Value storage
     var states: ContiguousBuffer<i8>;  // State array: 0=empty, 1=occupied, 2=deleted
-    var alloc: HeapAllocator;  // Allocator (stored via copy)
+    var alloc: std.mem.HeapAllocator;  // Allocator (stored via copy)
     var capacity_: i64;  // Number of buckets
     var size_: i64 = 0;  // Number of occupied entries
 
     /**
      * Constructor with allocator and capacity
      */
-    init(allocator: const ref HeapAllocator, capacity: i64) throws {
+    init(allocator: const ref std.mem.HeapAllocator, capacity: i64) throws {
       this.alloc = allocator.copy();
       this.capacity_ = capacity;
 

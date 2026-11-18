@@ -103,14 +103,14 @@ using std;
 public class Holder {
   public var a: String;
 
-  init(alloc: ref HeapAllocator)  throws {
+  init(alloc: ref std.mem.HeapAllocator)  throws {
     this.a =  String(alloc, "one");
   }
 }
 
 /** Runs the fixture with explicit error propagation. */
 function main() i64 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var h =  Holder(alloc);
   var pick: ref String = h.a;
   return pick.length();
@@ -125,7 +125,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var r: ref String =  String(alloc, "temp");
   return 0;
 }
@@ -169,14 +169,14 @@ using std;
 public class Holder {
   public var a: String;
 
-  init(alloc: ref HeapAllocator)  throws {
+  init(alloc: ref std.mem.HeapAllocator)  throws {
     this.a =  String(alloc, "one");
   }
 }
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var h =  Holder(alloc);
   var moved = h.a;
   var pick: ref String = h.a;
@@ -231,7 +231,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i64 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var s1 =  String(alloc, "aaa");
   var s2 =  String(alloc, "bb");
   var takeFirst: bool = false;

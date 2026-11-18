@@ -325,6 +325,21 @@ class BorrowChecker {
   void trackRefHolderStore(const std::string& destName, size_t destDepth,
                            const ExprAST& value,
                            const sun::support::Position& pos);
+  /** Reports whether a reference expression borrows the named object's storage.
+   */
+  bool borrowsStorage(const ExprAST& expression,
+                      const std::string& destination) const;
+
+  /** Collects storage retained by a value, including dependencies hidden by
+   * erasure. */
+  std::unordered_set<std::string> retainedStorage(const ExprAST& value) const;
+  /** Transfers retained storage obligations to a destination and extends its
+   * loans. */
+  void retainStorageIn(const std::string& destination, size_t depth,
+                       const ExprAST& value, const sun::support::Position& pos);
+  /** Checks conservative storage relationships at ordinary and generic call
+   * boundaries. */
+  void checkRetainedCallStorage(const ExprAST& call);
   /**
    * Conservatively relate callbacks whose generic parameters lost lifetime
    * names to every receiver and mutable-ref destination the callee can keep.
@@ -500,6 +515,13 @@ class BorrowChecker {
   // scope than that bound, or it would keep the borrowed storage's address
   // past its death (issue #178, Rule 5's sub-frame gap).
   std::unordered_map<std::string, size_t> refHolderBounds_;
+  // Concrete storage dependencies survive erasure and transfers into
+  // collections.
+  std::unordered_map<std::string, std::unordered_set<std::string>>
+      retainedStorage_;
+  // Same-scope owners are destroyed in reverse declaration order.
+  std::unordered_map<std::string, size_t> declarationOrder_;
+  size_t nextDeclarationOrder_ = 0;
 
   // Compound payload bindings from reference matches. They BORROW the
   // matched value's payload slot in place: moving them (var creation,

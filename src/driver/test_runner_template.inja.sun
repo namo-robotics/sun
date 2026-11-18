@@ -28,7 +28,7 @@ function execute_test(index: i64) TestResult {
 
 /** Runs selected tests in declaration order and propagates setup failures. */
 function run_tests(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 throws {
-    var env = std.env.Env(global_allocator);
+    var env = std.env.Env(std.mem.global_allocator);
     var args = env.args(argc, argv);
     for (var i: i64 = 0; i < args.size(); i = i + 1) {
         if (unsafe { args.get_unchecked(i); }.equals_literal("--list-tests")) {
@@ -53,7 +53,7 @@ function run_tests(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 throws {
             }
         }
     } else {
-        var threads = Vec<Thread<TestResult>>(global_allocator, {{ length(tests) }});
+        var threads = Vec<Thread<TestResult>>(std.mem.global_allocator, {{ length(tests) }});
         for (var i: i64 = 0; i < {{ length(tests) }}; i += 1) {
             if (is_selected(names[i], argc, argv)) {
                 threads.push(std.thread.spawn(execute_test, i));

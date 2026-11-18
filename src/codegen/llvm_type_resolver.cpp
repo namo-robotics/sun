@@ -181,8 +181,7 @@ llvm::Type* LLVMTypeResolver::resolve(const sun::types::Type& type) {
     }
 
     case sun::types::Type::Kind::Interface: {
-      // Interface values are fat pointers: { ptr data, ptr vtable }
-      // This enables dynamic dispatch via vtable lookup
+      // Owned interfaces include concrete storage, dispatch, and cleanup.
       result = type.toLLVMType(ctx);
       break;
     }

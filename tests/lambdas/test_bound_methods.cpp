@@ -358,7 +358,7 @@ function apply(f: <'_>(i32) => void throws) void throws {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
+  var allocator = std.mem.make_heap_allocator();
   var v =  Vec<i32>(allocator, 8);
   try { apply(v.push);
  } catch {
@@ -375,13 +375,13 @@ TEST(Lambdas_BoundMethods, deinit_runs_once_with_bound_method) {
 using std;
 
 class Tracker {
-  var alloc: HeapAllocator;
+  var alloc: std.mem.HeapAllocator;
   var data: raw_ptr<u8>;
   var hits: i32 = 0;
 
-  init(allocator: ref HeapAllocator)  throws {
+  init(allocator: ref std.mem.HeapAllocator)  throws {
     this.alloc = allocator.copy();
-    this.data =  this.alloc.alloc_raw(4);
+    this.data =  this.alloc.alloc_raw(4, 1);
     this.hits = 0;
   }
 
@@ -401,7 +401,7 @@ function apply(f: <'_>(i32) => i32, x: i32) i32 {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = HeapAllocator();
+  var alloc = std.mem.HeapAllocator();
   var t =  Tracker(alloc);
   apply(t.hit, 3);
   apply(t.hit, 4);

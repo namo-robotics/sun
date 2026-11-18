@@ -548,7 +548,7 @@ TEST(Ffi_Abi_CrossTargetDarwin, stdlib_program_compiles_to_a_macho_object) {
     using std.time;
 
     function main() i32 throws {
-        var alloc = make_heap_allocator();
+        var alloc = std.mem.make_heap_allocator();
         var v = Vec<i64>(alloc, 4);
         try { v.push(read_unix_time());
  } catch {  return -1;  }

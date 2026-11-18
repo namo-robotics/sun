@@ -41,7 +41,7 @@ public module std.linalg {
    * owned by the matrix, so a matrix may outlive the array it was built from.
    */
   public class Matrix<T> {
-    var alloc: HeapAllocator;  // Allocator (stored via copy), shared with views
+    var alloc: std.mem.HeapAllocator;  // Allocator (stored via copy), shared with views
     var data: ContiguousBuffer<T>;  // Contiguous element storage (bounds-checked, auto-freed)
     var dims: Vec<i64>;  // Size of each dimension
     var ndims_: i64;  // Number of dimensions
@@ -51,7 +51,7 @@ public module std.linalg {
      * Constructor: allocates memory for matrix of given shape
      * shape is an array of dimension sizes: [rows, cols, ...], copied in
      */
-    init(alloc: const ref HeapAllocator, shape: const ref array<i64>) throws {
+    init(alloc: const ref std.mem.HeapAllocator, shape: const ref array<i64>) throws {
       this.alloc = alloc.copy();
       this.ndims_ = shape.dim(0);
       this.dims = Vec<i64>(alloc, this.ndims_);
@@ -77,7 +77,7 @@ public module std.linalg {
      * row-major order. The array is borrowed only during construction.
      * Values come before the allocator to distinguish them from a shape.
      */
-    init(values: const ref array<T>, alloc: const ref HeapAllocator) throws {
+    init(values: const ref array<T>, alloc: const ref std.mem.HeapAllocator) throws {
       this.alloc = alloc.copy();
       this.ndims_ = values.ndims();
       this.dims = Vec<i64>(alloc, this.ndims_);
@@ -247,7 +247,7 @@ public module std.linalg {
      * Constructor from raw components; the shape and strides are copied in
      */
     init(
-      alloc: const ref HeapAllocator,
+      alloc: const ref std.mem.HeapAllocator,
       data_ptr: raw_ptr<u8>,
       offset: i64,
       shape: const ref array<i64>,

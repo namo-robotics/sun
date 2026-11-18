@@ -21,6 +21,30 @@ using namespace llvm;
 /** Provides the generator for built-in operations. */
 namespace sun::codegen::intrinsics {
 
+Value* IntrinsicsGenerator::codegenCreateInterfaceIntrinsic(
+    const sun::ast::GenericCallAST& expr) {
+  using sun::types::InterfaceType;
+  const auto& args = expr.getArgs();
+  const auto concrete =
+      sun::codegen::support::getPointeeType(args[1]->getResolvedType());
+  auto* table = gen_.classGenerator().getOrCreateInterfaceVtable(
+      static_cast<sun::types::ClassType*>(concrete.get()),
+      static_cast<InterfaceType*>(expr.getResolvedType().get()));
+  Value* owner =
+      llvm::UndefValue::get(InterfaceType::getOwnerType(ctx.getContext()));
+  owner = ctx.builder->CreateInsertValue(owner, codegen(*args[0]),
+                                         InterfaceType::Owner);
+  owner = ctx.builder->CreateInsertValue(owner, codegen(*args[1]),
+                                         InterfaceType::Object);
+  owner = ctx.builder->CreateInsertValue(owner, table, InterfaceType::Vtable);
+  owner = ctx.builder->CreateInsertValue(owner, codegen(*args[2]),
+                                         InterfaceType::Deinit);
+  auto* result = gen_.materializeStructReturn(owner);
+  return expr.isMoved()
+             ? result
+             : scopes().trackCallTemporary(result, expr.getResolvedType());
+}
+
 // -------------------------------------------------------------------
 // Generic intrinsics codegen
 // Called from codegen(GenericCallAST) for _sizeof, _own, _init, _load, _store
@@ -392,6 +416,8 @@ Value* IntrinsicsGenerator::codegenDeinitIntrinsic(
 
     // Recursively deinit class fields that have deinit methods
     scopes().emitFieldDeinit(ptr, classType, "deinit.intrinsic");
+  } else if (typeArg && typeArg->isInterface()) {
+    scopes().emitDropInPlace(typeArg, ptr, "interface.element");
   } else if (typeArg && typeArg->isEnum()) {
     // Payload enums with owning payloads drop through their drop function
     gen_.enumGenerator().emitDrop(static_cast<EnumType&>(*typeArg), ptr);

@@ -97,7 +97,7 @@ std::shared_ptr<InterfaceType> InterfaceAnalyzer::resolveImplementedInterface(
   try {
     return std::dynamic_pointer_cast<InterfaceType>(
         resolver_.typeAnnotationToType(
-            reference.toAnnotation(owner.getLocation()), true));
+            reference.toAnnotation(owner.getLocation())));
   } catch (sun::support::SunError& error) {
     error.addContext("resolving interface '" + reference.name +
                      "' implemented by class '" + owner.getName() + "'");
@@ -178,7 +178,7 @@ void InterfaceAnalyzer::mergeInterfaceParent(
   std::shared_ptr<InterfaceType> parent;
   try {
     parent = std::dynamic_pointer_cast<InterfaceType>(
-        resolver_.typeAnnotationToType(*definition.getParent(), true));
+        resolver_.typeAnnotationToType(*definition.getParent()));
     if (!parent || parent->isGenericDefinition()) {
       logAndThrowError(
           "Interface parent must be a fully applied interface type",
@@ -772,8 +772,8 @@ void InterfaceAnalyzer::prepareInterfaceShape(
   MethodSignatureSet methodSignatures(ctx_, resolver_);
   for (const auto& methodDecl : interfaceDef.getMethods()) {
     // Get method signature info (pure computation)
-    FunctionInfo methodInfo = sema_.declarations().getFunctionInfo(
-        *methodDecl.function, !methodDecl.hasDefaultImpl);
+    FunctionInfo methodInfo =
+        sema_.declarations().getFunctionInfo(*methodDecl.function);
     PrototypeAST& proto =
         const_cast<PrototypeAST&>(methodDecl.function->getProto());
 
@@ -800,10 +800,9 @@ void InterfaceAnalyzer::prepareInterfaceShape(
       ctx_.enterTypeParamScope(method.typeParameters, method.genericArguments);
       for (const auto& parameter : proto.getTypeParameters()) {
         method.genericConstraints.push_back(
-            parameter.constraint
-                ? resolver_.typeAnnotationToType(
-                      parameter.constraint->toAnnotation(), true)
-                : nullptr);
+            parameter.constraint ? resolver_.typeAnnotationToType(
+                                       parameter.constraint->toAnnotation())
+                                 : nullptr);
       }
     }
     method.visibility =
@@ -891,12 +890,6 @@ TypePtr InterfaceAnalyzer::resolveInterfaceMemberType(
   const InterfaceMethod* method =
       ctx_.accessibleMethod(*ifaceType, memberName, memberAccess.getLocation());
   if (method) {
-    if (method->returnType && method->returnType->isInterface()) {
-      logAndThrowError(
-          "An interface return requirement can only be called on a concrete "
-          "implementation",
-          memberAccess.getLocation());
-    }
     memberAccess.setTargetDeclarationId(method->declarationId);
     return Types::Function(method->returnType, method->paramTypes,
                            method->canThrow, method->isUnsafe);

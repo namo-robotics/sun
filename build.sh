@@ -55,14 +55,24 @@ if [[ "$UNINSTALL" == true ]]; then
     exec bash scripts/install-build.sh uninstall "$INSTALL_PREFIX"
 fi
 
-# Installed compilers should run optimized; local development keeps debug builds.
-if [[ -z "$BUILD_TYPE" ]]; then
-    if [[ "$INSTALL" == true ]]; then
-        BUILD_TYPE=Release
-    else
-        BUILD_TYPE=Debug
-    fi
+CC_BIN=clang-20
+CXX_BIN=clang++-20
+if [[ "$(uname -s)" == Darwin ]]; then
+    LLVM_PREFIX=$(brew --prefix llvm@20)
+    CC_BIN="$LLVM_PREFIX/bin/clang"
+    CXX_BIN="$LLVM_PREFIX/bin/clang++"
+    export CMAKE_PREFIX_PATH="$LLVM_PREFIX:$(brew --prefix libarchive)${CMAKE_PREFIX_PATH:+:$CMAKE_PREFIX_PATH}"
 fi
+if ! command -v "$CC_BIN" >/dev/null || ! command -v "$CXX_BIN" >/dev/null; then
+    echo "Build requires Clang 20 ($CC_BIN and $CXX_BIN)." >&2
+    exit 1
+fi
+
+# Installed compilers should run optimized; local development keeps debug builds.
+if [[ "$INSTALL" == true ]]; then
+    BUILD_TYPE=${BUILD_TYPE:-Release}
+fi
+BUILD_TYPE=${BUILD_TYPE:-Debug}
 
 # TLS bundles and tests require static OpenSSL archives before compilation.
 if [[ "$SKIP_STDLIB" == OFF ]]; then
@@ -83,50 +93,25 @@ fi
 mkdir -p build
 cd build
 
-# A cache configured with the wrong generator or compiler (e.g. by an IDE or
-# a fresh container picking defaults) poisons the build dir — wipe and redo.
-if [[ -f CMakeCache.txt ]]; then
-    if ! grep -q "CMAKE_GENERATOR:INTERNAL=Ninja" CMakeCache.txt || \
-       ! grep -q "CMAKE_CXX_COMPILER:.*clang++" CMakeCache.txt; then
-        echo "Build dir configured with wrong generator/compiler — wiping"
-        find . -mindepth 1 -delete
-    fi
+# Reconfigure incompatible builds while keeping downloaded dependencies.
+if [[ -f CMakeCache.txt ]] && { ! grep -qx 'CMAKE_GENERATOR:INTERNAL=Ninja' CMakeCache.txt ||
+    ! grep -qs '^set(CMAKE_C_COMPILER_VERSION "20[.]' CMakeFiles/*/CMakeCCompiler.cmake ||
+    ! grep -qs '^set(CMAKE_CXX_COMPILER_VERSION "20[.]' CMakeFiles/*/CMakeCXXCompiler.cmake; }; then
+    rm CMakeCache.txt
 fi
 
-# Read the settings that determine whether CMake needs reconfiguration.
-CACHED_SKIP_STDLIB=""
-CACHED_BUILD_TYPE=""
-if [[ -f CMakeCache.txt ]]; then
-    CACHED_BUILD_TYPE=$(grep "^CMAKE_BUILD_TYPE:" CMakeCache.txt 2>/dev/null | cut -d= -f2 || echo "")
-    CACHED_SKIP_STDLIB=$(grep "^SKIP_STDLIB:" CMakeCache.txt 2>/dev/null | cut -d= -f2 || echo "")
-fi
-
-# Locate Homebrew dependencies that macOS does not expose to CMake by default.
-EXTRA_CMAKE_ARGS=()
-if [[ "$(uname -s)" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
-    LLVM_PREFIX=$(brew --prefix llvm@20 2>/dev/null || brew --prefix llvm 2>/dev/null || true)
-    if [[ -n "$LLVM_PREFIX" ]]; then
-        EXTRA_CMAKE_ARGS+=("-DLLVM_DIR=$LLVM_PREFIX/lib/cmake/llvm")
-    fi
-    LIBARCHIVE_PREFIX=$(brew --prefix libarchive 2>/dev/null || true)
-    if [[ -n "$LIBARCHIVE_PREFIX" ]]; then
-        EXTRA_CMAKE_ARGS+=("-DLibArchive_ROOT=$LIBARCHIVE_PREFIX")
-    fi
-fi
-
-# Reconfigure when the requested configuration differs from the existing build.
-if [[ ! -f CMakeCache.txt || "$RECONFIGURE" == true ||
-      "$CACHED_SKIP_STDLIB" != "$SKIP_STDLIB" ||
-      "$CACHED_BUILD_TYPE" != "$BUILD_TYPE" ]]; then
+# Keep preset flags when the cached build already matches the request.
+if [[ "$RECONFIGURE" == true ]] ||
+   ! grep -Fqsx "CMAKE_BUILD_TYPE:STRING=$BUILD_TYPE" CMakeCache.txt ||
+   ! grep -Fqsx "SKIP_STDLIB:BOOL=$SKIP_STDLIB" CMakeCache.txt; then
     cmake -G Ninja \
-          -DCMAKE_CXX_COMPILER=clang++ \
-          -DCMAKE_C_COMPILER=clang \
+          -DCMAKE_CXX_COMPILER="$CXX_BIN" \
+          -DCMAKE_C_COMPILER="$CC_BIN" \
           -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
           -DCMAKE_CXX_FLAGS="-fno-omit-frame-pointer" \
           -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
           -DCMAKE_C_COMPILER_LAUNCHER=ccache \
           -DSKIP_STDLIB=$SKIP_STDLIB \
-          ${EXTRA_CMAKE_ARGS[@]+"${EXTRA_CMAKE_ARGS[@]}"} \
           ..
 fi
 

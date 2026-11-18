@@ -787,6 +787,9 @@ class Formatter {
         const std::string& methodName = m.method->getProto().getName();
         if (methodName == "init" || methodName == "deinit") {
           // Constructors and destructors are written bare: init(...) { }
+          if (m.method->getProto().isUnsafeMethod()) {
+            out_ += "unsafe ";
+          }
           printProtoSig(m.method->getProto());
           out_ += ' ';
           printBlockML(m.method->getBody(),

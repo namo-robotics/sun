@@ -110,7 +110,7 @@ using std;
 using std.env;
 
 function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 throws {
-  var environment = Env(global_allocator);
+  var environment = Env(std.mem.global_allocator);
   var cli = environment.args(argc, argv);
   for (var arg: ref String in cli) { println(arg); }
   return 0;
@@ -168,9 +168,16 @@ function parse(value: f64) i32 { return 0; }
 var parse_int: function (i32) i32 = parse;
 ```
 
-A bare overloaded name without type context is ambiguous. Generic functions
-must still be called with a specialization and cannot currently be taken as
-bare function pointers.
+A bare overloaded name without type context is ambiguous. A typed function
+pointer can also select a generic function when its parameter types determine
+the specialization:
+
+```sun
+/** Returns its argument by value. */
+function identity<T>(value: T) T { return value; }
+
+var identity_int: function (i32) i32 = identity;
+```
 
 ## Lambdas
 

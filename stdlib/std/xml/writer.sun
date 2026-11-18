@@ -35,7 +35,7 @@ public module std.xml {
     var attributes: Vec<XmlName>;
 
     /** Starts an empty frame with explicitly allocated storage. */
-    init(alloc: const ref HeapAllocator) throws {
+    init(alloc: const ref std.mem.HeapAllocator) throws {
       this.qname = String(alloc, "");
       this.head = String(alloc, "");
       this.namespaces = Vec<XmlNamespace>(alloc, 4);
@@ -45,7 +45,7 @@ public module std.xml {
 
   /** Appends checked XML to borrowed output; any failure permanently stops this writer. */
   public class XmlWriter {
-    var alloc: HeapAllocator;
+    var alloc: std.mem.HeapAllocator;
     var output: ref String;
     var stack: Vec<XmlWriteFrame>;
     var failed: bool = false;
@@ -56,7 +56,7 @@ public module std.xml {
     var serial: i64 = 0;
 
     /** Borrows output and allocates only through the supplied allocator. */
-    init(alloc: const ref HeapAllocator, output: ref String) throws {
+    init(alloc: const ref std.mem.HeapAllocator, output: ref String) throws {
       this.alloc = alloc.copy();
       this.output = output;
       this.stack = Vec<XmlWriteFrame>(alloc, 4);

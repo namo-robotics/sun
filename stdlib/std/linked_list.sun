@@ -109,13 +109,13 @@ public module std {
   public class LinkedList<T> implements IIterable<ref T, LinkedList<T>> {
     var head: raw_ptr<LinkedListNode<T>> = null;
     var tail: raw_ptr<LinkedListNode<T>> = null;
-    var alloc: HeapAllocator;
+    var alloc: std.mem.HeapAllocator;
     var size_: i64 = 0;
 
     /**
      * Constructor with allocator
      */
-    init(allocator: const ref HeapAllocator) {
+    init(allocator: const ref std.mem.HeapAllocator) {
       this.alloc = allocator.copy();
     }
 
@@ -134,7 +134,7 @@ public module std {
      * Append element to the back
      */
     public method push_back(value: T) void throws {
-      var node: raw_ptr<LinkedListNode<T>> = this.alloc.alloc<LinkedListNode<T>>(1);
+      var node: raw_ptr<LinkedListNode<T>> = std.mem.alloc<LinkedListNode<T>>(this.alloc, 1);
       unsafe { _init<LinkedListNode<T>>(node, value); };
       if (this.tail != null) {
         unsafe { this.tail.set_next(node); };
@@ -153,7 +153,7 @@ public module std {
      * Prepend element to the front
      */
     public method push_front(value: T) void throws {
-      var node: raw_ptr<LinkedListNode<T>> = this.alloc.alloc<LinkedListNode<T>>(1);
+      var node: raw_ptr<LinkedListNode<T>> = std.mem.alloc<LinkedListNode<T>>(this.alloc, 1);
       unsafe { _init<LinkedListNode<T>>(node, value); };
       if (this.head != null) {
         unsafe { this.head.set_prev(node); };

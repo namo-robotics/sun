@@ -1,10 +1,9 @@
 using std.xml;
 using std.io;
-
 using std;
 
 /** Produces a small SVG with namespace declarations and escaped text. */
-function draw(alloc: const ref HeapAllocator, output: ref String) void throws {
+function draw(alloc: const ref std.mem.HeapAllocator, output: ref String) void throws {
   var writer = XmlWriter(alloc, output);
   writer.declaration();
   var svg = XmlName(
@@ -39,8 +38,8 @@ function draw(alloc: const ref HeapAllocator, output: ref String) void throws {
 
 /** Prints a complete SVG document that can be redirected to a file. */
 function run_main() i32 throws {
-  var output = String(global_allocator, "");
-  draw(global_allocator, output);
+  var output = String(std.mem.global_allocator, "");
+  draw(std.mem.global_allocator, output);
   println(output);
   return 0;
 }

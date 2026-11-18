@@ -8,7 +8,7 @@ public module std.linalg {
 
   /** Checks Matrix wrappers, result ownership, and operand preservation in both precisions. */
   function check_matrix_methods<T: _Float>() void throws {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var a = Matrix<T>(alloc, [2, 3]);
     var b = Matrix<T>(alloc, [3, 2]);
     for (var i: i64 = 0; i < 2; i = i + 1) {
@@ -65,7 +65,7 @@ public module std.linalg {
 
   /** Checks allocating multiplication errors and allocation-free alias validation. */
   test_function matrix_method_errors() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var a = Matrix<f64>([[2.0]], alloc);
     var b = Matrix<f64>(alloc, [2, 1]);
     try {
@@ -148,7 +148,7 @@ public module std.linalg {
 
   /** Compares vector groups and every tail length with scalar dot products. */
   test_function simd_widths_and_tails() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var a = Matrix<f32>([[1.0f32, 2.0f32, -3.0f32], [4.0f32, -5.0f32, 6.0f32]], alloc);
     for (var width: i64 = 1; width <= 10; width = width + 1) {
       var b = Matrix<f32>(alloc, [3, width]);
@@ -173,7 +173,7 @@ public module std.linalg {
 
   /** Keeps increasing-k accumulation in both vector row tails and scalar columns. */
   test_function remainder_accumulation_order() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     for (var width: i64 = 5; width <= 7; width = width + 1) {
       var a = Matrix<f32>(alloc, [5, 3]);
       var b = Matrix<f32>(alloc, [3, width]);
@@ -200,7 +200,7 @@ public module std.linalg {
   /** Checks complete tiles and all row/column tails against independent dot products.
    * Dyadic inputs allow exact comparisons, including nonzero beta and transposed A. */
   test_function register_tiles_and_tails() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     for (var m: i64 = 3; m <= 9; m = m + 1) {
       for (var n: i64 = 3; n <= 9; n = n + 1) {
         for (var k: i64 = 1; k <= 7; k = k + 6) {
@@ -267,7 +267,7 @@ public module std.linalg {
 
   /** Allows fused or separate rounding while checking increasing-k accumulation inside full tiles. */
   test_function register_tiles_accumulate_in_order() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var x = _bitcast<f32>(1065353217u32);
     var y = _bitcast<f32>(1065353214u32);
     var a = Matrix<f32>(alloc, [4, 3]);
@@ -304,7 +304,7 @@ public module std.linalg {
 
   /** Checks packing thresholds, cache-panel edges, and tails against scalar dot products. */
   test_function packed_panel_boundaries() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var shapes: array<i64, 18, 3> = [
       [15i64, 31i64, 15i64],
       [16i64, 32i64, 16i64],
@@ -391,7 +391,7 @@ public module std.linalg {
   /** Checks every partial wide-tile shape, transposed A, and output scaling.
    * Products exceed the dispatch threshold and use exact dyadic arithmetic. */
   test_function dispatched_edge_shapes() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     for (var tail_rows: i64 = 1; tail_rows <= 3; tail_rows = tail_rows + 1) {
       for (var tail_cols: i64 = 1; tail_cols <= 15; tail_cols = tail_cols + 1) {
         var m = 64 + tail_rows;
@@ -456,7 +456,7 @@ public module std.linalg {
 
   /** Zero alpha and empty inner dimensions still scale all output, without reading inputs. */
   test_function packed_shape_scaling_only() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var a = Matrix<f32>(alloc, [19, 65]);
     var b = Matrix<f32>(alloc, [65, 23]);
     var c = Matrix<f32>(alloc, [19, 23]);
@@ -494,7 +494,7 @@ public module std.linalg {
 
   /** Allows target-dependent fusion in packed tiles and vector tails. */
   test_function packed_multiply_add_rounding() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var native_fma = _cpu_avx2_fma();
     var a = Matrix<f32>(alloc, [19, 129]);
     var b = Matrix<f32>(alloc, [129, 128]);
@@ -530,7 +530,7 @@ public module std.linalg {
 
   /** Preserves increasing-k rounding across packed panel boundaries. */
   test_function packed_accumulation_order() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var a = Matrix<f32>(alloc, [16, 65]);
     var b = Matrix<f32>(alloc, [65, 16]);
     var c = Matrix<f32>(alloc, [16, 16]);
@@ -553,7 +553,7 @@ public module std.linalg {
 
   /** Keeps rounding order through unrolled pairs, odd cleanup, and panel edges. */
   test_function dispatched_accumulation_order() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     for (var k: i64 = 127; k <= 129; k = k + 1) {
       var a = Matrix<f32>(alloc, [64, k]);
       var b = Matrix<f32>(alloc, [k, 64]);
@@ -578,7 +578,7 @@ public module std.linalg {
 
   /** Allows hardware fusion in the SIMD row kernel. */
   test_function simd_multiply_add_rounding() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var x = _bitcast<f32>(1065353217u32);
     var y = _bitcast<f32>(1065353214u32);
     var a = Matrix<f32>([[x]], alloc);
@@ -591,7 +591,7 @@ public module std.linalg {
 
   /** Checks every transpose combination against an independent dot-product loop. */
   function check_products<T: _Float>() void throws {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     for (var ta: i64 = 0; ta < 2; ta = ta + 1) {
       for (var tb: i64 = 0; tb < 2; tb = tb + 1) {
         var ar: i64 = 2;
@@ -678,7 +678,7 @@ public module std.linalg {
 
   /** Checks exact square results, shared inputs, and output accumulation. */
   test_function square_and_shared_inputs() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var a = Matrix<f64>([[1.0, 2.0], [3.0, 4.0]], alloc);
     var c = Matrix<f64>(alloc, [2, 2]);
     gemm<f64>(1.0, a, Transpose.None, a, Transpose.None, 0.0, c);
@@ -694,7 +694,7 @@ public module std.linalg {
 
   /** Checks zero factors, uninitialized inputs, and overwriting NaN output. */
   test_function zero_factors_and_single_element() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var a = Matrix<f32>(alloc, [1, 1]);
     var b = Matrix<f32>(alloc, [1, 1]);
     var c = Matrix<f32>([[3.0f32]], alloc);
@@ -712,7 +712,7 @@ public module std.linalg {
 
   /** Checks empty output and empty dot products without reading inputs. */
   test_function empty_dimensions() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var a = Matrix<f64>(alloc, [2, 0]);
     var b = Matrix<f64>(alloc, [0, 3]);
     var c = Matrix<f64>(alloc, [2, 3]);
@@ -738,7 +738,7 @@ public module std.linalg {
 
   /** Checks ranks, shapes, and output aliasing before any output is modified. */
   test_function validation_preserves_output() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var a = Matrix<f32>([[2.0f32]], alloc);
     var b = Matrix<f32>([[3.0f32]], alloc);
     var c = Matrix<f32>([[9.0f32]], alloc);

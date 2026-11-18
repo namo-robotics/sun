@@ -13,7 +13,7 @@ public module std.io {
 
   /** Checks read dir lists entries without dot and dotdot. */
   test_function read_dir_lists_entries_without_dot_and_dotdot() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var td = std.tests.TempDir(alloc, "read_dir_lists");
     var a_path = td.file("a.txt");
     var a_body = String("aaa");
@@ -46,7 +46,7 @@ public module std.io {
 
   /** Checks read dir finds a named entry. */
   test_function read_dir_finds_a_named_entry() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var td = std.tests.TempDir(alloc, "read_dir_finds");
     var needle = td.file("needle.txt");
     var body = String("x");
@@ -64,7 +64,7 @@ public module std.io {
 
   /** Checks read dir on empty directory. */
   test_function read_dir_on_empty_directory() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var td = std.tests.TempDir(alloc, "read_dir_empty");
     var entries = std.io.read_dir(alloc, td.path);
     std.test.assert_eq(entries.size(), 0);
@@ -72,7 +72,7 @@ public module std.io {
 
   /** Checks read dir on missing directory throws. */
   test_function read_dir_on_missing_directory_throws() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var td = std.tests.TempDir(alloc, "read_dir_missing");
     var missing = td.file("nope");
     try {
@@ -85,7 +85,7 @@ public module std.io {
 
   /** Checks metadata predicates. */
   test_function metadata_predicates() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var td = std.tests.TempDir(alloc, "metadata_predicates");
     var file = td.file("file.txt");
     var body = String("12345");
@@ -105,7 +105,7 @@ public module std.io {
 
   /** Checks read dir accepts a runtime string path. */
   test_function read_dir_accepts_a_runtime_string_path() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var td = std.tests.TempDir(alloc, "read_dir_runtime");
     var only = td.file("only.txt");
     var body = String("x");
@@ -122,7 +122,7 @@ public module std.io {
 
   /** Checks open and write a computed path. */
   test_function open_and_write_a_computed_path() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var td = std.tests.TempDir(alloc, "open_write_computed");
     var path = td.file("computed.txt");
 
@@ -139,7 +139,7 @@ public module std.io {
 
   /** Checks whole file helpers take a computed path. */
   test_function whole_file_helpers_take_a_computed_path() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var td = std.tests.TempDir(alloc, "whole_file_helpers");
     var path = td.file("round_trip.txt");
     var body = String("round trip");
@@ -152,7 +152,7 @@ public module std.io {
 
   /** Checks metadata queries take a computed path. */
   test_function metadata_queries_take_a_computed_path() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var td = std.tests.TempDir(alloc, "metadata_computed");
     var file = td.file("there.txt");
     var body = String("x");
@@ -168,7 +168,7 @@ public module std.io {
 
   /** Checks directory calls take a computed path. */
   test_function directory_calls_take_a_computed_path() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var td = std.tests.TempDir(alloc, "directory_computed");
     var dir = td.file("made");
     std.io.make_dir(dir, 493);
@@ -195,7 +195,7 @@ public module std.io {
     // A literal cannot embed the process id, so this is the one test with
     // a fixed /tmp name. The file is removed before any assertion can
     // throw, so no litter is left behind even on failure.
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var body = String("literal path");
 
     std.io.write_string("/tmp/sun_stdlib_io_literal_overload.txt", body);
@@ -215,7 +215,7 @@ public module std.io {
 
   /** Checks empty poller returns zero. */
   test_function empty_poller_returns_zero() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var p = std.io.Poller(alloc);
     std.test.assert_eq(p.count(), 0);
     std.test.assert_eq(p.wait(0), 0);
@@ -223,7 +223,7 @@ public module std.io {
 
   /** Checks pipe becomes readable after a write. */
   test_function pipe_becomes_readable_after_a_write() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var pipe = std.process.open_pipe(alloc);
     var p = std.io.Poller(alloc);
     p.add_read(pipe.read_fd());
@@ -245,7 +245,7 @@ public module std.io {
 
   /** Checks hangup is reported when the writer closes. */
   test_function hangup_is_reported_when_the_writer_closes() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var pipe = std.process.open_pipe(alloc);
     pipe.close_write();
 
@@ -261,7 +261,7 @@ public module std.io {
 
   /** Checks watches several descriptors by position. */
   test_function watches_several_descriptors_by_position() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var first = std.process.open_pipe(alloc);
     var second = std.process.open_pipe(alloc);
 
@@ -287,7 +287,7 @@ public module std.io {
 
   /** Checks remove forgets all matching descriptors. */
   test_function remove_forgets_all_matching_descriptors() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var p = std.io.Poller(alloc);
     p.add_read(10);
     p.add_write(20);
@@ -307,7 +307,7 @@ public module std.io {
 
   /** Removing duplicates preserves order and readiness of retained descriptors. */
   test_function removal_preserves_ready_flags_and_modify_clears_them() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var pipe = std.process.open_pipe(alloc);
     var reader = std.io.File();
     reader.adopt(pipe.read_fd());
@@ -330,7 +330,7 @@ public module std.io {
 
   /** Checks duration wait returns ready events. */
   test_function duration_wait_returns_ready_events() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var first = std.process.open_pipe(alloc);
     var second = std.process.open_pipe(alloc);
     var third = std.process.open_pipe(alloc);
@@ -381,7 +381,7 @@ public module std.io {
 
   /** Checks empty duration wait honors timeout. */
   test_function empty_duration_wait_honors_timeout() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var p = std.io.Poller(alloc);
     var start = std.time.now();
     var events = p.wait(std.time.create_duration_millis(20));
@@ -397,7 +397,7 @@ public module std.io {
   test_function sun_io_file_literal_path_round_trip() {
     // File.open with a literal takes the static_ptr overload, so the path
     // here must be a fixed literal. Removed before any assertion can throw.
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var f = std.io.File();
 
     f.open("/tmp/sun_stdlib_io_file_literal.txt", std.io.FileMode.Write);
@@ -414,7 +414,7 @@ public module std.io {
 
   /** Checks sun io file runtime string path. */
   test_function sun_io_file_runtime_string_path() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var td = std.tests.TempDir(alloc, "sun_io_file_runtime");
     // The path is built at runtime, which the intrinsics cannot take.
     var path = td.file("runtime.txt");
@@ -428,7 +428,7 @@ public module std.io {
 
   /** Checks sun io file seek and size. */
   test_function sun_io_file_seek_and_size() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var td = std.tests.TempDir(alloc, "sun_io_file_seek");
     var path = td.file("seek.txt");
     var body = String("0123456789");
@@ -447,7 +447,7 @@ public module std.io {
 
   /** Checks sun io append mode keeps existing content. */
   test_function sun_io_append_mode_keeps_existing_content() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var td = std.tests.TempDir(alloc, "sun_io_append");
     var path = td.file("append.txt");
     var body = String("first;");
@@ -464,7 +464,7 @@ public module std.io {
 
   /** Checks sun io open missing file throws. */
   test_function sun_io_open_missing_file_throws() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var td = std.tests.TempDir(alloc, "sun_io_open_missing");
     var missing = td.file("nope.txt");
     var f = std.io.File();
@@ -477,7 +477,7 @@ public module std.io {
 
   /** Checks sun io remove rename and directories. */
   test_function sun_io_remove_rename_and_directories() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var td = std.tests.TempDir(alloc, "sun_io_remove_rename");
     var victim = td.file("victim.txt");
     var body = String("x");

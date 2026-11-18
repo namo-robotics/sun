@@ -10,7 +10,7 @@ public module std {
   /**
      * Build a BigUint from decimal text.
      */
-  function make_bigint(alloc: ref HeapAllocator, text: static_ptr<u8>) BigUint throws {
+  function make_bigint(alloc: ref std.mem.HeapAllocator, text: static_ptr<u8>) BigUint throws {
     var s = String(alloc, text);
     var n = BigUint(alloc);
     n.set_decimal(s);
@@ -20,7 +20,11 @@ public module std {
   /**
      * True when the number renders to exactly this decimal text.
      */
-  function renders_as(alloc: ref HeapAllocator, n: ref BigUint, text: static_ptr<u8>) bool throws {
+  function renders_as(
+    alloc: ref std.mem.HeapAllocator,
+    n: ref BigUint,
+    text: static_ptr<u8>
+  ) bool throws {
     var s = String(alloc, "");
     n.append_decimal(s);
     return s.equals_literal(text);
@@ -28,7 +32,7 @@ public module std {
 
   /** Checks factorial and decimal round trip. */
   test_function factorial_and_decimal_round_trip() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var n = BigUint(alloc, 1);
     for (var i: u64 = 2; i <= 30; i = i + 1) {
       n.mul_small(i);
@@ -65,7 +69,7 @@ public module std {
 
   /** Checks multi limb arithmetic. */
   test_function multi_limb_arithmetic() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     // a = 2^200 + 12345, b = 3^150 + 7
     var a = make_bigint(
       alloc,
@@ -183,7 +187,7 @@ public module std {
 
   /** Failed arithmetic reports its precise error without changing the value. */
   test_function failed_arithmetic_preserves_value() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var value = BigUint(alloc, 7);
     var larger = BigUint(alloc, 8);
     try {

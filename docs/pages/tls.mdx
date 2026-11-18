@@ -21,8 +21,8 @@ using tls;
 
 /** Fetches a page and reports either error category. */
 function main() i32 throws {
-  var client = HttpsClient(global_allocator);
-  var host = String(global_allocator, "example.com");
+  var client = HttpsClient(std.mem.global_allocator);
+  var host = String(std.mem.global_allocator, "example.com");
   var response = client.get(host, "/");
   println(response.status);
   println(response.body);

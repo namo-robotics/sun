@@ -187,7 +187,7 @@ function consume(s: ref String) void {}
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
+  var allocator = std.mem.make_heap_allocator();
   var s1 =  String(allocator, "Hello World");
   var s2 = s1;
   consume(s1);
@@ -421,7 +421,7 @@ function first(h: ref Holder) ref String throws {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var items =  Vec<String>(alloc, 2);
    items.push( String(alloc, "ab"));
    items.push( String(alloc, "cde"));
@@ -446,7 +446,7 @@ enum Value {
   Empty
 }
 
-function first(alloc: ref HeapAllocator) ref String throws {
+function first(alloc: ref std.mem.HeapAllocator) ref String throws {
   var local = Value.Items( Vec<String>(alloc, 1));
   match local {
     Value.Items(items) => {
@@ -459,7 +459,7 @@ function first(alloc: ref HeapAllocator) ref String throws {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   return _convert<i32>(( first(alloc)).length());
 }
 )"),
@@ -477,7 +477,7 @@ TEST(MemorySafety_BorrowChecker, return_in_catch_does_not_move_on_fallthrough) {
   auto value = executeStringWithStdlib(R"(
 using std;
 
-function pick(alloc: ref HeapAllocator, n: i64) Vec<String> throws {
+function pick(alloc: ref std.mem.HeapAllocator, n: i64) Vec<String> throws {
   var out =  Vec<String>(alloc, 4);
   try { if (n == 3) { throw EmptyError(); }
  } catch (ignored_error: EmptyError) {
@@ -492,7 +492,7 @@ function pick(alloc: ref HeapAllocator, n: i64) Vec<String> throws {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  pick(alloc, 5);
   return _convert<i32>(v.size());
 }
@@ -505,7 +505,7 @@ TEST(MemorySafety_BorrowChecker,
   auto value = executeStringWithStdlib(R"(
 using std;
 
-function pick(alloc: ref HeapAllocator, n: i64) Vec<String> throws {
+function pick(alloc: ref std.mem.HeapAllocator, n: i64) Vec<String> throws {
   var out =  Vec<String>(alloc, 4);
   try {
     if (n == 3) { throw EmptyError(); }
@@ -520,7 +520,7 @@ function pick(alloc: ref HeapAllocator, n: i64) Vec<String> throws {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  pick(alloc, 5);
   return _convert<i32>(v.size());
 }
@@ -533,7 +533,7 @@ TEST(MemorySafety_BorrowChecker,
   auto value = executeStringWithStdlib(R"(
 using std;
 
-function pick(alloc: ref HeapAllocator, o: Option<i64>) Vec<String> throws {
+function pick(alloc: ref std.mem.HeapAllocator, o: Option<i64>) Vec<String> throws {
   var out =  Vec<String>(alloc, 4);
   match o {
     Option.Some(v) => {
@@ -548,7 +548,7 @@ function pick(alloc: ref HeapAllocator, o: Option<i64>) Vec<String> throws {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  pick(alloc, Option.None);
   return _convert<i32>(v.size());
 }
@@ -566,7 +566,7 @@ function consume(v: Vec<String>) i64 {
   return v.size();
 }
 
-function f(alloc: ref HeapAllocator, n: i64) Vec<String> throws {
+function f(alloc: ref std.mem.HeapAllocator, n: i64) Vec<String> throws {
   var out =  Vec<String>(alloc, 4);
   var result: PopResult<void> = n == 3 ? PopResult.Empty(EmptyError()) : PopResult.Ok;
   try { result;
@@ -578,7 +578,7 @@ function f(alloc: ref HeapAllocator, n: i64) Vec<String> throws {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  f(alloc, 1);
   return 0;
 }
@@ -594,7 +594,7 @@ function consume(v: Vec<String>) i64 {
   return v.size();
 }
 
-function f(alloc: ref HeapAllocator, o: Option<i64>) Vec<String> throws {
+function f(alloc: ref std.mem.HeapAllocator, o: Option<i64>) Vec<String> throws {
   var out =  Vec<String>(alloc, 4);
   match o {
     Option.Some(v) => {
@@ -607,7 +607,7 @@ function f(alloc: ref HeapAllocator, o: Option<i64>) Vec<String> throws {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  f(alloc, Option.None);
   return 0;
 }
@@ -625,7 +625,7 @@ function consume(v: Vec<String>) i64 {
   return v.size();
 }
 
-function f(alloc: ref HeapAllocator) Vec<String> throws {
+function f(alloc: ref std.mem.HeapAllocator) Vec<String> throws {
   var out =  Vec<String>(alloc, 4);
   var k = consume(out);
   var result: PopResult<void> = PopResult.Empty(EmptyError());
@@ -638,7 +638,7 @@ function f(alloc: ref HeapAllocator) Vec<String> throws {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  f(alloc);
   return 0;
 }
@@ -1187,7 +1187,7 @@ using std;
 using std.xml;
 
 /** Attempts to return a reader beyond its input's lifetime. */
-function dangling(alloc: ref HeapAllocator) XmlReader throws {
+function dangling(alloc: ref std.mem.HeapAllocator) XmlReader throws {
   var input =  String(alloc, "<r/>");
   return  XmlReader(alloc, input);
 }
@@ -1195,7 +1195,7 @@ function dangling(alloc: ref HeapAllocator) XmlReader throws {
 /** Instantiates the invalid borrowing path. */
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var reader =  dangling(alloc);
   return 0;
 }
@@ -1212,7 +1212,7 @@ using std.xml;
 /** Attempts to invalidate input before advancing its reader. */
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var input =  String(alloc, "<r/>");
   var reader =  XmlReader(alloc, input);
   input.clear();
@@ -1232,7 +1232,7 @@ TEST(MemorySafety_BorrowChecker, xml_child_prevents_document_move) {
     function consume(document: XmlDocument) void {}
     /** Attempts to use a child after consuming its owner. */
     function test_main() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       var document =  parse_xml(alloc, "<r>text</r>");
       var child: ref XmlNode =  document.root().child(0);
       consume(document);
@@ -1255,7 +1255,7 @@ TEST(MemorySafety_BorrowChecker, xml_child_prevents_removal) {
     using std.xml;
     /** Attempts to use a child after removing it from its owning element. */
     function test_main() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       var document =  parse_xml(alloc, "<r>text</r>");
       var child: ref XmlNode =  document.root().child(0);
       var removed =  document.root().remove(0);
@@ -1285,7 +1285,7 @@ function inspect(document: ref XmlDocument) i64 throws {
 
 /** Creates the owner before borrowing its contents. */
 function test_main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var document =  parse_xml(alloc, "<r>text</r>");
   return _convert<i32>( inspect(document));
 }

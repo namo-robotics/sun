@@ -52,13 +52,13 @@ public module std.process {
   }
 
   /** Return the caller-visible PIDs; entries may exit before they are inspected. */
-  public function process_ids(alloc: const ref HeapAllocator) Vec<i32> throws {
+  public function process_ids(alloc: const ref std.mem.HeapAllocator) Vec<i32> throws {
     return native_process_ids(alloc);
   }
 
   /** Read identity without requesting access beyond the caller's credentials. */
   public function process_identity(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     target: i32
   ) ProcessIdentity throws {
     if (target <= 0) {
@@ -69,7 +69,7 @@ public module std.process {
 
   /** Collect fields and recheck identity; observations are not an atomic snapshot. */
   public function inspect_process(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     target: i32
   ) ProcessSnapshot throws {
     if (target <= 0) {
@@ -103,13 +103,13 @@ public module std.process {
    * Closing or destroying a handle neither signals nor waits for the process.
    */
   public class ProcessHandle {
-    var alloc: HeapAllocator;
+    var alloc: std.mem.HeapAllocator;
     var identity_: ProcessIdentity;
     // Zero also represents a moved-from handle. Linux stores fd + 1.
     var token: i64 = 0;
 
     /** Create a closed handle using the allocator for native identity queries. */
-    init(alloc: const ref HeapAllocator) {
+    init(alloc: const ref std.mem.HeapAllocator) {
       this.alloc = alloc.copy();
       this.identity_ = ProcessIdentity(0, 0);
     }
@@ -174,7 +174,7 @@ public module std.process {
 
   /** Copy a bounded native byte range into allocator-owned text. */
   function process_text(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     data: ref ContiguousBuffer<u8>,
     start: i64,
     end: i64
@@ -188,7 +188,7 @@ public module std.process {
 
   /** Decode NUL-terminated argument bytes, preserving empty arguments. */
   function process_arguments(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     text: const ref String
   ) Vec<String> throws {
     var args = Vec<String>(alloc, 8);

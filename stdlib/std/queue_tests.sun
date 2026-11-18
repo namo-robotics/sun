@@ -54,7 +54,7 @@ public module std {
      * Builds a queue of three tracked items and lets it go out of scope.
      */
   function fill_and_abandon_queue() void throws {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var q = Queue<TrackedByDeath>(allocator);
     q.push(TrackedByDeath(1));
     q.push(TrackedByDeath(2));
@@ -65,7 +65,7 @@ public module std {
 
   /** Checks empty queue. */
   test_function empty_queue() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var q = Queue<i32>(allocator);
     std.test.assert(q.is_empty());
     std.test.assert_eq(q.size(), 0);
@@ -73,7 +73,7 @@ public module std {
 
   /** Checks push grows the queue. */
   test_function push_grows_the_queue() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var q = Queue<i32>(allocator);
     q.push(10);
     q.push(20);
@@ -85,7 +85,7 @@ public module std {
      * The whole point of the type: what goes in first comes out first.
      */
   test_function pops_in_the_order_pushed() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var q = Queue<i32>(allocator);
     q.push(1);
     q.push(2);
@@ -104,7 +104,7 @@ public module std {
 
   /** Checks pop on empty is none. */
   test_function pop_on_empty_is_none() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var q = Queue<i32>(allocator);
     var result: i32 = -2;
     match (q.pop()) {
@@ -120,7 +120,7 @@ public module std {
 
   /** Checks push and pop interleaved. */
   test_function push_and_pop_interleaved() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var q = Queue<i32>(allocator);
     q.push(1);
     q.push(2);
@@ -147,7 +147,7 @@ public module std {
 
   /** Checks peek borrows the front without removing it. */
   test_function peek_borrows_the_front_without_removing_it() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var q = Queue<i32>(allocator);
     q.push(7);
     q.push(8);
@@ -165,7 +165,7 @@ public module std {
 
   /** Checks peek back is the most recent push. */
   test_function peek_back_is_the_most_recent_push() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var q = Queue<i32>(allocator);
     q.push(1);
     q.push(9);
@@ -183,7 +183,7 @@ public module std {
 
   /** Checks peek on empty is none. */
   test_function peek_on_empty_is_none() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var q = Queue<i32>(allocator);
     var result: i32 = -2;
     match (q.peek()) {
@@ -199,7 +199,7 @@ public module std {
 
   /** Checks clear empties the queue. */
   test_function clear_empties_the_queue() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var q = Queue<i32>(allocator);
     q.push(1);
     q.push(2);
@@ -210,7 +210,7 @@ public module std {
 
   /** Checks iterates front to back. */
   test_function iterates_front_to_back() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var q = Queue<i32>(allocator);
     q.push(1);
     q.push(2);
@@ -234,7 +234,7 @@ public module std {
 
   /** Checks clear drops the items it removes. */
   test_function clear_drops_the_items_it_removes() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var q = Queue<TrackedByClear>(allocator);
     q.push(TrackedByClear(1));
     q.push(TrackedByClear(2));

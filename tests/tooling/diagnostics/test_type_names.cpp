@@ -50,7 +50,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  Vec<u8>(alloc, 16);
   var t =  spawn(() => i64 { return v.length(); });
   return 0;
@@ -65,7 +65,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  Vec<u8>(alloc, 16);
   var x: i32 = v;
   return 0;
@@ -80,7 +80,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  Vec<u8>(alloc, 16);
   v.no_such_method();
   return 0;
@@ -95,7 +95,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  Vec<u8>(alloc, "not a size");
   return 0;
 }
@@ -122,7 +122,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  Vec<u8>(alloc, 16);
   var s =  String("hi");
   var r = true ? v : s;

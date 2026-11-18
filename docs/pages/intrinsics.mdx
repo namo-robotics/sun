@@ -47,12 +47,41 @@ records. It is a compile-time constant and requires no `unsafe` block.
 Allocates raw bytes aligned for `T`, returning `raw_ptr<u8>`, or null on failure.
 The byte count must be nonnegative. Free the result with `_free`. The intrinsic
 requires `unsafe`; it does not initialize values or track their lifetimes.
-Prefer the standard typed allocator methods in safe code.
+Prefer the typed functions in `std.mem` in safe code.
+
+### Runtime allocation layout
+
+`_aligned_alloc(bytes, alignment)` allocates bytes with a runtime alignment and
+returns `raw_ptr<u8>`, or null on failure. Free the result with `_free`.
+`_alignment_padding(pointer, alignment)` returns the bytes needed to reach the
+next aligned address without accessing the pointed-to memory. Both require
+`unsafe` and a positive power-of-two alignment. The allocation byte count must
+be nonnegative. `std.mem` validates these requirements before calling them.
 
 ### C binding assertions
 
 `_assert_c_target("triple")` and `_assert_c_layout<T>(size, alignment, offsets...)`
 are module-level compile-time checks. See [C FFI](/c-ffi#optional-header-binding-generation).
+
+### `_create_interface<I>(owner, object, deinit)`
+
+Inside an `unsafe` block, this intrinsic adopts the allocation and receiver as a
+move-only interface. Callers specify `I`. The compiler infers `O` and `Owner`
+from the pointers.
+
+```sun
+declare function _create_interface<I: interface, O: I, Owner>(
+  owner: raw_ptr<Owner>,
+  object: raw_ptr<O>,
+  deinit_fn: function (raw_ptr<Owner>) void
+) I;
+```
+
+The compiler checks that the concrete class `O` supports dynamic dispatch
+through `I` and supplies its vtable. The caller must keep both pointers valid
+and stable and transfer sole cleanup responsibility. Dropping the handle calls
+the supplied nonthrowing cleanup function once with the original owner pointer.
+Use `std.mem.create_interface<I>(allocator, value)` for safe construction.
 
 ### `_init<T>(ptr, args...)`
 
@@ -164,12 +193,12 @@ unsafe { _store<i32>(data, 5, 42); };
 
 ### Borrowing a raw pointer from an owner
 
-For a heap value owned by `std.Unique<T>`, use its `get_raw()` method. This
+For a heap value owned by `std.mem.Unique<T, A>`, use its `get_raw()` method. This
 returns a non-owning pointer without transferring ownership; it is an ordinary
 standard-library method, not an intrinsic.
 
 ```sun
-var owned = allocator.create_unique<Point>(1, 2);
+var owned = std.mem.create_unique<Point>(allocator, 1, 2);
 var raw: raw_ptr<Point> = owned.get_raw();
 // Keep owned alive for every use of raw; do not free raw separately.
 ```

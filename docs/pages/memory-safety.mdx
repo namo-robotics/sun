@@ -42,6 +42,14 @@ var next = owner;  // The string moves from owner to next
 
 Compound values such as strings move on assignment; primitive values are copied.
 
+A movable object cannot retain a reference into its own inline storage. This
+includes a reference field pointing to a sibling field, or a nested owner borrowing
+an allocator stored in a sibling field. Moving the object changes those fields'
+addresses without updating the stored references, so Sun rejects these bindings.
+References to external storage may be stored and moved when that storage outlives
+the object. Copying an existing external reference field does not borrow the
+reference slot itself.
+
 ## Borrowing
 
 A reference borrows a value without taking ownership. The value must remain
@@ -1094,7 +1102,7 @@ var g = (x: i32) => i32 { return unsafe { c_abs(x); }; };
 
 The useful pattern is to keep `unsafe` small and behind a safe signature, so
 callers get a checked API and there is one place to audit. That is how the
-standard library is built: `Vec<T>`, `String` and `Unique<T>` are safe types
+standard library is built: `Vec<T>`, `String` and `Unique<T, A>` are safe types
 whose bodies hold the raw loads and stores. A safe wrapper is a claim, and the
 claim is yours — the compiler checks that the block is there, not that what is
 inside it is correct.

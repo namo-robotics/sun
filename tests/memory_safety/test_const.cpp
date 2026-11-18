@@ -71,7 +71,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
+  var allocator = std.mem.make_heap_allocator();
   var v =  Vec<i32>(allocator, 4);
    v.push(1);
    v.push(2);
@@ -168,7 +168,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
+  var allocator = std.mem.make_heap_allocator();
   var v =  Vec<i32>(allocator, 4);
    v.push(1);
   for (const x: i32 in v) {
@@ -386,7 +386,7 @@ using std.io;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
+  var allocator = std.mem.make_heap_allocator();
   const s =  String(allocator, "hello");
   println(s);
   const t =  s.clone(allocator);
@@ -406,7 +406,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
+  var allocator = std.mem.make_heap_allocator();
   const s =  String(allocator, "hello");
    s.append("!");
   return 0;

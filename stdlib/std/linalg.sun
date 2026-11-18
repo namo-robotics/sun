@@ -767,7 +767,7 @@ public module std.linalg {
   public function matmul<T: _Float>(
     a: const ref std.linalg.Matrix<T>,
     b: const ref std.linalg.Matrix<T>,
-    alloc: const ref std.HeapAllocator
+    alloc: const ref std.mem.HeapAllocator
   ) std.linalg.Matrix<T> throws {
     if (not valid_matrix<T>(a) or not valid_matrix<T>(b)) {
       throw LinalgError(LinalgErrorReason.InvalidDimensions);

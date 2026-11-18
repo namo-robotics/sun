@@ -42,7 +42,7 @@ public module std.http {
     /**
      * Build an empty request. The parser fills in the fields.
      */
-    init(alloc: const ref HeapAllocator) throws {
+    init(alloc: const ref std.mem.HeapAllocator) throws {
       this.method = String(alloc, "");
       this.path = String(alloc, "");
       this.headers = String(alloc, "");
@@ -62,7 +62,7 @@ public module std.http {
     /**
      * Build a 200 response with an empty HTML body.
      */
-    init(alloc: const ref HeapAllocator) throws {
+    init(alloc: const ref std.mem.HeapAllocator) throws {
       this.content_type = String(alloc, "text/html");
       this.body = String(alloc, "");
     }
@@ -203,13 +203,13 @@ public module std.http {
   /** Accepts TCP connections and serves HTTP requests using a caller-provided handler. */
   public class HttpServer {
     var listener: TcpListener = TcpListener();
-    var alloc: HeapAllocator;
+    var alloc: std.mem.HeapAllocator;
     var running: bool = false;
 
     /**
      * Build a server with no socket bound yet.
      */
-    init(allocator: const ref HeapAllocator) {
+    init(allocator: const ref std.mem.HeapAllocator) {
       this.alloc = allocator.copy();
     }
 

@@ -19,23 +19,14 @@ Value* FunctionGenerator::codegen(const sun::ast::ReturnExprAST& expr) {
     // auto-dereffed value the normal expression path produces
     if (currentFunctionReturnsRef) {
       auto target = sun::types::unwrapRef(expr.getTargetType());
-      auto source = sun::types::unwrapRef(expr.getValue()->getResolvedType());
       if (target && target->isInterface()) {
         Value* value = gen_.tryCodegenAddress(*expr.getValue());
         if (!value) {
           value = codegen(*expr.getValue());
         }
-        auto* targetInterface =
-            static_cast<sun::types::InterfaceType*>(target.get());
-        if (source->isInterface()) {
-          value = gen_.classGenerator().upcastInterface(
-              value, static_cast<sun::types::InterfaceType*>(source.get()),
-              targetInterface);
-        } else {
-          value = gen_.classGenerator().createInterfaceFatPointer(
-              value, static_cast<sun::types::ClassType*>(source.get()),
-              targetInterface);
-        }
+        value = gen_.classGenerator().createInterfaceView(
+            value, expr.getValue()->getResolvedType(),
+            static_cast<sun::types::InterfaceType*>(target.get()));
         scopes().emitScopeCleanup();
         ctx.builder->CreateRet(value);
         return nullptr;
@@ -106,6 +97,19 @@ Value* FunctionGenerator::codegen(const sun::ast::ReturnExprAST& expr) {
           retVal, expr.getValue()->getResolvedType());
     }
 
+    if (expr.getTargetType() && expr.getTargetType()->isInterface()) {
+      retVal =
+          gen_.applyMoveSemantics(retVal, expr.getValue()->getResolvedType());
+      if (sun::types::areDifferentInterfaces(expr.getValue()->getResolvedType(),
+                                             expr.getTargetType())) {
+        retVal = gen_.classGenerator().upcastInterface(
+            retVal,
+            static_cast<sun::types::InterfaceType*>(
+                expr.getValue()->getResolvedType().get()),
+            static_cast<sun::types::InterfaceType*>(
+                expr.getTargetType().get()));
+      }
+    }
     scopes().emitScopeCleanup();
 
     // A void function may still be written `return <expr>;` when the

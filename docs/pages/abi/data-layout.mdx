@@ -41,7 +41,8 @@ These are implementation observations, not stable layout guarantees.
 | Raw pointers and ordinary references | Pointers; validity and borrowing rules still apply |
 | Named function values | Direct function pointers |
 | Closures | Function pointer and environment pointer |
-| Interface values | Data pointer and method-table pointer |
+| Borrowed interface views | Object pointer and method-table pointer |
+| Owned interface values | Owner pointer, object pointer, method-table pointer, and cleanup function |
 | Static pointers | Data pointer and an `i64` length |
 | Builtin `slice` | Two `i64` bounds; an indexing range, not a data view |
 | Unsized array references | Data pointer, `i32` dimension count, and dimensions pointer |

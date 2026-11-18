@@ -10,8 +10,8 @@ using tls;
 
 /** Performs the operation and propagates exceptions. */
 function run() void throws {
-  var client = HttpsClient(global_allocator);
-  var host = String(global_allocator, "example.com");
+  var client = HttpsClient(std.mem.global_allocator);
+  var host = String(std.mem.global_allocator, "example.com");
 
   var response = client.get(host, "/");
 
@@ -25,7 +25,7 @@ function run() void throws {
   while (end < response.body.length() and (response.body.at(end)) != b'\n') {
     end = end + 1;
   }
-  var first_line = response.body.substr(global_allocator, 0, end);
+  var first_line = response.body.substr(std.mem.global_allocator, 0, end);
   println(first_line);
 
   return;

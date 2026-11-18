@@ -1,3 +1,4 @@
+using std.mem;
 // A file-level `using` serves every declaration in the file, including class
 // fields and function signatures inside nested module blocks. Bodies always
 // saw the import; the declaration pre-pass resolves these before bodies run

@@ -13,7 +13,7 @@ using cuda;
 
 /** Runs a synchronous benchmark without imposing a hardware performance threshold. */
 function run() void throws {
-  var host = Matrix<f32>(global_allocator, [512, 512]);
+  var host = Matrix<f32>(std.mem.global_allocator, [512, 512]);
   for (var i: i64 = 0; i < 512; i = i + 1) {
     for (var j: i64 = 0; j < 512; j = j + 1) {
       host[i, j] = 1.0f32;

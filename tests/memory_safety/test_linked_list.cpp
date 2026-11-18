@@ -42,9 +42,9 @@ class Node {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
-  var first =  allocator.create<Node>(10);
-  var second =  allocator.create<Node>(20);
+  var allocator = std.mem.make_heap_allocator();
+  var first =  std.mem.create<Node>(allocator, 10);
+  var second =  std.mem.create<Node>(allocator, 20);
   unsafe { first.set_next(second); };
   return unsafe { first.get_value(); } + unsafe { first.get_next().get_value(); };
 }
@@ -78,14 +78,14 @@ class Node {
   }
 }
 
-function createNode(alloc: ref HeapAllocator, v: i32) raw_ptr<Node> throws {
-  return  alloc.create<Node>(v);
+function createNode(alloc: ref std.mem.HeapAllocator, v: i32) raw_ptr<Node> throws {
+  return  std.mem.create<Node>(alloc, v);
 }
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
-  var n1 =  allocator.create<Node>(1);
+  var allocator = std.mem.make_heap_allocator();
+  var n1 =  std.mem.create<Node>(allocator, 1);
   // Build chain: n1 -> n2 -> n3
   // After set_next, access through the chain, not original vars
   unsafe { n1.set_next( createNode(allocator, 2)); };
@@ -131,14 +131,14 @@ class Node {
   }
 }
 
-function createNode(alloc: ref HeapAllocator, v: i32) raw_ptr<Node> throws {
-  return  alloc.create<Node>(v);
+function createNode(alloc: ref std.mem.HeapAllocator, v: i32) raw_ptr<Node> throws {
+  return  std.mem.create<Node>(alloc, v);
 }
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
-  var head =  allocator.create<Node>(100);
+  var allocator = std.mem.make_heap_allocator();
+  var head =  std.mem.create<Node>(allocator, 100);
   unsafe { head.set_next( createNode(allocator, 200)); };
 
   // Modify tail through head's next pointer
@@ -177,14 +177,14 @@ class Node {
   }
 }
 
-function createNode(alloc: ref HeapAllocator, v: i32) raw_ptr<Node> throws {
-  return  alloc.create<Node>(v);
+function createNode(alloc: ref std.mem.HeapAllocator, v: i32) raw_ptr<Node> throws {
+  return  std.mem.create<Node>(alloc, v);
 }
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
-  var a =  allocator.create<Node>(1);
+  var allocator = std.mem.make_heap_allocator();
+  var a =  std.mem.create<Node>(allocator, 1);
   // Build chain: a -> b -> c -> d
   unsafe { a.set_next( createNode(allocator, 2)); };
   unsafe { a.get_next().set_next( createNode(allocator, 3)); };
@@ -227,14 +227,14 @@ class Node {
   }
 }
 
-function createNode(alloc: ref HeapAllocator, v: i32) raw_ptr<Node> throws {
-  return  alloc.create<Node>(v);
+function createNode(alloc: ref std.mem.HeapAllocator, v: i32) raw_ptr<Node> throws {
+  return  std.mem.create<Node>(alloc, v);
 }
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
-  var n1 =  allocator.create<Node>(10);
+  var allocator = std.mem.make_heap_allocator();
+  var n1 =  std.mem.create<Node>(allocator, 10);
   // Build chain without reusing moved vars
   unsafe { n1.set_next( createNode(allocator, 20)); };
   unsafe { n1.get_next().set_next( createNode(allocator, 30)); };
@@ -284,15 +284,15 @@ class Node {
   }
 }
 
-function createNode(alloc: ref HeapAllocator, v: i32) raw_ptr<Node> throws {
-  return  alloc.create<Node>(v);
+function createNode(alloc: ref std.mem.HeapAllocator, v: i32) raw_ptr<Node> throws {
+  return  std.mem.create<Node>(alloc, v);
 }
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
+  var allocator = std.mem.make_heap_allocator();
   // Build list: 1 -> 2 -> 3 -> 4 -> 5 -> null
-  var head =  allocator.create<Node>(1);
+  var head =  std.mem.create<Node>(allocator, 1);
   unsafe { head.set_next( createNode(allocator, 2)); };
   unsafe { head.get_next().set_next( createNode(allocator, 3)); };
   unsafe { head.get_next().get_next().set_next( createNode(allocator, 4)); };
@@ -341,8 +341,8 @@ class Node {
   }
 }
 
-function createNode(alloc: ref HeapAllocator, v: i32) raw_ptr<Node> throws {
-  return  alloc.create<Node>(v);
+function createNode(alloc: ref std.mem.HeapAllocator, v: i32) raw_ptr<Node> throws {
+  return  std.mem.create<Node>(alloc, v);
 }
 
 class List {
@@ -354,7 +354,7 @@ class List {
     this.tail = null;
   }
 
-  method append(alloc: ref HeapAllocator, v: i32) void throws {
+  method append(alloc: ref std.mem.HeapAllocator, v: i32) void throws {
     if (this.tail != null) {
       // Append to existing list - create node and link via tail
       unsafe { this.tail.set_next( createNode(alloc, v)); };
@@ -381,8 +381,8 @@ class List {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
-  var list =  allocator.create<List>();
+  var allocator = std.mem.make_heap_allocator();
+  var list =  std.mem.create<List>(allocator);
   unsafe {  list.append(allocator, 1); };
   unsafe {  list.append(allocator, 2); };
   unsafe {  list.append(allocator, 3); };

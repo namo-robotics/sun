@@ -542,7 +542,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
+  var allocator = std.mem.make_heap_allocator();
   var v =  Vec<i32>(allocator, 4);
   return v.size_;
 }

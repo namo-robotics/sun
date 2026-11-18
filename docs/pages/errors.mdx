@@ -273,7 +273,7 @@ using std;
 
 /** Handles an invalid index and explicitly chooses whether to copy its message. */
 function report() void throws {
-  var values = Vec<i32>(global_allocator, 1);
+  var values = Vec<i32>(std.mem.global_allocator, 1);
   try {
     values.get(10);
   } catch (error: IndexOutOfBoundsError) {

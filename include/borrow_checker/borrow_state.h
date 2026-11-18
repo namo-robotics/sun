@@ -62,6 +62,10 @@ class BorrowState {
    */
   void exitScope(size_t scopeDepth);
 
+  /** Keeps existing loans on storage alive when a holder moves to an outer
+   * scope. */
+  void retainBorrows(const std::string& target, size_t scopeDepth);
+
   /**
    * Get all active loans for a variable (for error reporting)
    */

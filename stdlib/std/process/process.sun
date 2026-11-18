@@ -248,7 +248,7 @@ public module std.process {
   /**
    * Create a pipe and return its two ends. Throws if the system refuses.
    */
-  public function open_pipe(alloc: const ref HeapAllocator) Pipe throws {
+  public function open_pipe(alloc: const ref std.mem.HeapAllocator) Pipe throws {
     var fds: ContiguousBuffer<i32> = ContiguousBuffer<i32>(alloc, 2);
     unsafe { fds.set_unchecked(0, 0); };
     unsafe { fds.set_unchecked(1, 0); };
@@ -287,7 +287,7 @@ public module std.process {
    * A program and its arguments, ready to run.
    */
   public class Command {
-    var alloc: HeapAllocator;
+    var alloc: std.mem.HeapAllocator;
     // "prog\0arg1\0arg2\0" in one allocation, with the offset of each
     // argument. Storing a Vec<String> instead would mean NUL-terminating
     // every element through a borrow, and the pointers would be scattered.
@@ -301,7 +301,7 @@ public module std.process {
      * Build a command for a program named by a literal. The name also becomes
      * argv[0].
      */
-    init(allocator: const ref HeapAllocator, program: static_ptr<u8>) throws {
+    init(allocator: const ref std.mem.HeapAllocator, program: static_ptr<u8>) throws {
       this.alloc = allocator.copy();
       this.blob = String(allocator, "");
       this.offsets = Vec<i64>(allocator, 4);
@@ -312,7 +312,7 @@ public module std.process {
      * Build a command for a program named at runtime. The name also becomes
      * argv[0].
      */
-    init(allocator: const ref HeapAllocator, program: const ref String) throws {
+    init(allocator: const ref std.mem.HeapAllocator, program: const ref String) throws {
       this.alloc = allocator.copy();
       this.blob = String(allocator, "");
       this.offsets = Vec<i64>(allocator, 4);
@@ -665,7 +665,7 @@ public module std.process {
      * other: a child that fills the stderr pipe while the parent is stuck
      * reading stdout would deadlock.
      */
-    public method collect(alloc: const ref HeapAllocator) Output throws {
+    public method collect(alloc: const ref std.mem.HeapAllocator) Output throws {
       var out: String = String(alloc, "");
       var err: String = String(alloc, "");
       var buf: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 4096);

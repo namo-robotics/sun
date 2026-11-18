@@ -308,11 +308,11 @@ class Buffer {
   var data: Vec<u8>;
   var length: i64;
 
-  init(alloc: ref HeapAllocator) {
+  init(alloc: ref std.mem.HeapAllocator) {
     this.fill(alloc);  // assigns both fields, so the object is whole
   }
 
-  method fill(alloc: ref HeapAllocator) void {
+  method fill(alloc: ref std.mem.HeapAllocator) void {
     this.data = Vec<u8>(alloc, 16);
     this.length = 0;
   }
@@ -391,7 +391,7 @@ For heap-allocated objects, use an allocator from the standard library:
 ```sun
 function main() i32 throws {
   // Create a Point on the heap
-  var p: raw_ptr<Point> = global_allocator.create<Point>(3, 4);
+  var p: raw_ptr<Point> = std.mem.create<Point>(std.mem.global_allocator, 3, 4);
   var result = unsafe { _to_ref<Point>(p).magnitude_squared(); };  // 25
 
   // A raw allocation needs both destruction and deallocation.
@@ -403,11 +403,11 @@ function main() i32 throws {
 
 ### Automatic Cleanup with Unique
 
-For automatic memory management, wrap the raw pointer in `Unique<T>`:
+For automatic memory management, wrap the raw pointer in `Unique<T, A>`:
 
 ```sun
 function main() i32 throws {
-  var p = Unique<Point>(global_allocator.create<Point>(3, 4));
+  var p = std.mem.create_unique<Point>(std.mem.global_allocator, 3, 4);
 
   return p.get().magnitude_squared();  // 25
 }  // p.deinit() called automatically, memory freed
@@ -418,8 +418,8 @@ function main() i32 throws {
 | Allocation | Syntax | Type | Memory | Cleanup |
 |------------|--------|------|--------|---------|
 | Stack | `Point(...)` | `Point` | Stack | Automatic (scope exit) |
-| Heap (manual) | `allocator.create<Point>(...)` | `raw_ptr<Point>` | Heap | Manual (`_deinit`, then `_free`) |
-| Heap (auto) | `Unique<Point>(allocator.create<Point>(...))` | `Unique<Point>` | Heap | Automatic (`deinit`) |
+| Heap (manual) | `std.mem.create<Point>(allocator, ...)` | `raw_ptr<Point>` | Heap | Manual (`_deinit`, then `_free`) |
+| Heap (auto) | `std.mem.create_unique<Point>(allocator, ...)` | `Unique<Point, const ref IAllocator>` | Allocator-selected | Automatic (`deinit`) |
 
 ## Passing Objects to Functions
 

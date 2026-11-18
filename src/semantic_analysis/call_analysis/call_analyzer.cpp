@@ -502,12 +502,6 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMemberCallee(
       }
     }
     if (selected) {
-      if (selected->returnType && selected->returnType->isInterface()) {
-        logAndThrowError(
-            "An interface return requirement can only be called on a concrete "
-            "implementation",
-            memberAccess.getLocation());
-      }
       ctx_.requireAccessible(methodRef(interface, *selected),
                              memberAccess.getLocation());
       memberAccess.setTargetDeclarationId(selected->declarationId);
@@ -832,6 +826,10 @@ std::optional<std::vector<TypePtr>> CallAnalyzer::resolveConstructorParams(
   const auto& loc = call.getLocation();
   if (const auto* initMethod =
           ctx_.accessibleMethodForArgs(classType, "init", argTypes, loc)) {
+    if (initMethod->isUnsafe && !ctx_.isInUnsafeBlock()) {
+      logAndThrowError("Calling an unsafe constructor requires an unsafe block",
+                       loc);
+    }
     call.setTargetDeclarationId(initMethod->declarationId);
     return initMethod->paramTypes;
   }
@@ -991,6 +989,21 @@ CallAnalyzer::resolveModuleQualifiedGenericCall(
   return out;
 }
 
+QualifiedName CallAnalyzer::resolveGenericFunctionValue(
+    ExprAST& reference, const GenericFunctionInfo& generic,
+    const sun::types::FunctionType& expected) {
+  auto target = resolveGenericCallTarget(generic, expected.getParamTypes(), {},
+                                         generic.qualifiedName.display(),
+                                         reference.getLocation());
+  reference.setResolvedType(target.calleeType);
+  if (!target.specialized) {
+    return generic.qualifiedName;
+  }
+  reference.setTargetDeclarationId(
+      target.specialized->asFunctionInfo().declarationId);
+  return target.specialized->qualifiedName;
+}
+
 CallAnalyzer::GenericCallTarget CallAnalyzer::resolveGenericCallTarget(
     const GenericFunctionInfo& genericInfo,
     const std::vector<TypePtr>& argTypes,
@@ -1101,7 +1114,7 @@ void CallAnalyzer::analyzeGenericCall(GenericCallAST& genericCall) {
   // Resolve type arguments to sun::types::TypePtr
   std::vector<TypePtr> typeArgs;
   for (const auto& ta : genericCall.getTypeArguments()) {
-    typeArgs.push_back(resolver_.typeAnnotationToType(*ta, funcName == "_is"));
+    typeArgs.push_back(resolver_.typeAnnotationToType(*ta));
   }
 
   // Store resolved type arguments on the AST for codegen
@@ -1303,6 +1316,10 @@ void CallAnalyzer::analyzeGenericClassConstruction(
     genericCall.setArgConversions(sun::semantic_analysis::classifyArguments(
         resolvedTypesOf(args), expectedParamTypes, /*cVariadic=*/false,
         displayName, genericCall.getLocation()));
+    // Borrow checking needs the substituted constructor parameters, including
+    // references introduced by type arguments such as Unique<T, const ref A>.
+    genericCall.setResolvedCalleeType(
+        Types::Function(specializedClass, expectedParamTypes));
   }
 
   genericCall.setResolvedType(specializedClass);

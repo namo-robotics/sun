@@ -291,7 +291,7 @@ For two threads that both *write* one value, use `Shared<T>` — see below.
 
 ## Sharing Mutable State: `Shared<T>`
 
-`Shared<T>` is the shared-ownership counterpart to `Unique<T>`: `Unique` has
+`Shared<T>` is the shared-ownership counterpart to `Unique<T, A>`: `Unique` has
 one owner, `Shared` has as many as you like. It puts the value in a heap box
 next to a `Mutex` and an atomic count of the live handles. `clone()` adds an
 owner, `lock()` waits for the lock and hands back a guard, and the last handle
@@ -323,7 +323,7 @@ var bump = (h: Shared<Counter>) => i32 {
 };
 
 function main() i32 throws {
-  var s = Shared<Counter>(global_allocator, Counter());
+  var s = Shared<Counter>(std.mem.global_allocator, Counter());
 
   var t1 = spawn(bump, s.clone());
   var t2 = spawn(bump, s.clone());

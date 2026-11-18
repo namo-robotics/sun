@@ -8,14 +8,14 @@ public module std {
 
   /** Checks create empty vec. */
   test_function create_empty_vec() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<i64>(allocator, 8);
     std.test.assert_eq(v.size(), 0);
   }
 
   /** Checks push and size. */
   test_function push_and_size() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<i64>(allocator, 8);
     v.push(10);
     v.push(20);
@@ -25,7 +25,7 @@ public module std {
 
   /** Checks push and get. */
   test_function push_and_get() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<i64>(allocator, 8);
     v.push(10);
     v.push(20);
@@ -38,7 +38,7 @@ public module std {
 
   /** Checks set element. */
   test_function set_element() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<i64>(allocator, 8);
     v.push(10);
     v.push(20);
@@ -48,7 +48,7 @@ public module std {
 
   /** Checks pop element. */
   test_function pop_element() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<i64>(allocator, 8);
     v.push(10);
     v.push(20);
@@ -63,7 +63,7 @@ public module std {
 
   /** Checks pop empty is none. */
   test_function pop_empty_is_none() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<i64>(allocator, 8);
     v.push(1);
     v.pop();
@@ -76,7 +76,7 @@ public module std {
 
   /** Checks remove first and iterate. */
   test_function remove_first_and_iterate() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<i64>(allocator, 4);
     v.push(1);
     v.push(2);
@@ -96,7 +96,7 @@ public module std {
 
   /** Checks remove middle lsyntax tree and singleton. */
   test_function remove_middle_last_and_singleton() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<i64>(allocator, 4);
     v.push(10);
     v.push(20);
@@ -115,7 +115,7 @@ public module std {
 
   /** Checks remove invalid indices leave vec unchanged. */
   test_function remove_invalid_indices_leave_vec_unchanged() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<i64>(allocator, 4);
     var caught: i64 = 0;
     try {
@@ -141,7 +141,7 @@ public module std {
 
   /** Checks swap remove first and iterate. */
   test_function swap_remove_first_and_iterate() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<i64>(allocator, 4);
     v.push(1);
     v.push(2);
@@ -161,7 +161,7 @@ public module std {
 
   /** Checks swap remove middle lsyntax tree and singleton. */
   test_function swap_remove_middle_last_and_singleton() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<i64>(allocator, 4);
     v.push(10);
     v.push(20);
@@ -180,7 +180,7 @@ public module std {
 
   /** Checks swap remove invalid indices leave vec unchanged. */
   test_function swap_remove_invalid_indices_leave_vec_unchanged() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<i64>(allocator, 4);
     var caught: i64 = 0;
     try {
@@ -206,7 +206,7 @@ public module std {
 
   /** Replacing an optional slot leaves a valid empty value at the same index. */
   test_function replace_leaves_explicit_empty_slot() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<Option<i32>>(allocator, 2);
     v.push(Option.Some(10));
     v.push(Option.Some(20));
@@ -262,7 +262,7 @@ public module std {
 
   /** Check that removing values transfers ownership without dropping them. */
   function exercise_removal_ownership(swap: bool) void throws {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<RemovalTracked>(allocator, 4);
     v.push(RemovalTracked(String("first")));
     v.push(RemovalTracked(String("middle")));
@@ -290,7 +290,7 @@ public module std {
 
   /** Reports whether the collection contains no elements. */
   test_function is_empty() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<i64>(allocator, 8);
     std.test.assert(v.is_empty());
     v.push(1);
@@ -299,7 +299,7 @@ public module std {
 
   /** Checks clear_vec. */
   test_function clear_vec() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<i64>(allocator, 8);
     v.push(1);
     v.push(2);
@@ -310,14 +310,14 @@ public module std {
 
   /** Checks capacity. */
   test_function capacity() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<i64>(allocator, 8);
     std.test.assert_eq(v.capacity(), 8);
   }
 
   /** Checks auto grow. */
   test_function vec_auto_grow() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<i64>(allocator, 8);
     for (var i: i64 = 0; i < 20; i = i + 1) {
       v.push(i);
@@ -327,7 +327,7 @@ public module std {
 
   /** Checks auto grow values preserved. */
   test_function auto_grow_values_preserved() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<i64>(allocator, 8);
     for (var i: i64 = 0; i < 20; i = i + 1) {
       v.push(i * 10);
@@ -340,7 +340,7 @@ public module std {
 
   /** Checks first and lsyntax tree. */
   test_function vec_first_and_last() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<i64>(allocator, 8);
     v.push(10);
     v.push(20);
@@ -359,7 +359,7 @@ public module std {
 
   /** Checks i32 type. */
   test_function i32_type() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<i32>(allocator, 8);
     v.push(5);
     v.push(10);
@@ -371,7 +371,7 @@ public module std {
 
   /** Checks iteration. */
   test_function iteration() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<i64>(allocator, 8);
     v.push(1);
     v.push(2);
@@ -386,7 +386,7 @@ public module std {
 
   /** Checks index operator. */
   test_function vec_index_operator() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var v = Vec<i64>(allocator, 8);
     v.push(100);
     v.push(200);

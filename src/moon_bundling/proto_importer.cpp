@@ -18,12 +18,12 @@
 //     class <Msg> {
 //       var <field>: <SunType>; ...
 //       var unknown_fields: Vec<u8>;               // preserved unknown fields
-//       var alloc_: HeapAllocator;
-//       init(alloc: const ref HeapAllocator) throws { ...zero values... }
-//       method encode(buf: ref Vec<u8>) void throws { ... }
+//       var alloc_: std.mem.HeapAllocator;
+//       init(alloc: const ref std.mem.HeapAllocator) throws { ...zero values...
+//       } method encode(buf: ref Vec<u8>) void throws { ... }
 //     }
-//     function <Msg>_decode(alloc: const ref HeapAllocator, buf: ref Vec<u8>)
-//     <Msg>, IError
+//     function <Msg>_decode(alloc: const ref std.mem.HeapAllocator, buf: ref
+//     Vec<u8>) <Msg>, IError
 //   }
 //
 // Nested messages/enums flatten to Outer_Inner. Sun has no static methods, so
@@ -758,7 +758,7 @@ class MessageGenerator {
               ";");
     });
     w_.line("public var unknown_fields: Vec<u8>;");
-    w_.line("var alloc_: HeapAllocator;");
+    w_.line("var alloc_: std.mem.HeapAllocator;");
     w_.line();
   }
 
@@ -766,7 +766,7 @@ class MessageGenerator {
    * Zero values (proto3 defaults); containers and sub-messages start empty
    */
   void emitInit() {
-    w_.open("init(alloc: const ref HeapAllocator) throws {");
+    w_.open("init(alloc: const ref std.mem.HeapAllocator) throws {");
     w_.line("this.alloc_ = alloc.copy();");
     forEachPlainField([&](const FD* f) {
       std::string init;
@@ -894,7 +894,8 @@ class MessageGenerator {
    */
   void emitDecodeFrom() {
     w_.open("public function " + name_ +
-            "_decode_from(alloc: const ref HeapAllocator, r: ref ProtoReader) "
+            "_decode_from(alloc: const ref std.mem.HeapAllocator, r: ref "
+            "ProtoReader) "
             "" +
             name_ + " throws {");
     w_.line("var msg = " + name_ + "(alloc);");
@@ -985,7 +986,7 @@ class MessageGenerator {
    */
   void emitDecodeHelpers() {
     const std::string sig =
-        "(alloc: const ref HeapAllocator, r: ref ProtoReader) ";
+        "(alloc: const ref std.mem.HeapAllocator, r: ref ProtoReader) ";
     w_.open("public function " + name_ + "_decode_nested" + sig + name_ +
             " throws {");
     w_.line("var end: i64 = r.read_length();");
@@ -1002,9 +1003,10 @@ class MessageGenerator {
     w_.close();
     w_.line();
 
-    w_.open("public function " + name_ +
-            "_decode(alloc: const ref HeapAllocator, buf: ref Vec<u8>) " +
-            name_ + " throws {");
+    w_.open(
+        "public function " + name_ +
+        "_decode(alloc: const ref std.mem.HeapAllocator, buf: ref Vec<u8>) " +
+        name_ + " throws {");
     w_.line("var r = ProtoReader(buf);");
     w_.line("return " + name_ + "_decode_from(alloc, r);");
     w_.close();

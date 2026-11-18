@@ -38,7 +38,7 @@ public module std.io {
 
   /** Checks empty files, empty lines, CR preservation, and LF at every buffer position. */
   test_function line_reader_boundaries() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var td = std.tests.TempDir(alloc, "line_boundaries");
     var path = td.file("lines");
     var empty = String("");
@@ -66,7 +66,7 @@ public module std.io {
 
   /** Checks exact limits, overlong draining and recovery, and overlong final data. */
   test_function line_reader_limits() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var td = std.tests.TempDir(alloc, "line_limits");
     var path = td.file("lines");
     var body = String("abcd\nabcdefghij\nok\nabcde");
@@ -95,7 +95,7 @@ public module std.io {
 
   /** Streams a file much larger than the buffers and recognizes newline-terminated EOF. */
   test_function line_reader_large_file() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var td = std.tests.TempDir(alloc, "line_large");
     var path = td.file("lines");
     if (true) {
@@ -116,7 +116,7 @@ public module std.io {
 
   /** Rejects invalid sizes and permits zero-length limits without confusing data with EOF. */
   test_function line_reader_invalid_and_zero_limits() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var file = std.io.File();
     try {
       std.io.LineReader(alloc, file, -1, 3);
@@ -181,7 +181,7 @@ public module std.io {
 
   /** Keeps partial lines across retryable results and distinguishes a truncated final record. */
   test_function line_reader_partial_reads_and_interruptions() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var file = std.io.File();
     var reader = std.io.LineReader(alloc, file, 4, 8);
     var operation = FragmentedReader();
@@ -221,7 +221,7 @@ public module std.io {
 
   /** Retains overlong-line draining state across would-block and native errors. */
   test_function line_reader_interrupted_overlong_drain() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var file = std.io.File();
     var reader = std.io.LineReader(alloc, file, 0, 8);
     var operation = FragmentedReader();

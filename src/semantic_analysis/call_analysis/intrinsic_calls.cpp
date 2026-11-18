@@ -155,7 +155,6 @@ void CallAnalyzer::analyzeIntrinsicCall(GenericCallAST& genericCall) {
   // args...))
   expandPackArguments(genericCall.getArgsMutable());
   genericCall.setResolvedType(resolveIntrinsicCallType(genericCall));
-
   // _spawn is the one intrinsic that passes its arguments on to something
   // else — the spawned lambda — so, like any other call, how each argument
   // reaches its parameter is decided here rather than in codegen. A compound

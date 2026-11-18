@@ -31,7 +31,7 @@ public module std.xml {
 
   /** Parses and round-trips xml-valid.xml (upstream blob bc997e6d6ef5a3d5860acb40bc01a63f3ab4400f). */
   test_function valid_xml() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var input = String(
       alloc,
       "<?xml version=\"1.0\"?>\n<root xmlns:c=\"urn:test\" a=\"&lt;&amp;&quot;&apos;&gt;\" c:unicode=\"&#x1f600;\">\n  <!-- comment --> <child>héllo &#65;<![CDATA[<raw>]]></child>\n</root>\n"
@@ -83,7 +83,7 @@ public module std.xml {
 
   /** Parses and round-trips Tiny-1.0.gir (upstream blob d8c358f7bd4af9a7ddb5635d1e0206f73317a41e). */
   test_function gir_class_and_function() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var input = String(
       alloc,
       "<repository xmlns=\"http://www.gtk.org/introspection/core/1.0\" xmlns:c=\"http://www.gtk.org/introspection/c/1.0\" version=\"1.2\">\n  <namespace name=\"Tiny\" version=\"1.0\">\n    <class name=\"Object\" c:type=\"TinyObject\" parent=\"GObject.Object\">\n      <property name=\"enabled\" writable=\"1\" transfer-ownership=\"none\"><type name=\"gboolean\" c:type=\"gboolean\"/></property>\n    </class>\n    <function name=\"increment\" c:identifier=\"tiny_increment\">\n      <return-value transfer-ownership=\"none\"><type name=\"gint\" c:type=\"gint\"/></return-value>\n      <parameters><parameter name=\"value\" transfer-ownership=\"none\"><type name=\"gint\" c:type=\"gint\"/></parameter></parameters>\n    </function>\n    <function name=\"unsupported\" c:identifier=\"tiny_unsupported\">\n      <return-value><type name=\"Mystery\" c:type=\"Mystery\"/></return-value>\n    </function>\n  </namespace>\n</repository>\n"
@@ -124,7 +124,7 @@ public module std.xml {
 
   /** Parses and round-trips TinyDep-1.0.gir (upstream blob 767363e29e330a9b89c0412939a19ba15e4b9dfb). */
   test_function gir_dependency() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var input = String(
       alloc,
       "<repository xmlns=\"http://www.gtk.org/introspection/core/1.0\" xmlns:c=\"http://www.gtk.org/introspection/c/1.0\">\n  <namespace name=\"TinyDep\" version=\"1.0\">\n    <bitfield name=\"Flags\" c:type=\"TinyFlags\"><member name=\"one\" value=\"1\" c:identifier=\"TINY_ONE\"/></bitfield>\n  </namespace>\n</repository>\n"
@@ -144,7 +144,7 @@ public module std.xml {
 
   /** Parses and round-trips selection.xml (upstream blob a2fa979486dcb7f017cd784475240d5346675aff). */
   test_function generator_selection() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var input = String(
       alloc,
       "<selection><namespace name=\"Tiny\" version=\"1.0\" module=\"tiny\"><function symbol=\"tiny_increment\"/></namespace></selection>\n"
@@ -164,7 +164,7 @@ public module std.xml {
 
   /** Rejects the generator's malformed XML fixtures with recoverable source diagnostics. */
   test_function malformed_fixtures() {
-    var a = make_heap_allocator();
+    var a = std.mem.make_heap_allocator();
     var cases = Vec<String>(a, 16);
     cases.push(String("<r>"));
     cases.push(String("<r></wrong>"));

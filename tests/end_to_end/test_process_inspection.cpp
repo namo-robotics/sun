@@ -48,7 +48,7 @@ void expectProcessError(int syscallNumber, int error) {
         using std.process;
         /** Return the exact native error from opening an identity-bound handle. */
         function main() i32 throws {
-          var alloc = make_heap_allocator();
+          var alloc = std.mem.make_heap_allocator();
           var identity = process_identity(alloc, pid());
           var before = std.io.read_dir(alloc, "/proc/self/fd");
           var code: i32 = 0;
@@ -111,7 +111,7 @@ TEST(EndToEnd_ProcessInspection, OwnsDescriptorZero) {
     extern "C" function process_test_fcntl(fd: i32, cmd: i32, ...) i32 as "fcntl";
     /** Verify that the handle treats fd zero as an owned descriptor. */
     function main() i32 throws {
-      var alloc = make_heap_allocator();
+      var alloc = std.mem.make_heap_allocator();
       var identity = process_identity(alloc, pid());
       var saved = unsafe { process_test_dup(0); };
       var handle = ProcessHandle(alloc);

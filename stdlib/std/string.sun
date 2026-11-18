@@ -325,13 +325,20 @@ public module std {
      leaves a pointer into its former location. */
   class StringStorage {
     var inline_words: array<u64, 2> = [0u64, 0u64];
-    var heap: Unique<u8>;
+    var heap: std.mem.Unique<u8, std.mem.HeapAllocator>;
 
     /** Allocate only when the requested capacity exceeds the inline buffer. */
-    init(alloc: const ref HeapAllocator, size: i64) throws {
-      this.heap = Unique<u8>(null);
+    init(alloc: const ref std.mem.HeapAllocator, size: i64) throws {
+      this.heap = unsafe {
+        std.mem.Unique<u8, std.mem.HeapAllocator>(null, std.mem.HeapAllocator());
+      };
       if (size > 16) {
-        this.heap = Unique<u8>(alloc.alloc_raw(size));
+        this.heap = unsafe {
+          std.mem.Unique<u8, std.mem.HeapAllocator>(
+            alloc.alloc_raw(size, 1),
+            std.mem.HeapAllocator()
+          );
+        };
       }
     }
 
@@ -356,7 +363,12 @@ public module std {
     /** Allocate larger storage and preserve count initialized bytes. The caller
        supplies a larger capacity and a count within the current storage. */
     public method resize_to(size: i64, count: i64) void throws {
-      var next = Unique<u8>(global_allocator.alloc_raw(size));
+      var next = unsafe {
+        std.mem.Unique<u8, std.mem.HeapAllocator>(
+          std.mem.global_allocator.alloc_raw(size, 1),
+          std.mem.HeapAllocator()
+        );
+      };
       unsafe { _memcpy(next.get_raw(), this.raw_data(), count); };
       this.heap = next;
 
@@ -370,7 +382,7 @@ public module std {
 
     /** Creates owned interpolation storage; failure propagates immediately. */
     init() throws {
-      this.state = String(global_allocator, "");
+      this.state = String(std.mem.global_allocator, "");
     }
 
     /** Appends the next value, propagating allocation failures. */
@@ -450,7 +462,7 @@ public module std {
      * Construct from string literal
      * Copies bytes from a literal into owned inline or heap storage
      */
-    init(alloc: const ref HeapAllocator, literal: static_ptr<u8>) throws {
+    init(alloc: const ref std.mem.HeapAllocator, literal: static_ptr<u8>) throws {
       // Extract data pointer and length from fat pointer struct
       var src_data: raw_ptr<u8> = literal.raw();
       var src_len: i64 = literal.length();
@@ -488,7 +500,7 @@ public module std {
       if (capacity < 16) {
         capacity = 16;
       }
-      this.data = StringStorage(global_allocator, capacity);
+      this.data = StringStorage(std.mem.global_allocator, capacity);
       this.capacity_ = capacity;
       this.len = src_len;
 
@@ -503,7 +515,11 @@ public module std {
      * Copies length bytes into a new owned string. Returns IndexOutOfBoundsError
      * when length is negative or exceeds the source buffer size.
      */
-    init(allocator: const ref HeapAllocator, buffer: ref ContiguousBuffer<u8>, length: i64) throws {
+    init(
+      allocator: const ref std.mem.HeapAllocator,
+      buffer: ref ContiguousBuffer<u8>,
+      length: i64
+    ) throws {
       if (length < 0 or length > buffer.size()) {
         throw IndexOutOfBoundsError(length);
       }
@@ -1310,7 +1326,11 @@ public module std {
     /**
      * Copy `count` bytes starting at `start` into a new string
      */
-    const method copy_range(alloc: const ref HeapAllocator, start: i64, count: i64) String throws {
+    const method copy_range(
+      alloc: const ref std.mem.HeapAllocator,
+      start: i64,
+      count: i64
+    ) String throws {
       var out: String = String(alloc, "");
       out.ensure_capacity(count);
       for (var i: i64 = 0; i < count; i = i + 1) {
@@ -1322,7 +1342,7 @@ public module std {
     /**
      * Copy this string into a new one
      */
-    public const method clone(alloc: const ref HeapAllocator) String throws {
+    public const method clone(alloc: const ref std.mem.HeapAllocator) String throws {
       return this.copy_range(alloc, 0, this.len);
     }
 
@@ -1331,7 +1351,7 @@ public module std {
      * Returns IndexOutOfBoundsError if the range falls outside the string
      */
     public const method substr(
-      alloc: const ref HeapAllocator,
+      alloc: const ref std.mem.HeapAllocator,
       start: i64,
       count: i64
     ) String throws {
@@ -1349,7 +1369,7 @@ public module std {
      * Adjacent separators produce empty pieces, so the result always holds
      * one more piece than there are separators.
      */
-    public const method split(alloc: const ref HeapAllocator, sep: u8) Vec<String> throws {
+    public const method split(alloc: const ref std.mem.HeapAllocator, sep: u8) Vec<String> throws {
       return this.split_on_byte(alloc, sep, true);
     }
 
@@ -1358,7 +1378,7 @@ public module std {
      * An empty separator yields the whole string as a single piece.
      */
     public const method split(
-      alloc: const ref HeapAllocator,
+      alloc: const ref std.mem.HeapAllocator,
       sep: static_ptr<u8>
     ) Vec<String> throws {
       return this.split_on_bytes(alloc, sep.raw(), sep.length(), true);
@@ -1368,7 +1388,10 @@ public module std {
      * Split on a separator byte, keeping only non-empty pieces.
      * Adjacent, leading, and trailing separators yield nothing.
      */
-    public const method split_nonempty(alloc: const ref HeapAllocator, sep: u8) Vec<String> throws {
+    public const method split_nonempty(
+      alloc: const ref std.mem.HeapAllocator,
+      sep: u8
+    ) Vec<String> throws {
       return this.split_on_byte(alloc, sep, false);
     }
 
@@ -1377,7 +1400,7 @@ public module std {
      * An empty separator yields the whole string, or nothing if it is empty.
      */
     public const method split_nonempty(
-      alloc: const ref HeapAllocator,
+      alloc: const ref std.mem.HeapAllocator,
       sep: static_ptr<u8>
     ) Vec<String> throws {
       return this.split_on_bytes(alloc, sep.raw(), sep.length(), false);
@@ -1387,7 +1410,9 @@ public module std {
      * Split on runs of ASCII whitespace, keeping only non-empty pieces.
      * Any mix of adjacent spaces, tabs, and newlines counts as one separator.
      */
-    public const method split_whitespace(alloc: const ref HeapAllocator) Vec<String> throws {
+    public const method split_whitespace(
+      alloc: const ref std.mem.HeapAllocator
+    ) Vec<String> throws {
       var parts: Vec<String> = Vec<String>(alloc, 4);
       var start: i64 = 0;
       for (var i: i64 = 0; i < this.len; i = i + 1) {
@@ -1405,7 +1430,7 @@ public module std {
      * whether empty pieces are kept, so the piece-cutting lives here.
      */
     const method push_piece(
-      alloc: const ref HeapAllocator,
+      alloc: const ref std.mem.HeapAllocator,
       parts: ref Vec<String>,
       start: i64,
       end: i64,
@@ -1423,7 +1448,7 @@ public module std {
      * zero-length pieces survive.
      */
     const method split_on_byte(
-      alloc: const ref HeapAllocator,
+      alloc: const ref std.mem.HeapAllocator,
       sep: u8,
       keep_empty: bool
     ) Vec<String> throws {
@@ -1444,7 +1469,7 @@ public module std {
      * separator cuts nothing and yields the whole string as one piece.
      */
     const method split_on_bytes(
-      alloc: const ref HeapAllocator,
+      alloc: const ref std.mem.HeapAllocator,
       sep_data: raw_ptr<u8>,
       sep_len: i64,
       keep_empty: bool
@@ -1771,7 +1796,7 @@ public module std {
    * raw_ptr<u8> in overload resolution, so String(alloc, "literal") would
    * become ambiguous.
    */
-  public function from_c_str(alloc: const ref HeapAllocator, s: raw_ptr<u8>) String throws {
+  public function from_c_str(alloc: const ref std.mem.HeapAllocator, s: raw_ptr<u8>) String throws {
     var out: String = String(alloc, "");
     if (s == null) {
       return out;
@@ -1788,7 +1813,7 @@ public module std {
    * Concatenate strings with a separator between them
    */
   public function join(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     parts: const ref Vec<String>,
     sep: static_ptr<u8>
   ) String throws {

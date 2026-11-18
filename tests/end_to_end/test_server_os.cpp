@@ -200,7 +200,7 @@ TEST(EndToEnd_ServerOs, ConfigurationFailureClosesDescriptors) {
         using std.net;
         /** Exercise both fallible constructors repeatedly and compare descriptor counts. */
         function verify() i32 throws {
-          var alloc = make_heap_allocator();
+          var alloc = std.mem.make_heap_allocator();
           var listener = TcpListener();
            listener.bind(ipv4_loopback(), 0, true, false);
            listener.listen(8);

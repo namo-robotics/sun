@@ -24,7 +24,7 @@ public module tls {
 
   /** Checks parses status headers and body. */
   test_function parses_status_headers_and_body() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var raw = String(alloc, "HTTP/1.1 404 Not Found\r\nContent-Length: 5\r\n\r\nhello");
     var resp = HttpClientResponse(alloc);
     parse_response(alloc, raw, resp);
@@ -41,7 +41,7 @@ public module tls {
 
   /** Checks decodes chunked body. */
   test_function decodes_chunked_body() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var raw = String(
       alloc,
       "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n"
@@ -57,7 +57,7 @@ public module tls {
 
   /** Checks rejects response without header terminator. */
   test_function rejects_response_without_header_terminator() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var raw = String(alloc, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n");
     var resp = HttpClientResponse(alloc);
     var threw: bool = false;
@@ -82,7 +82,7 @@ public module tls {
   /**
    * Whether the openssl command-line tool is on the path.
    */
-  function have_openssl_tool(alloc: const ref HeapAllocator) bool throws {
+  function have_openssl_tool(alloc: const ref std.mem.HeapAllocator) bool throws {
     var cmd = std.process.Command(alloc, "openssl");
     cmd.add_arg("version");
     cmd.set_stdout(Stdio.Null);
@@ -115,7 +115,7 @@ public module tls {
     var server: std.process.Child;
 
     /** Initializes the fixture fields used by this example or regression test. */
-    init(allocator: const ref HeapAllocator, common_name: static_ptr<u8>) throws {
+    init(allocator: const ref std.mem.HeapAllocator, common_name: static_ptr<u8>) throws {
       // Let the OS choose a port so other test runs cannot occupy a fixed one.
       var reservation = TcpListener();
       reservation.bind_loopback(0);
@@ -237,7 +237,7 @@ public module tls {
    * Fetch "/" over TLS from the local server: the status code, or -1 when
    * connecting or verification failed.
    */
-  function fetch_status(alloc: const ref HeapAllocator, port: i32) i32 throws {
+  function fetch_status(alloc: const ref std.mem.HeapAllocator, port: i32) i32 throws {
     var client = HttpsClient(alloc);
     var host = String(alloc, "localhost");
     try {
@@ -252,7 +252,7 @@ public module tls {
    * Trusting the throwaway certificate is what makes verification succeed.
    */
   test_function connects_to_server_with_trusted_certificate() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     if (not (have_openssl_tool(alloc))) {
       println("SKIP: openssl tool not available");
       return;
@@ -270,7 +270,7 @@ public module tls {
    * trusted.
    */
   test_function rejects_untrusted_certificate_by_default() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     if (not (have_openssl_tool(alloc))) {
       println("SKIP: openssl tool not available");
       return;
@@ -295,7 +295,7 @@ public module tls {
    * to.
    */
   test_function rejects_certificate_for_a_different_hostname() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     if (not (have_openssl_tool(alloc))) {
       println("SKIP: openssl tool not available");
       return;
@@ -309,7 +309,7 @@ public module tls {
   }
 
   /** Reports a malformed HTTP response through an exception. */
-  function parse_invalid_response(alloc: const ref HeapAllocator) void throws {
+  function parse_invalid_response(alloc: const ref std.mem.HeapAllocator) void throws {
     var raw = String(alloc, "invalid response");
     var response = HttpClientResponse(alloc);
     parse_response(alloc, raw, response);
@@ -318,7 +318,7 @@ public module tls {
 
   /** Both client error categories retain their codes and bounded diagnostic text. */
   test_function client_exception_payloads() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     try {
       parse_invalid_response(alloc);
 

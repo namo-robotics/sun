@@ -73,6 +73,17 @@ class IntrinsicsGenerator {
   llvm::Value* codegenSizeofIntrinsic(TypePtr typeArg);
   /** Returns the target alignment of a storage type. */
   llvm::Value* codegenAlignofIntrinsic(TypePtr typeArg);
+  /** Returns the padding needed to align an address to a runtime alignment. */
+  llvm::Value* codegenAlignmentPaddingIntrinsic(
+      const sun::ast::CallExprAST& expr);
+  /** Allocates bytes with a checked runtime alignment supplied by the library.
+   */
+  llvm::Value* codegenAlignedAllocIntrinsic(const sun::ast::CallExprAST& expr);
+
+  /** Adopts the supplied storage, receiver, and typed cleanup function. */
+  llvm::Value* codegenCreateInterfaceIntrinsic(
+      const sun::ast::GenericCallAST& expr);
+
   /** Allocates byte storage satisfying the type alignment, freed by free. */
   llvm::Value* codegenAlignedMallocIntrinsic(
       const sun::ast::GenericCallAST& expr);

@@ -1,64 +1,56 @@
-// Unique ownership smart pointer with automatic cleanup via deinit
-// Wraps a raw_ptr from global_allocator.create<T>() and frees on deinit
-// Usage: var p = global_allocator.create_unique<Point>(3, 4);
-//   or, adopting an existing pointer:
-//        var ptr = global_allocator.create<Point>(3, 4);
-//        var p = Unique<Point>(ptr);
-/** Provides the standard-library declarations implemented in this source file. */
-public module std {
+/** Provides sole ownership with allocator-specific destruction. */
+public module std.mem {
 
-  /** Owns a heap value and releases its allocation when its lifetime ends. */
-  public class Unique<T> {
+  using std;
+
+  /** Owns a value and its allocator binding. A may be an owned allocator or a reference. */
+  public class Unique<T, A: IAllocator> {
     var data: raw_ptr<T>;
+    var allocator: A;
 
-    /**
-     * Take ownership of a raw pointer. The Unique frees it when it goes out of
-     * scope, so the caller must not free it as well.
-     */
-    init(p: raw_ptr<T>) {
-      this.data = p;
+    /** Allocate storage and move an initialized value into it. */
+    init(value: T, allocator: A) throws {
+      this.allocator = allocator;
+      this.data = alloc<T>(this.allocator, 1);
+      unsafe { _store<T>(this.data, 0, value); };
     }
 
-    /**
-     * Safe dereference - returns a reference to the underlying value
-     * Caller should check is_null() first if pointer validity is uncertain
+    /** Adopt initialized storage from the supplied allocator, or null.
+     * The caller must transfer exclusive ownership of a compatible allocation.
      */
+    unsafe init(pointer: raw_ptr<T>, allocator: A) {
+      this.data = pointer;
+      this.allocator = allocator;
+    }
+
+    /** Borrow the initialized value. A null owner cannot be dereferenced. */
     public const method get() ref T {
+      if (this.data == null) {
+        panic("cannot dereference an empty Unique");
+      }
       return unsafe { _to_ref<T>(this.data); };
     }
 
-    /**
-     * Get the raw pointer (for low-level operations like _free or null checks)
-     */
+    /** Expose the address without transferring ownership. */
     public const method get_raw() raw_ptr<T> {
       return this.data;
     }
 
-    /**
-     * Report whether the pointer has been taken or was never set.
-     */
+    /** Report whether this owner contains no allocation. */
     public const method is_null() bool {
       return this.data == null;
     }
 
-    /**
-     * Free the pointed-to memory, unless the pointer is already null.
-     */
+    /** Destroy the value and return its storage through the original allocator. */
     deinit() {
       if (this.data != null) {
-        unsafe {
-          _deinit<T>(this.data);
-          _free(this.data);
-        };
+        unsafe { _deinit<T>(this.data); };
+        dealloc<T>(this.allocator, this.data, 1);
         this.data = null;
       }
     }
   }
 
-  // ============================================================================
-  // Precompiled Specializations
-  // ============================================================================
-
-  // Unique specializations for common types
-  public declare Unique_i8 = Unique<i8>;
-}  // module std
+  /** Precompile an owner using the stateless system allocator. */
+  public declare Unique_i8 = Unique<i8, HeapAllocator>;
+}

@@ -72,6 +72,25 @@ class CallAnalyzer {
       const sun::types::TypePtr &objectType,
       const std::vector<sun::types::TypePtr> &argTypes) const;
 
+  /**
+   * Resolves a generic function name used as a typed function pointer.
+   *
+   * For example, given `identity<T>(value: T) T`, the assignment
+   * `var f: function (i32) i32 = identity;` selects `identity<i32>`.
+   *
+   * @param reference The function name expression (`identity` in the example).
+   *        Receives the resolved function type and, when a concrete
+   * specialization is available, its declaration ID.
+   * @param generic The generic function declaration named by the expression.
+   * @param expected The function pointer type supplied by the surrounding code.
+   *        Its parameter types are used to infer the generic type arguments.
+   * @return The qualified name of the specialization, or of the generic
+   *         declaration while the parameter types are still abstract.
+   */
+  QualifiedName resolveGenericFunctionValue(
+      ExprAST &reference, const GenericFunctionInfo &generic,
+      const sun::types::FunctionType &expected);
+
  private:
   /** Dispatches syntax-dependent intrinsic rules before ordinary call
    * resolution. */

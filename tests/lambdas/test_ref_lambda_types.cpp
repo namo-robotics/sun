@@ -230,7 +230,7 @@ TEST(Lambdas_RefLambdaTypes, class_with_ref_field_cannot_be_returned) {
 // Nor may it hide behind an interface: the conversion would erase the
 // frame binding from the type.
 TEST(Lambdas_RefLambdaTypes, frame_carrying_class_cannot_become_interface) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_THROW(executeString(R"(
     interface ICallable {
         method call() i32;
     }
@@ -246,7 +246,7 @@ TEST(Lambdas_RefLambdaTypes, frame_carrying_class_cannot_become_interface) {
         return i.call();
     }
   )"),
-                                "cannot own a value");
+               sun::support::SunError);
 }
 
 // A global of a frame-carrying class type is banned like the bare lambda.

@@ -346,6 +346,15 @@ void ExpressionAnalyzer::analyzeMemberAccess(
         return;
       }
     }
+    auto generic = ctx_.findSymbolInModule(moduleType->getModulePath(),
+                                           memberAccess.getMemberName(),
+                                           SymbolKind::GenericFunction);
+    if (generic.genericFunctionInfo &&
+        !generic.genericFunctionInfo->intrinsicPrototype) {
+      memberAccess.setQualifiedName(sema_.calls().resolveGenericFunctionValue(
+          memberAccess, *generic.genericFunctionInfo, *expectedFunction));
+      return;
+    }
     logAndThrowError("No overload of '" + memberAccess.getMemberName() +
                          "' matches expected type '" +
                          expectedType->toDisplayString() + "'",

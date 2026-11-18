@@ -13,7 +13,7 @@ TEST(EndToEnd_ExceptionMain, propagates_from_allocating_code) {
     using std;
     /** Builds and reads an owned container. */
     function main() i32 throws {
-      var values =  Vec<i32>(global_allocator, 1);
+      var values =  Vec<i32>(std.mem.global_allocator, 1);
        values.push(42);
       return values[0];
     }

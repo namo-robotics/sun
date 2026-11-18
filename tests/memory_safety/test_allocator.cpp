@@ -69,9 +69,9 @@ class Point {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
-  var rawPtr =  alloc.create<Point>(3, 4);
-  var p = Unique<Point>(rawPtr);
+  var alloc = std.mem.make_heap_allocator();
+  var rawPtr =  std.mem.create<Point>(alloc, 3, 4);
+  var p = unsafe { std.mem.Unique<Point, std.mem.HeapAllocator>(rawPtr, std.mem.HeapAllocator()); };
   return p.get().sum();
 }
 )");
@@ -96,9 +96,9 @@ class Box<T> {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
-  var rawPtr =  alloc.create<Box<i32>>(42);
-  var p = Unique<Box<i32>>(rawPtr);
+  var alloc = std.mem.make_heap_allocator();
+  var rawPtr =  std.mem.create<Box<i32>>(alloc, 42);
+  var p = unsafe { std.mem.Unique<Box<i32>, std.mem.HeapAllocator>(rawPtr, std.mem.HeapAllocator()); };
   return p.get().get();
 }
 )");
@@ -106,7 +106,8 @@ function main() i32 throws {
 }
 
 TEST(MemorySafety_Allocator, unique_ptr_automatic_cleanup) {
-  // Unique<T> wraps allocator.create<T>() result for automatic cleanup
+  // Unique<T, HeapAllocator> wraps std.mem.create<T>(allocator) result for
+  // automatic cleanup
   auto value = executeStringWithStdlib(R"(
 using std;
 
@@ -122,9 +123,9 @@ class Point {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
-  var rawPtr =  alloc.create<Point>(3, 4);
-  var p = Unique<Point>(rawPtr);
+  var alloc = std.mem.make_heap_allocator();
+  var rawPtr =  std.mem.create<Point>(alloc, 3, 4);
+  var p = unsafe { std.mem.Unique<Point, std.mem.HeapAllocator>(rawPtr, std.mem.HeapAllocator()); };
   var result = p.get().x + p.get().y;
   // p.deinit() is automatically called at scope exit
   return result;
@@ -151,10 +152,10 @@ class Counter {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
-  var c1 = Unique<Counter>( alloc.create<Counter>(10));
-  var c2 = Unique<Counter>( alloc.create<Counter>(20));
-  var c3 = Unique<Counter>( alloc.create<Counter>(30));
+  var alloc = std.mem.make_heap_allocator();
+  var c1 = unsafe { std.mem.Unique<Counter, std.mem.HeapAllocator>( std.mem.create<Counter>(alloc, 10), std.mem.HeapAllocator()); };
+  var c2 = unsafe { std.mem.Unique<Counter, std.mem.HeapAllocator>( std.mem.create<Counter>(alloc, 20), std.mem.HeapAllocator()); };
+  var c3 = unsafe { std.mem.Unique<Counter, std.mem.HeapAllocator>( std.mem.create<Counter>(alloc, 30), std.mem.HeapAllocator()); };
   return c1.get().value + c2.get().value + c3.get().value;
 }
 )");
@@ -179,14 +180,14 @@ class Point {
   }
 }
 
-function create_point(alloc: ref HeapAllocator, x: i32, y: i32) raw_ptr<Point> throws {
-  return  alloc.create<Point>(x, y);
+function create_point(alloc: ref std.mem.HeapAllocator, x: i32, y: i32) raw_ptr<Point> throws {
+  return  std.mem.create<Point>(alloc, x, y);
 }
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
-  var p = Unique<Point>( create_point(alloc, 5, 7));
+  var alloc = std.mem.make_heap_allocator();
+  var p = unsafe { std.mem.Unique<Point, std.mem.HeapAllocator>( create_point(alloc, 5, 7), std.mem.HeapAllocator()); };
   return p.get().x + p.get().y;
 }
 )");
@@ -254,8 +255,8 @@ class Point {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
-  var p =  alloc.create<Point>(10, 20);
+  var alloc = std.mem.make_heap_allocator();
+  var p =  std.mem.create<Point>(alloc, 10, 20);
   return unsafe { p.sum(); };
 }
 )");
@@ -289,9 +290,9 @@ class Point {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
-  var a = Unique<Point>( alloc.create<Point>(7));  // init(i32) -> 14
-  var b = Unique<Point>( alloc.create<Point>(3, 4));  // init(i32,i32) -> 7
+  var alloc = std.mem.make_heap_allocator();
+  var a = unsafe { std.mem.Unique<Point, std.mem.HeapAllocator>( std.mem.create<Point>(alloc, 7), std.mem.HeapAllocator()); };  // init(i32) -> 14
+  var b = unsafe { std.mem.Unique<Point, std.mem.HeapAllocator>( std.mem.create<Point>(alloc, 3, 4), std.mem.HeapAllocator()); };  // init(i32,i32) -> 7
   return a.get().x + a.get().y + b.get().x + b.get().y;
 }
 )");
@@ -319,8 +320,8 @@ class Point {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
-  var p = Unique<Point>( alloc.create<Point>(9));
+  var alloc = std.mem.make_heap_allocator();
+  var p = unsafe { std.mem.Unique<Point, std.mem.HeapAllocator>( std.mem.create<Point>(alloc, 9), std.mem.HeapAllocator()); };
   return p.get().x + p.get().y;  // 9 + 9
 }
 )");
@@ -344,8 +345,8 @@ class Point {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
-  var p = Unique<Point>( alloc.create<Point>(1, 2, 3));
+  var alloc = std.mem.make_heap_allocator();
+  var p = unsafe { std.mem.Unique<Point, std.mem.HeapAllocator>( std.mem.create<Point>(alloc, 1, 2, 3), std.mem.HeapAllocator()); };
   return 0;
 }
 )"),
@@ -376,8 +377,8 @@ class Point {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
-  var p =  alloc.create_unique<Point>(3, 4);
+  var alloc = std.mem.make_heap_allocator();
+  var p =  std.mem.create_unique<Point>(alloc, 3, 4);
   return p.get().sum();
 }
 )");
@@ -405,9 +406,9 @@ class Point {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
-  var a =  alloc.create_unique<Point>(7);
-  var b =  alloc.create_unique<Point>(3, 4);
+  var alloc = std.mem.make_heap_allocator();
+  var a =  std.mem.create_unique<Point>(alloc, 7);
+  var b =  std.mem.create_unique<Point>(alloc, 3, 4);
   return a.get().x + a.get().y + b.get().x + b.get().y;
 }
 )");
@@ -415,8 +416,8 @@ function main() i32 throws {
 }
 
 TEST(MemorySafety_Allocator, create_unique_deinit_called_once) {
-  // Returning Unique<T> by value from create_unique must move, not copy:
-  // exactly one deinit per object, no double free.
+  // Returning Unique<T, HeapAllocator> by value from create_unique must move,
+  // not copy: exactly one deinit per object, no double free.
   auto value = executeStringWithStdlib(R"(
 using std;
 
@@ -435,9 +436,9 @@ class Resource {
 }
 
 function helper() i32 throws {
-  var alloc = make_heap_allocator();
-  var r1 =  alloc.create_unique<Resource>(10);
-  var r2 =  alloc.create_unique<Resource>(20);
+  var alloc = std.mem.make_heap_allocator();
+  var r1 =  std.mem.create_unique<Resource>(alloc, 10);
+  var r2 =  std.mem.create_unique<Resource>(alloc, 20);
   return r1.get().value + r2.get().value;
 }
 
@@ -469,13 +470,13 @@ class Resource {
   }
 }
 
-function make(alloc: ref HeapAllocator, v: i32) Unique<Resource> throws {
-  return  alloc.create_unique<Resource>(v);
+function make(alloc: ref std.mem.HeapAllocator, v: i32) std.mem.Unique<Resource, const ref std.mem.IAllocator> throws {
+  return  std.mem.create_unique<Resource>(alloc, v);
 }
 
 var before: i32 = 0;
 
-function use(alloc: ref HeapAllocator) i32 throws {
+function use(alloc: ref std.mem.HeapAllocator) i32 throws {
   var r =  make(alloc, 5);
   var v: i32 = r.get().value;
   before = counter;  // no deinit yet while r is alive
@@ -484,7 +485,7 @@ function use(alloc: ref HeapAllocator) i32 throws {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  use(alloc);
   // deinit ran exactly once, and only after use() returned
   return before * 100 + counter * 10 + v;
@@ -630,19 +631,19 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
-  var p =  alloc.create<i32>(42);
+  var alloc = std.mem.make_heap_allocator();
+  var p =  std.mem.create<i32>(alloc, 42);
   var result: i32 = 0;
   unsafe {
     if (_load<i32>(p, 0) != 42) {
       result = 1;
     }
   };
-  alloc.dealloc<i32>(p, 1);
-  var zero =  alloc.create_unique<i32>(0);
-  var negative =  alloc.create_unique<i64>(-42);
-  var floating =  alloc.create_unique<f64>(3.5);
-  var boolean =  alloc.create_unique<bool>(true);
+  std.mem.dealloc<i32>(alloc, p, 1);
+  var zero =  std.mem.create_unique<i32>(alloc, 0);
+  var negative =  std.mem.create_unique<i64>(alloc, -42);
+  var floating =  std.mem.create_unique<f64>(alloc, 3.5);
+  var boolean =  std.mem.create_unique<bool>(alloc, true);
   if (zero.get() != 0) {
     result = 2;
   }

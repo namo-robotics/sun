@@ -62,7 +62,7 @@ public module std.time {
      * against std::time(); here `date +%s` reports the host's view instead.
      */
   test_function unix_time_agrees_with_the_host_clock() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var before = std.time.read_unix_time();
     var cmd = std.process.Command(alloc, "/bin/sh");
     cmd.add_arg("-c");
@@ -121,7 +121,7 @@ public module std.time {
      * format() renders a fixed timestamp with a strftime format string.
      */
   test_function format_renders_a_fixed_timestamp() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var d = std.time.convert_to_utc(1700000000);
     var text = std.time.format(alloc, d, "%Y-%m-%d %H:%M:%S");
     std.test.assert(text.equals_literal("2023-11-14 22:13:20"), "full timestamp renders");

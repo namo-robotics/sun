@@ -82,8 +82,9 @@ void ExpressionAnalyzer::analyzeExpression(ExprAST& expr,
           !ctx_.currentScope().lookupVariable(varRef.getName())) {
         sun::semantic_analysis::QualifiedName resolved =
             ctx_.resolveNameWithUsings(varRef.getName());
+        const auto overloads = ctx_.getAllFunctions(resolved.baseName);
         std::vector<FunctionInfo> matches;
-        for (const auto& candidate : ctx_.getAllFunctions(resolved.baseName)) {
+        for (const auto& candidate : overloads) {
           auto candidateType = Types::Function(
               candidate.returnType, candidate.paramTypes, candidate.canThrow);
           if (isAssignableTo(candidateType, expectedType)) {
@@ -98,7 +99,17 @@ void ExpressionAnalyzer::analyzeExpression(ExprAST& expr,
           varRef.setTargetDeclarationId(match.declarationId);
           break;
         }
-        if (!ctx_.getAllFunctions(resolved.baseName).empty()) {
+        if (matches.empty()) {
+          if (const auto* generic =
+                  ctx_.lookupGenericFunction(resolved.baseName);
+              generic && !generic->intrinsicPrototype) {
+            varRef.setQualifiedName(sema_.calls().resolveGenericFunctionValue(
+                varRef, *generic,
+                static_cast<const sun::types::FunctionType&>(*expectedType)));
+            break;
+          }
+        }
+        if (!overloads.empty()) {
           logAndThrowError("No overload of '" + varRef.getName() +
                                "' matches expected type '" +
                                expectedType->toDisplayString() + "'",

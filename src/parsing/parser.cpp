@@ -1598,6 +1598,14 @@ sun::ast::TypeConstraint Parser::parseTypeConstraint(
     const std::string& paramName) {
   Position start = captureStart();
 
+  if (curTok.kind == TokenKind::INTERFACE) {
+    getNextToken();
+    sun::ast::TypeConstraint constraint("interface");
+    start.setEnd(prevTok_.end.line, prevTok_.end.column, prevTok_.end.offset);
+    constraint.span = std::move(start);
+    return constraint;
+  }
+
   std::string name;
   if (curTok.kind == TokenKind::IDENTIFIER ||
       curTok.kind == TokenKind::INTRINSIC_IDENTIFIER) {
@@ -4338,8 +4346,9 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
     bool isUnsafeMethod = curTok.kind == TokenKind::UNSAFE;
     if (isUnsafeMethod) {
       getNextToken();
-      if (!atMethodKeyword()) {
-        parsingError("'unsafe' must precede 'method'");
+      if (!atMethodKeyword() && !(curTok.kind == TokenKind::IDENTIFIER &&
+                                  curTok.getIdentifier() == "init")) {
+        parsingError("'unsafe' must precede 'method' or 'init'");
       }
     }
     if (curTok.kind == TokenKind::VAR) {
@@ -4409,6 +4418,7 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
       if (!func) {
         return nullptr;
       }
+      func->getProtoMut().setUnsafeMethod(isUnsafeMethod);
 
       ClassMethodDecl method;
       method.isConstructor = (name == "init");

@@ -38,24 +38,27 @@ enum class Intrinsic {
   // =========================================================================
   // Generic intrinsics (require type argument)
   // =========================================================================
-  Alignof,        // _alignof<T>() -> i64
-  AlignedMalloc,  // _aligned_malloc<T>(bytes) -> raw_ptr<u8>
-  AssertCLayout,  // _assert_c_layout<T>(size, alignment, offsets...)
-  AssertCTarget,  // _assert_c_target(triple)
-  Sizeof,         // _sizeof<T>() -> i64
-  Init,           // _init<T>(ptr, args...) -> void
-  Load,           // _load<T>(ptr, index) -> T
-  Store,          // _store<T>(ptr, index, value) -> void
-  PtrAsRaw,       // _ptr_as_raw<T>(ptr<T>) -> raw_ptr<T>
-  Is,             // _is<T>(value) -> bool (compile-time type check)
-  AddressOf,      // _address_of<T>(ref T) -> raw_ptr<T>
-  ToRef,          // _to_ref<T>(raw_ptr<T>) -> ref T (unsafe dereference)
-  Deinit,         // _deinit<T>(raw_ptr<T>) -> void (call T.deinit if exists)
-  EnumFromInt,    // _enum_from_int<T>(integer) -> std.Option<T>
-  Convert,        // _convert<T>(numeric) -> T (explicit numeric conversion:
-                  // trunc / extend / int<->float)
-  Bitcast,        // _bitcast<T>(value) -> T (same-size bit reinterpretation,
-                  // e.g. f32 <-> u32, f64 <-> u64)
+  AlignedAlloc,
+  AlignmentPadding,  // Bytes needed to align a raw address for a type
+  CreateInterface,   // Internal allocator ownership transfer
+  Alignof,           // _alignof<T>() -> i64
+  AlignedMalloc,     // _aligned_malloc<T>(bytes) -> raw_ptr<u8>
+  AssertCLayout,     // _assert_c_layout<T>(size, alignment, offsets...)
+  AssertCTarget,     // _assert_c_target(triple)
+  Sizeof,            // _sizeof<T>() -> i64
+  Init,              // _init<T>(ptr, args...) -> void
+  Load,              // _load<T>(ptr, index) -> T
+  Store,             // _store<T>(ptr, index, value) -> void
+  PtrAsRaw,          // _ptr_as_raw<T>(ptr<T>) -> raw_ptr<T>
+  Is,                // _is<T>(value) -> bool (compile-time type check)
+  AddressOf,         // _address_of<T>(ref T) -> raw_ptr<T>
+  ToRef,             // _to_ref<T>(raw_ptr<T>) -> ref T (unsafe dereference)
+  Deinit,            // _deinit<T>(raw_ptr<T>) -> void (call T.deinit if exists)
+  EnumFromInt,       // _enum_from_int<T>(integer) -> std.Option<T>
+  Convert,           // _convert<T>(numeric) -> T (explicit numeric conversion:
+                     // trunc / extend / int<->float)
+  Bitcast,           // _bitcast<T>(value) -> T (same-size bit reinterpretation,
+                     // e.g. f32 <-> u32, f64 <-> u64)
 
   // Thread intrinsics. The pthread trampoline is built per lambda signature,
   // which cannot be written in Sun (pthread_create wants ptr(*)(ptr), Sun
@@ -194,6 +197,15 @@ inline Intrinsic getIntrinsic(const std::string& name) {
   // -------------------------------------------------------------------------
   if (name == "_alignof") {
     return Intrinsic::Alignof;
+  }
+  if (name == "_aligned_alloc") {
+    return Intrinsic::AlignedAlloc;
+  }
+  if (name == "_alignment_padding") {
+    return Intrinsic::AlignmentPadding;
+  }
+  if (name == "_create_interface") {
+    return Intrinsic::CreateInterface;
   }
   if (name == "_aligned_malloc") {
     return Intrinsic::AlignedMalloc;
@@ -543,6 +555,7 @@ inline Intrinsic getIntrinsic(const std::string& name) {
 inline bool isGenericIntrinsic(Intrinsic i) {
   switch (i) {
     case Intrinsic::Alignof:
+    case Intrinsic::CreateInterface:
     case Intrinsic::AlignedMalloc:
     case Intrinsic::AssertCLayout:
     case Intrinsic::Sizeof:
@@ -602,6 +615,7 @@ inline bool requiresUnsafeBlock(Intrinsic i) {
     case Intrinsic::SimdF32x4MulAdd:
     case Intrinsic::SimdF32x4Fma:
     case Intrinsic::SimdF32x4Mul:
+    case Intrinsic::CreateInterface:
     // Reads and writes through a raw pointer
     case Intrinsic::Load:
     case Intrinsic::Store:
@@ -615,6 +629,8 @@ inline bool requiresUnsafeBlock(Intrinsic i) {
     case Intrinsic::Memset:
     case Intrinsic::PtrOffset:
     // Untracked heap memory
+    case Intrinsic::AlignmentPadding:
+    case Intrinsic::AlignedAlloc:
     case Intrinsic::AlignedMalloc:
     case Intrinsic::Malloc:
     case Intrinsic::Free:

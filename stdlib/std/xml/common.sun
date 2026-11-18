@@ -313,7 +313,7 @@ public module std.xml {
 
   /** Copies a byte range using the caller's allocator. */
   function xml_slice(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     text: const ref String,
     start: i64,
     end: i64
@@ -354,7 +354,7 @@ public module std.xml {
     }
 
     /** Explicitly copies this name. */
-    public const method clone(alloc: const ref HeapAllocator) XmlName throws {
+    public const method clone(alloc: const ref std.mem.HeapAllocator) XmlName throws {
       return XmlName(
         this.uri_.clone(alloc),
         this.local_.clone(alloc),
@@ -411,7 +411,7 @@ public module std.xml {
     }
 
     /** Explicitly copies a declaration. */
-    public const method clone(alloc: const ref HeapAllocator) XmlNamespace throws {
+    public const method clone(alloc: const ref std.mem.HeapAllocator) XmlNamespace throws {
       return XmlNamespace(this.prefix.clone(alloc), this.uri.clone(alloc));
     }
   }

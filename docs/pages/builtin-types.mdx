@@ -278,12 +278,12 @@ reference (see [Memory Safety](/memory-safety)).
 
 Sun provides pointer types for working with memory:
 
-### `std.Unique<T>` - Owning Heap Value
+### `std.mem.Unique<T, A>` - Owning Heap Value
 
-`Unique<T>` is a standard-library class, not a built-in pointer type. It destroys the owned value and frees its allocation when it goes out of scope.
+`Unique<T, A>` is a standard-library class, not a built-in pointer type. It destroys the owned value and frees its allocation when it goes out of scope.
 
 ```sun
-var p = global_allocator.create_unique<Point>(3, 4);
+var p = std.mem.create_unique<Point>(std.mem.global_allocator, 3, 4);
 var point: ref Point = p.get();  // borrows the owned Point
 // The value is destroyed and its storage freed at scope exit.
 ```
@@ -293,7 +293,7 @@ var point: ref Point = p.get();  // borrows the owned Point
 A non-owning raw pointer for low-level memory operations.
 
 ```sun
-var raw: raw_ptr<i32> = allocator.alloc<i32>(10);
+var raw: raw_ptr<i32> = std.mem.alloc<i32>(allocator, 10);
 // Manual memory management required
 unsafe { _free(raw); };
 ```

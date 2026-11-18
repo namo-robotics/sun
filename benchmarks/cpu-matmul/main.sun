@@ -34,9 +34,9 @@ function run() i32 throws {
   var samples = unsafe { bench_arg(4); };
   var warmups = unsafe { bench_arg(5); };
 
-  var a = Matrix<f32>(global_allocator, [m, k]);
-  var b = Matrix<f32>(global_allocator, [k, n]);
-  var c = Matrix<f32>(global_allocator, [m, n]);
+  var a = Matrix<f32>(std.mem.global_allocator, [m, k]);
+  var b = Matrix<f32>(std.mem.global_allocator, [k, n]);
+  var c = Matrix<f32>(std.mem.global_allocator, [m, n]);
   // Shapes were validated by the harness; each buffer has the required capacity.
   unsafe { bench_fill(a.raw_data(), b.raw_data()); };
   for (var w: i64 = 0; w < warmups; w = w + 1) {

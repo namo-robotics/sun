@@ -37,6 +37,7 @@ enum class TypeTrait {
   Lambda,     // _Lambda: any closure type, however it was written
   Function,   // _Function: a named-function value (function (Args) Result)
   Callable,   // _Callable: Lambda + Function — anything that can be called
+  Interface,  // interface: an interface type
 };
 
 /**
@@ -71,6 +72,9 @@ inline TypeTrait getTypeTrait(const std::string& name) {
   }
   if (name == "_Callable") {
     return TypeTrait::Callable;
+  }
+  if (name == "interface") {
+    return TypeTrait::Interface;
   }
   return TypeTrait::None;
 }

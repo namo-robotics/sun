@@ -88,6 +88,15 @@ const std::map<std::string, BuiltinEmitter>& builtinTable() {
       {"_store_i64",
        [](auto& g, const auto& e) { return g.codegenStoreI64Intrinsic(e); }},
 
+      {"_aligned_alloc",
+       [](auto& g, const auto& e) {
+         return g.codegenAlignedAllocIntrinsic(e);
+       }},
+      {"_alignment_padding",
+       [](auto& g, const auto& e) {
+         return g.codegenAlignmentPaddingIntrinsic(e);
+       }},
+
       // Memory allocation intrinsics
       {"_malloc",
        [](auto& g, const auto& e) { return g.codegenMallocIntrinsic(e); }},

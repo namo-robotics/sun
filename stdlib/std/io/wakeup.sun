@@ -64,7 +64,7 @@ public module std.io {
     var shared: Shared<WakeupState>;
 
     /** Allocate shared ownership after acquiring both endpoints. */
-    init(alloc: const ref HeapAllocator) throws {
+    init(alloc: const ref std.mem.HeapAllocator) throws {
       var state = WakeupState();
       this.shared = Shared<WakeupState>(alloc, state);
     }

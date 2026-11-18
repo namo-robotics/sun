@@ -143,7 +143,7 @@ using std;
 class Bag {
   var items: Vec<i32>;
 
-  init(alloc: ref HeapAllocator)  throws {
+  init(alloc: ref std.mem.HeapAllocator)  throws {
     this.items =  Vec<i32>(alloc, 4);
   }
 
@@ -155,7 +155,7 @@ class Bag {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
+  var allocator = std.mem.make_heap_allocator();
   var b =  Bag(allocator);
    b.add(1);
   return _convert<i32>(b.items.size());
@@ -450,7 +450,7 @@ function total(v: const ref Vec<i32>) i32 {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
+  var allocator = std.mem.make_heap_allocator();
   var v =  Vec<i32>(allocator, 4);
    v.push(1);
    v.push(2);
@@ -472,7 +472,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
+  var allocator = std.mem.make_heap_allocator();
   var v =  Vec<i32>(allocator, 4);
   const ref cv = v;
   cv.push(1);
@@ -487,7 +487,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
+  var allocator = std.mem.make_heap_allocator();
   var v =  Vec<i32>(allocator, 4);
    v.push(1);
   const ref cv = v;
@@ -506,7 +506,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
+  var allocator = std.mem.make_heap_allocator();
   var v =  Vec<i32>(allocator, 4);
    v.push(5);
    v.push(7);
@@ -544,7 +544,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
+  var allocator = std.mem.make_heap_allocator();
   var v =  Vec<i32>(allocator, 4);
    v.push(5);
   const ref cv = v;
@@ -565,7 +565,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
+  var allocator = std.mem.make_heap_allocator();
   var v =  Vec<i32>(allocator, 4);
    v.push(5);
   match v.last() {
@@ -621,7 +621,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var allocator = make_heap_allocator();
+  var allocator = std.mem.make_heap_allocator();
   var m =  Map<i64, i32>(allocator, 8);
    m.insert(1, 10);
    m.insert(2, 20);

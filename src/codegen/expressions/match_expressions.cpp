@@ -50,8 +50,8 @@ Value* CodegenVisitor::codegen(const sun::ast::MatchExprAST& expr) {
       auto target = sun::types::unwrapRef(binding.resolvedType);
       Value* address = discVal;
       if (target->isInterface()) {
-        auto* view = classes.createInterfaceFatPointer(
-            discVal, static_cast<sun::types::ClassType*>(discType.get()),
+        auto* view = classes.createInterfaceView(
+            discVal, expr.getDiscriminant()->getResolvedType(),
             static_cast<sun::types::InterfaceType*>(target.get()));
         auto* storage = createEntryBlockAlloca(TheFunction, "match.interface",
                                                view->getType());

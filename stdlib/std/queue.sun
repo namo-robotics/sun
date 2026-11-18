@@ -24,7 +24,7 @@ public module std {
     var items: LinkedList<T>;
 
     /** Creates an empty queue using the supplied allocator. */
-    init(allocator: const ref HeapAllocator) {
+    init(allocator: const ref std.mem.HeapAllocator) {
       this.items = LinkedList<T>(allocator);
     }
 

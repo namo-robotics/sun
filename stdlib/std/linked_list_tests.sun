@@ -71,7 +71,7 @@ public module std {
 
   /** Checks empty list. */
   test_function empty_list() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var ll = LinkedList<i32>(allocator);
     std.test.assert(ll.is_empty());
     std.test.assert_eq(ll.size(), 0);
@@ -79,7 +79,7 @@ public module std {
 
   /** Checks push back. */
   test_function push_back() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var ll = LinkedList<i32>(allocator);
     ll.push_back(10);
     ll.push_back(20);
@@ -99,7 +99,7 @@ public module std {
 
   /** Checks push front. */
   test_function push_front() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var ll = LinkedList<i32>(allocator);
     ll.push_front(3);
     ll.push_front(2);
@@ -119,7 +119,7 @@ public module std {
 
   /** Checks pop front. */
   test_function pop_front() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var ll = LinkedList<i32>(allocator);
     ll.push_back(10);
     ll.push_back(20);
@@ -130,7 +130,7 @@ public module std {
 
   /** Checks pop back. */
   test_function pop_back() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var ll = LinkedList<i32>(allocator);
     ll.push_back(10);
     ll.push_back(20);
@@ -141,7 +141,7 @@ public module std {
 
   /** Checks pop empty throws. */
   test_function pop_empty_throws() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var ll = LinkedList<i32>(allocator);
     try {
       var matched_value = ll.pop_front();
@@ -159,7 +159,7 @@ public module std {
 
   /** Checks drain list. */
   test_function drain_list() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var ll = LinkedList<i32>(allocator);
     ll.push_back(1);
     ll.push_back(2);
@@ -174,7 +174,7 @@ public module std {
 
   /** Checks get and set. */
   test_function get_and_set() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var ll = LinkedList<i32>(allocator);
     ll.push_back(10);
     ll.push_back(20);
@@ -191,7 +191,7 @@ public module std {
 
   /** Checks get out of bounds. */
   test_function get_out_of_bounds() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var ll = LinkedList<i32>(allocator);
     ll.push_back(10);
     try {
@@ -204,7 +204,7 @@ public module std {
 
   /** Checks remove nodes. */
   test_function remove_nodes() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var ll = LinkedList<i32>(allocator);
     ll.push_back(10);
     ll.push_back(20);
@@ -223,7 +223,7 @@ public module std {
 
   /** Checks clear and reuse. */
   test_function clear_and_reuse() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var ll = LinkedList<i32>(allocator);
     ll.push_back(10);
     ll.push_back(20);
@@ -240,7 +240,7 @@ public module std {
 
   /** Checks for in iteration. */
   test_function for_in_iteration() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var ll = LinkedList<i32>(allocator);
     ll.push_back(1);
     ll.push_back(2);
@@ -259,7 +259,7 @@ public module std {
 
   /** Checks iterate empty. */
   test_function iterate_empty() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var ll = LinkedList<i32>(allocator);
     var sum: i32 = 0;
     for (var v: i32 in ll) {
@@ -270,7 +270,7 @@ public module std {
 
   /** Checks mixed push front back. */
   test_function mixed_push_front_back() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var ll = LinkedList<i32>(allocator);
     ll.push_back(2);
     ll.push_front(1);
@@ -287,7 +287,7 @@ public module std {
 
   /** Checks i64 type. */
   test_function i64_type() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var ll = LinkedList<i64>(allocator);
     ll.push_back(100);
     ll.push_back(200);
@@ -298,7 +298,7 @@ public module std {
 
   /** Checks list of class objects. */
   test_function list_of_class_objects() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var list = LinkedList<Point>(allocator);
     list.push_back(Point(1, 2));
     list.push_back(Point(3, 4));
@@ -312,7 +312,7 @@ public module std {
 
   /** Checks class objects push front pop. */
   test_function class_objects_push_front_pop() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var list = LinkedList<Pair>(allocator);
     list.push_back(Pair(2, 3));
     list.push_back(Pair(4, 5));
@@ -325,7 +325,7 @@ public module std {
 
   /** Checks iterate class objects. */
   test_function iterate_class_objects() {
-    var allocator = make_heap_allocator();
+    var allocator = std.mem.make_heap_allocator();
     var list = LinkedList<Weight>(allocator);
     list.push_back(Weight(10));
     list.push_back(Weight(20));

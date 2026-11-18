@@ -140,7 +140,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var s =  String(alloc, "hello");
   s.unsafe_set_at(0, b'H');
   return 0;
@@ -205,7 +205,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var s =  String(alloc, "hello");
   return _convert<i32>(s.unsafe_at(0));
 }
@@ -220,7 +220,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var b =  ContiguousBuffer<i32>(alloc, 1);
   b.set_unchecked(0, 42);
   return 0;
@@ -236,7 +236,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  Vec<i32>(alloc, 1);
    v.push(42);
   return v.get_unchecked(0);

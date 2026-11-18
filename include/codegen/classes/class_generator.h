@@ -170,30 +170,65 @@ class ClassGenerator {
   // ---------------------------------------------------------------
   // Interface dispatch
 
-  /** Converts a borrowed child view to an ancestor without copying its object.
+  /**
+   * Locates the borrowed view within an interface handle.
+   *
+   * For example, an owning `value: INode` has the following layout.
+   *
+   *     [owner][object][vtable][deinit]
+   *     ^      ^
+   *     input  result
+   *
+   * A caller can load the object and vtable pointers together at the result
+   * address. For `view: ref INode`, the input already points to that pair.
+   *
+   * @param address LLVM pointer to the source value's storage.
+   * @param sourceType Sun type of the source, including any reference
+   * qualifier.
+   * @return The address of the object pointer field for an owning interface,
+   * or `address` itself for any other source type.
+   */
+  llvm::Value* interfaceViewAddress(llvm::Value* address, TypePtr sourceType);
+
+  /**
+   * Builds the two-pointer value used for an interface borrow.
+   *
+   * For example, borrowing an Item as a Node pairs its address with Item's Node
+   * table. Borrowing a Child owner as a Node keeps its receiver and selects
+   * the ancestor table.
+   *
+   * @param address Address of the concrete object, owner, or borrowed view.
+   * @param sourceType Sun type of the source, including its reference
+   * qualifier.
+   * @param target Interface required by the borrower.
+   * @return The receiver and dispatch table as an LLVM struct value.
+   */
+  llvm::Value* createInterfaceView(llvm::Value* address, TypePtr sourceType,
+                                   InterfaceType* target);
+
+  /** Converts a view or moved owner to an ancestor by replacing its table.
    */
   llvm::Value* upcastInterface(llvm::Value* value, InterfaceType* source,
                                InterfaceType* target);
 
   /**
-   * Borrows an ancestor interface in a temporary stack slot without moving the
-   * object. Returns value unchanged unless both types are interfaces and
-   * targetType is a reference to a different interface. Invalid ancestor
-   * conversions report an error.
+   * Prepares an address for binding a borrowed interface reference.
+   *
+   * For example, borrowing an INode owner reuses its embedded view. Borrowing
+   * a concrete Node or converting to a parent interface needs a new view.
+   *
+   * @param address Address of the source value.
+   * @param sourceType Sun type of the source, including its reference
+   * qualifier.
+   * @param targetType Sun type of the binding or parameter.
+   * @return The view address, or the input address for other reference
+   * bindings.
    */
-  llvm::Value* createBorrowedInterfaceUpcast(llvm::Value* value,
-                                             TypePtr sourceType,
-                                             TypePtr targetType);
+  llvm::Value* prepareInterfaceReference(llvm::Value* address,
+                                         TypePtr sourceType,
+                                         TypePtr targetType);
 
   // ---------------------------------------------------------------
-
-  /**
-   * Creates a borrowed fat pointer { data_ptr, vtable_ptr }. The concrete
-   * object remains in its current owner's storage.
-   */
-  llvm::Value* createInterfaceFatPointer(llvm::Value* objectPtr,
-                                         ClassType* classType,
-                                         InterfaceType* ifaceType);
 
   /**
    * Returns the vtable global for a (class, interface) pair, building it on
@@ -203,14 +238,6 @@ class ClassGenerator {
    */
   llvm::GlobalVariable* getOrCreateInterfaceVtable(ClassType* classType,
                                                    InterfaceType* ifaceType);
-
-  /**
-   * Prepares a class argument for a ref Interface parameter by creating a
-   * fat pointer on the stack. Returns nullptr if not a class->ref Interface
-   * conversion, otherwise returns pointer to the fat pointer on stack.
-   */
-  llvm::Value* prepareClassForRefInterface(llvm::Value* classPtr,
-                                           TypePtr argType, TypePtr paramType);
 
  private:
   sun::codegen::CodegenState& state_;

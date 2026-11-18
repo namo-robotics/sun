@@ -1,5 +1,4 @@
 using std.net;
-
 using std;
 
 /** Regression coverage for kernel readiness queues and their portable interface. */
@@ -9,7 +8,7 @@ public module std.io {
 
   /** Check lifecycle, empty waits, invalid arguments, and bounds-checked access. */
   test_function lifecycle_and_empty_wait() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var invalid = std.io.EventLoop(alloc, 0);
     var caught_failure_1 = false;
     try {
@@ -70,7 +69,7 @@ public module std.io {
 
   /** Check full-width tokens, level triggering, suspension, modification, and removal. */
   test_function readable_tokens_modify_and_remove() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var pipe = std.process.open_pipe(alloc);
     var reader = std.io.File();
     reader.adopt(pipe.read_fd());
@@ -112,7 +111,7 @@ public module std.io {
 
   /** Check duplicate/missing registrations and rejected changes preserve valid state. */
   test_function registration_errors_preserve_state() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var pipe = std.process.open_pipe(alloc);
     var reader = std.io.File();
     reader.adopt(pipe.read_fd());
@@ -196,7 +195,7 @@ public module std.io {
 
   /** Check native record strides across a batch and report peer hangup. */
   test_function multiple_ready_records_and_hangup() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var first = std.process.open_pipe(alloc);
     var second = std.process.open_pipe(alloc);
     var reader1 = std.io.File();
@@ -227,7 +226,7 @@ public module std.io {
 
   /** A small batch must not lose readiness for descriptors beyond its capacity. */
   test_function bounded_batches_and_move() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var first = std.process.open_pipe(alloc);
     var second = std.process.open_pipe(alloc);
     var reader1 = std.io.File();
@@ -254,7 +253,7 @@ public module std.io {
 
   /** Registration growth and repeated removal keep every token associated with its descriptor. */
   test_function registration_growth_and_reuse() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var readers = Vec<std.io.File>(alloc, 32);
     var loop = std.io.EventLoop(alloc, 5);
     loop.open();
@@ -291,7 +290,7 @@ public module std.io {
 
   /** Changing a connected socket's read/write filters updates readiness in place. */
   test_function socket_interest_changes() {
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     var listener = TcpListener();
     listener.bind_loopback(0);
     listener.listen(1);
@@ -340,7 +339,7 @@ public module std.io {
   /** A moved loop still closes descriptor zero and keeps close-on-exec enabled. */
   function check_descriptor_zero() void throws {
     unsafe { c_close(0); };
-    var alloc = make_heap_allocator();
+    var alloc = std.mem.make_heap_allocator();
     if (true) {
       var original = std.io.EventLoop(alloc, 1);
       original.open();

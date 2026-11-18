@@ -526,7 +526,7 @@ public module namo {
 
   using std;
 
-  public function make(a: ref HeapAllocator) Vec<String> throws {
+  public function make(a: ref std.mem.HeapAllocator) Vec<String> throws {
     var v =  Vec<String>(a, 4);
      v.push( String(a, "hi"));
     return v;
@@ -537,7 +537,7 @@ using std;
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var v =  namo.make(alloc);
   return _convert<i32>(v.size());
 }

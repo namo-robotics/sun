@@ -392,6 +392,7 @@ TEST(Tooling_Lsp_Definition, StdlibDeclarations) {
     GTEST_SKIP() << "stdlib.moon not built";
   }
   std::string source = R"(
+using std.mem;
 using std;
 class Config {
     var n: i64;

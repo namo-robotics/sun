@@ -22,6 +22,47 @@ TypePtr CallAnalyzer::resolveIntrinsicCallType(
   const auto& typeArgs = genericCall.getResolvedTypeArgs();
   const std::string& funcName = genericCall.getFunctionName();
 
+  if (funcName == "_create_interface") {
+    const auto& args = genericCall.getArgs();
+    if (typeArgs.size() != 1 || args.size() != 3) {
+      logAndThrowError("_create_interface<I> requires owner, object and deinit",
+                       genericCall.getLocation());
+    }
+    const auto owner = args[0]->getResolvedType();
+    const auto object = args[1]->getResolvedType();
+    if (!owner->isRawPointer() || !object->isRawPointer() ||
+        !Types::Function(Types::Void(), {owner})
+             ->equals(*args[2]->getResolvedType())) {
+      logAndThrowError(
+          "_create_interface requires raw owner and object pointers and a "
+          "matching nonthrowing cleanup function",
+          genericCall.getLocation());
+    }
+    if (typeArgs[0]->isTypeParameter()) {
+      return typeArgs[0];
+    }
+    if (!typeArgs[0]->isInterface()) {
+      logAndThrowError("_create_interface requires an interface type",
+                       genericCall.getLocation());
+    }
+    const auto& concrete =
+        static_cast<const sun::types::RawPointerType&>(*object)
+            .getPointeeType();
+    if (concrete->isTypeParameter()) {
+      return typeArgs[0];
+    }
+    if (!concrete->isClass() ||
+        !static_cast<const sun::types::ClassType&>(*concrete)
+             .convertibleToInterface(
+                 static_cast<const sun::types::InterfaceType&>(*typeArgs[0]))) {
+      logAndThrowError(
+          "create_interface requires a concrete class implementing the "
+          "requested dynamic interface",
+          genericCall.getLocation());
+    }
+    return typeArgs[0];
+  }
+
   if (funcName == "_assert_c_layout") {
     if (!ctx_.isAtModuleLevel()) {
       logAndThrowError("_assert_c_layout is only allowed at module scope",

@@ -11,8 +11,8 @@
         "CMAKE_CXX_FLAGS": "-O2 -g -fno-omit-frame-pointer",
         "CMAKE_C_FLAGS": "-O2 -g -fno-omit-frame-pointer",
         "SUN_TEST_SHARDS": "32",
-        "CMAKE_C_COMPILER": "clang",
-        "CMAKE_CXX_COMPILER": "clang++"
+        "CMAKE_C_COMPILER": "clang-20",
+        "CMAKE_CXX_COMPILER": "clang++-20"
       },
       "description": "Uses build/ with optimized compiler code, debug symbols, and assertions. GoogleTest shards share startup costs; per-case XML is written to build/tests/test-results. Set SUN_TEST_SHARDS=1 for individual IDE/CTest discovery."
     },

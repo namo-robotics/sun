@@ -524,7 +524,7 @@ class Holder {
 
 /** Runs the fixture with explicit error propagation. */
 function main() i32 throws {
-  var alloc = make_heap_allocator();
+  var alloc = std.mem.make_heap_allocator();
   var h = Holder(Value.Items( Vec<i64>(alloc, 2)));
    h.push(1);
    h.push(2);

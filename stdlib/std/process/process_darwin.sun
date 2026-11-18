@@ -3,7 +3,7 @@ public module std.process {
 
   /** Read the BSD start timeval as an opaque microsecond start marker. */
   function native_process_identity(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     target: i32
   ) ProcessIdentity throws {
     var record = ContiguousBuffer<darwin_process_abi.proc_bsdinfo>(alloc, 1);
@@ -21,7 +21,7 @@ public module std.process {
   }
 
   /** Retry enumeration with more room when concurrent launches fill the buffer. */
-  function native_process_ids(alloc: const ref HeapAllocator) Vec<i32> throws {
+  function native_process_ids(alloc: const ref std.mem.HeapAllocator) Vec<i32> throws {
     var needed = unsafe { c_proc_listpids(1, 0, null, 0); };
     if (needed <= 0) {
       throw Error(errno(), "process enumeration unavailable");
@@ -52,7 +52,7 @@ public module std.process {
   }
 
   /** Read the libproc path with the platform's maximum supported path buffer. */
-  function process_executable(alloc: const ref HeapAllocator, target: i32) String throws {
+  function process_executable(alloc: const ref std.mem.HeapAllocator, target: i32) String throws {
     var data = ContiguousBuffer<u8>(alloc, 4096);
     var got = unsafe { c_proc_pidpath(target, data.raw_data(), 4096); };
     if (got <= 0) {
@@ -67,7 +67,7 @@ public module std.process {
 
   /** Decode KERN_PROCARGS2, using argc to exclude the trailing environment. */
   function darwin_process_arguments(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     data: ref ContiguousBuffer<u8>,
     size: i64
   ) Vec<String> throws {
@@ -103,7 +103,7 @@ public module std.process {
 
   /** Read argv through sysctl; access denial remains a field error. */
   function native_process_arguments(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     target: i32
   ) Vec<String> throws {
     var max_size: i32 = 0;
@@ -184,7 +184,7 @@ public module std.process {
 
   /** Read libproc cumulative CPU nanoseconds and resident bytes independently of text. */
   function native_process_snapshot(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     target: i32
   ) ProcessSnapshot throws {
     var identity = process_identity(alloc, target);
@@ -234,7 +234,7 @@ public module std.process {
 
   /** Validate the supplied identity before activating a checked handle. */
   function native_process_open(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     identity: const ref ProcessIdentity
   ) i64 throws {
     var observed = process_identity(alloc, identity.pid);
@@ -246,7 +246,7 @@ public module std.process {
 
   /** Recheck immediately before kill; PID reuse can still occur between the calls. */
   function native_process_signal(
-    alloc: const ref HeapAllocator,
+    alloc: const ref std.mem.HeapAllocator,
     identity: const ref ProcessIdentity,
     token: i64,
     signal: i32

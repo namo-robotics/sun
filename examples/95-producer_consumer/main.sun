@@ -11,7 +11,7 @@ class WorkQueue {
 
   /** Creates an empty queue; nodes are allocated when items are pushed. */
   init() {
-    this.items = Queue<i64>(global_allocator);
+    this.items = Queue<i64>(std.mem.global_allocator);
   }
 }
 
@@ -69,7 +69,7 @@ var consume = (queue: Shared<WorkQueue>) => i32 {
 
 /** Joins both threads and propagates allocation failures after they have finished. */
 function run() void throws {
-  var queue = Shared<WorkQueue>(global_allocator, WorkQueue());
+  var queue = Shared<WorkQueue>(std.mem.global_allocator, WorkQueue());
   var producer = spawn(produce, queue.clone());
   var consumer = spawn(consume, queue.clone());
   producer.join();

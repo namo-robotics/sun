@@ -22,10 +22,10 @@ public module std {
      */
     public class TempDir {
       public var path: String;
-      var alloc: HeapAllocator;
+      var alloc: std.mem.HeapAllocator;
 
       /** Creates the scratch directory or returns its filesystem error. */
-      init(allocator: ref HeapAllocator, tag: static_ptr<u8>) throws {
+      init(allocator: ref std.mem.HeapAllocator, tag: static_ptr<u8>) throws {
         this.alloc = allocator.copy();
         var p = String("/tmp/sun_stdlib_");
         p.append_literal(tag);

@@ -1,4 +1,11 @@
 cmake_minimum_required(VERSION 3.22)
+# Homebrew provides unversioned compiler names inside the llvm@20 package.
+if(CMAKE_HOST_APPLE AND CMAKE_CXX_COMPILER STREQUAL "clang++-20")
+    execute_process(COMMAND brew --prefix llvm@20 OUTPUT_VARIABLE llvm_prefix
+                    OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+    set(CMAKE_C_COMPILER "${llvm_prefix}/bin/clang")
+    set(CMAKE_CXX_COMPILER "${llvm_prefix}/bin/clang++")
+endif()
 project(SunCompiler LANGUAGES C CXX)
 
 # Apply to every native target, including bundled dependencies and tests.
