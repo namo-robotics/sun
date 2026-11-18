@@ -88,8 +88,8 @@ class CallAnalyzer {
    *         declaration while the parameter types are still abstract.
    */
   QualifiedName resolveGenericFunctionValue(
-      ExprAST& reference, const GenericFunctionInfo& generic,
-      const sun::types::FunctionType& expected);
+      ExprAST &reference, const GenericFunctionInfo &generic,
+      const sun::types::FunctionType &expected);
 
  private:
   /** Dispatches syntax-dependent intrinsic rules before ordinary call

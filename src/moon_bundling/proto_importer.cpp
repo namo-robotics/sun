@@ -19,11 +19,11 @@
 //       var <field>: <SunType>; ...
 //       var unknown_fields: Vec<u8>;               // preserved unknown fields
 //       var alloc_: std.mem.HeapAllocator;
-//       init(alloc: const ref std.mem.HeapAllocator) throws { ...zero values... }
-//       method encode(buf: ref Vec<u8>) void throws { ... }
+//       init(alloc: const ref std.mem.HeapAllocator) throws { ...zero values...
+//       } method encode(buf: ref Vec<u8>) void throws { ... }
 //     }
-//     function <Msg>_decode(alloc: const ref std.mem.HeapAllocator, buf: ref Vec<u8>)
-//     <Msg>, IError
+//     function <Msg>_decode(alloc: const ref std.mem.HeapAllocator, buf: ref
+//     Vec<u8>) <Msg>, IError
 //   }
 //
 // Nested messages/enums flatten to Outer_Inner. Sun has no static methods, so
@@ -894,7 +894,8 @@ class MessageGenerator {
    */
   void emitDecodeFrom() {
     w_.open("public function " + name_ +
-            "_decode_from(alloc: const ref std.mem.HeapAllocator, r: ref ProtoReader) "
+            "_decode_from(alloc: const ref std.mem.HeapAllocator, r: ref "
+            "ProtoReader) "
             "" +
             name_ + " throws {");
     w_.line("var msg = " + name_ + "(alloc);");
@@ -1002,9 +1003,10 @@ class MessageGenerator {
     w_.close();
     w_.line();
 
-    w_.open("public function " + name_ +
-            "_decode(alloc: const ref std.mem.HeapAllocator, buf: ref Vec<u8>) " +
-            name_ + " throws {");
+    w_.open(
+        "public function " + name_ +
+        "_decode(alloc: const ref std.mem.HeapAllocator, buf: ref Vec<u8>) " +
+        name_ + " throws {");
     w_.line("var r = ProtoReader(buf);");
     w_.line("return " + name_ + "_decode_from(alloc, r);");
     w_.close();
