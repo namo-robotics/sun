@@ -540,8 +540,13 @@ declare function _exception_trace_frames<T>(error: const ref T) const ref array<
 /** Reads the original capture status from a direct active catch binding. */
 declare function _exception_trace_status<T>(error: const ref T) u32;
 
-/** Transfer a Unique owner into an interface without allocating storage. */
-declare function _create_interface<I: interface, O>(owner: O) I;
+/** Adopt sole cleanup responsibility for owner. Object must remain a valid
+ * receiver until deinit(owner) destroys it and releases its storage. */
+declare function _create_interface<I: interface, O: I, Owner>(
+  owner: raw_ptr<Owner>,
+  object: raw_ptr<O>,
+  deinit_fn: function (raw_ptr<Owner>) void
+) I;
 
 /** Return the padding needed to align a raw address for T. */
 declare function _alignment_padding(pointer: raw_ptr<u8>, alignment: i64) i64;

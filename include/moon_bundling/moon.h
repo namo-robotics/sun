@@ -24,8 +24,8 @@ namespace sun::moon_bundling {
  */
 struct MoonHeader {
   static constexpr uint32_t MAGIC = 0x53554E4C;  // "SUNL"
-  // Owned interfaces carry allocator-specific cleanup separately from views.
-  static constexpr uint32_t VERSION = 17;
+  // Owned interface handles store separate allocation and receiver pointers.
+  static constexpr uint32_t VERSION = 18;
 
   uint32_t magic = MAGIC;
   uint32_t version = VERSION;

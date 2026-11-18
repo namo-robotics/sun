@@ -875,16 +875,9 @@ Value* ClassGenerator::codegen(const sun::ast::MemberAssignmentAST& expr) {
 
   if (field->type->isReference() &&
       sun::types::unwrapRef(field->type)->isInterface()) {
-    auto source = sun::types::unwrapRef(valueSunType);
-    auto* target =
-        static_cast<InterfaceType*>(sun::types::unwrapRef(field->type).get());
-    if (source->isClass()) {
-      value = createInterfaceFatPointer(
-          value, static_cast<ClassType*>(source.get()), target);
-    } else {
-      value = upcastInterface(value, static_cast<InterfaceType*>(source.get()),
-                              target);
-    }
+    value = createInterfaceView(
+        value, valueSunType,
+        static_cast<InterfaceType*>(sun::types::unwrapRef(field->type).get()));
   }
 
   // A `ref array<T>` field holds the view value; a view expression may
@@ -1076,7 +1069,9 @@ Value* ClassGenerator::codegen(const sun::ast::GenericCallAST& expr) {
     case Intrinsic::AddressOf:
       return intrinsics().codegenAddressOfIntrinsic(expr.getArgs());
     case Intrinsic::ToRef:
-      return intrinsics().codegenToRefIntrinsic(expr.getArgs());
+      return interfaceViewAddress(
+          intrinsics().codegenToRefIntrinsic(expr.getArgs()),
+          getFirstTypeArg());
     case Intrinsic::Is:
       return intrinsics().codegenIsIntrinsic(getFirstTypeArg(), expr.getArgs());
     case Intrinsic::Deinit:

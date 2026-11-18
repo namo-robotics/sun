@@ -34,7 +34,7 @@ fi
 # Keep Clang, LLD and the LLVM development libraries on the same release.
 PACKAGES=(
     build-essential cmake ninja-build git python3 ccache
-    clang-20 lld-20 llvm-20 llvm-20-dev llvm-20-tools libclang-20-dev
+    clang-20 clang-format-20 lld-20 llvm-20 llvm-20-dev llvm-20-tools libclang-20-dev
     libarchive-dev libzstd-dev zlib1g-dev libxml2-dev libedit-dev libncurses-dev
     libcurl4-openssl-dev libffi-dev libgtest-dev
     openssl ca-certificates curl tar gzip

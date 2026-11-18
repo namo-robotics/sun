@@ -495,10 +495,11 @@ void ScopeManager::emitUnconditionalDrop(const TypePtr& type, Value* ptr,
   if (type->isInterface()) {
     auto* ownerType = sun::types::InterfaceType::getOwnerType(ctx.getContext());
     auto* owner = ctx.builder->CreateLoad(ownerType, ptr, name + ".owner");
-    auto* data = ctx.builder->CreateExtractValue(owner, 0);
-    auto* cleanup = ctx.builder->CreateExtractValue(owner, 2);
-    auto* context = ctx.builder->CreateExtractValue(owner, 3);
-    auto* contextTable = ctx.builder->CreateExtractValue(owner, 4);
+    using sun::types::InterfaceType;
+    auto* allocation =
+        ctx.builder->CreateExtractValue(owner, InterfaceType::Owner);
+    auto* cleanup =
+        ctx.builder->CreateExtractValue(owner, InterfaceType::Deinit);
     auto* function = ctx.builder->GetInsertBlock()->getParent();
     auto* release =
         llvm::BasicBlock::Create(ctx.getContext(), "interface.drop", function);
@@ -509,11 +510,8 @@ void ScopeManager::emitUnconditionalDrop(const TypePtr& type, Value* ptr,
     ctx.builder->SetInsertPoint(release);
     auto* signature = llvm::FunctionType::get(
         llvm::Type::getVoidTy(ctx.getContext()),
-        {llvm::PointerType::getUnqual(ctx.getContext()),
-         llvm::PointerType::getUnqual(ctx.getContext()),
-         llvm::PointerType::getUnqual(ctx.getContext())},
-        false);
-    ctx.builder->CreateCall(signature, cleanup, {data, context, contextTable});
+        {llvm::PointerType::getUnqual(ctx.getContext())}, false);
+    ctx.builder->CreateCall(signature, cleanup, {allocation});
     ctx.builder->CreateStore(llvm::Constant::getNullValue(ownerType), ptr);
     ctx.builder->CreateBr(done);
     ctx.builder->SetInsertPoint(done);

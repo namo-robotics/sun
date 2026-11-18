@@ -356,6 +356,11 @@ Value* CodegenVisitor::prepareRefArgument(const ExprAST* argExpr,
     return nullptr;
   }
 
+  // An interface-valued call already materializes and tracks the owner.
+  if (argSunType && argSunType->isInterface()) {
+    return codegen(*argExpr);
+  }
+
   // A sized array temporary (a literal, a returned array) already sits in
   // storage of its own: its address is the argument
   if (argSunType && argSunType->isArray()) {
@@ -743,6 +748,8 @@ Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
   // Handle interface dispatch
   if (auto* ifaceType =
           sun::codegen::support::tryGetType<InterfaceType>(objectType)) {
+    objectPtr = classes.interfaceViewAddress(
+        objectPtr, memberAccess.getObject()->getResolvedType());
     return codegenInterfaceMethodCall(expr, objectPtr, ifaceType, methodName);
   }
 
@@ -939,27 +946,18 @@ bool CodegenVisitor::emitCallArguments(
       }
 
       case ArgConversion::RawPtrAsRef:
-        // The pointer value is the referent's address
-        argVal = codegen(*argExpr);
+        argVal = classes.interfaceViewAddress(
+            codegen(*argExpr),
+            sun::codegen::support::getPointeeType(argSunType));
         break;
 
-      case ArgConversion::ClassToRefInterface: {
-        Value* classPtr = prepareRefArgument(argExpr, argSunType);
-        if (!classPtr) {
-          return false;
-        }
-        argVal = classes.prepareClassForRefInterface(
-            classPtr, sun::types::unwrapRef(argSunType), paramType);
-        break;
-      }
-
-      case ArgConversion::InterfaceRefUpcast:
+      case ArgConversion::BorrowInterface:
         argVal = prepareRefArgument(argExpr, argSunType);
         if (!argVal) {
           return false;
         }
-        argVal = classes.createBorrowedInterfaceUpcast(argVal, argSunType,
-                                                       paramType);
+        argVal =
+            classes.prepareInterfaceReference(argVal, argSunType, paramType);
         break;
 
       case ArgConversion::Move:
@@ -1029,6 +1027,7 @@ bool CodegenVisitor::emitCallArguments(
             argVal->getType()->isPointerTy()) {
           llvm::StructType* fatPtrType =
               InterfaceType::getFatPointerType(ctx.getContext());
+          argVal = classes.interfaceViewAddress(argVal, argSunType);
           argVal =
               ctx.builder->CreateLoad(fatPtrType, argVal, "iface.arg.load");
         }

@@ -27,7 +27,7 @@ A file for guiding coding agents.
 
 - All code comments should be written in clear, unambiguous plain English, describing how the code works and its purpose.
 - All code comments should be written for a general audience of software engineers.
-- Comments requiring deeper explanation should begin with concrete, minimal examples.
+- For non-trivial functions and types, start the documentation comment with a brief summary of what the function does or what the type represents. Follow it with a minimal, concrete example. For functions, then describe each parameter in declaration order and finish with the return value, when applicable. Use `@param` and `@return` in documentation blocks or the language's native equivalents.
 - Comments should be concise and to the point.
 - Every namespace, function, and type definition must have a documentation comment describing what it does or what it is for. This applies to all first-party source code, including C++ and `.sun` files, regardless of visibility.
 - Use `/** ... */` blocks in C++, Sun, and JavaScript/TypeScript. Use the language's native equivalent elsewhere, such as Python docstrings or a shell comment block.

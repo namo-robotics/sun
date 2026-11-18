@@ -155,18 +155,6 @@ void CallAnalyzer::analyzeIntrinsicCall(GenericCallAST& genericCall) {
   // args...))
   expandPackArguments(genericCall.getArgsMutable());
   genericCall.setResolvedType(resolveIntrinsicCallType(genericCall));
-  if (genericCall.getFunctionName() == "_create_interface") {
-    const auto owner = genericCall.getArgs()[0]->getResolvedType();
-    if (owner->isReference()) {
-      logAndThrowError(
-          "_create_interface consumes an owning value, not a reference",
-          genericCall.getLocation());
-    }
-    genericCall.setArgConversions({ArgConversion::Move});
-    genericCall.setResolvedCalleeType(
-        Types::Function(genericCall.getResolvedType(), {owner}));
-  }
-
   // _spawn is the one intrinsic that passes its arguments on to something
   // else — the spawned lambda — so, like any other call, how each argument
   // reaches its parameter is decided here rather than in codegen. A compound

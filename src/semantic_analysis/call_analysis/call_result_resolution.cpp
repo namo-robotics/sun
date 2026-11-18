@@ -23,24 +23,31 @@ TypePtr CallAnalyzer::resolveIntrinsicCallType(
   const std::string& funcName = genericCall.getFunctionName();
 
   if (funcName == "_create_interface") {
-    if (typeArgs.size() != 1 || genericCall.getArgs().size() != 1) {
-      logAndThrowError("_create_interface<I> requires one Unique owner",
+    const auto& args = genericCall.getArgs();
+    if (typeArgs.size() != 1 || args.size() != 3) {
+      logAndThrowError("_create_interface<I> requires owner, object and deinit",
                        genericCall.getLocation());
     }
-    auto owner = genericCall.getArgs()[0]->getResolvedType();
-    if (owner->isTypeParameter() || typeArgs[0]->isTypeParameter()) {
-      return typeArgs[0];
-    }
-    const auto* unique =
-        dynamic_cast<const sun::types::ClassType*>(owner.get());
-    if (!typeArgs[0]->isInterface() || !unique ||
-        unique->getGenericQualifiedName().display() != "std.mem.Unique" ||
-        unique->getTypeArguments().size() != 2) {
+    const auto owner = args[0]->getResolvedType();
+    const auto object = args[1]->getResolvedType();
+    if (!owner->isRawPointer() || !object->isRawPointer() ||
+        !Types::Function(Types::Void(), {owner})
+             ->equals(*args[2]->getResolvedType())) {
       logAndThrowError(
-          "_create_interface<I> requires an interface and a Unique<T, A> value",
+          "_create_interface requires raw owner and object pointers and a "
+          "matching nonthrowing cleanup function",
           genericCall.getLocation());
     }
-    auto concrete = unique->getTypeArguments()[0];
+    if (typeArgs[0]->isTypeParameter()) {
+      return typeArgs[0];
+    }
+    if (!typeArgs[0]->isInterface()) {
+      logAndThrowError("_create_interface requires an interface type",
+                       genericCall.getLocation());
+    }
+    const auto& concrete =
+        static_cast<const sun::types::RawPointerType&>(*object)
+            .getPointeeType();
     if (concrete->isTypeParameter()) {
       return typeArgs[0];
     }
@@ -51,18 +58,6 @@ TypePtr CallAnalyzer::resolveIntrinsicCallType(
       logAndThrowError(
           "create_interface requires a concrete class implementing the "
           "requested dynamic interface",
-          genericCall.getLocation());
-    }
-    const auto allocator = unique->getTypeArguments()[1];
-    // A borrowed allocator fits in the erased context pointer. An empty owned
-    // allocator has no state to transfer and is reconstructed for destruction.
-    const auto* allocatorClass =
-        dynamic_cast<const sun::types::ClassType*>(allocator.get());
-    if (!allocator->isReference() &&
-        (!allocatorClass || !allocatorClass->getFields().empty())) {
-      logAndThrowError(
-          "Interface conversion requires a borrowed allocator or an empty "
-          "owned allocator; use Unique<T, const ref A> for allocator state",
           genericCall.getLocation());
     }
     return typeArgs[0];

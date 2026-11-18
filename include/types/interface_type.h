@@ -341,28 +341,23 @@ class InterfaceType : public NominalType {
     return false;
   }
 
-  /**
-   * Owned interfaces carry concrete storage, dispatch, cleanup, and owner
-   * context. Borrowed views use a separate layout and never run concrete
-   * cleanup.
-   */
+  /** Identifies the pointer fields in an owning interface handle. */
+  enum OwnerField : unsigned { Owner, Object, Vtable, Deinit };
+
+  /** Returns the storage layout for a move-only interface value. */
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
     return getOwnerType(ctx);
   }
 
-  /** Stores the concrete address, dispatch table, cleanup function, and
-   * allocator context and its optional dispatch table. Borrowed views use
-   * getFatPointerType and never carry cleanup responsibility.
-   */
+  /** Stores the allocation, receiver, dispatch table, and cleanup function. */
   static llvm::StructType* getOwnerType(llvm::LLVMContext& ctx) {
     if (auto* existing =
             llvm::StructType::getTypeByName(ctx, "sun.interface.owner")) {
       return existing;
     }
     auto* pointer = llvm::PointerType::getUnqual(ctx);
-    return llvm::StructType::create(
-        ctx, {pointer, pointer, pointer, pointer, pointer},
-        "sun.interface.owner");
+    return llvm::StructType::create(ctx, {pointer, pointer, pointer, pointer},
+                                    "sun.interface.owner");
   }
 
   // ===================================================================

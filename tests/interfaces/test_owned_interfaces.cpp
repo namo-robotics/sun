@@ -65,6 +65,21 @@ TEST(OwnedInterfaces, replacement_and_return) {
             242);
 }
 
+/** A temporary owner lends its receiver to a call and then runs cleanup. */
+TEST(OwnedInterfaces, borrow_factory_result) {
+  EXPECT_EQ(sun::driver::executeStringWithStdlib(fixture + R"(
+    /** Reads through a borrowed view. */
+    function read(value: const ref Value) i32 { return value.read(); }
+    /** Borrows an owner directly from the allocating call. */
+    function run() i32 throws {
+      return read(std.mem.create_interface<Value>(std.mem.global_allocator, Item(42)));
+    }
+    /** Checks dispatch and the lifetime of the temporary. */
+    function main() i32 throws { var result = run(); return result + drops * 100; }
+  )"),
+            142);
+}
+
 /** Arena owners release concrete values before reset reuses their storage. */
 TEST(OwnedInterfaces, arena_reset_after_scope) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(fixture + R"(
@@ -98,6 +113,22 @@ TEST(OwnedInterfaces, arena_exhaustion_consumes_argument) {
     }
   )"),
             1);
+}
+
+/** A borrowed view keeps the arena live when used after a proposed reset. */
+TEST(OwnedInterfaces, reset_with_live_view_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      sun::driver::compileStringWithStdlib(fixture + R"(
+    /** Attempts to reset storage that a view still reads. */
+    function main() i32 throws {
+      var arena = std.mem.ArenaAllocator(64);
+      var owner = std.mem.create_interface<Value>(arena, Item(42));
+      var view: const ref Value = owner;
+      arena.reset();
+      return view.read();
+    }
+  )"),
+      "borrow");
 }
 
 /** An existing owner keeps the arena borrowed until its scope ends. */
@@ -324,18 +355,6 @@ TEST(OwnedInterfaces, dynamic_owner_return) {
             142);
 }
 
-/** Application code cannot adopt raw storage using the internal intrinsic. */
-TEST(OwnedInterfaces, internal_construction_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      sun::driver::compileStringWithStdlib(fixture + R"(
-    /** Attempts to bypass the allocator API. */
-    function adopt(pointer: raw_ptr<Item>) Value {
-      return unsafe { _create_interface<Value, Item>(pointer, true); };
-    }
-  )"),
-      "requires one Unique owner");
-}
-
 /** Discarded factory results still destroy their concrete objects. */
 TEST(OwnedInterfaces, discarded_owner_cleanup) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(fixture + R"(
@@ -507,63 +526,83 @@ TEST(OwnedInterfaces, custom_allocator_cleanup) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(fixture + R"(
 
     var released: i32 = 0;
+    var allocations: i32 = 0;
+    var original: raw_ptr<u8> = null;
+    var original_size: i64 = 0;
+    var original_alignment: i64 = 0;
     /** Delegates storage to the heap while recording which allocator releases it. */
     class CountingAllocator implements std.mem.IAllocator {
       var identity: i32;
       /** Stores observable allocator state. */ init(identity: i32) { this.identity = identity; }
       /** Allocate aligned bytes through the system allocator. */
       public const method alloc_raw(size: i64, alignment: i64) raw_ptr<u8> throws {
-        return std.mem.global_allocator.alloc_raw(size, alignment);
+        allocations += 1;
+        original_size = size;
+        original_alignment = alignment;
+        original = std.mem.global_allocator.alloc_raw(size, alignment);
+        return original;
       }
       /** Release bytes through the original allocator instance. */
       public const method dealloc_raw(pointer: raw_ptr<u8>, size: i64, alignment: i64) void {
-        released += this.identity;
+        if (pointer == original and size == original_size and alignment == original_alignment and drops == 1) {
+          released += this.identity;
+        }
         std.mem.global_allocator.dealloc_raw(pointer, size, alignment);
       }
     }
     /** Move a custom-allocator owner through interface erasure and a collection. */
     function run() i32 throws {
       var allocator = CountingAllocator(7);
-      var owner = std.mem.Unique<Item, const ref std.mem.IAllocator>(Item(42), allocator);
       var values = Vec<Value>(std.mem.global_allocator, 0);
-      values.push(_create_interface<Value>(owner));
+      values.push(std.mem.create_interface<Value>(allocator, Item(42)));
       return values.get(0).read();
     }
     /** Verify concrete destruction and allocator-specific release. */
-    function main() i32 throws { var result = run(); return result + drops * 100 + released * 1000; }
-  )"),
-            7142);
-}
-
-/** Owner conversion consumes the original Unique handle. */
-TEST(OwnedInterfaces, unique_conversion_consumes_owner) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      sun::driver::compileStringWithStdlib(fixture + R"(
-
-    /** Attempts to use an owner after interface conversion. */
-    function main() void throws {
-      var owner = std.mem.create_unique<Item>(std.mem.global_allocator, 42);
-      var erased = _create_interface<Value>(owner);
-      owner.get();
+    function main() i32 throws {
+      var result = run();
+      if (allocations != 1 or released != 7 or drops != 1) { return -1; }
+      return result;
     }
   )"),
-      "moved");
+            42);
 }
 
-/** Direct owner conversion retains the source allocator's lifetime. */
-TEST(OwnedInterfaces, unique_conversion_preserves_arena_borrow) {
+/** Reject a cleanup function whose pointer type differs from the owner. */
+TEST(OwnedInterfaces, adoption_checks_cleanup_signature) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       sun::driver::compileStringWithStdlib(fixture + R"(
-
-    /** Attempts to reset storage after its owner has been erased. */
-    function main() void throws {
-      var arena = std.mem.ArenaAllocator(64);
-      var owner = std.mem.create_unique<Item>(arena, 42);
-      var erased = _create_interface<Value>(owner);
-      arena.reset();
+    /** Accepts a different owner type. */ function cleanup(owner: raw_ptr<Other>) void {}
+    /** Attempts to adopt with an incompatible callback. */
+    function adopt(p: raw_ptr<Item>) Value {
+      return unsafe { _create_interface<Value>(p, p, cleanup); };
     }
   )"),
-      "borrow");
+      "matching nonthrowing cleanup");
+}
+
+/** Adopting raw pointers requires an explicit unsafe block. */
+TEST(OwnedInterfaces, adoption_requires_unsafe) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      sun::driver::compileStringWithStdlib(fixture + R"(
+    /** Provides a matching callback. */ function cleanup(owner: raw_ptr<Item>) void {}
+    /** Attempts raw adoption in safe code. */
+    function adopt(p: raw_ptr<Item>) Value { return _create_interface<Value>(p, p, cleanup); }
+  )"),
+      "unsafe");
+}
+
+/** The receiver must support dispatch through the requested interface. */
+TEST(OwnedInterfaces, adoption_checks_receiver) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      sun::driver::compileStringWithStdlib(fixture + R"(
+    /** Declares an unrelated contract. */ interface Unrelated {}
+    /** Provides a matching callback. */ function cleanup(owner: raw_ptr<Item>) void {}
+    /** Attempts to dispatch through an unrelated interface. */
+    function adopt(p: raw_ptr<Item>) Unrelated {
+      return unsafe { _create_interface<Unrelated>(p, p, cleanup); };
+    }
+  )"),
+      "implementing the requested dynamic interface");
 }
 
 /** Raw adoption must be explicitly unsafe even though destruction is automatic.
@@ -581,19 +620,24 @@ TEST(OwnedInterfaces, unique_raw_adoption_requires_unsafe) {
       "unsafe constructor");
 }
 
-/** Discarding a directly erased owner must still destroy its allocation. */
-TEST(OwnedInterfaces, discarded_direct_conversion_cleanup) {
+/** A concrete allocation can supply its own cleanup without a library box. */
+TEST(OwnedInterfaces, typed_adoption) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(fixture + R"(
-
-    /** Discards the interface handle after transferring ownership to it. */
-    function run() void throws {
-      var owner = std.mem.create_unique<Item>(std.mem.global_allocator, 42);
-      _create_interface<Value>(owner);
+    /** Destroys and releases a directly allocated item. */
+    function cleanup(pointer: raw_ptr<Item>) void {
+      unsafe { _deinit<Item>(pointer); };
+      std.mem.dealloc<Item>(std.mem.global_allocator, pointer, 1);
     }
-    /** Checks cleanup of the discarded handle. */
-    function main() i32 throws { run(); return drops; }
+    /** Checks dispatch through a manually adopted item. */
+    function run() i32 throws {
+      var pointer = std.mem.create<Item>(std.mem.global_allocator, 42);
+      var owner = unsafe { _create_interface<Value>(pointer, pointer, cleanup); };
+      return owner.read();
+    }
+    /** Checks that the adopted allocation was destroyed once. */
+    function main() i32 throws { var result = run(); return result + drops * 100; }
   )"),
-            1);
+            142);
 }
 
 /** A directly constructed owner keeps its allocator borrowed before erasure. */
@@ -609,21 +653,6 @@ TEST(OwnedInterfaces, direct_unique_keeps_arena_borrowed) {
     }
   )"),
       "borrow");
-}
-
-/** Interface erasure cannot hide the lifetime of a direct Unique allocator. */
-TEST(OwnedInterfaces, direct_unique_arena_escape_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      sun::driver::compileStringWithStdlib(fixture + R"(
-
-    /** Attempts to return an erased owner of local arena storage. */
-    function escape() Value throws {
-      var arena = std.mem.ArenaAllocator(64);
-      var owner = std.mem.Unique<Item, const ref std.mem.ArenaAllocator>(Item(42), arena);
-      return _create_interface<Value>(owner);
-    }
-  )"),
-      "local storage");
 }
 
 /** Moving an allocator would invalidate references retained by direct owners.
@@ -642,15 +671,14 @@ TEST(OwnedInterfaces, direct_unique_prevents_allocator_move) {
       "borrowed");
 }
 
-/** An unnamed allocator still bounds the lifetime of an erased owner. */
+/** An unnamed allocator bounds the lifetime of a directly constructed owner. */
 TEST(OwnedInterfaces, temporary_unique_allocator_escape_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       sun::driver::compileStringWithStdlib(fixture + R"(
 
     /** Attempts to return an owner borrowing a temporary arena. */
-    function escape() Value throws {
-      var owner = std.mem.Unique<Item, const ref std.mem.ArenaAllocator>(Item(42), std.mem.ArenaAllocator(64));
-      return _create_interface<Value>(owner);
+    function escape() std.mem.Unique<Item, const ref std.mem.ArenaAllocator> throws {
+      return std.mem.Unique<Item, const ref std.mem.ArenaAllocator>(Item(42), std.mem.ArenaAllocator(64));
     }
   )"),
       "local storage");

@@ -80,7 +80,7 @@ class IntrinsicsGenerator {
    */
   llvm::Value* codegenAlignedAllocIntrinsic(const sun::ast::CallExprAST& expr);
 
-  /** Consumes a Unique owner, preserving its cleanup and allocator context. */
+  /** Adopts the supplied storage, receiver, and typed cleanup function. */
   llvm::Value* codegenCreateInterfaceIntrinsic(
       const sun::ast::GenericCallAST& expr);
 

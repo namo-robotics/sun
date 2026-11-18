@@ -77,16 +77,9 @@ Value* EnumGenerator::codegenVariantConstruction(
                    : gen_.emitArrayView(addr, sourceArray->getDimensions());
       }
       if (target->isInterface()) {
-        auto source = sun::types::unwrapRef(args[i]->getResolvedType());
-        auto* iface = static_cast<sun::types::InterfaceType*>(target.get());
-        if (source->isClass()) {
-          addr = gen_.classGenerator().createInterfaceFatPointer(
-              addr, static_cast<sun::types::ClassType*>(source.get()), iface);
-        } else {
-          addr = gen_.classGenerator().upcastInterface(
-              addr, static_cast<sun::types::InterfaceType*>(source.get()),
-              iface);
-        }
+        addr = gen_.classGenerator().createInterfaceView(
+            addr, args[i]->getResolvedType(),
+            static_cast<sun::types::InterfaceType*>(target.get()));
       }
       ctx.builder->CreateStore(addr, fieldPtr);
       continue;
@@ -300,24 +293,19 @@ Value* EnumGenerator::codegenMatch(const sun::ast::MatchExprAST& expr,
           if (payload->isReference() && !source->isInterface()) {
             address = ctx.builder->CreateLoad(fieldTy, fieldPtr);
           }
-          if (target->isInterface() && source->isClass()) {
-            auto* view = gen_.classGenerator().createInterfaceFatPointer(
-                address, static_cast<sun::types::ClassType*>(source.get()),
-                static_cast<sun::types::InterfaceType*>(target.get()));
-            auto* storage = gen_.createEntryBlockAlloca(
-                TheFunction, "match.interface", view->getType());
-            ctx.builder->CreateStore(view, storage);
-            address = storage;
-          }
-          if (target->isInterface() && source->isInterface() &&
-              !source->equals(*target)) {
-            auto* view = gen_.classGenerator().upcastInterface(
-                address, static_cast<sun::types::InterfaceType*>(source.get()),
-                static_cast<sun::types::InterfaceType*>(target.get()));
-            auto* storage = gen_.createEntryBlockAlloca(
-                TheFunction, "match.parent", view->getType());
-            ctx.builder->CreateStore(view, storage);
-            address = storage;
+          if (target->isInterface()) {
+            if (target->equals(*source)) {
+              address =
+                  gen_.classGenerator().interfaceViewAddress(address, payload);
+            } else {
+              auto* view = gen_.classGenerator().createInterfaceView(
+                  address, payload,
+                  static_cast<sun::types::InterfaceType*>(target.get()));
+              auto* storage = gen_.createEntryBlockAlloca(
+                  TheFunction, "match.interface", view->getType());
+              ctx.builder->CreateStore(view, storage);
+              address = storage;
+            }
           }
           auto* local = gen_.createEntryBlockAlloca(
               TheFunction, binding.name,

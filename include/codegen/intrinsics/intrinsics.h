@@ -615,6 +615,7 @@ inline bool requiresUnsafeBlock(Intrinsic i) {
     case Intrinsic::SimdF32x4MulAdd:
     case Intrinsic::SimdF32x4Fma:
     case Intrinsic::SimdF32x4Mul:
+    case Intrinsic::CreateInterface:
     // Reads and writes through a raw pointer
     case Intrinsic::Load:
     case Intrinsic::Store:

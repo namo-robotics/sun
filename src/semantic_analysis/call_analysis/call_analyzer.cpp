@@ -989,6 +989,21 @@ CallAnalyzer::resolveModuleQualifiedGenericCall(
   return out;
 }
 
+QualifiedName CallAnalyzer::resolveGenericFunctionValue(
+    ExprAST& reference, const GenericFunctionInfo& generic,
+    const sun::types::FunctionType& expected) {
+  auto target = resolveGenericCallTarget(generic, expected.getParamTypes(), {},
+                                         generic.qualifiedName.display(),
+                                         reference.getLocation());
+  reference.setResolvedType(target.calleeType);
+  if (!target.specialized) {
+    return generic.qualifiedName;
+  }
+  reference.setTargetDeclarationId(
+      target.specialized->asFunctionInfo().declarationId);
+  return target.specialized->qualifiedName;
+}
+
 CallAnalyzer::GenericCallTarget CallAnalyzer::resolveGenericCallTarget(
     const GenericFunctionInfo& genericInfo,
     const std::vector<TypePtr>& argTypes,

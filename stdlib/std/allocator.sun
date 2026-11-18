@@ -77,12 +77,19 @@ public module std.mem {
     );
   }
 
-  /** Releases uninitialized storage if construction fails. */
-  class AllocationStorage<T> {
+  /**
+   * Returns storage for one T to its original allocator when the guard leaves scope.
+   * The caller is responsible for destroying any live T before the guard frees its storage.
+   *
+   * For example, create<T> guards the allocation before running the constructor.
+   * If construction throws, the guard frees the storage during unwinding. On success,
+   * release() returns the pointer and transfers responsibility for cleanup to the caller.
+   */
+  class AllocationGuard<T> {
     var pointer: raw_ptr<T>;
     var allocator: const ref IAllocator;
 
-    /** Adopt storage until construction succeeds. */
+    /** Take responsibility for deallocating storage for one element. */
     init(pointer: raw_ptr<T>, allocator: const ref IAllocator) {
       this.pointer = pointer;
       this.allocator = allocator;
@@ -95,7 +102,7 @@ public module std.mem {
       return pointer;
     }
 
-    /** Release storage without running the failed value's destructor. */
+    /** Release the storage after its caller has handled any initialized value. */
     deinit() {
       if (this.pointer != null) {
         dealloc<T>(this.allocator, this.pointer, 1);
@@ -109,9 +116,9 @@ public module std.mem {
     args...: _params_of<T>
   ) raw_ptr<T> throws {
     var pointer = alloc<T>(allocator, 1);
-    var storage = AllocationStorage<T>(pointer, allocator);
+    var guard = AllocationGuard<T>(pointer, allocator);
     unsafe { _init<T>(pointer, args...); };
-    return storage.release();
+    return guard.release();
   }
 
   /** Construct a value owned together with a borrow of its allocator. */
@@ -122,13 +129,34 @@ public module std.mem {
     return unsafe { Unique<T, const ref IAllocator>(create<T>(allocator, args...), allocator); };
   }
 
+  /** Keeps the allocator and the concrete interface implementation together. */
+  class InterfaceBox<T> {
+    var allocator: const ref IAllocator;
+    var value: T;
+
+    /** Move the implementation into its final dispatch address. */
+    init(allocator: const ref IAllocator, value: T) {
+      this.allocator = allocator;
+      this.value = value;
+    }
+  }
+
+  /** Destroy the implementation before releasing the original allocation. */
+  function drop_interface_box<T>(owner: raw_ptr<InterfaceBox<T>>) void {
+    var box = unsafe { _to_ref<InterfaceBox<T>>(owner); };
+    var guard = AllocationGuard<InterfaceBox<T>>(owner, box.allocator);
+    unsafe { _deinit<InterfaceBox<T>>(owner); };
+  }
+
   /** Move a concrete value into an interface owner that borrows its allocator. */
   public function create_interface<I: interface, T: I>(
     allocator: const ref IAllocator,
     value: T
   ) I throws {
-    var owner = Unique<T, const ref IAllocator>(value, allocator);
-    return _create_interface<I>(owner);
+    var owner = create<InterfaceBox<T>>(allocator, allocator, value);
+    var box = unsafe { _to_ref<InterfaceBox<T>>(owner); };
+    var cleanup: function (raw_ptr<InterfaceBox<T>>) void = drop_interface_box;
+    return unsafe { _create_interface<I>(owner, _address_of<T>(box.value), cleanup); };
   }
 
   /** Stores the synchronized bump cursor separately from the arena handle. */

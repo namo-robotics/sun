@@ -98,16 +98,14 @@ within their defining module. Multiple parents and inheritance cycles are reject
 A class may implement several unrelated interfaces, but conflicting defaults require
 an explicit class implementation.
 
-Borrowed views contain object and dispatch-table pointers. Owners also
-carry the allocator address and dispatch table, plus a cleanup function that reconstructs and
-destroys the transferred `Unique<T, A>`. `_create_interface<I>(owner)` consumes
-that owner without allocating or changing its lifetime dependencies. Callers
-cannot supply an arbitrary cleanup callback; adopting raw storage into `Unique`
-requires `unsafe`. Dispatch tables contain method pointers
-and an optional parent-table pointer, without a destruction slot.
+Borrowed views contain the concrete object address and its dispatch table.
+An owning handle stores four pointers in order: the allocation, the concrete
+object inside it, the dispatch table, and a cleanup function. Method calls
+use the object address. Dropping the owner passes the allocation address to
+cleanup, which destroys the box and returns its storage to the original allocator.
+An owning upcast changes only the dispatch table.
 
-Rebuild existing `.moon` libraries after updating: the owned-interface representation
-and bundle format have changed.
+Rebuild existing `.moon` libraries for the new handle layout and bundle format.
 
 ## Visibility
 

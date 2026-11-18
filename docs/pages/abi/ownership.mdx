@@ -32,10 +32,12 @@ freeing its storage are separate operations.
 | A value still needs its destructor after its creating component shuts down. | MUST | Keep destruction and deallocation services available for the allocation's lifetime. |
 
 For example, `Unique<T, A>` retains its allocator binding, destroys `T`, and
-returns storage through that allocator. Erasing it to an owned interface retains
-the allocator context and generated owner cleanup. Crossing a library boundary
-must preserve that behavior and any allocator lifetime dependency; matching
-pointer layouts alone do not establish compatibility.
+returns storage through that allocator. An owned interface created by
+`std.mem.create_interface` holds a pointer to a box containing the allocator
+reference and the concrete value. Across a library boundary, the receiver
+pointer serves dispatch and the cleanup function receives the original box
+pointer. The owner retains the lifetimes of its allocator and the references
+held by the concrete value.
 
 ## Open decisions
 

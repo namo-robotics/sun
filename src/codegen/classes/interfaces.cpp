@@ -67,6 +67,32 @@ GlobalVariable* ClassGenerator::getOrCreateInterfaceVtable(
   return table;
 }
 
+Value* ClassGenerator::interfaceViewAddress(Value* address,
+                                            TypePtr sourceType) {
+  if (!sourceType->isInterface()) {
+    return address;
+  }
+  return ctx.builder->CreateStructGEP(
+      InterfaceType::getOwnerType(ctx.getContext()), address,
+      InterfaceType::Object, "iface.view");
+}
+
+Value* ClassGenerator::createInterfaceView(Value* address, TypePtr sourceType,
+                                           InterfaceType* target) {
+  auto source = sun::types::unwrapRef(sourceType);
+  if (auto* concrete = sun::codegen::support::tryGetType<ClassType>(source)) {
+    Value* view =
+        UndefValue::get(InterfaceType::getFatPointerType(ctx.getContext()));
+    view = ctx.builder->CreateInsertValue(view, address, 0, "fat.data");
+    return ctx.builder->CreateInsertValue(
+        view, getOrCreateInterfaceVtable(concrete, target), 1, "fat.vtable");
+  }
+  auto& interface = sun::codegen::support::requireType<InterfaceType>(
+      source, "borrowed interface view");
+  return upcastInterface(interfaceViewAddress(address, sourceType), &interface,
+                         target);
+}
+
 Value* ClassGenerator::upcastInterface(Value* value, InterfaceType* source,
                                        InterfaceType* target) {
   if (!source->extendsInterface(*target)) {
@@ -77,112 +103,43 @@ Value* ClassGenerator::upcastInterface(Value* value, InterfaceType* source,
     value = ctx.builder->CreateLoad(fatType, value, "iface.borrow");
   }
   auto* ptrType = PointerType::getUnqual(ctx.getContext());
+  const unsigned tableIndex =
+      value->getType() == fatType ? 1 : InterfaceType::Vtable;
   while (!source->equals(*target)) {
-    Value* table = ctx.builder->CreateExtractValue(value, 1, "iface.table");
+    Value* table =
+        ctx.builder->CreateExtractValue(value, tableIndex, "iface.table");
     Value* slot = ctx.builder->CreateGEP(
         ptrType, table, ctx.builder->getInt32(source->getParentIndex()),
         "iface.parent.slot");
     Value* parent =
         ctx.builder->CreateLoad(ptrType, slot, "iface.parent.table");
-    value = ctx.builder->CreateInsertValue(value, parent, 1, "iface.parent");
+    value = ctx.builder->CreateInsertValue(value, parent, tableIndex,
+                                           "iface.parent");
     source = source->getParent().get();
   }
   return value;
 }
 
-Value* ClassGenerator::createBorrowedInterfaceUpcast(Value* value,
-                                                     TypePtr sourceType,
-                                                     TypePtr targetType) {
-  if (!value || !targetType || !targetType->isReference()) {
-    return value;
+Value* ClassGenerator::prepareInterfaceReference(Value* address,
+                                                 TypePtr sourceType,
+                                                 TypePtr targetType) {
+  if (!targetType || !targetType->isReference()) {
+    return address;
   }
-  if (!sun::types::areDifferentInterfaces(sourceType, targetType)) {
-    return value;
+  auto* target = sun::codegen::support::tryGetType<InterfaceType>(
+      sun::types::unwrapRef(targetType));
+  if (!target) {
+    return address;
   }
   auto source = sun::types::unwrapRef(sourceType);
-  auto target = sun::types::unwrapRef(targetType);
-
-  Value* view =
-      upcastInterface(value, static_cast<InterfaceType*>(source.get()),
-                      static_cast<InterfaceType*>(target.get()));
+  if (source->equals(*target)) {
+    return interfaceViewAddress(address, sourceType);
+  }
+  Value* view = createInterfaceView(address, sourceType, target);
   auto* storage =
-      ctx.builder->CreateAlloca(view->getType(), nullptr, "iface.parent.view");
+      ctx.builder->CreateAlloca(view->getType(), nullptr, "iface.ref.tmp");
   ctx.builder->CreateStore(view, storage);
   return storage;
 }
-
-Value* ClassGenerator::createInterfaceFatPointer(Value* objectPtr,
-                                                 ClassType* classType,
-                                                 InterfaceType* ifaceType) {
-  // Look up (or build) the vtable for this (class, interface) pair.
-  GlobalVariable* vtableGlobal =
-      getOrCreateInterfaceVtable(classType, ifaceType);
-  if (!vtableGlobal) {
-    sun::support::logAndThrowError(
-        "Vtable not found for class " + classType->getDisplayName() +
-        " implementing interface " + ifaceType->getName());
-    return nullptr;
-  }
-
-  // Create the fat pointer struct { ptr data, ptr vtable }
-  llvm::StructType* fatPtrType =
-      InterfaceType::getFatPointerType(ctx.getContext());
-  Value* fatPtr = UndefValue::get(fatPtrType);
-
-  // Insert the data pointer (element 0)
-  fatPtr = ctx.builder->CreateInsertValue(fatPtr, objectPtr, 0, "fat.data");
-
-  // Insert the vtable pointer (element 1)
-  fatPtr =
-      ctx.builder->CreateInsertValue(fatPtr, vtableGlobal, 1, "fat.vtable");
-
-  return fatPtr;
-}
-
-// -------------------------------------------------------------------
-// Helper: Convert class to interface fat pointer if needed
-// -------------------------------------------------------------------
-
-// -------------------------------------------------------------------
-// Helper: Prepare class argument for ref Interface parameter
-// Creates fat pointer on stack and returns pointer to it
-// -------------------------------------------------------------------
-
-Value* ClassGenerator::prepareClassForRefInterface(
-    Value* classPtr, sun::types::TypePtr argType,
-    sun::types::TypePtr paramType) {
-  // Check if conversion is needed: param is ref Interface and arg is class
-  auto* refType =
-      sun::codegen::support::tryGetType<sun::types::ReferenceType>(paramType);
-  if (!refType) {
-    return nullptr;  // Not a ref param
-  }
-
-  auto* ifaceType = sun::codegen::support::tryGetType<InterfaceType>(
-      refType->getReferencedType());
-  if (!ifaceType) {
-    return nullptr;  // Not ref Interface
-  }
-
-  auto* classType = sun::codegen::support::tryGetType<ClassType>(argType);
-  if (!classType) {
-    return nullptr;  // Arg is not a class
-  }
-
-  // Create interface fat pointer value
-  Value* fatPtr = createInterfaceFatPointer(classPtr, classType, ifaceType);
-
-  // Allocate space on stack for the fat pointer and store it there
-  // ref Interface expects a pointer to the fat pointer
-  llvm::Type* fatPtrType = ifaceType->getFatPointerType(ctx.getContext());
-  AllocaInst* fatPtrAlloca =
-      ctx.builder->CreateAlloca(fatPtrType, nullptr, "iface.ref.tmp");
-  ctx.builder->CreateStore(fatPtr, fatPtrAlloca);
-  return fatPtrAlloca;
-}
-
-// -------------------------------------------------------------------
-// Helper: Load closure struct for lambda-typed parameters
-// Lambda literals codegen to an alloca; params take the closure by value
 
 }  // namespace sun::codegen::classes

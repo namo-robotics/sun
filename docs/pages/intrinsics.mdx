@@ -63,6 +63,26 @@ be nonnegative. `std.mem` validates these requirements before calling them.
 `_assert_c_target("triple")` and `_assert_c_layout<T>(size, alignment, offsets...)`
 are module-level compile-time checks. See [C FFI](/c-ffi#optional-header-binding-generation).
 
+### `_create_interface<I>(owner, object, deinit)`
+
+Inside an `unsafe` block, this intrinsic adopts the allocation and receiver as a
+move-only interface. Callers specify `I`. The compiler infers `O` and `Owner`
+from the pointers.
+
+```sun
+declare function _create_interface<I: interface, O: I, Owner>(
+  owner: raw_ptr<Owner>,
+  object: raw_ptr<O>,
+  deinit_fn: function (raw_ptr<Owner>) void
+) I;
+```
+
+The compiler checks that the concrete class `O` supports dynamic dispatch
+through `I` and supplies its vtable. The caller must keep both pointers valid
+and stable and transfer sole cleanup responsibility. Dropping the handle calls
+the supplied nonthrowing cleanup function once with the original owner pointer.
+Use `std.mem.create_interface<I>(allocator, value)` for safe construction.
+
 ### `_init<T>(ptr, args...)`
 
 Constructs an instance of type `T` at the memory location pointed to by `ptr`, forwarding `args` to the constructor.

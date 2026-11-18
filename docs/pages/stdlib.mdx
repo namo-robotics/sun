@@ -85,7 +85,9 @@ is checked. Zero-sized requests own at least one physical byte and are freed nor
 These functions take `const ref IAllocator`. Owners retain that borrow until
 cleanup completes, including when the allocator is a local `HeapAllocator`.
 Use `global_allocator` when the result must escape the current function.
-`create_interface` consumes an already constructed value even if allocation fails.
+`create_interface` consumes an already constructed value even if allocation fails. It makes one aligned allocation containing both the
+allocator reference and the concrete value. Dropping the owner destroys the value
+and releases the box through that allocator.
 
 ### ArenaAllocator
 
@@ -132,11 +134,6 @@ runtime dispatch; this is the type returned by `create_unique<T>`.
 owned allocator argument. Raw-pointer adoption uses an `unsafe` constructor and
 requires exclusive ownership of initialized storage compatible with the allocator.
 `get()` panics on an empty owner.
-
-`_create_interface<I>(owner)` consumes a `Unique` without allocating. The resulting
-interface retains the owner's cleanup and lifetime dependencies. Its fixed-size
-handle supports borrowed allocators and empty owned allocators; borrow a stateful
-allocator when converting its owner to an interface.
 
 ```sun
 var p = std.mem.create_unique<Point>(std.mem.global_allocator, 3, 4);

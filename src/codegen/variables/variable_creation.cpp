@@ -249,17 +249,8 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
   if (!value) {
     return nullptr;
   }
-  if (auto* view = classes().prepareClassForRefInterface(
-          value, sun::types::unwrapRef(expr.getValue()->getResolvedType()),
-          declaredType)) {
-    value = view;
-  }
-  if (declaredType && declaredType->isReference() &&
-      sun::types::areDifferentInterfaces(expr.getValue()->getResolvedType(),
-                                         declaredType)) {
-    value = classes().createBorrowedInterfaceUpcast(
-        value, expr.getValue()->getResolvedType(), declaredType);
-  }
+  value = classes().prepareInterfaceReference(
+      value, expr.getValue()->getResolvedType(), declaredType);
 
   // Inside a function: use local alloca
   auto& scope = scopes().back().variables;

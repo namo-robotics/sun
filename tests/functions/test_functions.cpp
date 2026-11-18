@@ -512,6 +512,22 @@ TEST(Functions, expected_pointer_type_selects_an_overload) {
   EXPECT_EQ(value, 42);
 }
 
+/** A pointer annotation selects a specialization from a named module. */
+TEST(Functions, module_qualified_generic_function_pointer) {
+  EXPECT_EQ(executeString(R"(
+    module values {
+      /** Returns its argument. */
+      public function identity<T>(value: T) T { return value; }
+    }
+    /** Calls the specialization selected by the pointer type. */
+    function main() i32 {
+      var callback: function (i32) i32 = values.identity;
+      return callback(42);
+    }
+  )"),
+            42);
+}
+
 TEST(Functions, overloaded_function_value_without_context_is_ambiguous) {
   EXPECT_THROW(executeString(R"(
     function select(x: i32) i32 { return x; }
