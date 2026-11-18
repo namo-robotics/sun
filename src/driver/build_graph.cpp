@@ -86,7 +86,7 @@ std::string hashPaths(const std::vector<fs::path>& paths) {
 /** Runs declared preparation steps before a product, using host tools
  * explicitly. */
 void runSteps(const SunConfig& config, const ConfigEntrypoint& entry,
-              const fs::path& output, const fs::path& artifact) {
+              const fs::path& output) {
   std::set<std::string> visiting, complete;
   std::function<void(const std::string&)> run = [&](const std::string& name) {
     if (complete.count(name)) {
@@ -194,7 +194,10 @@ void runSteps(const SunConfig& config, const ConfigEntrypoint& entry,
     const std::string project =
         config.packageId.empty() ? config.configDir.string() : config.packageId;
     sun::support::messageStream("info")
-        << "Building " << artifact.filename().string() << ": step " << name
+        << "Building "
+        << (config.packageId.empty() ? entry.name
+                                     : config.packageId + "/" + entry.name)
+        << ": step " << name
         << "\n";
     // Show the step before the child process writes any output.
     llvm::outs().flush();
@@ -526,7 +529,7 @@ bool compileProduct(const SunConfig& config, const ConfigEntrypoint& entry,
   const fs::path output = config.pathVariables.at("SUN_BUILD");
   fs::create_directories(output);
   fs::create_directories(artifact.parent_path());
-  runSteps(config, entry, output, artifact);
+  runSteps(config, entry, output);
   compiler(config, entry, artifact);
   if (fs::is_regular_file(artifact)) {
     return true;

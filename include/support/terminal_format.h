@@ -20,12 +20,13 @@ struct TerminalTreeNode {
 };
 
 /** Links an existing file with a solid yellow underline and unchanged text
- * color. The visible label is always a basename; an OSC link retains the full
- * path. Missing files, filesystem errors, and disabled formatting use a plain
- * basename.
+ * color. The optional label replaces the basename; an OSC link retains the full
+ * path. Missing files, filesystem errors, and disabled formatting use plain
+ * text.
  */
 std::string terminalFileLabel(const std::filesystem::path& path,
-                              llvm::raw_ostream& stream);
+                              llvm::raw_ostream& stream,
+                              const std::string& label = "");
 
 /** Renders a tree with solid connectors, styling them with the given severity.
  * The root has no connector. Every line receives indent; no trailing newline

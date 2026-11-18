@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 #include <llvm/TargetParser/Host.h>
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 
@@ -208,12 +209,14 @@ TEST_F(Packages, RoundTripAndResourceRebuild) {
   // A staged file can change without its inventory, size, or timestamp
   // changing.
   const auto stagedBinary = plans[0].output / "bin/app";
-  const auto binaryTime = fs::last_write_time(stagedBinary);
+  const auto binaryTime =
+      fs::last_write_time(stagedBinary) - std::chrono::hours(1);
   put(stagedBinary, "broken");
   fs::last_write_time(stagedBinary, binaryTime);
   sun::driver::buildPackages(cfg, plans);
   EXPECT_EQ(sun::driver::packageFileHash(stagedBinary),
             sun::driver::packageFileHash(dir / "app"));
+  EXPECT_NE(fs::last_write_time(stagedBinary), binaryTime);
   fs::remove(archive);
   sun::driver::buildPackages(cfg, plans);
   EXPECT_EQ(sun::driver::packageFileHash(archive), firstHash);
@@ -227,9 +230,13 @@ TEST_F(Packages, RoundTripAndResourceRebuild) {
   cfg.targetTriple = "aarch64-linux-gnu";
   EXPECT_THROW(sun::driver::resolveConfigDependency(cfg, "TOOLS"), SunError);
   cfg.targetTriple = "x86_64-linux-gnu";
+  const auto helper = plans[0].output / "lib/helpers.moon";
+  const auto helperTime = fs::last_write_time(helper) - std::chrono::hours(1);
+  fs::last_write_time(helper, helperTime);
   put(dir / "assets/message.txt", "changed");
   sun::driver::buildPackages(cfg, plans);
   EXPECT_NE(sun::driver::packageFileHash(archive), firstHash);
+  EXPECT_EQ(fs::last_write_time(helper), helperTime);
   fs::remove(dir / "assets/message.txt");
   sun::driver::buildPackages(cfg, plans);
   EXPECT_FALSE(fs::exists(plans[0].output / "share/app/message.txt"));

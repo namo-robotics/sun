@@ -372,6 +372,11 @@ void configureProductCompiler(const BuildRunOptions& options) {
         sun::driver::ManifestProcessor::exchangeSourceConfig(previous);
       }
     } guard(config);
+    sun::support::BuildProgressScope progress(
+        config.packageId.empty() ? entry.name
+                                 : config.packageId + "/" + entry.name,
+        output, sun::driver::ManifestProcessor::expandPathVariables(
+                    entry.testBinaryName, &config));
     auto selectedOptions = options;
     if (!selectedOptions.shared.exceptionTraceDepth) {
       selectedOptions.shared.exceptionTraceDepth = config.exceptionTraceDepth;
@@ -764,6 +769,9 @@ int runBuildCompileCommand(const std::vector<std::string>& args) {
     }
     applyBuildRunSettings(options);
     auto job = makeCompileJob(options);
+    sun::support::BuildProgressScope progress(
+        config.packageId.empty() ? id->str() : config.packageId + "/" + id->str(),
+        output->str(), tests->str());
     job.artifactId = id->str();
     job.testBinaryName = tests->str();
     job.requireProductionArtifact =

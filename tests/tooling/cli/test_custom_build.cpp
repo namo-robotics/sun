@@ -275,6 +275,8 @@ TEST_F(CustomBuild, AllEntrypointsIncludesInternalTests) {
   flags.insert(flags.end(), {"--all", "--package", "example/app"});
   ASSERT_EQ(invoke(compiler, flags), 0) << diagnostics();
   EXPECT_TRUE(fs::is_regular_file(output / "checks_test"));
+  EXPECT_NE(diagnostics().find("Built example/app/checks (tests)"),
+            std::string::npos) << diagnostics();
   EXPECT_FALSE(fs::exists(output / "disabled"));
   EXPECT_FALSE(fs::exists(helperOutput / "checks_test"));
   EXPECT_EQ(read(output / "packages/app.tar.gz"), package);
@@ -402,12 +404,12 @@ TEST_F(CustomBuild, TargetOnlyBinaryNeedsNoHostVariant) {
 
 }  // namespace
 
-/** Custom builds keep short progress labels and the workspace display base. */
+/** Custom builds retain configured identities and the workspace display base. */
 TEST_F(CustomBuild, WorkspaceRelativeBuildPaths) {
   ASSERT_EQ(command("build"), 0) << diagnostics();
   const auto log = diagnostics();
-  EXPECT_NE(log.find("Building helper.moon"), std::string::npos) << log;
-  EXPECT_NE(log.find("Building app"), std::string::npos) << log;
+  EXPECT_NE(log.find("Building example/helper/helper"), std::string::npos) << log;
+  EXPECT_NE(log.find("Building example/app/app"), std::string::npos) << log;
   EXPECT_EQ(log.find(root.string()), std::string::npos) << log;
   auto selected = describe();
   const fs::path buildRoot(selected.getString("build_root")->str());
@@ -415,6 +417,12 @@ TEST_F(CustomBuild, WorkspaceRelativeBuildPaths) {
   auto context = document(read(buildRoot / ".contexts/app.json"));
   ASSERT_TRUE(context.getString("display_root"));
   EXPECT_EQ(context.getString("display_root")->str(), root.string());
+  ASSERT_EQ(command("build"), 0) << diagnostics();
+  const auto cached = diagnostics();
+  EXPECT_NE(cached.find("Up to date: example/helper/helper"), std::string::npos)
+      << cached;
+  EXPECT_NE(cached.find("Up to date: example/app/app"), std::string::npos)
+      << cached;
 }
 
 /** Diagnostics from custom compiler children use the selected config base. */
