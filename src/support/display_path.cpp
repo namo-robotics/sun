@@ -12,6 +12,8 @@ namespace sun::support {
 /** Isolates rendering policy between independent compiler threads. */
 namespace {
 thread_local std::optional<std::filesystem::path> displayRoot;
+thread_local std::array<std::pair<std::filesystem::path, std::string>, 2>
+    buildLabels;
 }
 
 DisplayPathScope::DisplayPathScope(const std::filesystem::path& directory)
@@ -27,12 +29,36 @@ DisplayPathScope::DisplayPathScope(const std::filesystem::path& directory)
 
 DisplayPathScope::~DisplayPathScope() { displayRoot = std::move(previous_); }
 
+BuildProgressScope::BuildProgressScope(
+    const std::string& identity, const std::filesystem::path& output,
+    const std::filesystem::path& tests) {
+  previous_[0] = {std::filesystem::absolute(output).lexically_normal(), identity};
+  if (!tests.empty()) {
+    previous_[1] = {std::filesystem::absolute(tests).lexically_normal(),
+                   identity + " (tests)"};
+  }
+  // Change active labels only after both paths and labels are ready.
+  previous_.swap(buildLabels);
+}
+
+BuildProgressScope::~BuildProgressScope() { previous_.swap(buildLabels); }
+
 void logBuildProgress(const std::string& label,
                       const std::filesystem::path& output,
                       const std::optional<std::filesystem::path>& source) {
   if (messageEnabled("info")) {
     auto& stream = messageStream("info");
-    stream << label << terminalFileLabel(output, stream) << "\n";
+    std::string identity;
+    if (!buildLabels[0].first.empty()) {
+      const auto path = std::filesystem::absolute(output).lexically_normal();
+      for (const auto& [artifact, name] : buildLabels) {
+        if (artifact == path) {
+          identity = name;
+          break;
+        }
+      }
+    }
+    stream << label << terminalFileLabel(output, stream, identity) << "\n";
     stream.flush();
   }
   if (messageEnabled("debug")) {

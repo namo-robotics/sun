@@ -1,5 +1,7 @@
 /** Exercises readable reports through the compiler's public native and JIT
  * paths. */
+#include <llvm/TargetParser/Host.h>
+
 #include <array>
 #include <regex>
 #include <sstream>
@@ -16,6 +18,7 @@ struct ReportingMode {
   bool native;
   bool optimize;
   bool debug;
+  bool explicitTarget = false;
 };
 
 /** Describes parameter values without exposing raw object bytes in CTest. */
@@ -31,6 +34,10 @@ class Errors_TraceReporting
   /** Chooses compiler flags without duplicating test bodies. */
   std::vector<std::string> options() const {
     std::vector<std::string> result;
+    if (GetParam().explicitTarget) {
+      result.insert(result.end(),
+                    {"--target", llvm::sys::getDefaultTargetTriple()});
+    }
     if (!GetParam().optimize) {
       result.emplace_back("-O0");
     }
@@ -108,7 +115,9 @@ INSTANTIATE_TEST_SUITE_P(
                     ReportingMode{"NativeOptimized", true, true, false},
                     ReportingMode{"NativeUnoptimized", true, false, false},
                     ReportingMode{"JitDebug", false, true, true},
-                    ReportingMode{"NativeDebug", true, true, true}),
+                    ReportingMode{"NativeDebug", true, true, true},
+                    ReportingMode{"NativeTarget", true, true, false, true},
+                    ReportingMode{"NativeTargetDebug", true, true, true, true}),
     reportingModeName);
 
 /** An uncaught exception reports its original source call chain. */

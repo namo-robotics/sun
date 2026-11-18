@@ -290,6 +290,10 @@ inline bool emitObjectFile(llvm::Module& module, const std::string& outputPath,
   auto cpu = "generic";
   auto features = "";
   llvm::TargetOptions opt;
+  // Modern ELF startup invokes .init_array; legacy .ctors can remain inert.
+  if (llvm::Triple(targetTriple).isOSBinFormatELF()) {
+    opt.UseInitArray = true;
+  }
   auto targetMachine = target->createTargetMachine(
       targetTriple, cpu, features, opt, llvm::Reloc::PIC_,
       /*CM=*/std::nullopt,

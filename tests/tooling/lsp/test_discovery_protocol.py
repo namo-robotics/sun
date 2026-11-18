@@ -498,7 +498,9 @@ class DiscoveryProtocolTests(unittest.TestCase):
         self.assertEqual(self.request("sun/testSuites")["suites"][0]["freshness"], "fresh")
         newer = binary.stat().st_mtime_ns + 1000000000
         os.utime(self.config, ns=(newer, newer))
-        self.assertEqual(self.request("sun/testSuites")["suites"][0]["freshness"], "stale")
+        inventory = self.request("sun/testSuites")
+        self.assertEqual(inventory["suites"][0]["freshness"], "fresh")
+        self.assertIn(str(self.config), inventory["watched_paths"])
 
     def test_invalid_config_cannot_claim_freshness_for_other_suites(self):
         """A readable but invalid participating config leaves existing binaries unknown."""
@@ -535,6 +537,14 @@ class DiscoveryProtocolTests(unittest.TestCase):
         self.assertEqual(inventory["suites"], [])
         self.assertIn(str(binary), inventory["watched_binaries"])
         self.assertIn(str(output), inventory["watched_binaries"])
+        config = json.loads(self.config.read_text())
+        config["entrypoints"].append({"path": "unrelated.sun", "enabled": False})
+        self.config.write_text(json.dumps(config))
+        newer = output.stat().st_mtime_ns + 1000000000
+        os.utime(self.config, ns=(newer, newer))
+        inventory = self.request("sun/testSuites")
+        self.assertEqual(inventory["suites"], [])
+        self.assertIn(str(self.config), inventory["watched_paths"])
         newer = output.stat().st_mtime_ns + 1000000000
         os.utime(self.source, ns=(newer, newer))
         self.assertEqual(self.request("sun/testSuites")["suites"][0]["freshness"], "missing")
@@ -579,16 +589,58 @@ class DiscoveryProtocolTests(unittest.TestCase):
         workspace.unlink()
         self.assertEqual(self.request("sun/testSuites")["suites"][0]["test_binary"], str(standalone))
 
-    def test_workspace_config_changes_do_not_stale_standalone_builds(self):
-        """Only the selected build's configuration contributes to its freshness."""
+    def test_generated_entrypoint_selects_one_build_and_watches_both(self):
+        """Generated paths identify one configured suite while retaining both build candidates."""
+        _, workspace, standalone = self.composed_candidates()
+        config = self.directory / "project" / "sun-config.json"
+        document = json.loads(config.read_text())
+        document["entrypoints"][0]["path"] = "${SUN_BUILD}/main.sun"
+        config.write_text(json.dumps(document))
+        inventory = self.request("sun/testSuites")
+        self.assertEqual(len(inventory["suites"]), 1)
+        self.assertEqual(inventory["suites"][0]["freshness"], "missing")
+        for binary in (workspace, standalone):
+            binary.parent.mkdir(parents=True, exist_ok=True)
+            (binary.parent / "main.sun").write_text(
+                self.entry.read_text().replace('"tests.sun"', json.dumps(str(self.source))))
+        standalone.write_text("standalone fixture")
+        inventory = self.request("sun/testSuites")
+        self.assertEqual(len(inventory["suites"]), 1)
+        suite = inventory["suites"][0]
+        self.assertEqual(suite["entrypoint"], str(standalone.parent / "main.sun"))
+        self.assertEqual(suite["test_binary"], str(standalone))
+        self.assertEqual(suite["freshness"], "fresh")
+        self.assertEqual(suite["build_location"], "standalone")
+        workspace.write_text("workspace fixture")
+        inventory = self.request("sun/testSuites")
+        self.assertEqual(len(inventory["suites"]), 1)
+        suite = inventory["suites"][0]
+        self.assertEqual(suite["entrypoint"], str(workspace.parent / "main.sun"))
+        self.assertEqual(suite["test_binary"], str(workspace))
+        self.assertEqual(suite["freshness"], "fresh")
+        self.assertEqual(suite["build_location"], "workspace")
+        for binary in (workspace, standalone):
+            self.assertIn(str(binary), inventory["watched_binaries"])
+            self.assertIn(str(binary.parent / "main.sun"), inventory["watched_paths"])
+        self.open_document(standalone.parent / "main.sun")
+        self.assertEqual(len(self.request("sun/testSuites")["suites"]), 1)
+        workspace.unlink()
+        inventory = self.request("sun/testSuites")
+        self.assertEqual(len(inventory["suites"]), 1)
+        self.assertEqual(inventory["suites"][0]["test_binary"], str(standalone))
+
+    def test_config_timestamps_do_not_stale_unchanged_build_inputs(self):
+        """Configuration edits refresh discovery without invalidating unchanged inputs."""
         entry, workspace, standalone = self.composed_candidates()
         for binary in (workspace, standalone):
             binary.parent.mkdir(parents=True, exist_ok=True)
             binary.write_text("test fixture")
         newer = standalone.stat().st_mtime_ns + 1000000000
         os.utime(self.config, ns=(newer, newer))
+        project_config = entry.parent / "sun-config.json"
+        os.utime(project_config, ns=(newer, newer))
         suite = self.request("sun/testSuites")["suites"][0]
-        self.assertEqual(suite["test_binary"], str(standalone))
+        self.assertEqual(suite["test_binary"], str(workspace))
         self.assertEqual(suite["freshness"], "fresh")
         self.assertNotIn(str(self.config), suite["sources"])
         self.assertIn(str(self.config), self.request("sun/testSuites")["watched_paths"])

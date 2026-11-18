@@ -116,7 +116,6 @@ struct TestBuildCandidate {
   std::optional<sun::driver::ConfigGraph> graph;
   std::string packageId;
   std::string location;
-  std::set<std::string> configs;
 };
 
 /** Order build candidates without depending on their timestamps across roots.
@@ -133,16 +132,19 @@ struct TestBuildInspection {
 /** Resolve inputs in this build's graph and inspect artifacts without executing
  * them. */
 static TestBuildInspection inspectTestBuild(
-    const std::string& path, const TestBuildCandidate& candidate,
-    const std::string& configurationError, std::set<std::string>& watched,
+    const TestBuildCandidate& candidate, const std::string& configurationError,
+    std::set<std::string>& watched,
     std::set<std::string>& binaries) {
   namespace fs = std::filesystem;
   const auto& entry = candidate.entry;
+  const auto& path = entry.path;
   std::optional<sun::driver::ConfigGraphScope> scope;
   if (candidate.graph) {
     scope.emplace(*candidate.graph);
   }
-  std::set<std::string> inputs = candidate.configs;
+  // Configs are watched separately: their timestamps do not prove that this
+  // target changed, since the compiler hashes the resolved build inputs.
+  std::set<std::string> inputs;
   std::set<std::string> artifacts;
   inputs.insert(path);
   std::string problem = configurationError;
@@ -166,7 +168,7 @@ static TestBuildInspection inspectTestBuild(
     for (auto directory = fs::path(path).parent_path(); !directory.empty();) {
       const auto configFile = directory / "sun-config.json";
       if (fs::exists(configFile)) {
-        inputs.insert(configFile.string());
+        watched.insert(normalizePath(configFile.string()));
         if (sun::driver::SunConfig::loadFile(configFile).root) {
           break;
         }
@@ -248,7 +250,11 @@ static TestBuildInspection inspectTestBuild(
  * analysis. */
 llvm::json::Object testSuites() {
   namespace fs = std::filesystem;
-  std::map<std::string, std::vector<TestBuildCandidate>> entries;
+  // Configured targets keep one identity even when SUN_BUILD changes their
+  // generated source path. Unconfigured targets use an empty config and a path.
+  std::map<std::pair<std::string, std::string>, std::vector<TestBuildCandidate>>
+      entries;
+  std::set<std::string> configuredPaths;
   std::set<std::string> configs, configPatterns;
   for (const auto& root : configuredSunConfigs) {
     collectTestConfigPaths(root, configs, configPatterns);
@@ -258,14 +264,10 @@ llvm::json::Object testSuites() {
   for (const auto& root : configuredSunConfigs) {
     try {
       const auto graph = sun::driver::loadConfigGraph(root);
-      std::set<std::string> workspaceConfigs, ignoredPatterns;
-      collectTestConfigPaths(root, workspaceConfigs, ignoredPatterns);
       for (const auto& file : graph.projects) {
-        collectTestConfigPaths(file.string(), configs, configPatterns);
+        const auto configIdentity = normalizePath(file.string());
+        collectTestConfigPaths(configIdentity, configs, configPatterns);
         const auto standalone = sun::driver::loadConfigGraph(file);
-        std::set<std::string> standaloneConfigs;
-        collectTestConfigPaths(file.string(), standaloneConfigs,
-                               ignoredPatterns);
         for (const auto* candidateGraph : {&graph, &standalone}) {
           const auto config = sun::driver::configureBuildPaths(
               *candidateGraph, sun::driver::SunConfig::loadFile(file));
@@ -279,7 +281,8 @@ llvm::json::Object testSuites() {
                 entry.testBinaryName, &config);
             entry.outputName = ManifestProcessor::expandPathVariables(
                 entry.outputName, &config);
-            auto& candidates = entries[entry.path];
+            configuredPaths.insert(entry.path);
+            auto& candidates = entries[{configIdentity, entry.name}];
             bool duplicate = false;
             for (const auto& existing : candidates) {
               if (existing.entry.testBinaryName == entry.testBinaryName) {
@@ -291,9 +294,7 @@ llvm::json::Object testSuites() {
               candidates.push_back(
                   {std::move(entry), *candidateGraph, config.packageId,
                    candidateGraph->root == config.configDir ? "standalone"
-                                                            : "workspace",
-                   candidateGraph == &graph ? workspaceConfigs
-                                            : standaloneConfigs});
+                                                            : "workspace"});
             }
           }
         }
@@ -305,9 +306,10 @@ llvm::json::Object testSuites() {
   for (const auto& file : explicitEntrypoints) {
     sun::driver::ConfigEntrypoint entry;
     entry.path = normalizePath(file);
-    if (!entries.count(entry.path)) {
-      entries[entry.path].push_back(
-          {std::move(entry), std::nullopt, "", "unconfigured", configs});
+    if (!configuredPaths.count(entry.path) &&
+        !entries.count({"", entry.path})) {
+      entries[{"", entry.path}].push_back(
+          {std::move(entry), std::nullopt, "", "unconfigured"});
     }
   }
   // Match the existing editor behavior for open manifest entrypoints.
@@ -317,20 +319,21 @@ llvm::json::Object testSuites() {
     }
     sun::driver::ConfigEntrypoint candidate;
     candidate.path = entry.entrypointPath;
-    if (!entries.count(candidate.path)) {
-      entries[candidate.path].push_back(
-          {std::move(candidate), std::nullopt, "", "unconfigured", configs});
+    if (!configuredPaths.count(candidate.path) &&
+        !entries.count({"", candidate.path})) {
+      entries[{"", candidate.path}].push_back(
+          {std::move(candidate), std::nullopt, "", "unconfigured"});
     }
   }
 
   llvm::json::Array suites;
   std::set<std::string> watched = configs;
   std::set<std::string> binaries;
-  for (const auto& [path, candidates] : entries) {
+  for (const auto& [identity, candidates] : entries) {
     std::optional<TestBuildInspection> selected;
     for (const auto& candidate : candidates) {
       auto inspected = inspectTestBuild(
-          path, candidate,
+          candidate,
           errors.empty() ? "" : "Cannot resolve project configuration", watched,
           binaries);
       if (!selected || inspected.preference > selected->preference) {

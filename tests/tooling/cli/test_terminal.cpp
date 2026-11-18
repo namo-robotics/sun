@@ -137,6 +137,12 @@ TEST_F(TerminalFileFixture, links_preserve_paths_and_terminal_preferences) {
   EXPECT_NE(link.find("\033]8;;file://"), std::string::npos);
   EXPECT_TRUE(link.ends_with("\033]8;;\033\\"));
   EXPECT_EQ(sun::support::terminalFileLabel(file, plain), "source #%.sun");
+  const auto identified =
+      sun::support::terminalFileLabel(file, stream, "example/ui/app");
+  EXPECT_NE(identified.find("example/ui/app"), std::string::npos);
+  EXPECT_NE(identified.find("source%20%23%25.sun"), std::string::npos);
+  EXPECT_EQ(sun::support::terminalFileLabel(file, plain, "example/ui/app"),
+            "example/ui/app");
   EXPECT_EQ(sun::support::terminalFileLabel(directory / "missing.sun", stream),
             "missing.sun");
   EXPECT_EQ(sun::support::terminalFileLabel(directory, stream),
@@ -188,6 +194,36 @@ TEST(Tooling_Cli_Terminal, build_progress_keeps_paths_in_debug_output) {
   EXPECT_EQ(testing::internal::GetCapturedStderr(),
             "[sun][debug]: Building " + source.string() + " -> " +
                 output.string() + "\n");
+}
+
+/** Configured labels distinguish tests and restore the caller after nested builds. */
+TEST(Tooling_Cli_Terminal, configured_build_progress_restores_identity) {
+  ScopedEnvironment level("SUN_LOG_LEVEL", "info");
+  ScopedEnvironment noColor("NO_COLOR", "1");
+  const auto output = std::filesystem::absolute("build/app");
+  const auto tests = std::filesystem::absolute("build/checks");
+  captureStdout();
+  {
+    sun::support::BuildProgressScope outer("example/ui/app", output, tests);
+    sun::support::logBuildProgress("Building ", output);
+    sun::support::logBuildProgress("Building tests: ", tests);
+    {
+      sun::support::BuildProgressScope inner("example/dependency/app", output, {});
+      sun::support::logBuildProgress("Up to date: ", output);
+      sun::support::logBuildProgress("Built ", tests);
+    }
+    sun::support::logBuildProgress("Built ", output);
+    sun::support::logBuildProgress("Built ", tests);
+  }
+  sun::support::logBuildProgress("Built ", output);
+  EXPECT_EQ(testing::internal::GetCapturedStdout(),
+            "[sun][info]: Building example/ui/app\n"
+            "[sun][info]: Building tests: example/ui/app (tests)\n"
+            "[sun][info]: Up to date: example/dependency/app\n"
+            "[sun][info]: Built checks\n"
+            "[sun][info]: Built example/ui/app\n"
+            "[sun][info]: Built example/ui/app (tests)\n"
+            "[sun][info]: Built app\n");
 }
 
 /** Default logging shows build progress and compiler diagnostics. */

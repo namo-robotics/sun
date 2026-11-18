@@ -129,6 +129,9 @@ prints the warning again; passing tests does not clear it. Unreadable or unresol
 inputs show **Freshness unknown** and also remain runnable when a supported binary
 is available. Missing binaries cannot run. Freshness currently compares input and
 binary timestamps; it is not a full comparison of compiler settings or build hashes.
+Configuration edits refresh the resolved graph and input paths, but configuration
+file timestamps alone do not mark suites stale. This keeps unrelated target edits
+from showing completed targets as needing a build.
 
 Project configs, manifest sources, dependency artifacts, and binaries trigger
 refreshes. Exact binary paths are polled even when build directories are excluded

@@ -363,6 +363,21 @@ bool sameTree(const fs::path& a, const fs::path& b) {
 void publishDirectory(const fs::path& source, const fs::path& dest,
                       const fs::path& backup) {
   const bool existed = fs::exists(dest) || fs::is_symlink(dest);
+  // A new package selection can replace the directory without changing most
+  // artifacts. Preserve their times so downstream tests do not appear stale.
+  if (fs::is_directory(dest) && !fs::is_symlink(dest)) {
+    for (const auto& old : fs::recursive_directory_iterator(dest)) {
+      if (old.is_symlink() || !old.is_regular_file()) {
+        continue;
+      }
+      const auto staged = source / old.path().lexically_relative(dest);
+      if (fs::is_regular_file(staged) && !fs::is_symlink(staged) &&
+          executable(staged) == executable(old.path()) &&
+          sameFileContents(staged, old.path())) {
+        fs::last_write_time(staged, fs::last_write_time(old.path()));
+      }
+    }
+  }
   if (existed) {
     fs::rename(dest, backup);
   }

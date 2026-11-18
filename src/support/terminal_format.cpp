@@ -4,8 +4,9 @@
 /** Renders structured compiler diagnostics for the destination terminal. */
 namespace sun::support {
 std::string terminalFileLabel(const std::filesystem::path& path,
-                              llvm::raw_ostream& stream) {
-  const auto label = path.filename().string();
+                              llvm::raw_ostream& stream,
+                              const std::string& text) {
+  const auto label = text.empty() ? path.filename().string() : text;
   if (!terminalColors(stream)) {
     return label;
   }
