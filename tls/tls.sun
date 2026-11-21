@@ -16,7 +16,7 @@ manifest {
     "tls_server_tests.sun"
   ]
   libraries: [
-    "stdlib.moon"
+    "sun/stdlib"
   ]
   target: {
     linux: {

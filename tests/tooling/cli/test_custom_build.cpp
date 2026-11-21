@@ -78,7 +78,7 @@ class CustomBuild : public testing::Test {
         "build":["scripts/prepare.sh","scripts/compile.sh","scripts/finish.sh"]}]})");
     save();
     write("app/main.sun",
-          R"(manifest { libraries: ["${example/helper}/lib/helper.moon"] }
+          R"(manifest { libraries: ["example/helper/helper"] }
       /** Verifies the local dependency. */ function main() i32 { return helper.answer() - 42; })");
     script("prepare.sh", R"sh(test -f main.sun
 "$SUN_EXECUTABLE" dependency-path example/helper > "$SUN_BUILD/dependency"
@@ -268,6 +268,20 @@ TEST_F(CustomBuild, EnvironmentScriptIncludesInstalledProjects) {
   EXPECT_NE(script.find("/debug/example/app/bin"), std::string::npos);
   EXPECT_EQ(script.find("/release/"), std::string::npos);
   EXPECT_EQ(script.find("/example/helper/bin"), std::string::npos);
+}
+
+/** Ordinary path variables cannot impersonate declared package dependencies. */
+TEST_F(CustomBuild, LibraryReferenceRejectsOrdinaryPathVariable) {
+  config["path_variables"] = llvm::json::Object{
+      {"example/undeclared", (root / "unrelated").string()}};
+  save();
+  write("unrelated/lib/core.moon", "not a library");
+  write("app/main.sun",
+        R"(manifest { libraries: ["example/undeclared/core"] }
+        /** A fixture application. */ function main() i32 { return 0; })");
+  EXPECT_NE(command("build"), 0);
+  EXPECT_NE(diagnostics().find("undeclared library dependency: example/undeclared"),
+            std::string::npos) << diagnostics();
 }
 
 /** Scripts share context and files, preserve flags, and retain incremental

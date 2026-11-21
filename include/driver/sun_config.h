@@ -174,6 +174,8 @@ struct SunConfig {
   std::map<std::string, std::string> pathVariables;  // values made absolute
   std::vector<ConfigEntrypoint> entrypoints;         // declared build products
   std::map<std::string, ConfigDependency> dependencies;
+  // Dependency roots inherited from a custom build, without further resolution.
+  std::map<std::string, std::string> resolvedDependencies;
   std::vector<ConfigSystemDependency> systemDependencies;
   std::vector<ConfigPackage> packages;
   std::map<std::string, ConfigCBinding> cBindings;

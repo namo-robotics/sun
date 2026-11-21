@@ -2,7 +2,7 @@ using std.io;
 
 manifest {
   libraries: [
-    "stdlib.moon",
+    "sun/stdlib",
     "$SUN_SERVE/lib/sun_serve.moon"
   ]
 }

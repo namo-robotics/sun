@@ -4,7 +4,7 @@ using std.io;
 /** Multiplies two matrices on the GPU and prints the result. */
 manifest {
   libraries: [
-    "stdlib.moon",
+    "sun/stdlib",
     "cuda.moon"
   ]
 }

@@ -109,19 +109,20 @@ function main() void {
 
 manifest {
   source_files: ["helpers.sun"]
-  libraries: ["stdlib.moon"]
+  libraries: ["sun/stdlib"]
 }
 ```
 
 Run it with `sun main.sun`. Sun compiles `helpers.sun` with `main.sun` and loads
-`stdlib.moon`. Paths start at the directory containing `main.sun`.
+the compiler-supplied standard library. Source paths start at the directory
+containing `main.sun`.
 
 All manifest fields are optional. A manifest declares dependencies, not the
 artifact's identity. Source-level `id` fields are rejected.
 
 Configured builds use the entrypoint's `name` as its local ID. When the project
-has `"package_id": "namo-robotics/sun"`, an entrypoint named `stdlib` has the
-canonical identity `namo-robotics/sun/stdlib`. Without a package ID, the name is
+has `"package_id": "sun"`, an entrypoint named `stdlib` has the
+canonical identity `sun/stdlib`. Without a package ID, the name is
 used unchanged. Library and executable entrypoints follow the same rule.
 
 Direct compilation defaults to the source filename without `.sun`. Use `--id`
@@ -173,6 +174,38 @@ A Linux build includes `files_linux.sun` before `files.sun`. A macOS build uses
 
 `--target` selects the build target; without it, Sun uses the host platform.
 The manifest only selects inputs for that target.
+
+### Package library references
+
+Use `package-id/entrypoint-name` in `libraries`:
+
+```sun
+manifest {
+  libraries: [
+    "sun/stdlib",
+    "sun/tls",
+    "namo-robotics/aether/aether",
+    "namo-robotics/relay/relay"
+  ]
+}
+```
+
+The last slash separates the package ID from the library entrypoint name.
+`sun/stdlib` and `sun/tls` use the compiler's bundle search paths; they do not
+fetch or build a compiler checkout. The compiler project's package ID is `sun`.
+
+Other packages must be declared in `sun-config.json` dependencies. Their versions,
+local workspace providers, selected entrypoints, and target restrictions remain
+controlled by that configuration. Dependency libraries resolve from the package's
+installed `lib` directory. Custom build scripts use their inherited dependency
+locations without fetching again.
+
+A reference to the current package selects its configured library output and
+needs no self-dependency. Keep that library in the consuming entrypoint's
+`requires` list so it is built first. References do not change build ordering.
+
+Loose `.moon` paths remain supported for standalone files and prebuilt fixtures.
+Library aliases work with both package references and file paths.
 
 ### Path Resolution
 
@@ -305,7 +338,7 @@ versions or change compatibility rules.
 
 ```sun
 manifest {
-  libraries: ["stdlib.moon", "tls.moon"]
+  libraries: ["sun/stdlib", "sun/tls"]
 }
 ```
 
@@ -425,7 +458,7 @@ Every dependency belongs in the config's `dependencies` array:
 
 ```sun
 manifest {
-  libraries: ["${example/math}/lib/math.moon"]
+  libraries: ["example/math/math"]
 }
 ```
 
@@ -460,7 +493,7 @@ with the file's lowercase SHA-256 digest.
 }
 ```
 
-Import `"${example/core}/lib/core.moon"` in the consumer's manifest. `packages`
+Import `"example/core/core"` in the consumer's manifest. `packages`
 selects project IDs and entrypoint names, not manifest IDs. Sun builds those
 products and their prerequisites, runs their preparation steps, and skips their
 tests. An optional `config` selects a repository-relative root config instead

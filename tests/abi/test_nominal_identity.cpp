@@ -149,12 +149,12 @@ TEST(ABI_NominalIdentity, PackagePrefixesBuildIdentity) {
 
   EXPECT_EQ(sun::driver::ManifestProcessor::artifactIdentity("source.sun"),
             "source");
-  config.packageId = "namo-robotics/sun";
+  config.packageId = "sun";
   EXPECT_EQ(sun::driver::ManifestProcessor::artifactIdentity("source.sun"),
-            "namo-robotics/sun/source");
+            "sun/source");
   EXPECT_EQ(
       sun::driver::ManifestProcessor::artifactIdentity("source.sun", "stdlib"),
-      "namo-robotics/sun/stdlib");
+      "sun/stdlib");
   config.packageId = std::string(512, 'p');
   EXPECT_THROW(sun::driver::ManifestProcessor::artifactIdentity("source.sun"),
                sun::support::SunError);

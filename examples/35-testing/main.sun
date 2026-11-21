@@ -70,6 +70,6 @@ manifest {
     "more_tests.sun"
   ]
   libraries: [
-    "stdlib.moon"
+    "sun/stdlib"
   ]
 }

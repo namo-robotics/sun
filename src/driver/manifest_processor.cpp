@@ -252,6 +252,74 @@ std::string ManifestProcessor::artifactIdentity(
   return identity;
 }
 
+/** Resolve a package library without treating its identity as a filesystem
+ * path. Same-package imports use built prerequisites; external packages remain
+ * declared dependencies. Compiler libraries use the ordinary bundle search
+ * directories.
+ */
+static std::string resolveLibraryReference(const std::string& reference,
+                                           const std::string& baseDir,
+                                           const SunConfig* config,
+                                           const std::string& targetTriple) {
+  const auto slash = reference.rfind('/');
+  if (slash == std::string::npos || slash == 0 ||
+      slash + 1 == reference.size()) {
+    sun::support::logAndThrowError(
+        "library reference must be package-id/entrypoint-name: " + reference);
+  }
+  std::istringstream components(reference);
+  std::string component;
+  while (std::getline(components, component, '/')) {
+    if (component.empty() || component == "." || component == ".." ||
+        component.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP"
+                                    "QRSTUVWXYZ0123456789_-.") !=
+            std::string::npos) {
+      sun::support::logAndThrowError("invalid library reference: " + reference);
+    }
+  }
+  const auto package = reference.substr(0, slash);
+  const auto name = reference.substr(slash + 1);
+  if (package == "sun" && (name == "stdlib" || name == "tls")) {
+    return ManifestProcessor::resolvePath(name + ".moon", baseDir, config,
+                                          targetTriple);
+  }
+  if (!config) {
+    sun::support::logAndThrowError(
+        "library reference requires sun-config.json: " + reference);
+  }
+  std::filesystem::path resolved;
+  if (package == config->packageId) {
+    const auto entries = findConfigEntrypoints(*config, {name});
+    const auto& entry = *entries.front();
+    if (entry.type != ConfigEntrypoint::Type::Library) {
+      sun::support::logAndThrowError("entrypoint is not a library: " +
+                                     reference);
+    }
+    resolved =
+        entry.outputName.empty()
+            ? std::filesystem::path(config->pathVariables.at("SUN_BUILD")) /
+                  (name + ".moon")
+            : std::filesystem::path(ManifestProcessor::expandPathVariables(
+                  entry.outputName, config));
+  } else if (config->dependencies.count(package)) {
+    resolved =
+        resolveConfigDependency(*config, package, "/lib/" + name + ".moon") /
+        "lib" / (name + ".moon");
+  } else if (auto found = config->resolvedDependencies.find(package);
+             found != config->resolvedDependencies.end()) {
+    resolved = std::filesystem::path(found->second) / "lib" / (name + ".moon");
+  } else {
+    sun::support::logAndThrowError("undeclared library dependency: " + package);
+  }
+  if (!std::filesystem::is_regular_file(resolved)) {
+    sun::support::logAndThrowError(
+        "library entrypoint is unavailable: " + reference +
+        "; build same-package prerequisites with requires or select the "
+        "dependency entrypoint");
+  }
+  return resolved.lexically_normal().string();
+}
+
 ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
                                             const std::string& baseDir,
                                             const std::string& targetTriple) {
@@ -278,15 +346,22 @@ ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
       if (moonDep.url) {
         sun::support::logAndThrowError(
             "manifest library URLs are no longer supported; move the URL and "
-            "hash to sun-config.json dependencies and use a local .moon path");
+            "hash to sun-config.json dependencies and use a package library "
+            "reference");
       }
+      const bool fileImport =
+          std::filesystem::path(moonDep.path).extension() == ".moon" ||
+          moonDep.path.find('$') != std::string::npos;
       std::string resolved =
-          resolvePath(expandPathVariables(moonDep.path, config), baseDir,
-                      config, targetTriple);
+          fileImport ? resolvePath(expandPathVariables(moonDep.path, config),
+                                   baseDir, config, targetTriple)
+                     : resolveLibraryReference(moonDep.path, baseDir, config,
+                                               targetTriple);
       if (std::filesystem::path(resolved).extension() != ".moon" ||
           resolved.find("://") != std::string::npos) {
         sun::support::logAndThrowError(
-            "manifest libraries must name local .moon files");
+            "manifest libraries must name package entrypoints or local .moon "
+            "files");
       }
       if (moonDep.rename.has_value()) {
         out.moonImports.emplace_back(resolved, moonDep.rename.value(),

@@ -39,7 +39,7 @@ function main() i32 throws {
 
 manifest {
   libraries: [
-    "stdlib.moon",
-    "tls.moon"
+    "sun/stdlib",
+    "sun/tls"
   ]
 }
