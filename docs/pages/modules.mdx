@@ -396,6 +396,21 @@ products go under `.sun/install/`. Both paths include the target, build
 configuration, and project name. Scripts use `SUN_BUILD` and `SUN_INSTALL`
 instead of constructing those paths themselves.
 
+After a successful configured build, source the generated environment script
+from the configuration's workspace root to run installed binaries by name:
+
+```sh
+source .sun/install/env.sh
+viewer
+```
+
+The script uses plain `export PATH=...` lines to add installed binaries while
+preserving your existing `PATH`. It includes all composed projects already
+installed for the selected target and build configuration, even with `--package`.
+Paths are absolute and quoted, so you can source the script from any directory.
+Each build rewrites it; source it again to pick up newly installed directories.
+For POSIX shells, use `. .sun/install/env.sh`.
+
 ### Dependencies
 
 Every dependency belongs in the config's `dependencies` array:

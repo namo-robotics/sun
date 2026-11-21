@@ -24,6 +24,7 @@
 #include "cli/option_parser.h"
 #include "driver/build_graph.h"
 #include "driver/build_record.h"
+#include "driver/env_script.h"
 #include "driver/git_source.h"
 #include "driver/manifest_processor.h"
 #include "driver/package.h"
@@ -337,6 +338,7 @@ int runConfigBuildCommand(const BuildRunOptions& options) {
       sun::support::logAndThrowError(
           "no matching build products in config graph");
     }
+    sun::driver::writeEnvScript(graph, options.targetTriple);
     return 0;
   } catch (const sun::support::SunError& e) {
     return reportSunError(e);
