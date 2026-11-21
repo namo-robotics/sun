@@ -218,6 +218,58 @@ printf '#!/bin/sh\nprintf "%%s\\n" "%s"\n' "$SUN_TARGET" > "$SUN_OUTPUT"
   }
 };
 
+/** Sourcing preserves PATH and treats shell syntax in paths literally. */
+TEST_F(CustomBuild, EnvironmentScriptQuotesPaths) {
+  const auto quoted = fs::path(root.string() + " ' `pwd`");
+  fs::remove_all(quoted);
+  fs::rename(root, quoted);
+  root = quoted;
+  ASSERT_EQ(command("build"), 0) << diagnostics();
+  const auto environment = root / ".sun/install/env.sh";
+  ASSERT_TRUE(fs::is_regular_file(environment));
+  const auto selected = describe();
+  const auto bin = fs::path(selected.getString("install_root")->str()) / "bin";
+  ASSERT_EQ(invoke("/bin/sh",
+                   {"-eu", "-c",
+                    "previous=$PATH; . \"$1\"; "
+                    "test \"$PATH\" = \"$2:$previous\"; app",
+                    "sh", environment.string(), bin.string()}),
+            0) << diagnostics();
+  ASSERT_EQ(invoke("/bin/sh",
+                   {"-eu", "-c",
+                    "unset PATH; . \"$1\"; test \"$PATH\" = \"$2\"; app",
+                    "sh", environment.string(), bin.string()}),
+            0) << diagnostics();
+  const auto script = read(environment);
+  fs::remove(environment);
+  ASSERT_EQ(command("build"), 0) << diagnostics();
+  EXPECT_EQ(read(environment), script);
+}
+
+/** Partial builds expose installed projects from the selected configuration. */
+TEST_F(CustomBuild, EnvironmentScriptIncludesInstalledProjects) {
+  write("sun-config.json",
+        R"({"projects":["lib/sun-config.json","app/sun-config.json","tool/sun-config.json"]})");
+  write("tool/sun-config.json", R"({"package_id":"example/tool","entrypoints":[
+    {"name":"tool","path":"tool.sun","export":true}]})");
+  write("tool/tool.sun",
+        "/** A fixture tool. */ function main() i32 { return 0; }\n");
+  ASSERT_EQ(invoke(compiler,
+                   {"build", "--config", (root / "sun-config.json").string(),
+                    "--package", "example/tool", "--no-test"}),
+            0) << diagnostics();
+  ASSERT_EQ(command("build"), 0) << diagnostics();
+  const auto environment = root / ".sun/install/env.sh";
+  ASSERT_EQ(invoke("/bin/sh", {"-eu", "-c", ". \"$1\"; tool; app", "sh",
+                               environment.string()}),
+            0) << diagnostics();
+  ASSERT_EQ(command("build", {"-g"}), 0) << diagnostics();
+  const auto script = read(environment);
+  EXPECT_NE(script.find("/debug/example/app/bin"), std::string::npos);
+  EXPECT_EQ(script.find("/release/"), std::string::npos);
+  EXPECT_EQ(script.find("/example/helper/bin"), std::string::npos);
+}
+
 /** Scripts share context and files, preserve flags, and retain incremental
  * compilation. */
 TEST_F(CustomBuild, OrderContextAndLocalDependency) {
