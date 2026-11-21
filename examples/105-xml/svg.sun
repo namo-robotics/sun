@@ -47,7 +47,7 @@ function run_main() i32 throws {
 /** Uses only the standard library. */
 manifest {
   libraries: [
-    "stdlib.moon"
+    "sun/stdlib"
   ]
 }
 

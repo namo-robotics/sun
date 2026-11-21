@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 
+#include "driver/build_graph.h"
 #include "driver/manifest_processor.h"
 #include "driver/sun_config.h"
 #include "support/error.h"
@@ -701,6 +702,84 @@ TEST(Modules_SunConfig, rejects_invalid_dependency_supported_targets) {
               std::string("{\"dependencies\":[") + descriptor + "]}");
     EXPECT_THROW(
         SunConfig::loadFile(dir / "sun-config.json", "x86_64-linux-gnu"),
+        SunError);
+  }
+}
+
+/** Compiler libraries resolve through the existing search path without a
+ * dependency. */
+TEST(Modules_SunConfig, package_compiler_libraries) {
+  const auto dir = freshDir("package_compiler_libraries");
+  writeFile(dir / "sun-config.json", R"({"root":true,"sun_path":["bundles"]})");
+  writeFile(dir / "bundles/stdlib.moon", "fixture");
+  writeFile(dir / "bundles/tls.moon", "fixture");
+  writeFile(dir / "main.sun",
+            R"(manifest { libraries: ["sun/stdlib", "sun/tls"] })");
+  const auto result =
+      ManifestProcessor::fromEntrypointFile((dir / "main.sun").string());
+  ASSERT_TRUE(result);
+  ASSERT_EQ(result->moonImports.size(), 2u);
+  EXPECT_EQ(result->moonImports[0].path,
+            (dir / "bundles/stdlib.moon").string());
+  EXPECT_EQ(result->moonImports[1].path, (dir / "bundles/tls.moon").string());
+}
+
+/** Same-package references select the configured library output. */
+TEST(Modules_SunConfig, package_local_library) {
+  const auto dir = freshDir("package_local_library");
+  writeFile(dir / "sun-config.json",
+            R"({"root":true,"package_id":"example/widgets",
+    "entrypoints":[{"name":"core","path":"core.sun","type":"library"}]})");
+  sun::driver::ConfigGraph graph;
+  graph.root = dir;
+  const auto config = sun::driver::configureBuildPaths(
+      graph, SunConfig::loadFile(dir / "sun-config.json"));
+  const auto output =
+      fs::path(config.pathVariables.at("SUN_BUILD")) / "core.moon";
+  writeFile(output, "fixture");
+  writeFile(dir / "main.sun",
+            R"(manifest { libraries: ["example/widgets/core"] })");
+  const auto result =
+      ManifestProcessor::fromEntrypointFile((dir / "main.sun").string());
+  ASSERT_TRUE(result);
+  ASSERT_EQ(result->moonImports.size(), 1u);
+  EXPECT_EQ(result->moonImports[0].path, output.string());
+}
+
+/** Missing same-package outputs report the prerequisite that must be built. */
+TEST(Modules_SunConfig, package_library_requires_built_output) {
+  const auto dir = freshDir("package_library_requires_built_output");
+  writeFile(dir / "sun-config.json",
+            R"({"root":true,"package_id":"example/widgets",
+    "entrypoints":[{"name":"core","path":"core.sun","type":"library"}]})");
+  writeFile(dir / "main.sun",
+            R"(manifest { libraries: ["example/widgets/core"] })");
+  try {
+    ManifestProcessor::fromEntrypointFile((dir / "main.sun").string());
+    FAIL() << "missing library output was accepted";
+  } catch (const SunError& error) {
+    EXPECT_NE(
+        std::string(error.what())
+            .find("library entrypoint is unavailable: example/widgets/core"),
+        std::string::npos);
+  }
+}
+
+/** Invalid identities and undeclared dependencies fail before any network
+ * resolution. */
+TEST(Modules_SunConfig, package_library_rejections) {
+  const auto dir = freshDir("package_library_rejections");
+  writeFile(dir / "sun-config.json",
+            R"({"root":true,"package_id":"example/widgets",
+    "entrypoints":[{"name":"app","path":"app.sun","type":"binary"}]})");
+  for (const auto* reference :
+       {"example/widgets/app", "example/widgets/missing", "other/widgets/core",
+        "example/../core", "example//core", "example/", "core"}) {
+    SCOPED_TRACE(reference);
+    writeFile(dir / "main.sun",
+              std::string("manifest { libraries: [\"") + reference + "\"] }");
+    EXPECT_THROW(
+        ManifestProcessor::fromEntrypointFile((dir / "main.sun").string()),
         SunError);
   }
 }

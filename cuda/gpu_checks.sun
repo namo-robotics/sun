@@ -4,7 +4,7 @@ using std.io;
 /** Exercises public GPU arithmetic through both the JIT and native compilation. */
 manifest {
   libraries: [
-    "stdlib.moon",
+    "sun/stdlib",
     "cuda.moon"
   ]
 }

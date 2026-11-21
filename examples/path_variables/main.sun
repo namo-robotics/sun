@@ -10,7 +10,7 @@ function main() void {
 
 manifest {
   libraries: [
-    "stdlib.moon",
+    "sun/stdlib",
     "$LIBS/mathlib.moon"
   ]
 }

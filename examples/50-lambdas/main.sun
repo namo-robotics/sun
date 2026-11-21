@@ -22,6 +22,6 @@ function main() i32 {
 
 manifest {
   libraries: [
-    "stdlib.moon"
+    "sun/stdlib"
   ]
 }

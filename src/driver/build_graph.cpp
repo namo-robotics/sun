@@ -400,6 +400,9 @@ SunConfig buildContextConfig() {
       config.pathVariables[name.str()] = value.getAsString()->str();
     }
   }
+  for (const auto& [name, value] : *context.getObject("dependencies")) {
+    config.resolvedDependencies[name.str()] = value.getAsString()->str();
+  }
   config.sunPath.clear();
   for (const auto& path : *context.getArray("sun_path")) {
     if (!path.getAsString()) {
