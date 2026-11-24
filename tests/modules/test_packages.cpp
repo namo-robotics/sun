@@ -12,6 +12,7 @@
 #include "driver/package.h"
 #include "driver/sun_config.h"
 #include "moon_bundling/moon_builder.h"
+#include "support/content_hash.h"
 #include "support/error.h"
 
 /** Keeps package fixtures isolated from other test suites. */
@@ -170,7 +171,7 @@ TEST_F(Packages, LazyDependencyTargetAndHash) {
       R"({"dependencies":[{"package":"LIB","library":"lib","url":"https://example.com/lib.moon"}]})"));
   EXPECT_THROW(
       config(
-          R"({"dependencies":[{"package":"LIB","library":"lib","url":"https://example.com/lib.moon","hash":"invalid"}]})"),
+          R"({"dependencies":[{"package":"LIB","library":"lib","url":"https://example.com/lib.moon","sha256":"invalid"}]})"),
       SunError);
   EXPECT_THROW(
       config(
@@ -267,7 +268,7 @@ TEST_F(Packages, UnpinnedUrlRefreshesAndRejectsInvalidReleases) {
             sun::driver::packageFileHash(dir / "app"));
 
   auto pinned = config("{\"dependencies\":[{\"package\":\"TOOLS\",\"url\":\"" +
-                       url + "\",\"hash\":\"" + originalHash + "\"}]}");
+                       url + "\",\"sha256\":\"" + originalHash + "\"}]}");
   EXPECT_THROW(sun::driver::resolveConfigDependency(pinned, "TOOLS"), SunError);
   consumer.targetTriple = "aarch64-linux-gnu";
   EXPECT_THROW(sun::driver::resolveConfigDependency(consumer, "TOOLS"),
@@ -465,3 +466,41 @@ TEST_F(Packages, InstallsSelectedBinaryForItsPlatform) {
 }
 
 }  // namespace
+
+/** External pinned artifact checksums remain SHA-256 after internal migration.
+ */
+TEST_F(Packages, ExternalArtifactUsesSha256) {
+  put(dir / "sun-config.json", R"({"root":true})");
+  put(dir / "fixture.sun",
+      "manifest {}\n"
+      "/** Supplies an artifact. */ public module fixture {"
+      "/** Returns a value. */ public function value() i32 { return 1; } }\n");
+  sun::moon_bundling::MoonBuildOptions options;
+  options.targetTriple = "x86_64-linux-gnu";
+  options.artifactId = "fixture";
+  const auto artifact = dir / "artifact.moon";
+  sun::moon_bundling::MoonBuilder::build((dir / "fixture.sun").string(),
+                                         artifact, options);
+  std::ifstream input(artifact, std::ios::binary);
+  const std::string bytes(std::istreambuf_iterator<char>(input), {});
+  const auto checksum = sun::support::sha256Hex(bytes);
+  auto cfg = config(
+      "{\"dependencies\":[{\"package\":\"fixture\",\"library\":\"fixture\","
+      "\"path\":\"artifact.moon\",\"sha256\":\"" +
+      checksum + "\"}]}");
+  EXPECT_NO_THROW(sun::driver::resolveConfigDependency(cfg, "fixture"));
+  std::ofstream(artifact, std::ios::app) << "changed";
+  EXPECT_THROW(sun::driver::resolveConfigDependency(cfg, "fixture"), SunError);
+}
+
+/** Legacy checksum fields fail configuration loading instead of losing the pin.
+ */
+TEST_F(Packages, RejectsLegacyDependencyHash) {
+  for (const auto* type : {"", "\"type\":\"moon\","}) {
+    EXPECT_THROW(config(std::string("{\"dependencies\":[{") + type +
+                        "\"package\":\"fixture\",\"library\":\"fixture\","
+                        "\"path\":\"artifact.moon\",\"hash\":\"" +
+                        std::string(64, 'a') + "\"}]}"),
+                 SunError);
+  }
+}

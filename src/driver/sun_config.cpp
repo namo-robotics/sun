@@ -393,8 +393,8 @@ void dependencyValue(const llvm::json::Value& value) {
     validateGitSource(source);
     return;
   }
-  keys(obj,
-       {"package", "library", "binary", "url", "path", "hash", "entrypoints"});
+  keys(obj, {"package", "library", "binary", "url", "path", "sha256",
+             "entrypoints"});
   if (!obj.get("package")) {
     invalid("dependency requires package identity");
   }
@@ -420,10 +420,10 @@ void dependencyValue(const llvm::json::Value& value) {
   if (bool(obj.get("url")) == bool(obj.get("path"))) {
     invalid("dependency requires exactly one of url or path");
   }
-  if (auto hash = obj.getString("hash")) {
+  if (auto hash = obj.getString("sha256")) {
     if (hash->size() != 64 ||
         hash->find_first_not_of("0123456789abcdef") != llvm::StringRef::npos) {
-      invalid("hash must be a lowercase SHA-256 digest");
+      invalid("sha256 must be a lowercase SHA-256 digest");
     }
   }
 }
@@ -532,13 +532,7 @@ llvm::json::Value typedDependency(Object obj) {
     if (obj.get("git") || obj.get("packages")) {
       invalid("artifact dependency cannot contain git fields");
     }
-    if (obj.get("hash")) {
-      invalid("typed artifact dependency uses sha256, not hash");
-    }
-    if (auto hash = obj.getString("sha256")) {
-      obj["hash"] = hash->str();
-      obj.erase("sha256");
-    } else if (obj.get("url")) {
+    if (obj.get("url") && !obj.get("sha256")) {
       invalid("remote artifact dependency requires sha256");
     }
     if (provider == "moon" && obj.get("binary")) {
@@ -912,7 +906,7 @@ SunConfig parse(const Object& root, const std::filesystem::path& file,
         invalid("duplicate dependency selection: " + name + " " + id);
       }
       dep.url = obj.getString("url").value_or("").str();
-      dep.hash = obj.getString("hash").value_or("").str();
+      dep.hash = obj.getString("sha256").value_or("").str();
       dep.git = obj.getString("git").value_or("").str();
       dep.version = obj.getString("version").value_or("").str();
       dep.config = obj.getString("config").value_or("sun-config.json").str();

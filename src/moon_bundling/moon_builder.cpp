@@ -11,6 +11,7 @@
 
 #include "abi/abi_compatibility_checker.h"
 #include "abi/abi_validation_scope.h"
+#include "abi/bundle_validation_cache.h"
 #include "driver/build_record.h"
 #include "driver/c_bindings.h"
 #include "driver/driver.h"
@@ -23,6 +24,7 @@
 #include "moon_bundling/moon.h"
 #include "moon_bundling/proto_importer.h"
 #include "serialization/source_file_ids.h"
+#include "support/content_hash.h"
 #include "support/display_path.h"
 #include "support/error.h"
 #include "support/source_path.h"
@@ -193,7 +195,7 @@ MoonBuilder::LoadedInputs MoonBuilder::loadInputs(
         fs::path(nativeArchive.path).filename().string(),
         readWholeFile(nativeArchive.path, "native archive"),
         {}};
-    archive.digest = computeSha256Hex(archive.data);
+    archive.digest = sun::support::blake3Hex(archive.data);
     result.loadedArchives.push_back(std::move(archive));
   }
   std::vector<std::pair<std::string, std::string>> archiveIdentities;
@@ -522,6 +524,7 @@ std::filesystem::path MoonBuilder::defaultOutputPath(
 MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
                                    const std::filesystem::path& outputPath,
                                    const MoonBuildOptions& options) {
+  abi::ValidationCacheScope validationCache({}, options.forceRebuild);
   abi::AbiValidationScope compatibility(
       {.targetTriple = options.targetTriple,
        .execution = abi::NativeExecution::NativeLink,

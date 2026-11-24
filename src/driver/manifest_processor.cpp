@@ -297,7 +297,8 @@ static std::string resolveLibraryReference(const std::string& reference,
     }
     resolved =
         entry.outputName.empty()
-            ? std::filesystem::path(config->pathVariables.at("SUN_BUILD")) /
+            ? std::filesystem::path(ManifestProcessor::expandPathVariables(
+                  "${SUN_BUILD}", config)) /
                   (name + ".moon")
             : std::filesystem::path(ManifestProcessor::expandPathVariables(
                   entry.outputName, config));

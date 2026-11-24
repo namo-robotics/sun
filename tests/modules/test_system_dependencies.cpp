@@ -1,3 +1,4 @@
+#include "support/content_hash.h"
 // Exercise dependency installation through isolated package-manager
 // substitutes.
 #include <gtest/gtest.h>
@@ -296,8 +297,7 @@ TEST_F(SystemDependencies, InstallLocalDependenciesWithoutBuilding) {
 TEST_F(SystemDependencies, InstallGitDependenciesWithoutBuilding) {
   const std::string url = "https://invalid.example/provider.git";
   const auto cache = dir / "git-cache";
-  const auto repository =
-      cache / sun::moon_bundling::computeSha256Hex(url + "\nmain");
+  const auto repository = cache / sun::support::blake3Hex(url + "\nmain");
   const auto snapshot = repository / "snapshot";
   std::filesystem::create_directories(snapshot / ".sun-git-source");
   std::ofstream(repository / "current") << "snapshot\n";

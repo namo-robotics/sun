@@ -1,3 +1,4 @@
+#include "support/content_hash.h"
 /** Adapts fallible entrypoints to native or JIT return values. */
 #include <sstream>
 
@@ -139,7 +140,7 @@ sun::ast::FunctionAST* Driver::prepareMainEntry(sun::ast::BlockExprAST& block,
       proto.getDeclarationId(), analysisResults->declarations);
   PortableDeclarationKey::assignOriginals(
       *generated, analysisResults->declarations,
-      sun::moon_bundling::computeSha256Hex(identity.encoding() + source.str()));
+      sun::support::blake3Hex(identity.encoding() + source.str()));
   pipeline.declarations().run(*generated);
   for (auto& statement : generated->mutableBody()) {
     analyzer->analyzeExpr(*statement);

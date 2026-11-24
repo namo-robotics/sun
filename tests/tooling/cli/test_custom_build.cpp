@@ -229,17 +229,18 @@ TEST_F(CustomBuild, EnvironmentScriptQuotesPaths) {
   ASSERT_TRUE(fs::is_regular_file(environment));
   const auto selected = describe();
   const auto bin = fs::path(selected.getString("install_root")->str()) / "bin";
-  ASSERT_EQ(invoke("/bin/sh",
-                   {"-eu", "-c",
-                    "previous=$PATH; . \"$1\"; "
-                    "test \"$PATH\" = \"$2:$previous\"; app",
-                    "sh", environment.string(), bin.string()}),
-            0) << diagnostics();
-  ASSERT_EQ(invoke("/bin/sh",
-                   {"-eu", "-c",
-                    "unset PATH; . \"$1\"; test \"$PATH\" = \"$2\"; app",
-                    "sh", environment.string(), bin.string()}),
-            0) << diagnostics();
+  ASSERT_EQ(invoke("/bin/sh", {"-eu", "-c",
+                               "previous=$PATH; . \"$1\"; "
+                               "test \"$PATH\" = \"$2:$previous\"; app",
+                               "sh", environment.string(), bin.string()}),
+            0)
+      << diagnostics();
+  ASSERT_EQ(
+      invoke("/bin/sh",
+             {"-eu", "-c", "unset PATH; . \"$1\"; test \"$PATH\" = \"$2\"; app",
+              "sh", environment.string(), bin.string()}),
+      0)
+      << diagnostics();
   const auto script = read(environment);
   fs::remove(environment);
   ASSERT_EQ(command("build"), 0) << diagnostics();
@@ -248,8 +249,9 @@ TEST_F(CustomBuild, EnvironmentScriptQuotesPaths) {
 
 /** Partial builds expose installed projects from the selected configuration. */
 TEST_F(CustomBuild, EnvironmentScriptIncludesInstalledProjects) {
-  write("sun-config.json",
-        R"({"projects":["lib/sun-config.json","app/sun-config.json","tool/sun-config.json"]})");
+  write(
+      "sun-config.json",
+      R"({"projects":["lib/sun-config.json","app/sun-config.json","tool/sun-config.json"]})");
   write("tool/sun-config.json", R"({"package_id":"example/tool","entrypoints":[
     {"name":"tool","path":"tool.sun","export":true}]})");
   write("tool/tool.sun",
@@ -257,12 +259,14 @@ TEST_F(CustomBuild, EnvironmentScriptIncludesInstalledProjects) {
   ASSERT_EQ(invoke(compiler,
                    {"build", "--config", (root / "sun-config.json").string(),
                     "--package", "example/tool", "--no-test"}),
-            0) << diagnostics();
+            0)
+      << diagnostics();
   ASSERT_EQ(command("build"), 0) << diagnostics();
   const auto environment = root / ".sun/install/env.sh";
   ASSERT_EQ(invoke("/bin/sh", {"-eu", "-c", ". \"$1\"; tool; app", "sh",
                                environment.string()}),
-            0) << diagnostics();
+            0)
+      << diagnostics();
   ASSERT_EQ(command("build", {"-g"}), 0) << diagnostics();
   const auto script = read(environment);
   EXPECT_NE(script.find("/debug/example/app/bin"), std::string::npos);
@@ -272,16 +276,18 @@ TEST_F(CustomBuild, EnvironmentScriptIncludesInstalledProjects) {
 
 /** Ordinary path variables cannot impersonate declared package dependencies. */
 TEST_F(CustomBuild, LibraryReferenceRejectsOrdinaryPathVariable) {
-  config["path_variables"] = llvm::json::Object{
-      {"example/undeclared", (root / "unrelated").string()}};
+  config["path_variables"] =
+      llvm::json::Object{{"example/undeclared", (root / "unrelated").string()}};
   save();
   write("unrelated/lib/core.moon", "not a library");
   write("app/main.sun",
         R"(manifest { libraries: ["example/undeclared/core"] }
         /** A fixture application. */ function main() i32 { return 0; })");
   EXPECT_NE(command("build"), 0);
-  EXPECT_NE(diagnostics().find("undeclared library dependency: example/undeclared"),
-            std::string::npos) << diagnostics();
+  EXPECT_NE(
+      diagnostics().find("undeclared library dependency: example/undeclared"),
+      std::string::npos)
+      << diagnostics();
 }
 
 /** Scripts share context and files, preserve flags, and retain incremental
@@ -342,7 +348,8 @@ TEST_F(CustomBuild, AllEntrypointsIncludesInternalTests) {
   ASSERT_EQ(invoke(compiler, flags), 0) << diagnostics();
   EXPECT_TRUE(fs::is_regular_file(output / "checks_test"));
   EXPECT_NE(diagnostics().find("Built example/app/checks (tests)"),
-            std::string::npos) << diagnostics();
+            std::string::npos)
+      << diagnostics();
   EXPECT_FALSE(fs::exists(output / "disabled"));
   EXPECT_FALSE(fs::exists(helperOutput / "checks_test"));
   EXPECT_EQ(read(output / "packages/app.tar.gz"), package);
@@ -470,11 +477,13 @@ TEST_F(CustomBuild, TargetOnlyBinaryNeedsNoHostVariant) {
 
 }  // namespace
 
-/** Custom builds retain configured identities and the workspace display base. */
+/** Custom builds retain configured identities and the workspace display base.
+ */
 TEST_F(CustomBuild, WorkspaceRelativeBuildPaths) {
   ASSERT_EQ(command("build"), 0) << diagnostics();
   const auto log = diagnostics();
-  EXPECT_NE(log.find("Building example/helper/helper"), std::string::npos) << log;
+  EXPECT_NE(log.find("Building example/helper/helper"), std::string::npos)
+      << log;
   EXPECT_NE(log.find("Building example/app/app"), std::string::npos) << log;
   EXPECT_EQ(log.find(root.string()), std::string::npos) << log;
   auto selected = describe();

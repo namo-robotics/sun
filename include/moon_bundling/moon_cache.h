@@ -12,7 +12,7 @@ namespace sun::moon_bundling {
  *
  * Bundles are downloaded once with the system curl binary and stored under
  * the cache directory, keyed by the URL. A cached bundle is reused forever,
- * unless the config descriptor carries a `hash` (lowercase hex SHA-256 of the
+ * unless the config descriptor carries a `sha256` (lowercase hex SHA-256 of the
  * file bytes) that the cached file no longer matches — then it is fetched
  * again and the fresh download must match the hash. Callers can request a
  * refresh when an unpinned dependency should follow a mutable URL.
@@ -50,8 +50,6 @@ class MoonCache {
                                       const std::filesystem::path& dest);
 
  private:
-  /** Returns the hexadecimal SHA-256 digest of the supplied contents. */
-  static std::string computeSha256Hex(const std::string& content);
   /** Reads a file and returns its hexadecimal SHA-256 digest. */
   static std::string computeFileSha256Hex(const std::filesystem::path& path);
   /** Derives the cache filename for the supplied library URL. */

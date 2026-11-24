@@ -24,7 +24,7 @@ struct PackagePlan {
   std::vector<ConfigResource> resources;
 };
 
-/** Returns the SHA-256 digest of a file, reporting unreadable inputs. */
+/** Returns the BLAKE3 digest of a file, reporting unreadable inputs. */
 std::string packageFileHash(const std::filesystem::path& path);
 
 /** Reports whether configured dependency resolution is active on this thread.

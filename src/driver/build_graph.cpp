@@ -15,10 +15,12 @@
 #include <thread>
 
 #include "abi/nominal_identity.h"
+#include "driver/git_source.h"
 #include "driver/manifest_processor.h"
 #include "driver/package.h"
 #include "driver/system_dependencies.h"
 #include "moon_bundling/moon.h"
+#include "support/content_hash.h"
 #include "support/error.h"
 
 /** Discovers local package providers and coordinates their staged products. */
@@ -28,6 +30,16 @@ namespace {
 /** Shortens filesystem paths used throughout the resolver. */
 namespace fs = std::filesystem;
 thread_local ProductCompiler compiler;
+thread_local unsigned sessionDepth = 0;
+thread_local size_t compilerGeneration = 0;
+
+/** Records whether a successful product check also covered its test outputs. */
+struct ProductCompletion {
+  bool production;
+  bool includesTests;
+};
+
+thread_local std::map<std::string, ProductCompletion> completedProducts;
 thread_local std::string configuration = "release";
 thread_local bool forceSteps = false;
 std::mutex configuredRootsMutex;
@@ -80,7 +92,7 @@ std::string hashPaths(const std::vector<fs::path>& paths) {
       contents += file.string() + "\n" + packageFileHash(file) + "\n";
     }
   }
-  return sun::moon_bundling::computeSha256Hex(contents);
+  return sun::support::blake3Hex(contents);
 }
 
 /** Runs declared preparation steps before a product, using host tools
@@ -155,7 +167,7 @@ void runSteps(const SunConfig& config, const ConfigEntrypoint& entry,
       std::ifstream file(stamp);
       std::getline(file, previous);
     }
-    const auto digest = sun::moon_bundling::computeSha256Hex(fingerprint);
+    const auto digest = sun::support::blake3Hex(fingerprint);
     bool exist = std::all_of(outputs.begin(), outputs.end(),
                              [](const auto& path) { return fs::exists(path); });
     if (!forceSteps && exist && previous == digest + ":" + hashPaths(outputs)) {
@@ -197,8 +209,7 @@ void runSteps(const SunConfig& config, const ConfigEntrypoint& entry,
         << "Building "
         << (config.packageId.empty() ? entry.name
                                      : config.packageId + "/" + entry.name)
-        << ": step " << name
-        << "\n";
+        << ": step " << name << "\n";
     // Show the step before the child process writes any output.
     llvm::outs().flush();
     if (llvm::sys::ExecuteAndWait(*program, refs) != 0) {
@@ -297,6 +308,8 @@ void visitConfig(const fs::path& input, const std::string& target,
 }  // namespace
 
 void setProductCompiler(ProductCompiler callback) {
+  ++compilerGeneration;
+  resolvedProducts.clear();
   compiler = std::move(callback);
 }
 
@@ -306,6 +319,9 @@ void setBuildConfiguration(const std::string& name, bool force) {
           "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_") !=
           std::string::npos) {
     fail("invalid build configuration");
+  }
+  if (configuration != name || forceSteps != force) {
+    resolvedProducts.clear();
   }
   configuration = name;
   forceSteps = force;
@@ -322,6 +338,21 @@ ConfigGraph loadConfigGraph(const fs::path& file, const std::string& target) {
   std::map<std::string, fs::path> ids;
   visitConfig(file, target, graph, visiting, visited, ids);
   return graph;
+}
+
+BuildSessionScope::BuildSessionScope() {
+  if (sessionDepth++ == 0) {
+    completedProducts.clear();
+    resolvedProducts.clear();
+    selectedProducts.clear();
+  }
+}
+
+BuildSessionScope::~BuildSessionScope() {
+  if (--sessionDepth == 0) {
+    completedProducts.clear();
+    resolvedProducts.clear();
+  }
 }
 
 ConfigGraphScope::ConfigGraphScope(const ConfigGraph& graph)
@@ -526,6 +557,53 @@ fs::path productOutput(const SunConfig& config, const ConfigEntrypoint& entry) {
   return output;
 }
 
+/** Identifies a product and its build settings for reuse within one invocation.
+ * Test coverage is tracked separately so a dependency check can be upgraded. */
+std::string productCompletionKey(const std::string& projectKey,
+                                 const SunConfig& config,
+                                 const ConfigEntrypoint& entry,
+                                 const std::string& name,
+                                 const fs::path& artifact) {
+  std::string identity;
+  /** Frames selection settings without ambiguous separators. */
+  const auto append = [&](const std::string& value) {
+    identity += std::to_string(value.size()) + ":" + value;
+  };
+  for (const auto& value :
+       {projectKey, configuration, std::to_string(compilerGeneration),
+        forceSteps ? std::string("force") : std::string("normal"), name,
+        artifact.string(), entry.path, entry.testBinaryName, entry.git,
+        entry.version}) {
+    append(value);
+  }
+  append(config.exceptionTraceDepth
+             ? std::to_string(*config.exceptionTraceDepth)
+             : "default");
+  append(std::to_string(static_cast<int>(entry.type)));
+  append(entry.exported ? "exported" : "private");
+  for (const auto* values : {&entry.compileArgs, &entry.linkArgs, &entry.build,
+                             &entry.steps, &entry.pkgConfig}) {
+    append(std::to_string(values->size()));
+    for (const auto& value : *values) {
+      append(value);
+    }
+  }
+  append(std::to_string(config.pathVariables.size()));
+  for (const auto& [key, value] : config.pathVariables) {
+    append(key);
+    append(value);
+  }
+  const auto* options = gitDependencyBuildOptions();
+  append(options ? "inherited" : "default");
+  if (options) {
+    append(options->debugInfo ? "debug" : "release");
+    append(options->optimize ? "optimized" : "unoptimized");
+    append(options->forceRebuild ? "force" : "normal");
+    append(std::to_string(options->exceptionTraceDepth));
+  }
+  return sun::support::blake3Hex(identity);
+}
+
 /** Runs preparation and compilation; returns false for a test-only product. */
 bool compileProduct(const SunConfig& config, const ConfigEntrypoint& entry,
                     const fs::path& artifact) {
@@ -551,6 +629,7 @@ bool compileProduct(const SunConfig& config, const ConfigEntrypoint& entry,
 
 fs::path buildConfigProducts(const ConfigGraph& workspace, SunConfig config,
                              const std::vector<std::string>& names) {
+  BuildSessionScope session;
   config = configureBuildPaths(workspace, std::move(config));
   const auto projectName = config.packageId.empty()
                                ? config.configDir.filename().string()
@@ -576,6 +655,7 @@ fs::path buildConfigProducts(const ConfigGraph& workspace, SunConfig config,
     }
   }
   entries = orderPrerequisites(config, entries);
+  std::vector<std::pair<std::string, ProductCompletion>> pending;
   PackagePlan plan;
   plan.name = fs::path(projectName).filename().string();
   plan.output = install;
@@ -598,7 +678,20 @@ fs::path buildConfigProducts(const ConfigGraph& workspace, SunConfig config,
       }
       continue;
     }
-    if (!compileProduct(config, *entry, artifact)) {
+    const auto key =
+        productCompletionKey(guard.key, config, *entry, name, artifact);
+    auto previous = completedProducts.find(key);
+    const bool wantTests = !isCurrentlyBuildingDependency();
+    const bool reusable = previous != completedProducts.end() &&
+                          (previous->second.includesTests || !wantTests);
+    const bool production = reusable ? previous->second.production
+                                     : compileProduct(config, *entry, artifact);
+    pending.emplace_back(
+        key,
+        ProductCompletion{production,
+                          wantTests || (previous != completedProducts.end() &&
+                                        previous->second.includesTests)});
+    if (!production) {
       continue;
     }
     plan.artifacts.push_back({name, artifact.string(), library});
@@ -610,6 +703,9 @@ fs::path buildConfigProducts(const ConfigGraph& workspace, SunConfig config,
   }
   if (compiler) {
     buildPackages(config, {plan}, false);
+  }
+  for (const auto& [key, completion] : pending) {
+    completedProducts[key] = completion;
   }
   return install;
 }
@@ -631,6 +727,7 @@ void packageConfigProducts(const ConfigGraph& workspace, SunConfig config,
 
 std::optional<fs::path> resolveLocalDependency(const SunConfig& consumer,
                                                const std::string& name) {
+  BuildSessionScope session;
   std::optional<ConfigGraph> ownGraph;
   if (!currentGraph) {
     std::vector<std::string> roots;

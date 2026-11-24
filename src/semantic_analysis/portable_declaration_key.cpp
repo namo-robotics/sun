@@ -5,7 +5,7 @@
 
 #include "ast.h"
 #include "ast/ast_children.h"
-#include "llvm/Support/SHA256.h"
+#include "support/content_hash.h"
 #include "support/error.h"
 #include "types/types.h"
 
@@ -52,15 +52,7 @@ std::string tuple(char tag, const std::vector<std::string>& fields) {
 /** Hash framed derivation inputs without retaining nested keys in the result.
  */
 std::string derivedKey(char tag, const std::vector<std::string>& fields) {
-  llvm::SHA256 sha;
-  sha.update(tuple(tag, fields));
-  std::string result = "$";
-  constexpr char hex[] = "0123456789abcdef";
-  for (auto byte : sha.final()) {
-    result += hex[byte >> 4];
-    result += hex[byte & 15];
-  }
-  return result;
+  return "$" + sun::support::blake3Hex(tuple(tag, fields));
 }
 
 /** Encode type arguments in their declared order. */
@@ -303,7 +295,7 @@ PortableDeclarationKey PortableDeclarationKey::original(
       !std::all_of(bundleHash.begin(), bundleHash.end(), [](char c) {
         return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
       })) {
-    logAndThrowError("Bundle identity must be a full lowercase SHA-256 digest");
+    logAndThrowError("Bundle identity must be a full lowercase BLAKE3 digest");
   }
   if (!declarationNumber) {
     logAndThrowError("Bundle declaration number is unassigned");
@@ -342,15 +334,8 @@ std::string PortableDeclarationKey::symbol(const std::string& role) const {
   if (role.empty()) {
     logAndThrowError("Symbol emission role must not be empty");
   }
-  llvm::SHA256 sha;
-  sha.update(tuple('E', {"SUN1", require(*this), role}));
-  std::string result = "_SUN1_";
-  constexpr char hex[] = "0123456789abcdef";
-  for (auto byte : sha.final()) {
-    result += hex[byte >> 4];
-    result += hex[byte & 15];
-  }
-  return result;
+  return "_SUN2_" +
+         sun::support::blake3Hex(tuple('E', {"SUN2", require(*this), role}));
 }
 
 PortableTypeKey PortableTypeKey::primitive(const std::string& name) {

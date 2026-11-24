@@ -9,7 +9,6 @@
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/JSON.h>
 #include <llvm/Support/MemoryBuffer.h>
-#include <llvm/Support/SHA256.h>
 #include <llvm/Support/raw_ostream.h>
 
 #include <algorithm>
@@ -41,24 +40,11 @@ void validateBundleHash(const std::string& hash) {
         return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
       })) {
     sun::support::logAndThrowError(
-        "Bundle identity must be a full lowercase SHA-256 digest");
+        "Bundle identity must be a full lowercase BLAKE3 digest");
   }
 }
 
 }  // namespace
-
-/** Returns the hexadecimal SHA-256 digest of the supplied contents. */
-std::string computeSha256Hex(llvm::StringRef data) {
-  llvm::SHA256 sha;
-  sha.update(data);
-  std::string result;
-  for (uint8_t byte : sha.final()) {
-    constexpr char hex[] = "0123456789abcdef";
-    result += hex[byte >> 4];
-    result += hex[byte & 15];
-  }
-  return result;
-}
 
 //===----------------------------------------------------------------------===//
 // MoonWriter

@@ -1162,7 +1162,7 @@ TEST_F(MoonExactTypes, generic_constraint_arguments_keep_dependency_identity) {
 }
 
 TEST_F(MoonExactTypes,
-       bundle_digest_is_full_sha256_and_ignores_dependency_order) {
+       bundle_digest_is_full_blake3_and_ignores_dependency_order) {
   auto c = bundle("c", R"(
     public module c { public function value() i32 { return 41; } }
   )");
@@ -1250,7 +1250,7 @@ TEST_F(MoonExactTypes, bundle_digest_includes_aliases_and_codegen_options) {
 
 TEST_F(MoonExactTypes, malformed_bundle_digest_is_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(sun::moon_bundling::MoonWriter("short"),
-                                "full lowercase SHA-256 digest");
+                                "full lowercase BLAKE3 digest");
   auto reader = MoonReader::open(b1);
   ASSERT_TRUE(reader);
   const auto key = reader->listModules()[0];
@@ -1270,7 +1270,7 @@ TEST_F(MoonExactTypes, malformed_bundle_digest_is_rejected) {
   output.write(bytes.data(), bytes.size());
   output.close();
   EXPECT_SUN_ERROR_WITH_MESSAGE(MoonReader::open(path),
-                                "full lowercase SHA-256 digest");
+                                "full lowercase BLAKE3 digest");
 }
 
 TEST_F(MoonExactTypes,

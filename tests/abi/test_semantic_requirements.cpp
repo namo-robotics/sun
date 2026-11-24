@@ -1,3 +1,4 @@
+#include "support/content_hash.h"
 /** Exercises independently reconstructed declarations and retained generic
  * bodies. */
 #include <google/protobuf/unknown_field_set.h>
@@ -142,7 +143,7 @@ TEST(ABI_Compatibility,
   ASSERT_TRUE(input);
   const std::string bytes((std::istreambuf_iterator<char>(input)),
                           std::istreambuf_iterator<char>());
-  EXPECT_EQ(sun::moon_bundling::computeSha256Hex(bytes),
+  EXPECT_EQ(sun::support::sha256Hex(bytes),
             "1df3009fa8a5e9d0052a7903391681b63ec2e08d21c9f332eed019b147c9b650");
   EXPECT_THROW(sun::moon_bundling::MoonReader::open(path),
                sun::support::SunError);

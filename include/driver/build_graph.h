@@ -49,6 +49,20 @@ void setConfiguredBuildRoots(const std::vector<std::string>& roots);
 ConfigGraph loadConfigGraph(const std::filesystem::path& file,
                             const std::string& target = "");
 
+/** Owns completed-product state for one invocation, independently of graph
+ * lifetime. */
+class BuildSessionScope {
+ public:
+  /** Starts a session or joins the enclosing invocation's session. */
+  BuildSessionScope();
+  /** Releases completion state when the outermost session ends. */
+  ~BuildSessionScope();
+  /** Keeps session lifetime tied to the original stack frame. */
+  BuildSessionScope(const BuildSessionScope&) = delete;
+  /** Prevents replacing a live session. */
+  BuildSessionScope& operator=(const BuildSessionScope&) = delete;
+};
+
 /** Makes an explicit config graph available to nested dependency resolution. */
 class ConfigGraphScope {
  public:

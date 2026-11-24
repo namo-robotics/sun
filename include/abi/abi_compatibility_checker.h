@@ -124,6 +124,12 @@ class AbiCompatibilityChecker {
   /** Validates immutable bytes, optionally recording an authorized import. */
   ValidatedBundle validateImpl(moon_bundling::MoonReader& reader,
                                const std::string& targetTriple, bool record);
+  /** Checks declarations, bitcode and archives before publishing a cache
+   * receipt. Throws on malformed contents or a mismatch with the bundle
+   * contract. */
+  void validateBundleContents(moon_bundling::MoonReader& reader,
+                              const BundleContract& contract,
+                              const std::string& targetTriple);
   /** Checks emitted boundaries against the independently supported contract. */
   void validatePayload(const BundleContract& contract,
                        const llvm::Module& module, const std::string& bundle,

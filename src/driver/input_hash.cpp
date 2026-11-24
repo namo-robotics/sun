@@ -2,9 +2,7 @@
 
 #include "driver/input_hash.h"
 
-#include <llvm/ADT/StringExtras.h>
 #include <llvm/Config/llvm-config.h>
-#include <llvm/Support/BLAKE3.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/TargetParser/Host.h>
@@ -16,6 +14,7 @@
 #include "generated/sun_version.h"
 #include "moon_bundling/moon.h"
 #include "moon_bundling/proto_importer.h"
+#include "support/content_hash.h"
 #include "support/error.h"
 
 /** Coordinates compilation, dependency loading, linking, and program execution.
@@ -42,17 +41,6 @@ std::string hashField(const std::string& tag, const std::string& value) {
     result += *field;
   }
   return result;
-}
-
-/**
- * Digest of a whole file's bytes. Files can be large (the compiler itself,
- * native archives) and are read on every run, so this uses BLAKE3, which is
- * several times faster than SHA-256 and just as fit for telling files apart.
- */
-std::string digestBytes(llvm::StringRef bytes) {
-  llvm::BLAKE3 hasher;
-  hasher.update(bytes);
-  return llvm::toHex(hasher.final(), /*LowerCase=*/true);
 }
 
 /**
@@ -90,12 +78,13 @@ const std::string& getCompilerDigest() {
       if (auto buffer = llvm::MemoryBuffer::getFile(exe, /*IsText=*/false,
                                                     /*RequiresNullTerminator=*/
                                                     false)) {
-        return digestBytes((*buffer)->getBuffer());
+        return sun::support::blake3Hex((*buffer)->getBuffer());
       }
     }
     // The executable cannot be found or read; the release it came from is
     // the best identity left.
-    return digestBytes(std::string(SUN_VERSION_NAME) + "-" + SUN_GIT_HASH);
+    return sun::support::blake3Hex(std::string(SUN_VERSION_NAME) + "-" +
+                                   SUN_GIT_HASH);
   }();
   return digest;
 }
@@ -107,7 +96,7 @@ std::string computeFileDigest(const std::string& path, const char* what) {
   if (!buffer) {
     fail(std::string("Cannot read ") + what + ": " + path);
   }
-  return digestBytes((*buffer)->getBuffer());
+  return sun::support::blake3Hex((*buffer)->getBuffer());
 }
 
 /** Adds source and protobuf content digests to the build inputs. */
@@ -122,7 +111,7 @@ void addSourceDigests(
     inputs.sourceDigests.push_back(computeFileDigest(path, "source"));
   }
   for (const auto& source : protoModules) {
-    inputs.sourceDigests.push_back(digestBytes(source.sunSource));
+    inputs.sourceDigests.push_back(sun::support::blake3Hex(source.sunSource));
   }
 }
 
@@ -151,7 +140,7 @@ std::string computeInputHash(const BuildInputs& inputs) {
   }
   auto& checker = share ? current : isolated;
   checker.configure(std::move(context));
-  std::string input = "sun.inputs.v1";
+  std::string input = "sun.inputs.v2";
   input += hashField("kind", inputs.artifactKind);
 
   // Sorted, so the hash does not depend on manifest order
@@ -209,7 +198,7 @@ std::string computeInputHash(const BuildInputs& inputs) {
   input += hashField("compiler", getCompilerDigest());
   input += hashField("compiler_version_name", SUN_VERSION_NAME);
   input += hashField("llvm", LLVM_VERSION_STRING);
-  return sun::moon_bundling::computeSha256Hex(input);
+  return sun::support::blake3Hex(input);
 }
 
 }  // namespace sun::driver

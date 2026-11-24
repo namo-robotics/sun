@@ -24,6 +24,7 @@
 #include "driver/manifest_processor.h"
 #include "moon_bundling/moon.h"
 #include "moon_bundling/moon_cache.h"
+#include "support/content_hash.h"
 #include "support/error.h"
 #include "support/save_and_restore.h"
 #include "support/target_os.h"
@@ -257,7 +258,7 @@ void validatePackage(const fs::path& root, const std::string& target) {
     fail("invalid package.json: " + llvm::toString(parsed.takeError()));
   }
   const auto* obj = parsed->getAsObject();
-  if (!obj || obj->getInteger("format_version") != 1 ||
+  if (!obj || obj->getInteger("format_version") != 2 ||
       !obj->getString("name") || !obj->getString("target") ||
       !obj->getArray("files") || !obj->getArray("artifacts")) {
     fail("unsupported or incomplete package metadata");
@@ -553,7 +554,7 @@ std::string metadata(const PackagePlan& plan, const std::string& target,
         {"path", path}, {"hash", file.hash}, {"executable", file.exec}});
   }
   llvm::json::Value value(
-      llvm::json::Object{{"format_version", 1},
+      llvm::json::Object{{"format_version", 2},
                          {"name", plan.name},
                          {"package_id", packageId},
                          {"target", configTargetKey(target)},
@@ -614,7 +615,7 @@ void compress(const fs::path& root, const fs::path& output) {
 }  // namespace
 
 std::string packageFileHash(const fs::path& path) {
-  return sun::moon_bundling::computeSha256Hex(read(path));
+  return sun::support::blake3Hex(read(path));
 }
 
 bool isCurrentlyBuildingDependency() { return buildingDependency; }
@@ -666,7 +667,7 @@ fs::path resolveConfigDependency(const SunConfig& config,
     if (roots.size() == 1) {
       return roots.front();
     }
-    const auto digest = sun::moon_bundling::computeSha256Hex(fingerprint);
+    const auto digest = sun::support::blake3Hex(fingerprint);
     const auto parent = roots.front().parent_path() / "views";
     fs::create_directories(parent);
     FileLock lock(parent / ".lock");
@@ -727,13 +728,21 @@ fs::path resolveConfigDependency(const SunConfig& config,
   if (dep.package && fs::is_directory(input)) {
     validatePackage(input, config.targetTriple);
     if (!dep.hash.empty() &&
-        packageFileHash(input / "package.json") != dep.hash) {
+        sun::support::sha256Hex(read(input / "package.json")) != dep.hash) {
       fail("package inventory hash mismatch: " + name);
     }
     return fs::canonical(input);
   }
-  const auto hash = packageFileHash(input);
-  if (!dep.hash.empty() && hash != dep.hash) {
+  std::string hash, checksum;
+  {
+    // Derive both identities from the same snapshot before staging the file.
+    const auto bytes = read(input);
+    hash = sun::support::blake3Hex(bytes);
+    if (!dep.hash.empty()) {
+      checksum = sun::support::sha256Hex(bytes);
+    }
+  }
+  if (!dep.hash.empty() && checksum != dep.hash) {
     fail("hash mismatch for dependency " + name);
   }
   const auto selector =

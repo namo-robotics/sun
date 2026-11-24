@@ -671,7 +671,7 @@ void VariableGenerator::emitStaticInitFunction(uint32_t initOrder,
   // their side effects and leak the first values.
   if (!bundleHash.empty()) {
     llvm::Type* flagType = llvm::Type::getInt1Ty(ctx.getContext());
-    const std::string flagName = "_SUN1_static_init_done_" + bundleHash;
+    const std::string flagName = "_SUN2_static_init_done_" + bundleHash;
     GlobalVariable* doneFlag = module->getGlobalVariable(flagName);
     if (!doneFlag) {
       doneFlag = new GlobalVariable(

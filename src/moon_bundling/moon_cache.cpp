@@ -2,7 +2,6 @@
 
 #include "moon_bundling/moon_cache.h"
 
-#include <llvm/Support/SHA256.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -12,6 +11,7 @@
 #include <fstream>
 #include <sstream>
 
+#include "support/content_hash.h"
 #include "support/error.h"
 
 using sun::support::logAndThrowError;
@@ -26,21 +26,6 @@ std::filesystem::path MoonCache::defaultCacheDir() {
   return std::filesystem::current_path() / ".sun/cache/moons";
 }
 
-std::string MoonCache::computeSha256Hex(const std::string& content) {
-  llvm::SHA256 sha;
-  sha.update(llvm::StringRef(content));
-  auto hashBytes = sha.final();
-
-  std::string hash;
-  hash.reserve(64);
-  for (uint8_t b : hashBytes) {
-    char hex[3];
-    snprintf(hex, sizeof(hex), "%02x", b);
-    hash += hex;
-  }
-  return hash;
-}
-
 std::string MoonCache::computeFileSha256Hex(const std::filesystem::path& path) {
   std::ifstream file(path, std::ios::binary);
   if (!file) {
@@ -48,7 +33,7 @@ std::string MoonCache::computeFileSha256Hex(const std::filesystem::path& path) {
   }
   std::stringstream buffer;
   buffer << file.rdbuf();
-  return computeSha256Hex(buffer.str());
+  return sun::support::sha256Hex(buffer.str());
 }
 
 // The cache filename never affects module names (those come from bundle
@@ -68,7 +53,7 @@ std::filesystem::path MoonCache::getCachePathFor(
   if (basename.empty()) {
     basename = "lib.moon";
   }
-  return cacheDir / (computeSha256Hex(url) + "-" + basename);
+  return cacheDir / (sun::support::blake3Hex(url) + "-" + basename);
 }
 
 // The URL is later single-quoted into a shell command, so instead of

@@ -84,8 +84,8 @@ TEST(ABI_NominalIdentity, CanonicalEncodingHasAnExplicitRevision) {
   const NominalIdentity point("org.example/shapes", NominalKind::Class,
                               {"shapes", "Point"});
   EXPECT_EQ(point.encoding(),
-            "sun.nominal.v1:"
-            "a1e597408853a63976613306c1b2d339e051a32b07c528f33ae83131f805425d");
+            "sun.nominal.v2:"
+            "0bf3053bc27dd40411db9921c969965b266c8e42c7b628095b79b1c32c713364");
 }
 
 /** Library IDs preserve arbitrary valid text and enforce a byte limit. */

@@ -133,8 +133,7 @@ struct TestBuildInspection {
  * them. */
 static TestBuildInspection inspectTestBuild(
     const TestBuildCandidate& candidate, const std::string& configurationError,
-    std::set<std::string>& watched,
-    std::set<std::string>& binaries) {
+    std::set<std::string>& watched, std::set<std::string>& binaries) {
   namespace fs = std::filesystem;
   const auto& entry = candidate.entry;
   const auto& path = entry.path;

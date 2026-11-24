@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "moon_bundling/moon.h"
+#include "support/content_hash.h"
 
 /** Builds and loads compiled Moon libraries and their declaration metadata. */
 namespace sun::moon_bundling {
@@ -143,7 +144,7 @@ std::string computeArchiveSetHash(
   for (const auto& line : lines) {
     input += line;
   }
-  return computeSha256Hex(input).substr(0, 16);
+  return sun::support::blake3Hex(input);
 }
 
 /** Reads archive symbols and reports definitions requiring library isolation.
