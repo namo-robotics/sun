@@ -17,6 +17,7 @@
 #include <iostream>
 #include <set>
 
+#include "abi/bundle_validation_cache.h"
 #include "abi/exception_layout.h"
 #include "cli/bundle_command.h"
 #include "cli/command_support.h"
@@ -207,6 +208,8 @@ void runCustomBuild(const BuildRunOptions& options,
       {"version", 1},
       {"config", config.configFile.string()},
       {"display_root", sun::support::displayPathBase().string()},
+      {"validation_cache",
+       sun::abi::BundleValidationCache::directory().string()},
       {"target", config.targetTriple},
       {"source", source},
       {"artifact_id", entry.name},
@@ -252,6 +255,8 @@ void runCustomBuild(const BuildRunOptions& options,
   } environment;
 
   environment.set("SUN_BUILD_CONTEXT", contextPath.string());
+  environment.set("SUN_VALIDATION_CACHE",
+                  sun::abi::BundleValidationCache::directory().string());
   environment.set(
       "SUN_EXECUTABLE",
       llvm::sys::fs::getMainExecutable(
@@ -294,6 +299,9 @@ int runConfigBuildCommand(const BuildRunOptions& options) {
     auto graph = sun::driver::loadConfigGraph(options.inputFiles.at(0),
                                               options.targetTriple);
     sun::driver::ConfigGraphScope graphScope(graph);
+    sun::abi::ValidationCacheScope validationCache(
+        graph.root / ".sun/cache/validation/v1", options.forceRebuild);
+    sun::driver::BuildSessionScope buildSession;
     configureProductCompiler(options);
     std::vector<sun::driver::SunConfig> configs;
     std::string missing;
@@ -377,8 +385,9 @@ void configureProductCompiler(const BuildRunOptions& options) {
     sun::support::BuildProgressScope progress(
         config.packageId.empty() ? entry.name
                                  : config.packageId + "/" + entry.name,
-        output, sun::driver::ManifestProcessor::expandPathVariables(
-                    entry.testBinaryName, &config));
+        output,
+        sun::driver::ManifestProcessor::expandPathVariables(
+            entry.testBinaryName, &config));
     auto selectedOptions = options;
     if (!selectedOptions.shared.exceptionTraceDepth) {
       selectedOptions.shared.exceptionTraceDepth = config.exceptionTraceDepth;
@@ -722,6 +731,8 @@ int runDependencyPathCommand(const std::vector<std::string>& args) {
 int runBuildCompileCommand(const std::vector<std::string>& args) {
   try {
     auto context = sun::driver::readBuildContext();
+    sun::abi::ValidationCacheScope validationCache(
+        std::string(context.getString("validation_cache").value_or("")));
     sun::support::DisplayPathScope displayPaths(
         std::string(context.getString("display_root").value_or("")));
     auto config = sun::driver::buildContextConfig();
@@ -772,7 +783,8 @@ int runBuildCompileCommand(const std::vector<std::string>& args) {
     applyBuildRunSettings(options);
     auto job = makeCompileJob(options);
     sun::support::BuildProgressScope progress(
-        config.packageId.empty() ? id->str() : config.packageId + "/" + id->str(),
+        config.packageId.empty() ? id->str()
+                                 : config.packageId + "/" + id->str(),
         output->str(), tests->str());
     job.artifactId = id->str();
     job.testBinaryName = tests->str();

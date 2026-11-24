@@ -25,7 +25,7 @@ namespace sun::moon_bundling {
 struct MoonHeader {
   static constexpr uint32_t MAGIC = 0x53554E4C;  // "SUNL"
   // Owned interface handles store separate allocation and receiver pointers.
-  static constexpr uint32_t VERSION = 18;
+  static constexpr uint32_t VERSION = 19;
 
   uint32_t magic = MAGIC;
   uint32_t version = VERSION;
@@ -62,10 +62,6 @@ struct NativeArchiveEntry {
 // =============================================================================
 // Writer and Reader classes
 // =============================================================================
-
-/** Return the full lowercase SHA-256 digest of exact source or artifact bytes.
- */
-std::string computeSha256Hex(llvm::StringRef data);
 
 /**
  * Creates .moon bundle files containing multiple modules

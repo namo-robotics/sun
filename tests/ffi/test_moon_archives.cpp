@@ -353,7 +353,7 @@ TEST(Ffi_MoonArchives, carried_archive_symbols_carry_the_archive_set_hash) {
   ASSERT_EQ(reader->getNativeArchives().size(), 1u);
   const std::string prefix =
       "$" + reader->getNativeArchives()[0].archiveSetHash + "$_";
-  EXPECT_EQ(reader->getNativeArchives()[0].archiveSetHash.size(), 16u);
+  EXPECT_EQ(reader->getNativeArchives()[0].archiveSetHash.size(), 64u);
   EXPECT_NE(prefix, symbolPrefix(bundles.leaf));
 
   const auto symbols = carriedArchiveSymbols(bundles.leaf);

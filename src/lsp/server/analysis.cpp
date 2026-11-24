@@ -1,5 +1,4 @@
 /** Language server analysis implementation. */
-#include <llvm/Support/SHA256.h>
 
 #include <algorithm>
 #include <cctype>
@@ -9,6 +8,7 @@
 
 #include "lsp/declarations.h"
 #include "server.h"
+#include "support/content_hash.h"
 #include "support/error.h"
 #include "support/source_manager.h"
 
@@ -23,17 +23,7 @@ class DiagnosticsCache {
  public:
   /** Computes the content key used to reuse document diagnostics. */
   static std::string computeHash(const std::string& content) {
-    llvm::SHA256 sha;
-    sha.update(llvm::StringRef(content));
-    auto hashBytes = sha.final();
-    std::string hash;
-    hash.reserve(64);
-    for (uint8_t b : hashBytes) {
-      char hex[3];
-      snprintf(hex, sizeof(hex), "%02x", b);
-      hash += hex;
-    }
-    return hash;
+    return sun::support::blake3Hex(content);
   }
 
   /** Reports whether diagnostics have been cached for the supplied content

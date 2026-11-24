@@ -21,6 +21,7 @@
 #include "parsing/lexer.h"
 #include "parsing/parser.h"
 #include "semantic_analysis/semantic_analyzer.h"
+#include "support/content_hash.h"
 
 using sun::moon_bundling::MoonImport;
 
@@ -1107,6 +1108,8 @@ TEST(Modules, config_moon_url_is_fetched_and_imported) {
   fs::create_directories(dir / "cache");
   setenv("SUN_DEPENDENCY_CACHE", (dir / "cache").c_str(), 1);
 
+  std::ifstream artifact(moonPath, std::ios::binary);
+  const std::string artifactBytes(std::istreambuf_iterator<char>(artifact), {});
   fs::path mainFile = dir / "main.sun";
   {
     std::ofstream out(mainFile);
@@ -1121,7 +1124,7 @@ TEST(Modules, config_moon_url_is_fetched_and_imported) {
            "\"library\":\"urllib\",\"url\":"
            "\"file://"
         << fs::absolute(moonPath).string() << "\",\"hash\":\""
-        << sun::driver::packageFileHash(moonPath) << "\"}]}";
+        << sun::support::sha256Hex(artifactBytes) << "\"}]}";
   }
 
   auto driver = Driver::createForJIT("moon_url_main");
@@ -1652,7 +1655,7 @@ TEST(Modules, moon_symbols_use_versioned_portable_identities) {
   ASSERT_FALSE(modules.empty());
   const auto* metadata = reader->getMetadata(modules[0]);
   ASSERT_NE(metadata, nullptr);
-  const std::string prefix = "_SUN1_";
+  const std::string prefix = "_SUN2_";
 
   llvm::LLVMContext context;
   auto bundled = reader->loadModule(modules[0], context);

@@ -21,14 +21,13 @@
 #include "abi/library_abi_snapshot.h"
 #include "abi/lowering_descriptors.h"
 #include "abi/support_inventory.h"
+#include "support/content_hash.h"
 #ifdef __linux__
 #include <link.h>
 #elif defined(__APPLE__)
 #include <mach-o/dyld.h>
 #include <mach-o/loader.h>
 #endif
-
-#include <llvm/Support/SHA256.h>
 
 #include "abi/producer_identity.h"
 #include "generated/sun_compatibility.h"
@@ -40,19 +39,6 @@
 namespace sun::abi {
 /** Private canonical encoding and implementation discovery helpers. */
 namespace {
-/** Hashes canonical contract bytes without depending on a container
- * implementation. */
-std::string computeSha256Hex(llvm::StringRef bytes) {
-  llvm::SHA256 hash;
-  hash.update(bytes);
-  std::string result;
-  constexpr char hex[] = "0123456789abcdef";
-  for (auto byte : hash.final()) {
-    result += hex[byte >> 4];
-    result += hex[byte & 15];
-  }
-  return result;
-}
 
 /** Encodes an unsigned integer without host layout or byte-order dependencies.
  */
@@ -156,7 +142,7 @@ const std::set<std::string> implementationLibraryDigests = [] {
     }
     auto bytes = llvm::MemoryBuffer::getFile(path);
     if (bytes) {
-      digests.insert(computeSha256Hex((*bytes)->getBuffer()));
+      digests.insert(sun::support::blake3Hex((*bytes)->getBuffer()));
       continue;
     }
     if (!path.starts_with("/usr/lib/") &&
@@ -173,7 +159,7 @@ const std::set<std::string> implementationLibraryDigests = [] {
     for (uint32_t j = 0; j < header->ncmds; ++j) {
       if (command->cmd == LC_UUID) {
         const auto* uuid = reinterpret_cast<const uuid_command*>(command);
-        digests.insert(computeSha256Hex(
+        digests.insert(sun::support::blake3Hex(
             path + std::string(reinterpret_cast<const char*>(uuid->uuid),
                                sizeof(uuid->uuid))));
         identified = true;
@@ -207,7 +193,7 @@ std::string hashBitcodeReaderContract(
     }
     encoded += field(2, integer(requirement));
   }
-  return computeSha256Hex(encoded);
+  return sun::support::blake3Hex(encoded);
 }
 
 const std::string& compatibilityImplementation() {
@@ -224,7 +210,7 @@ const std::string& runtimeFingerprint() {
       if (!bytes)
         sun::support::logAndThrowError(
             "Cannot fingerprint implementation dependency: " + path);
-      digests.insert(computeSha256Hex((*bytes)->getBuffer()));
+      digests.insert(sun::support::blake3Hex((*bytes)->getBuffer()));
     }
 #elif defined(__APPLE__)
     digests = implementationLibraryDigests;
@@ -234,8 +220,8 @@ const std::string& runtimeFingerprint() {
         "macOS; this "
         "host is unsupported");
 #endif
-    return computeSha256Hex(field(1, "sun.runtime.provenance.v1") +
-                            sortedFields(2, digests));
+    return sun::support::blake3Hex(field(1, "sun.runtime.provenance.v1") +
+                                   sortedFields(2, digests));
   }();
   return fingerprint;
 }
@@ -263,7 +249,7 @@ std::string encodeBundleContract(const BundleContract& contract) {
 }
 
 std::string hashBundleContract(const BundleContract& contract) {
-  return computeSha256Hex(encodeBundleContract(contract));
+  return sun::support::blake3Hex(encodeBundleContract(contract));
 }
 
 TargetProfile compatibilityTarget(const std::string& requested) {
@@ -378,7 +364,7 @@ std::vector<std::string> describeBoundaries(const llvm::Module& module) {
 
 BundleContract describeContract(const llvm::Module& module) {
   BundleContract contract;
-  contract.set_encoding_schema(1);
+  contract.set_encoding_schema(2);
   contract.set_experimental(true);
   *contract.mutable_target() = compatibilityTarget(module.getTargetTriple());
   if (!module.getDataLayoutStr().empty()) {

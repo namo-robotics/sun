@@ -8,6 +8,7 @@
 
 #include "abi/abi_compatibility_checker.h"
 #include "abi/abi_validation_scope.h"
+#include "abi/bundle_validation_cache.h"
 #include "cli/command_support.h"
 #include "driver/build_record.h"
 #include "driver/c_bindings.h"
@@ -203,6 +204,7 @@ CompileJob makeCompileJob(const BuildRunOptions& options) {
 
 /** Builds the executable used to run the selected Sun tests. */
 int compileTestBinary(const CompileJob& job, bool hasExecutable) {
+  sun::abi::ValidationCacheScope validationCache({}, job.forceRebuild);
   sun::abi::AbiValidationScope compatibility(
       {.targetTriple = job.targetTriple,
        .execution = sun::abi::NativeExecution::NativeLink,
@@ -262,6 +264,7 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
 
 /** Compiles and links a program entrypoint using the prepared job settings. */
 int compileEntrypoint(const CompileJob& job) {
+  sun::abi::ValidationCacheScope validationCache({}, job.forceRebuild);
   sun::abi::AbiValidationScope compatibility(
       {.targetTriple = job.targetTriple,
        .execution = sun::abi::NativeExecution::NativeLink,

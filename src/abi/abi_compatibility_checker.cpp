@@ -13,6 +13,7 @@
 
 #include "abi/abi_validation_scope.h"
 #include "abi/boundary_requirements.h"
+#include "abi/bundle_validation_cache.h"
 #include "abi/library_abi_snapshot.h"
 #include "abi/native_requirements.h"
 #include "abi/nominal_identity.h"
@@ -20,6 +21,7 @@
 #include "abi/semantic_requirements.h"
 #include "abi/support_inventory.h"
 #include "moon_bundling/moon.h"
+#include "support/content_hash.h"
 #include "support/display_path.h"
 #include "support/error.h"
 #include "support/terminal.h"
@@ -89,7 +91,7 @@ std::string AbiCompatibilityChecker::bytesHash(
     return found->second;
   }
   return byteHashes_
-      .emplace(snapshot, moon_bundling::computeSha256Hex(*reader.getBytes()))
+      .emplace(snapshot, sun::support::blake3Hex(*reader.getBytes()))
       .first->second;
 }
 
@@ -239,144 +241,20 @@ ValidatedBundle AbiCompatibilityChecker::validateImpl(
                   compatibilityImplementation());
   auto found = validatedBundles_.find(key);
   if (found == validatedBundles_.end()) {
-    const auto modules = reader.listModules();
-    const auto* metadata = &reader.getLibrary();
-    if (!metadata || !metadata->has_bundle_contract()) {
+    const auto cacheKey =
+        BundleValidationCache::key(digest, context_, targetTriple);
+    const auto& metadata = reader.getLibrary();
+    if (!metadata.has_bundle_contract()) {
       sun::support::logAndThrowError(
           "Dependency '" + reader.getPath().string() +
           "': compatibility cannot be established; missing bundle contract; "
           "rebuild the bundle");
     }
-    const auto& contract = metadata->bundle_contract();
+    const auto& contract = metadata.bundle_contract();
     validateContract(contract, reader.getPath().string(), targetTriple);
-    const std::set<std::string> semantics(contract.semantic_records().begin(),
-                                          contract.semantic_records().end());
-    bool metadataRule = false;
-    for (const auto& rule : contract.requirements()) {
-      if (rule.name() == "moon.metadata") {
-        metadataRule = true;
-      }
-    }
-    if (!metadataRule) {
-      sun::support::logAndThrowError(
-          "Dependency '" + reader.getPath().string() + "', contract " +
-          contract.compatibility_hash() +
-          ": missing moon.metadata requirement");
-    }
-    std::vector<const moon::ModuleMetadata*> declarationModules;
-    std::map<std::string, std::vector<const moon::ModuleMetadata*>>
-        payloadMetadata;
-    for (const auto& moduleKey : modules) {
-      const auto* metadata = reader.getMetadata(moduleKey);
-      declarationModules.push_back(metadata);
-      payloadMetadata[reader.getBitcodeId(moduleKey)].push_back(metadata);
-    }
-    try {
-      validateDeclarationGraph(declarationModules);
-    } catch (const sun::support::SunError& error) {
-      sun::support::logAndThrowError(
-          "Dependency '" + reader.getPath().string() + "', contract " +
-          contract.compatibility_hash() + ": " + error.what());
-    }
-    if (contract.has_library_abi()) {
-      if (!contract.has_library_id() ||
-          encodeLibraryAbiSnapshot(contract.library_abi()) !=
-              encodeLibraryAbiSnapshot(describeLibraryAbiSnapshot(
-                  contract, reader.getLibrary().content_hash(),
-                  declarationModules))) {
-        sun::support::logAndThrowError(
-            "Library revision differs from its declarations");
-      }
-    }
-    std::set<std::string> checked;
-    for (const auto& moduleKey : modules) {
-      try {
-        if (!semantics.count(
-                describeSemantics(*reader.getMetadata(moduleKey)))) {
-          sun::support::logAndThrowError(
-              "declarations or retained bodies differ from contract");
-        }
-      } catch (const sun::support::SunError& error) {
-        sun::support::logAndThrowError(
-            "Dependency '" + reader.getPath().string() + "', contract " +
-            contract.compatibility_hash() + ": " + error.what());
-      }
-      if (!checked.insert(reader.getBitcodeId(moduleKey)).second) {
-        continue;
-      }
-      llvm::LLVMContext context;
-      auto module = reader.loadModule(moduleKey, context);
-      if (!module) {
-        sun::support::logAndThrowError(
-            "Unsupported Moon payload in '" + reader.getPath().string() +
-            "', contract " + contract.compatibility_hash() + ": " +
-            reader.getError());
-      }
-      if (auto error = module->materializeAll()) {
-        sun::support::logAndThrowError(
-            "Unsupported Moon payload in '" + reader.getPath().string() +
-            "', contract " + contract.compatibility_hash() + ": " +
-            llvm::toString(std::move(error)));
-      }
-      validatePayload(contract, *module, reader.getPath().string(),
-                      targetTriple);
-      try {
-        validatePayloadDeclarations(
-            payloadMetadata.at(reader.getBitcodeId(moduleKey)), *module);
-        for (const auto* metadata :
-             payloadMetadata.at(reader.getBitcodeId(moduleKey))) {
-          validateSpecializationPayload(*metadata, *module);
-        }
-      } catch (const sun::support::SunError& error) {
-        sun::support::logAndThrowError(
-            "Dependency '" + reader.getPath().string() + "', contract " +
-            contract.compatibility_hash() + ": " + error.what());
-      }
-    }
-    if (!reader.getNativeArchives().empty()) {
-      bool nativeRule = false;
-      for (const auto& rule : contract.requirements()) {
-        if (rule.name() == nativeArchiveRule(contract.target())) {
-          nativeRule = true;
-        }
-      }
-      try {
-        if (!nativeRule) {
-          sun::support::logAndThrowError("missing native archive requirements");
-        }
-        std::vector<std::vector<char>> buffers(
-            reader.getNativeArchives().size());
-        std::vector<NativeArchiveInput> archives;
-        size_t index = 0;
-        for (const auto& entry : reader.getNativeArchives()) {
-          auto& bytes = buffers[index++];
-          if (!reader.readNativeArchive(entry, bytes)) {
-            sun::support::logAndThrowError(reader.getError());
-          }
-          archives.push_back(
-              {llvm::MemoryBufferRef(
-                   llvm::StringRef(bytes.data(), bytes.size()), entry.name),
-               "$" + entry.archiveSetHash + "$_"});
-        }
-        std::set<std::string> runtimeServices;
-        validateNativeArchives(archives, contract.target(), &runtimeServices);
-        for (const auto& service : runtimeServices) {
-          bool recorded = false;
-          for (const auto& rule : contract.requirements()) {
-            if (rule.name() == "native.runtime." + service) {
-              recorded = true;
-            }
-          }
-          if (!recorded) {
-            sun::support::logAndThrowError(
-                "missing native runtime requirement: " + service);
-          }
-        }
-      } catch (const sun::support::SunError& error) {
-        sun::support::logAndThrowError(
-            "Dependency '" + reader.getPath().string() + "', contract " +
-            contract.compatibility_hash() + ": " + error.what());
-      }
+    if (!BundleValidationCache::contains(cacheKey)) {
+      validateBundleContents(reader, contract, targetTriple);
+      BundleValidationCache::remember(cacheKey);
     }
     found = validatedBundles_
                 .emplace(key, std::make_shared<const BundleContract>(contract))
@@ -386,6 +264,137 @@ ValidatedBundle AbiCompatibilityChecker::validateImpl(
     recordValidatedImport(*found->second, digest, reader.getPath().string());
   }
   return ValidatedBundle(found->second);
+}
+
+void AbiCompatibilityChecker::validateBundleContents(
+    moon_bundling::MoonReader& reader, const BundleContract& contract,
+    const std::string& targetTriple) {
+  const auto modules = reader.listModules();
+  const std::set<std::string> semantics(contract.semantic_records().begin(),
+                                        contract.semantic_records().end());
+  bool metadataRule = false;
+  for (const auto& rule : contract.requirements()) {
+    if (rule.name() == "moon.metadata") {
+      metadataRule = true;
+    }
+  }
+  if (!metadataRule) {
+    sun::support::logAndThrowError(
+        "Dependency '" + reader.getPath().string() + "', contract " +
+        contract.compatibility_hash() + ": missing moon.metadata requirement");
+  }
+  std::vector<const moon::ModuleMetadata*> declarationModules;
+  std::map<std::string, std::vector<const moon::ModuleMetadata*>>
+      payloadMetadata;
+  for (const auto& moduleKey : modules) {
+    const auto* metadata = reader.getMetadata(moduleKey);
+    declarationModules.push_back(metadata);
+    payloadMetadata[reader.getBitcodeId(moduleKey)].push_back(metadata);
+  }
+  try {
+    validateDeclarationGraph(declarationModules);
+  } catch (const sun::support::SunError& error) {
+    sun::support::logAndThrowError(
+        "Dependency '" + reader.getPath().string() + "', contract " +
+        contract.compatibility_hash() + ": " + error.what());
+  }
+  if (contract.has_library_abi()) {
+    if (!contract.has_library_id() ||
+        encodeLibraryAbiSnapshot(contract.library_abi()) !=
+            encodeLibraryAbiSnapshot(describeLibraryAbiSnapshot(
+                contract, reader.getLibrary().content_hash(),
+                declarationModules))) {
+      sun::support::logAndThrowError(
+          "Library revision differs from its declarations");
+    }
+  }
+  std::set<std::string> checked;
+  for (const auto& moduleKey : modules) {
+    try {
+      if (!semantics.count(describeSemantics(*reader.getMetadata(moduleKey)))) {
+        sun::support::logAndThrowError(
+            "declarations or retained bodies differ from contract");
+      }
+    } catch (const sun::support::SunError& error) {
+      sun::support::logAndThrowError(
+          "Dependency '" + reader.getPath().string() + "', contract " +
+          contract.compatibility_hash() + ": " + error.what());
+    }
+    if (!checked.insert(reader.getBitcodeId(moduleKey)).second) {
+      continue;
+    }
+    llvm::LLVMContext context;
+    auto module = reader.loadModule(moduleKey, context);
+    if (!module) {
+      sun::support::logAndThrowError(
+          "Unsupported Moon payload in '" + reader.getPath().string() +
+          "', contract " + contract.compatibility_hash() + ": " +
+          reader.getError());
+    }
+    if (auto error = module->materializeAll()) {
+      sun::support::logAndThrowError(
+          "Unsupported Moon payload in '" + reader.getPath().string() +
+          "', contract " + contract.compatibility_hash() + ": " +
+          llvm::toString(std::move(error)));
+    }
+    validatePayload(contract, *module, reader.getPath().string(), targetTriple);
+    try {
+      validatePayloadDeclarations(
+          payloadMetadata.at(reader.getBitcodeId(moduleKey)), *module);
+      for (const auto* metadata :
+           payloadMetadata.at(reader.getBitcodeId(moduleKey))) {
+        validateSpecializationPayload(*metadata, *module);
+      }
+    } catch (const sun::support::SunError& error) {
+      sun::support::logAndThrowError(
+          "Dependency '" + reader.getPath().string() + "', contract " +
+          contract.compatibility_hash() + ": " + error.what());
+    }
+  }
+  if (!reader.getNativeArchives().empty()) {
+    bool nativeRule = false;
+    for (const auto& rule : contract.requirements()) {
+      if (rule.name() == nativeArchiveRule(contract.target())) {
+        nativeRule = true;
+      }
+    }
+    try {
+      if (!nativeRule) {
+        sun::support::logAndThrowError("missing native archive requirements");
+      }
+      std::vector<std::vector<char>> buffers(reader.getNativeArchives().size());
+      std::vector<NativeArchiveInput> archives;
+      size_t index = 0;
+      for (const auto& entry : reader.getNativeArchives()) {
+        auto& bytes = buffers[index++];
+        if (!reader.readNativeArchive(entry, bytes)) {
+          sun::support::logAndThrowError(reader.getError());
+        }
+        archives.push_back(
+            {llvm::MemoryBufferRef(llvm::StringRef(bytes.data(), bytes.size()),
+                                   entry.name),
+             "$" + entry.archiveSetHash + "$_"});
+      }
+      std::set<std::string> runtimeServices;
+      validateNativeArchives(archives, contract.target(), &runtimeServices);
+      for (const auto& service : runtimeServices) {
+        bool recorded = false;
+        for (const auto& rule : contract.requirements()) {
+          if (rule.name() == "native.runtime." + service) {
+            recorded = true;
+          }
+        }
+        if (!recorded) {
+          sun::support::logAndThrowError(
+              "missing native runtime requirement: " + service);
+        }
+      }
+    } catch (const sun::support::SunError& error) {
+      sun::support::logAndThrowError(
+          "Dependency '" + reader.getPath().string() + "', contract " +
+          contract.compatibility_hash() + ": " + error.what());
+    }
+  }
 }
 
 void AbiCompatibilityChecker::validateContract(
@@ -398,7 +407,7 @@ void AbiCompatibilityChecker::validateContract(
                                    contract.compatibility_hash() + ": " +
                                    reason + "; compilation stopped");
   };
-  if (contract.encoding_schema() != 1 || !contract.experimental()) {
+  if (contract.encoding_schema() != 2 || !contract.experimental()) {
     fail("unsupported contract encoding or stability claim");
   }
   if (contract.has_library_id()) {
@@ -460,7 +469,7 @@ void AbiCompatibilityChecker::validateContract(
     }
   }
   BundleContract derived;
-  derived.set_encoding_schema(1);
+  derived.set_encoding_schema(2);
   if (contract.has_library_id()) {
     derived.set_library_id(contract.library_id());
   }

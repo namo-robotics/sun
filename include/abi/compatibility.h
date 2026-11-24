@@ -23,7 +23,7 @@ using ProducerIdentity = proto::ProducerIdentity;
 /** Canonically encodes required fields, excluding the hash and producer data.
  */
 std::string encodeBundleContract(const BundleContract& contract);
-/** Computes the domain-separated SHA-256 compatibility identifier. */
+/** Computes the domain-separated BLAKE3 compatibility identifier. */
 std::string hashBundleContract(const BundleContract& contract);
 /** Hashes the sorted bitcode requirement set using canonical tagged integers.
  * Rejects unknown fields or requirements rather than silently excluding them.

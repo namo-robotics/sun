@@ -50,8 +50,6 @@ class MoonCache {
                                       const std::filesystem::path& dest);
 
  private:
-  /** Returns the hexadecimal SHA-256 digest of the supplied contents. */
-  static std::string computeSha256Hex(const std::string& content);
   /** Reads a file and returns its hexadecimal SHA-256 digest. */
   static std::string computeFileSha256Hex(const std::filesystem::path& path);
   /** Derives the cache filename for the supplied library URL. */

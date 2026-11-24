@@ -151,7 +151,7 @@ DISubprogram* DebugInfoBuilder::enterFunction(llvm::IRBuilderBase& builder,
   auto* spType = di_->createSubroutineType(di_->getOrCreateTypeArray({}));
   // Portable hashes are not C++ mangled names. Omitting that optional DWARF
   // attribute lets debuggers index the written name instead of the hash.
-  const auto linkageName = func->getName().starts_with("_SUN1_")
+  const auto linkageName = func->getName().starts_with("_SUN2_")
                                ? llvm::StringRef{}
                                : func->getName();
   auto* sp =

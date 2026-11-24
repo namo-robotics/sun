@@ -69,7 +69,7 @@ std::map<std::string, std::string> listArchiveDefinitions(
 
 /**
  * The hash a bundle's own archives have their symbols renamed under: over
- * every archive's file name and the SHA-256 of its bytes as shipped by the
+ * every archive's file name and the BLAKE3 of its bytes as shipped by the
  * vendor, independent of manifest order. Longer than a bundle hash because
  * a collision here would merge two libraries' symbols.
  */

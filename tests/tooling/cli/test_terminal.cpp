@@ -196,7 +196,8 @@ TEST(Tooling_Cli_Terminal, build_progress_keeps_paths_in_debug_output) {
                 output.string() + "\n");
 }
 
-/** Configured labels distinguish tests and restore the caller after nested builds. */
+/** Configured labels distinguish tests and restore the caller after nested
+ * builds. */
 TEST(Tooling_Cli_Terminal, configured_build_progress_restores_identity) {
   ScopedEnvironment level("SUN_LOG_LEVEL", "info");
   ScopedEnvironment noColor("NO_COLOR", "1");
@@ -208,7 +209,8 @@ TEST(Tooling_Cli_Terminal, configured_build_progress_restores_identity) {
     sun::support::logBuildProgress("Building ", output);
     sun::support::logBuildProgress("Building tests: ", tests);
     {
-      sun::support::BuildProgressScope inner("example/dependency/app", output, {});
+      sun::support::BuildProgressScope inner("example/dependency/app", output,
+                                             {});
       sun::support::logBuildProgress("Up to date: ", output);
       sun::support::logBuildProgress("Built ", tests);
     }

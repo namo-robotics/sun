@@ -10,6 +10,7 @@
 #include "abi/semantic_requirements.h"
 #include "abi/support_inventory.h"
 #include "moon_bundling/moon.h"
+#include "support/content_hash.h"
 #include "support/error.h"
 
 /** Validates correspondence between revisions without changing code ownership.
@@ -161,7 +162,7 @@ proto::LibraryAbiSnapshot describeLibraryAbiSnapshot(
       for (const auto& component : components) {
         identity += frame(component);
       }
-      identity = "sun.abi.path.v1:" + moon_bundling::computeSha256Hex(identity);
+      identity = "sun.abi.path.v2:" + sun::support::blake3Hex(identity);
     }
     identities[key] = identity;
     // Only nominal types and module navigation can cross revision boundaries.
@@ -185,7 +186,7 @@ proto::LibraryAbiSnapshot describeLibraryAbiSnapshot(
   *requirements.mutable_requirements() = contract.requirements();
   // Preserve the original hash domain so renaming the snapshot keeps ABI hashes
   // stable.
-  std::string encoded = frame("sun.abi.library-revision.v1") +
+  std::string encoded = frame("sun.abi.library-revision.v2") +
                         frame(encodeBundleContract(requirements));
   std::set<std::string> semantics;
   for (const auto* module : modules) {
@@ -204,7 +205,7 @@ proto::LibraryAbiSnapshot describeLibraryAbiSnapshot(
   for (const auto& item : semantics) {
     encoded += frame(item);
   }
-  revision.set_abi_hash(moon_bundling::computeSha256Hex(encoded));
+  revision.set_abi_hash(sun::support::blake3Hex(encoded));
   return revision;
 }
 

@@ -1244,7 +1244,7 @@ TEST(Ffi, native_global_and_sun_definition_have_distinct_symbols) {
   EXPECT_TRUE(native->isDeclaration());
   size_t sunDefinitions = 0;
   for (const auto& global : driver->getModule().globals()) {
-    if (!global.isDeclaration() && global.getName().starts_with("_SUN1_")) {
+    if (!global.isDeclaration() && global.getName().starts_with("_SUN2_")) {
       ++sunDefinitions;
     }
   }

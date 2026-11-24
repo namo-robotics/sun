@@ -3,7 +3,8 @@
 // paths through local, configured and installed directories, and split
 // the entries into .sun files, .moon imports and .proto schemas. Moon
 // entries name package libraries or local .moon files. Configured dependencies
-// resolve lazily through package references or directory variables. Path variables
+// resolve lazily through package references or directory variables. Path
+// variables
 // ("$LIBS/util.moon"), defined by --path-var (which wins), the nearest
 // sun-config.json, project / language-server defaults, or the environment.
 

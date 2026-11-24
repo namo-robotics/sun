@@ -14,7 +14,7 @@ namespace {
 thread_local std::optional<std::filesystem::path> displayRoot;
 thread_local std::array<std::pair<std::filesystem::path, std::string>, 2>
     buildLabels;
-}
+}  // namespace
 
 DisplayPathScope::DisplayPathScope(const std::filesystem::path& directory)
     : previous_(displayRoot) {
@@ -29,13 +29,14 @@ DisplayPathScope::DisplayPathScope(const std::filesystem::path& directory)
 
 DisplayPathScope::~DisplayPathScope() { displayRoot = std::move(previous_); }
 
-BuildProgressScope::BuildProgressScope(
-    const std::string& identity, const std::filesystem::path& output,
-    const std::filesystem::path& tests) {
-  previous_[0] = {std::filesystem::absolute(output).lexically_normal(), identity};
+BuildProgressScope::BuildProgressScope(const std::string& identity,
+                                       const std::filesystem::path& output,
+                                       const std::filesystem::path& tests) {
+  previous_[0] = {std::filesystem::absolute(output).lexically_normal(),
+                  identity};
   if (!tests.empty()) {
     previous_[1] = {std::filesystem::absolute(tests).lexically_normal(),
-                   identity + " (tests)"};
+                    identity + " (tests)"};
   }
   // Change active labels only after both paths and labels are ready.
   previous_.swap(buildLabels);

@@ -1,3 +1,4 @@
+#include "support/content_hash.h"
 // tests/modules/test_moon_cache.cpp - Download cache for url moon
 // dependencies. All tests are offline: file:// URLs plus pre-seeded caches.
 
@@ -116,7 +117,7 @@ TEST(Modules_MoonCache, fetch_preseeded_cache_skips_download_without_hash) {
   std::string fileUrl = probe;
   auto seeded = MoonCache::fetch(fileUrl, std::nullopt, fx.cacheDir);
   // Rename the seeded entry to the name the https URL would get
-  auto wanted = sha256Hex(url) + "-lib.moon";
+  auto wanted = sun::support::blake3Hex(url) + "-lib.moon";
   fs::rename(seeded, fx.cacheDir / wanted);
 
   auto cached = MoonCache::fetch(url, std::nullopt, fx.cacheDir);
@@ -129,7 +130,7 @@ TEST(Modules_MoonCache, fetch_redownloads_on_hash_mismatch) {
   std::string url = fx.writeSource("lib.moon", real);
 
   // Seed the cache with stale content under the URL's cache name
-  fs::path stale = fx.cacheDir / (sha256Hex(url) + "-lib.moon");
+  fs::path stale = fx.cacheDir / (sun::support::blake3Hex(url) + "-lib.moon");
   {
     std::ofstream out(stale, std::ios::binary);
     out << "stale-content";

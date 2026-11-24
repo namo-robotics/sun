@@ -301,7 +301,7 @@ TEST(ABI_Compatibility, BitcodeUsesReaderContract) {
   const auto expected = sun::abi::hashBitcodeReaderContract(
       sun::abi::compilerAbiSupport().bitcode_reader_contract());
   EXPECT_EQ(expected,
-            "f8d866500027675bcc46c8842e6c57f9ae0ea8c7986c97db024fb030cb852820");
+            "3c341365db25c46d9d79be68363a046dcbc694f358600ed3a6525540d71da31d");
   EXPECT_EQ(sun::abi::emissionImplementation("llvm.bitcode"), expected);
   EXPECT_EQ(sun::abi::supportedRules().at("llvm.bitcode"), expected);
   EXPECT_NE(expected, sun::abi::compatibilityImplementation());

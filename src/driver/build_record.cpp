@@ -22,7 +22,7 @@ namespace sun::driver {
  * unit. */
 namespace {
 
-constexpr const char* kRecordHeader = "sun-build-record 1";
+constexpr const char* kRecordHeader = "sun-build-record 2";
 // Mach-O names a section by segment and section; the reader sees only the
 // section part, which is why both spellings end the same way.
 constexpr const char* kElfSection = ".sun_build";

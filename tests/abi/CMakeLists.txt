@@ -2,7 +2,7 @@
 set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/test_native_requirements.cpp"
     TARGET_DIRECTORY sun_tests PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 
-target_sources(sun_tests PRIVATE test_compatibility.cpp test_boundary_requirements.cpp test_semantic_requirements.cpp test_native_requirements.cpp test_nominal_identity.cpp test_library_abi_snapshot.cpp)
+target_sources(sun_tests PRIVATE test_bundle_validation_cache.cpp test_compatibility.cpp test_boundary_requirements.cpp test_semantic_requirements.cpp test_native_requirements.cpp test_nominal_identity.cpp test_library_abi_snapshot.cpp)
 
 # Verify release configuration independently of the current compiler identity.
 add_test(NAME ABI_ReleaseIdentity.Configuration
@@ -82,3 +82,10 @@ add_test(NAME ABI_VersionName
     COMMAND ${CMAKE_COMMAND}
         -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/test_version_name.cmake)
+
+# Disk receipts must work without relying on state inherited by a checker.
+add_test(NAME ABI_ValidationCache.IndependentProcesses
+    COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -DSUN=$<TARGET_FILE:sun>
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test_validation_cache_processes.cmake
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})

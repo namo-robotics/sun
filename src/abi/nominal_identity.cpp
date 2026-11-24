@@ -1,10 +1,10 @@
 #include "abi/nominal_identity.h"
 
 #include <llvm/Support/ConvertUTF.h>
-#include <llvm/Support/SHA256.h>
 
 #include <cstdint>
 
+#include "support/content_hash.h"
 #include "support/error.h"
 
 /** Describes nominal identity separately from exact implementation artifacts.
@@ -56,7 +56,7 @@ NominalIdentity::NominalIdentity(const std::string& library, NominalKind kind,
         "Nominal identity requires a library and declaration path");
   }
   std::string bytes;
-  append(bytes, "sun.abi.nominal-identity.v1");
+  append(bytes, "sun.abi.nominal-identity.v2");
   append(bytes, library);
   append(bytes, kindName(kind));
   for (const auto& component : path) {
@@ -66,13 +66,6 @@ NominalIdentity::NominalIdentity(const std::string& library, NominalKind kind,
     }
     append(bytes, component);
   }
-  llvm::SHA256 hash;
-  hash.update(bytes);
-  encoded_ = "sun.nominal.v1:";
-  constexpr char hex[] = "0123456789abcdef";
-  for (auto byte : hash.final()) {
-    encoded_ += hex[byte >> 4];
-    encoded_ += hex[byte & 15];
-  }
+  encoded_ = "sun.nominal.v2:" + sun::support::blake3Hex(bytes);
 }
 }  // namespace sun::abi

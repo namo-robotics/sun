@@ -7,6 +7,7 @@
 #include <fstream>
 
 #include "abi/abi_compatibility_checker.h"
+#include "support/content_hash.h"
 #include "support/error.h"
 #include "support/sun_path.h"
 
@@ -269,7 +270,7 @@ std::vector<std::string> LibraryCache::extractNativeArchives(
         continue;
       }
       const std::string digest =
-          computeSha256Hex(llvm::StringRef(data.data(), data.size()));
+          sun::support::blake3Hex(llvm::StringRef(data.data(), data.size()));
       if (!extractedDigests.insert(digest).second) {
         continue;
       }

@@ -476,3 +476,114 @@ TEST_F(BuildGraph, RejectsDuplicateArtifactIdentities) {
   put("b/sun-config.json", product);
   EXPECT_THROW(sun::driver::loadConfigGraph(dir / "sun-config.json"), SunError);
 }
+
+/** Overlapping requests within one invocation check each distinct product once.
+ */
+TEST_F(BuildGraph, SessionDeduplicatesExpandedSelections) {
+  put("sun-config.json", R"({"entrypoints":[
+    {"name":"first","path":"api.sun","type":"library"},
+    {"name":"second","path":"api.sun","type":"library","requires":["first"]}
+  ]})");
+  put("api.sun", "manifest {}\n");
+  auto graph = sun::driver::loadConfigGraph(dir / "sun-config.json");
+  sun::driver::ConfigGraphScope graphScope(graph);
+  auto config = SunConfig::loadFile(dir / "sun-config.json");
+  std::vector<std::string> built;
+  sun::driver::setProductCompiler(
+      /** Records the requested build and supplies its fixture artifact. */
+      [&](const auto&, const auto& entry, const fs::path& output) {
+        built.push_back(entry.name);
+        std::ofstream(output) << entry.name;
+      });
+  {
+    sun::driver::BuildSessionScope session;
+    sun::driver::buildConfigProducts(graph, config, {"first"});
+    const auto installed =
+        sun::driver::buildConfigProducts(graph, config, {"second"});
+    sun::driver::buildConfigProducts(graph, config, {"first"});
+    EXPECT_EQ(built, (std::vector<std::string>{"first", "second"}));
+    EXPECT_TRUE(fs::exists(installed / "lib/first.moon"));
+    EXPECT_TRUE(fs::exists(installed / "lib/second.moon"));
+  }
+  built.clear();
+  sun::driver::buildConfigProducts(graph, config, {"first"});
+  EXPECT_EQ(built, (std::vector<std::string>{"first"}));
+}
+
+/** Failure does not mark a product complete or prevent retry in the same
+ * session. */
+TEST_F(BuildGraph, SessionRetriesFailedProducts) {
+  put("sun-config.json", R"({"entrypoints":[
+    {"name":"api","path":"api.sun","type":"library"}
+  ]})");
+  put("api.sun", "manifest {}\n");
+  auto graph = sun::driver::loadConfigGraph(dir / "sun-config.json");
+  auto config = SunConfig::loadFile(dir / "sun-config.json");
+  unsigned attempts = 0;
+  sun::driver::setProductCompiler(
+      /** Records the requested build and supplies its fixture artifact. */
+      [&](const auto&, const auto&, const fs::path& output) {
+        if (++attempts == 1) {
+          sun::support::logAndThrowError("retry fixture");
+        }
+        std::ofstream(output) << "success";
+      });
+  sun::driver::BuildSessionScope session;
+  EXPECT_THROW(sun::driver::buildConfigProducts(graph, config, {"api"}),
+               SunError);
+  EXPECT_NO_THROW(sun::driver::buildConfigProducts(graph, config, {"api"}));
+  EXPECT_NO_THROW(sun::driver::buildConfigProducts(graph, config, {"api"}));
+  EXPECT_EQ(attempts, 2u);
+}
+
+/** A dependency-only check cannot suppress a later request for its test output.
+ */
+TEST_F(BuildGraph, SessionUpgradesDependencyChecksToTests) {
+  put("sun-config.json",
+      R"({"projects":["producer/sun-config.json","consumer/sun-config.json"]})");
+  put("producer/sun-config.json",
+      R"({"package_id":"example/tools","entrypoints":[
+    {"name":"generator","path":"tool.sun","type":"binary","export":true}
+  ]})");
+  put("consumer/sun-config.json", R"({"dependencies":[
+    {"package":"example/tools","binary":"generator","path":"missing"}
+  ]})");
+  auto graph = sun::driver::loadConfigGraph(dir / "sun-config.json");
+  sun::driver::ConfigGraphScope graphScope(graph);
+  sun::driver::BuildSessionScope session;
+  std::vector<bool> dependencyChecks;
+  sun::driver::setProductCompiler([&](const auto&, const auto&,
+                                      const fs::path& output) {
+    dependencyChecks.push_back(sun::driver::isCurrentlyBuildingDependency());
+    std::ofstream(output) << "test executable";
+  });
+  auto consumer = SunConfig::loadFile(dir / "consumer/sun-config.json");
+  sun::driver::resolveConfigDependency(consumer, "example/tools");
+  auto producer = SunConfig::loadFile(dir / "producer/sun-config.json");
+  sun::driver::buildConfigProducts(graph, producer, {"generator"});
+  sun::driver::buildConfigProducts(graph, producer, {"generator"});
+  EXPECT_EQ(dependencyChecks, (std::vector<bool>{true, false}));
+}
+
+/** Changing compilation settings within a session requires another product
+ * check. */
+TEST_F(BuildGraph, SessionRechecksChangedTraceDepth) {
+  put("sun-config.json", R"({"entrypoints":[
+    {"name":"api","path":"api.sun","type":"library"}
+  ]})");
+  auto graph = sun::driver::loadConfigGraph(dir / "sun-config.json");
+  auto config = SunConfig::loadFile(dir / "sun-config.json");
+  unsigned checks = 0;
+  sun::driver::setProductCompiler(
+      /** Counts compiler requests and supplies a packageable artifact. */
+      [&](const auto&, const auto&, const fs::path& output) {
+        ++checks;
+        std::ofstream(output) << "artifact";
+      });
+  sun::driver::BuildSessionScope session;
+  sun::driver::buildConfigProducts(graph, config, {"api"});
+  config.exceptionTraceDepth = 42;
+  sun::driver::buildConfigProducts(graph, config, {"api"});
+  sun::driver::buildConfigProducts(graph, config, {"api"});
+  EXPECT_EQ(checks, 2u);
+}

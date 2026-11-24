@@ -16,6 +16,7 @@
 #include "driver/build_graph.h"
 #include "driver/manifest_processor.h"
 #include "moon_bundling/moon.h"
+#include "support/content_hash.h"
 #include "support/error.h"
 
 /** Coordinates compilation, dependency loading, linking, and program execution.
@@ -123,8 +124,8 @@ void validateGitSource(const ConfigEntrypoint& entry) {
 std::string resolveGitEntrypoint(const ConfigEntrypoint& entry, bool refresh) {
   namespace fs = std::filesystem;
   validateGitSource(entry);
-  const auto cache = cacheDirectory() / sun::moon_bundling::computeSha256Hex(
-                                            entry.git + "\n" + entry.version);
+  const auto cache = cacheDirectory() /
+                     sun::support::blake3Hex(entry.git + "\n" + entry.version);
   fs::path checkout;
   std::string snapshot;
   std::ifstream(cache / "current") >> snapshot;
@@ -333,7 +334,7 @@ std::filesystem::path resolveGitDependency(const SunConfig& consumer,
       (dependencyOptions.optimize ? "-optimized" : "-unoptimized") + "-trace-" +
       std::to_string(dependencyOptions.exceptionTraceDepth);
   const auto output = cacheDirectory() / "builds" /
-                      sun::moon_bundling::computeSha256Hex(buildIdentity) /
+                      sun::support::blake3Hex(buildIdentity) /
                       configTargetKey(consumer.targetTriple) / settings;
   auto checkout = inputFile.parent_path();
   while (!fs::is_directory(checkout / ".sun-git-source")) {

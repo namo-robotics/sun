@@ -25,7 +25,7 @@ TEST(Tooling_Frontend_PortableIdentity, symbols_have_a_frozen_encoding) {
   auto key = PortableDeclarationKey::original(bundle, 6);
   EXPECT_EQ(
       key.symbol("function"),
-      "_SUN1_907b3a260be289f76a3596962f74a0e6ab8e2c93163365102c2195eca4841cac");
+      "_SUN2_532f89bcc24369a91597d73592397013b4bc95c4ab42ba2accb6d2c682c04183");
   EXPECT_NE(key.symbol("function"), key.symbol("type"));
   EXPECT_EQ(key, PortableDeclarationKey::original(bundle, 6));
 }
@@ -242,18 +242,18 @@ TEST(Tooling_Frontend_PortableIdentity,
   auto i32 = PortableTypeKey::primitive("i32");
   EXPECT_EQ(
       PortableDeclarationKey::specialization(origin, {i32}).symbol("function"),
-      "_SUN1_a5c9bfc8ad33bf284e44bf31a599ccf775b4f3fa9c59dfece04efffb0a3b3222");
+      "_SUN2_0e224728710e10bd1f2e841c767ccc5f273831270fa00834de6fe0e5e8b84309");
   EXPECT_EQ(
       PortableDeclarationKey::specialization(origin, {i32},
                                              std::vector<PortableTypeKey>{})
           .symbol("function"),
-      "_SUN1_efd1d82485b55ff40f82bba5e46914854e6964bc5a2eddd07af7d7d1500d0b26");
+      "_SUN2_d122177129d15736d046d25a289705eb1fa48c913845c3de747dddd7c70529c8");
   auto callable =
       PortableTypeKey::function(i32, {i32}, false, false, false, true);
   EXPECT_EQ(
       PortableDeclarationKey::specialization(origin, {callable})
           .symbol("function"),
-      "_SUN1_9588ac0357d3c9ba9fcd51354eb6fb5e200dc1d6a20fff46ff6bc199ac815de1");
+      "_SUN2_993319d1140aedadeeb60e0e17b7eb5be858bc35960784b6929fd5607a966e77");
 }
 
 TEST(Tooling_Frontend_PortableIdentity,

@@ -50,7 +50,7 @@ void writeEnvScript(const ConfigGraph& graph, const std::string& targetTriple) {
   output.close();
   if (!output) {
     sun::support::logAndThrowError("cannot write build environment: " +
-                                  path.string());
+                                   path.string());
   }
 }
 

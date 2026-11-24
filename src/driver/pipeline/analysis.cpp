@@ -1,3 +1,4 @@
+#include "support/content_hash.h"
 /** Loads imports and performs semantic analysis. */
 #include <filesystem>
 #include <fstream>
@@ -302,7 +303,7 @@ static std::string computeOwnSourceHash(const BlockExprAST& blockAst) {
   sun::serialization::ASTSerializer serializer;
   std::string source;
   appendOwnSourceBytes(blockAst, serializer, source);
-  return sun::moon_bundling::computeSha256Hex(source);
+  return sun::support::blake3Hex(source);
 }
 
 void Driver::analyzeProgram(BlockExprAST& blockAst, Parser& parser) {
