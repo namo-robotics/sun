@@ -12,7 +12,7 @@ namespace sun::moon_bundling {
  *
  * Bundles are downloaded once with the system curl binary and stored under
  * the cache directory, keyed by the URL. A cached bundle is reused forever,
- * unless the config descriptor carries a `hash` (lowercase hex SHA-256 of the
+ * unless the config descriptor carries a `sha256` (lowercase hex SHA-256 of the
  * file bytes) that the cached file no longer matches — then it is fetched
  * again and the fresh download must match the hash. Callers can request a
  * refresh when an unpinned dependency should follow a mutable URL.

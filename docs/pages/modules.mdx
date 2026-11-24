@@ -1,69 +1,65 @@
-import PathVariables from '../generated/path_variables.mdx'
+# Modules and Manifests
 
-# Modules, Manifests, and Project Configuration
+A **module** groups names and controls visibility. A **manifest** lists the files
+and libraries compiled with an entrypoint. A **Moon library** (`.moon`) packages
+compiled Sun code for another program to use.
 
-| Concept | What it describes |
-| --- | --- |
-| [Modules](#modules) | Names, visibility, and shared state in Sun code. |
-| [Manifests](#manifests) | Source files and libraries used by one entrypoint. |
-| [Moon libraries](#precompiled-libraries-moon) | Compiled code and metadata shared between programs. |
-| [sun-config.json](#project-configuration-sun-configjson) | Products, dependencies, targets, and build steps for a project. |
+Use modules to organize code, manifests to connect files, and the
+[build system](/build-system) to build and distribute projects.
 
 ## Modules
 
 ### Module declarations
 
-```sun
+Declare a module, then qualify its public names with the module name:
+
+```sun filename="main.sun"
 /** Small arithmetic helpers. */
 public module math {
   /** Returns the square of a number. */
-  public function square(x: i32) i32 {
-    return x * x;
-  }
+  public function square(x: i32) i32 { return x * x; }
 }
 
-/** Uses a function from another module. */
-function main() i32 {
-  return math.square(3);  // 9
-}
+/** Uses a module's public function. */
+function main() i32 { return math.square(3); }
 ```
 
-Inside `math`, call `square(3)` directly. Outside it, use `math.square(3)`.
+Run this with `sun main.sun`. Inside `math`, the same function can be called as
+`square(3)`.
 
-Dotted names create nested modules:
+Dotted declarations create nested modules:
 
 ```sun
 /** Helpers for reading files. */
 public module app.files.readers {}
 ```
 
-This makes `app`, `files`, and `readers` public. The comment documents `readers`.
-Use separate nested declarations to document each module.
+This makes `app`, `files`, and `readers` public. Use separate nested declarations
+when each module needs its own documentation.
 
 ### Using statements
+
+`using` lets you omit a module prefix. With `math` from the previous example:
 
 ```sun
 using math;
 
-/** Calls square without the module prefix. */
-function main() i32 {
-  return square(3);
-}
+/** Calls a function without its module prefix. */
+function main() i32 { return square(3); }
 ```
 
-`using math` lets this file use names from `math` without the prefix. It does
-not load another file or library; the manifest does that.
-
-A `using` inside a function or module applies only there and in its children.
-Each source file needs its own `using` statements, even when several files
-contribute to the same module.
+A `using` applies to its file, or to the function or module containing it and
+that scope's children. Each source file needs its own `using` statements.
+It does not load files or libraries; a manifest does that.
 
 ### Visibility
+
+Declarations inside a module are private unless marked `public`:
 
 ```sun
 /** Number operations available to callers. */
 public module numbers {
-  /** Private helper used within this module. */
+  /** Doubles an input for use inside this module. */
   function twice(x: i32) i32 { return x * 2; }
 
   /** Returns four times the input. */
@@ -71,17 +67,17 @@ public module numbers {
 }
 ```
 
-Callers can use `numbers.four_times(3)`. They cannot use `numbers.twice(3)`.
-
-Declarations are private unless marked `public`; there is no `private` keyword.
+Callers can use `numbers.four_times(3)`, but not `numbers.twice(3)`.
 Private names are accessible within their module and its children, including
-parts of that module in other files. `using` does not bypass privacy.
+parts of that module in other files. Class members follow the same boundary;
+`using` does not bypass it. There is no `private` keyword.
 
-Class members follow the same module boundary. All declarations of the same
-module must agree on its visibility. Names outside any module are available
-throughout the program.
+Declarations of the same module must agree on visibility. Names outside any
+module are available throughout the program.
 
 ### Module-level variables
+
+A module can hold state shared by its callers:
 
 ```sun
 /** Counts calls for the lifetime of the program. */
@@ -93,71 +89,51 @@ public module counter {
 }
 ```
 
-`counter.add()` changes the shared `counter.count`. Use `const` for a value that
-cannot change. Protect shared mutable values with a [mutex](/threads) when using
-multiple threads.
+`counter.add()` changes `counter.count`. Use `const` for values that cannot
+change, and protect shared mutable state with a [mutex](/threads) across threads.
 
 ## Manifests
 
-```sun filename="main.sun"
-using std.io;
+An entrypoint's manifest lists additional compilation inputs. For example,
+put `math` from above in `math.sun`, and use it from a separate entrypoint:
 
-/** Prints a greeting. */
-function main() void {
-  println("Hello!");
-}
+```sun filename="main.sun"
+/** Calls a function from another source file. */
+function main() i32 { return math.square(3); }
 
 manifest {
-  source_files: ["helpers.sun"]
-  libraries: ["sun/stdlib"]
+  source_files: ["math.sun"]
 }
 ```
 
-Run it with `sun main.sun`. Sun compiles `helpers.sun` with `main.sun` and loads
-the compiler-supplied standard library. Source paths start at the directory
-containing `main.sun`.
-
-All manifest fields are optional. A manifest declares dependencies, not the
-artifact's identity. Source-level `id` fields are rejected.
-
-Configured builds use the entrypoint's `name` as its local ID. When the project
-has `"package_id": "sun"`, an entrypoint named `stdlib` has the
-canonical identity `sun/stdlib`. Without a package ID, the name is
-used unchanged. Library and executable entrypoints follow the same rule.
-
-Direct compilation defaults to the source filename without `.sun`. Use `--id`
-to override that local name for one direct compilation:
-
-```sh
-sun --emit-moon --id geometry -o output.moon shapes.sun
-```
-
-The source project's `package_id`, when present, still prefixes the override.
-The output path never changes identity. Configured builds reject `--id`, including
-inside custom build scripts; change the entrypoint name in the config instead.
-Renaming a published entrypoint changes its identity and can break consumers.
+`sun main.sun` compiles both files. Source paths are relative to the entrypoint's
+directory. All manifest fields are optional.
 
 ### Test files and other inputs
 
+Add only the inputs the entrypoint needs:
+
 ```sun
 manifest {
-  test_files: ["helpers_tests.sun"]
-  protos: ["messages.proto"]
-  archives: ["native/libhelper.a"]
+  libraries: ["sun/stdlib"]
+  test_files: ["math_tests.sun"]
 }
 ```
 
-| Field | Use |
+| Field | Purpose |
 | --- | --- |
-| `source_files` | Compile more Sun files with the entrypoint. |
-| `test_files` | Include these files only when compiling tests. |
+| `source_files` | Compile additional Sun files. |
+| `test_files` | Include files only when compiling [tests](/testing). |
 | `libraries` | Load compiled `.moon` libraries. |
-| `protos` | Generate message types from Protobuf schemas. |
-| `archives` | Carry native static libraries inside a `.moon` bundle. |
+| `protos` | Generate types from [Protobuf](/protobuf) schemas. |
+| `archives` | Carry native static libraries inside a `.moon` bundle; see [C FFI](/c-ffi). |
 
-See [Testing](/testing), [Protobuf](/protobuf), and [C FFI](/c-ffi) for examples.
+For example, `protos: ["messages.proto"]` adds a schema, and
+`archives: ["native/libhelper.a"]` adds a native archive.
 
 ### Platform-specific files
+
+Use `target` to select extra inputs for the compilation target:
 
 ```sun
 manifest {
@@ -169,45 +145,33 @@ manifest {
 }
 ```
 
-A Linux build includes `files_linux.sun` before `files.sun`. A macOS build uses
-`files_macos.sun` instead. `windows` is also supported.
-
-`--target` selects the build target; without it, Sun uses the host platform.
-The manifest only selects inputs for that target.
+Linux includes `files_linux.sun` before `files.sun`; macOS uses `files_macos.sun`
+instead. `windows` is also supported. `--target` selects the compilation target;
+without it, Sun uses the host platform.
 
 ### Package library references
 
-Use `package-id/entrypoint-name` in `libraries`:
+A library reference names a package and its entrypoint:
 
 ```sun
 manifest {
-  libraries: [
-    "sun/stdlib",
-    "sun/tls",
-    "namo-robotics/aether/aether",
-    "namo-robotics/relay/relay"
-  ]
+  libraries: ["sun/stdlib", "example/math/math"]
 }
 ```
 
-The last slash separates the package ID from the library entrypoint name.
-`sun/stdlib` and `sun/tls` use the compiler's bundle search paths; they do not
-fetch or build a compiler checkout. The compiler project's package ID is `sun`.
+The last slash separates package ID `example/math` from entrypoint `math`.
+Declare external packages in [project dependencies](/build-system#dependencies).
+The configuration controls their versions, local providers, and target settings;
+Sun resolves their libraries from the installed `lib` directory.
 
-Other packages must be declared in `sun-config.json` dependencies. Their versions,
-local workspace providers, selected entrypoints, and target restrictions remain
-controlled by that configuration. Dependency libraries resolve from the package's
-installed `lib` directory. Custom build scripts use their inherited dependency
-locations without fetching again.
-
-A reference to the current package selects its configured library output and
-needs no self-dependency. Keep that library in the consuming entrypoint's
-`requires` list so it is built first. References do not change build ordering.
-
-Loose `.moon` paths remain supported for standalone files and prebuilt fixtures.
-Library aliases work with both package references and file paths.
+`sun/stdlib` and `sun/tls` use compiler-supplied libraries without fetching a
+compiler checkout. A reference to the current package needs no self-dependency,
+but the consuming entrypoint must list the library in
+[`requires`](/build-system#products-and-build-order) so it is built first.
 
 ### Path Resolution
+
+Use a file path for a standalone prebuilt library:
 
 ```sun
 manifest {
@@ -215,16 +179,9 @@ manifest {
 }
 ```
 
-Sun searches in this order:
-
-1. The entrypoint's directory.
-2. `sun_path` directories from its `sun-config.json` files.
-3. Directories passed with `--lib-path`.
-4. Directories in `SUN_PATH`.
-5. The compiler's library installation directories.
-
-An installed compiler finds `stdlib.moon` without extra settings. To use a
-library elsewhere:
+Sun searches the entrypoint's directory, config `sun_path` directories,
+`--lib-path` directories, `SUN_PATH`, then compiler installation directories,
+in that order. For example:
 
 ```sh
 sun --lib-path /path/to/libraries main.sun
@@ -232,13 +189,39 @@ sun --lib-path /path/to/libraries main.sun
 
 ### Path variables
 
-<PathVariables />
+Define a directory once in the project configuration:
+
+```json filename="sun-config.json"
+{
+  "root": true,
+  "path_variables": { "LIBS": "vendor" }
+}
+```
+
+Then use it in a manifest path:
+
+```sun
+manifest {
+  libraries: ["$LIBS/shapes.moon"]
+}
+```
+
+Variables expand before path resolution; undefined variables are errors.
+Relative config paths resolve against the declaring config. Sun reads configs
+from the entrypoint's directory upward until `root: true`; nearer variable
+definitions win, and nearer search directories are searched first.
+
+Override a value for one invocation with `sun --path-var LIBS=other main.sun`.
+Command-line values override configs, which override editor defaults and the
+environment.
 
 ## Precompiled libraries (.moon)
 
-A `.moon` file contains compiled code and the type information needed to use it.
+Moon files contain compiled code and the metadata needed to import it.
 
 ### Creating Moon files
+
+A library exposes public top-level modules:
 
 ```sun filename="shapes.sun"
 /** Helpers for measuring shapes. */
@@ -247,71 +230,72 @@ public module shapes {
   public function square_area(side: i32) i32 { return side * side; }
 }
 
-manifest {
-}
+manifest {}
 ```
 
 ```sh
 sun --emit-moon -o shapes.moon shapes.sun
 ```
 
-Top-level modules in a library must be public. Put library globals inside a
-module too.
+Put library globals inside modules too. Private helpers stay hidden from importers.
 
 ### Using Moon files
 
+List the compiled library, then call its public functions:
+
 ```sun filename="main.sun"
-/** Uses the compiled shapes library. */
-function main() i32 {
-  return shapes.square_area(4);  // 16
-}
+/** Uses a compiled library. */
+function main() i32 { return shapes.square_area(4); }
 
 manifest {
   libraries: ["shapes.moon"]
 }
 ```
 
-```sh
-sun main.sun
-```
-
-Private library helpers remain hidden from callers.
+Run with `sun main.sun`. This uses the compiled library without needing its source.
 
 ### Library identity
 
-```sun
-manifest {
-}
+The library's identity is independent of its output filename:
+
+```sh
+sun --emit-moon --id geometry -o shapes.moon shapes.sun
 ```
 
-Keep this ID when publishing new versions of the same library. The ID identifies
-the library; it does not set the output filename or guarantee compatibility.
+For direct compilation, the local ID defaults to the source filename without
+`.sun`; `--id` overrides it. Configured builds use the entrypoint's `name` and
+reject `--id`, including in custom builds. A project `package_id` prefixes that
+name: package `example/shapes` and entrypoint `geometry` produce identity
+`example/shapes/geometry`.
+
+Keep the identity stable when publishing new versions. Renaming a published
+entrypoint can break consumers. Identity does not guarantee ABI compatibility,
+and source manifests cannot declare an `id`.
 
 ### Libraries that use other libraries
 
-```text
-app → ui.moon → graphics.moon
-```
+For `app → ui.moon → graphics.moon`, an app calling only UI functions needs just
+`ui.moon` in its manifest. The UI bundle carries the code and metadata it needs.
 
-If the app only calls UI functions, its manifest needs only `ui.moon`. The UI
-bundle carries the code and metadata it needs from `graphics.moon`.
-
-To name graphics types directly in app source, also list `graphics.moon`.
-Using another version does not replace the copy inside `ui.moon`. Sun checks
-identity and ABI compatibility when values cross library boundaries; matching
-type names alone are not enough. See [ABI compatibility](/abi/compatibility).
+To name graphics types directly, also list `graphics.moon`. Importing another
+version does not replace the copy inside UI. Sun checks identity and
+[ABI compatibility](/abi/compatibility) when values cross library boundaries.
 
 ### Module aliases
+
+Give two versions different lookup names:
 
 ```sh
 sun main.sun --moon shapes-v1.moon:shapes=old_shapes \
     --moon shapes-v2.moon:shapes=new_shapes
 ```
 
-Use `old_shapes` and `new_shapes` in source to distinguish the versions. Aliases
-change lookup names, not type identity or compatibility.
+Source can now use `old_shapes` and `new_shapes`. Aliases change lookup names,
+not type identity or compatibility. They also work with package references.
 
 ### Library globals and constants
+
+Compile-time constants remain available to importers:
 
 ```sun
 /** Shared dimensions. */
@@ -320,19 +304,20 @@ public module limits {
 }
 ```
 
-An importer can use `limits.ROWS` as an array size because its value is known at
-compile time. A constant computed at startup cannot be used that way.
-
-Library globals initialize once, before globals in code that imports them.
+An importer can use `limits.ROWS` as an array size. Values computed at startup
+cannot be used that way. Library globals initialize once, before globals in
+code that imports them.
 
 ### Bundle version names
+
+Add a readable label when producing a library:
 
 ```sh
 sun --emit-moon shapes.sun -o shapes.moon --version-name v1.0.0
 ```
 
-This adds a readable label. It changes the bundle hash, but does not select
-versions or change compatibility rules.
+The label changes the bundle hash but does not select versions or change
+compatibility rules.
 
 ### Installed libraries
 
@@ -342,595 +327,6 @@ manifest {
 }
 ```
 
-`stdlib.moon` provides the [standard library](/stdlib). Add `tls.moon` for
-[TLS and HTTPS](/tls); it carries its OpenSSL dependency.
-
-The compiler searches its installation directories automatically. For your own
-bundles, keep them beside the project or use `--lib-path`.
-
-## Project configuration: sun-config.json
-
-### Build a project
-
-```json filename="sun-config.json"
-{
-  "root": true,
-  "package_id": "example/shapes",
-  "entrypoints": [
-    { "name": "shapes", "path": "src/shapes.sun", "type": "library", "export": true },
-    { "name": "viewer", "path": "src/main.sun", "type": "binary", "export": true,
-      "requires": ["shapes"] }
-  ]
-}
-```
-
-```sh
-sun build                         # Build exported products and their tests
-sun build --all                   # Also build internal tests, examples, and tools
-sun build --entrypoint viewer     # Build viewer and its prerequisites
-sun build --no-test               # Omit test binaries
-sun test sun-config.json
-```
-
-`entrypoints` names the products to build; each source file's manifest names its
-inputs. `requires` orders local products. It does not import them: the viewer's
-manifest still lists the libraries it uses. `package_id` identifies the project
-when another project depends on it. With a package ID, `sun build` selects
-exported products by default; unnamed projects default to all products.
-`--all` selects every enabled entrypoint without changing package exports. Use
-`--package` to limit it to one package. It cannot be combined with `--entrypoint`.
-
-Paths are relative to the declaring config. Sun discovers configs beside source
-files and in parent directories; `root: true` stops that upward search.
-`sun -c sun-config.json` also builds the config.
-
-### Composed config builds
-
-```json filename="sun-config.json"
-{
-  "root": true,
-  "projects": ["src/*/sun-config.json"]
-}
-```
-
-```sh
-sun build
-sun build --package example/shapes
-sun build --all                    # Build all enabled entrypoints across projects
-sun build --package example/shapes --all
-sun build --package example/shapes --entrypoint viewer
-```
-
-`projects` includes matching configs; Sun does not scan other directories
-implicitly. Each project keeps its own paths and settings. Package IDs must be
-unique in the workspace. A matching local project takes precedence over a
-configured download or Git provider; a failed local build remains an error.
-
-### Output paths
-
-```sh
-sun describe --field build_root
-sun describe --field install_root
-sun describe --field package_id
-```
-
-Add `--config <file>` and `--package <id>` to select a project. Without `--field`,
-`sun describe` prints JSON.
-
-| Product | Output name |
-| --- | --- |
-| Library named `shapes` | `shapes.moon` |
-| Binary named `viewer` | `viewer` |
-| Tests for `shapes` | `shapes_test` |
-
-Without `name`, Sun uses the source filename without its extension. Manifest IDs
-do not set output filenames. Build products go under `.sun/build/`; staged
-products go under `.sun/install/`. Both paths include the target, build
-configuration, and project name. Scripts use `SUN_BUILD` and `SUN_INSTALL`
-instead of constructing those paths themselves.
-
-After a successful configured build, source the generated environment script
-from the configuration's workspace root to run installed binaries by name:
-
-```sh
-source .sun/install/env.sh
-viewer
-```
-
-The script uses plain `export PATH=...` lines to add installed binaries while
-preserving your existing `PATH`. It includes all composed projects already
-installed for the selected target and build configuration, even with `--package`.
-Paths are absolute and quoted, so you can source the script from any directory.
-Each build rewrites it; source it again to pick up newly installed directories.
-For POSIX shells, use `. .sun/install/env.sh`.
-
-### Dependencies
-
-Every dependency belongs in the config's `dependencies` array:
-
-```json
-{
-  "dependencies": [
-    { "type": "moon", "package": "example/math", "path": "vendor/math.moon" }
-  ]
-}
-```
-
-```sun
-manifest {
-  libraries: ["example/math/math"]
-}
-```
-
-| `type` | Provider | Main fields |
-| --- | --- | --- |
-| `git` | Sun products built from source | `url`, `version`, `packages` |
-| `moon` | A compiled Sun library | `package`, `url` or `path` |
-| `package` | A whole Sun distribution | `package`, `url` or `path` |
-| `binary` | A prebuilt executable | `package`, `binary`, `url` or `path` |
-| `system` | System packages or build tools | `apt` or `brew`, optional `check` |
-| `deb` | A particular Debian package file | `url` or `path`, `sha256` |
-
-Remote Moon, binary, and Sun package downloads require `sha256`. Debian files
-require it even for a local `path`. Replace checksum placeholders in the examples
-with the file's lowercase SHA-256 digest.
-
-#### Git repositories
-
-```json
-{
-  "dependencies": [
-    {
-      "type": "git",
-      "url": "git@github.com:example/toolkit.git",
-      "version": "main",
-      "packages": {
-        "example/core": { "entrypoints": ["core"] },
-        "example/ui": { "entrypoints": ["widgets", "viewc"] }
-      }
-    }
-  ]
-}
-```
-
-Import `"example/core/core"` in the consumer's manifest. `packages`
-selects project IDs and entrypoint names, not manifest IDs. Sun builds those
-products and their prerequisites, runs their preparation steps, and skips their
-tests. An optional `config` selects a repository-relative root config instead
-of `sun-config.json`.
-
-`version` is a branch, tag, or commit. HTTPS, `ssh://`, and `git@host:path` URLs
-use Git's normal authentication. Sources stay cached until a build uses
-`--refresh-sources`. Generated products stay outside the checkout, under
-`.sun/cache/git/builds` or `SUN_GIT_CACHE`.
-
-For a single source file instead of a repository config, replace `packages` with
-`"package": "example/core"` and `"path": "src/core.sun"`. This form builds with
-the consumer's settings and cannot also specify `config`.
-
-#### Moon files, binaries, and Sun packages
-
-Each object below is one item in `dependencies`:
-
-```json
-{
-  "type": "moon",
-  "package": "example/shapes",
-  "url": "https://example.com/shapes.moon",
-  "sha256": "<sha256>"
-}
-```
-
-The library appears at `${example/shapes}/lib/shapes.moon`. Its expected library
-identity defaults to `package`; add `library` when the identities differ.
-Sun verifies the artifact's checksum, library identity, and target.
-
-```json
-{
-  "type": "binary",
-  "package": "example/tools",
-  "binary": "example/viewc",
-  "url": "https://example.com/viewc",
-  "sha256": "<sha256>"
-}
-```
-
-The executable appears at `${example/tools}/bin/viewc`.
-
-```json
-{
-  "type": "package",
-  "package": "example/tools",
-  "url": "https://example.com/tools.tar.gz",
-  "sha256": "<sha256>"
-}
-```
-
-This selects a whole Sun distribution with its `package.json` inventory.
-All three types accept a local `path` instead of `url`; a whole package may also
-be an extracted directory. Local paths are config-relative.
-
-#### System libraries
-
-```json
-{
-  "dependencies": [
-    {
-      "type": "system",
-      "check": { "type": "pkg-config", "name": "sdl3", "version": ">=3.2" },
-      "target": {
-        "linux": { "apt": ["libsdl3-dev"] },
-        "macos": { "brew": ["sdl3"] }
-      }
-    }
-  ]
-}
-```
-
-`check` is optional. A `pkg-config` check runs `pkg-config --exists` with the
-module name and optional version constraint. Comparisons support `>=`, `<=`, `=`,
-`>`, and `<`; a bare version means equality. This checks library metadata, not
-whether a program can compile or run with the library.
-
-For a build tool, use an executable check:
-
-```json
-{
-  "type": "system",
-  "check": { "type": "executable", "name": "cmake" },
-  "apt": ["cmake"],
-  "brew": ["cmake"]
-}
-```
-
-An executable check looks for the named program on the host's `PATH`; it does
-not run the program or check its version. Check names must be simple module or
-executable names, not paths or shell commands.
-
-For package-manager installation without an availability check, omit `check`:
-
-```json
-{ "type": "system", "apt": ["build-essential"] }
-```
-
-`sun build` skips availability checking for this declaration. `sun dep install`
-passes its packages to the host package manager, which handles already-installed
-packages. With a check, installation is skipped when it passes and the check is
-repeated afterward. A check without an installation mapping is also allowed,
-but a missing dependency must then be installed manually.
-
-These declarations do not add linker flags. To pass library flags to a product,
-also add `"pkg_config": ["sdl3"]` to that entrypoint. Private downloaded
-archives, such as musl OpenSSL, can remain [preparation steps](#preparation-steps).
-
-#### Debian artifacts
-
-```json
-{
-  "dependencies": [
-    {
-      "type": "deb",
-      "target": {
-        "x86_64-linux-gnu": {
-          "url": "https://example.com/library-dev_amd64.deb",
-          "sha256": "<amd64-sha256>"
-        },
-        "aarch64-linux-gnu": {
-          "url": "https://example.com/library-dev_arm64.deb",
-          "sha256": "<arm64-sha256>"
-        }
-      }
-    }
-  ]
-}
-```
-
-Use `deb` for a specific package file; use `system` for packages from configured
-APT repositories. Installation verifies the checksum and architecture, then
-invokes APT if the exact version is not installed. APT handles dependencies and
-runs package installation scripts. The file must also support the host's
-distribution and repositories; an architecture match alone is not sufficient.
-
-An optional `check` supplies the build-time availability check. Otherwise,
-builds query the installed package version using the verified artifact cached
-by `sun dep install`. The original local `.deb` can be removed afterward. A local `path` still requires `sha256`.
-
-#### Target-specific dependencies
-
-```json
-{
-  "dependencies": [
-    {
-      "type": "moon",
-      "package": "example/shapes",
-      "target": {
-        "x86_64-linux-gnu": {
-          "url": "https://example.com/shapes-linux.moon",
-          "sha256": "<linux-sha256>"
-        },
-        "arm64-apple-darwin": {
-          "url": "https://example.com/shapes-macos.moon",
-          "sha256": "<macos-sha256>"
-        }
-      }
-    }
-  ]
-}
-```
-
-To restrict where a dependency applies without changing its fields, use
-`supported_targets`:
-
-```json
-{
-  "dependencies": [
-    {
-      "type": "git",
-      "url": "git@github.com:example/toolkit.git",
-      "version": "main",
-      "supported_targets": ["x86_64-linux-gnu", "arm64-apple-darwin"],
-      "packages": {"example/ui": {"entrypoints": ["widgets"]}}
-    }
-  ]
-}
-```
-
-The list accepts exact target triples, normalizes aliases, and keeps architectures
-and ABIs distinct. An empty list disables the dependency everywhere. Omit it to
-apply no additional restriction. Use `target` when fields differ by platform;
-when both are present, the target must be allowed by `supported_targets` and
-have a matching `target` branch. Existing empty target branches remain supported.
-
-The same selection rules apply to every explicit dependency type:
-
-- Fields outside `target` are shared; the matching branch overrides them.
-- Exact triples take precedence over `linux`, `macos`, and `windows` branches.
-  Branches do not inherit from one another.
-- Without `target`, shared fields apply on every allowed target. With no matching
-  branch, the dependency is skipped.
-- All branches are validated, including inactive ones.
-
-`--target` selects the compilation target; otherwise Sun uses the host.
-For a host tool, start a preparation command with a reference such as
-`"${example/ui}/bin/viewc"`; Sun resolves that tool for the host.
-
-#### Installing dependencies
-
-```sh
-sun dep install --dry-run
-sun dep install
-sun dep install --config path/to/sun-config.json --package example/app
-sun dep install --yes
-```
-
-The command follows project and target selection. It installs missing system
-requirements, installs prebuilt artifacts, and fetches Git sources. It follows
-local and Git dependency configs to install their declared requirements without
-running preparation steps, generators, or compilation. `sun build` builds the
-selected source products afterward.
-
-`--dry-run` prints the plan without downloading, building, or installing, so it
-cannot discover requirements in unresolved sources. APT retains its confirmation
-prompt unless `--yes` is supplied and uses `sudo` when needed. Sun does not
-refresh APT repository metadata automatically.
-
-`sun build` runs declared availability checks before compilation but never
-installs them. Host package installation rejects cross-compilation targets;
-see [Cross-compiling](#cross-compiling) for target library setup.
-
-#### Inspect a dependency
-
-```sh
-sun resolve --config sun-config.json --package example/app --dependency example/shapes
-```
-
-This prints the dependency root and target as JSON. Resolution may download or
-build the dependency. Editor discovery uses already staged products instead.
-
-#### Dependency cache
-
-```sh
-SUN_DEPENDENCY_CACHE=/path/to/shared-cache sun build
-```
-
-By default, artifact dependencies use `.sun/cache/dependencies/` under the
-selected workspace, or beside the standalone config. Matching downloads are
-reused; incorrect bytes are rejected. No writable home directory is needed.
-Git uses `.sun/cache/git/` or `SUN_GIT_CACHE`; Debian artifacts use
-`.sun/cache/debs/` under the workspace.
-
-#### Existing configs
-
-Untyped dependency declarations remain supported. When migrating, add `type`,
-rename Git's `git` field to `url`, and rename artifact `hash` to `sha256`.
-Legacy unpinned URLs refresh on resolution; new remote artifact declarations
-require a checksum. Existing whole-value `default`/`target` dependency wrappers
-also remain supported.
-
-A local-only selection can still use
-`{ "package": "example/core", "entrypoints": ["core"] }`
-to select products from an included project without an external provider.
-
-### Target-specific settings
-
-```json
-{
-  "supported_targets": ["x86_64-linux-gnu", "aarch64-linux-gnu"],
-  "sun_path": {
-    "default": ["vendor/x86_64"],
-    "target": { "aarch64-linux-gnu": ["vendor/aarch64"] }
-  },
-  "entrypoints": [
-    {
-      "name": "app",
-      "path": "src/main.sun",
-      "enabled": {
-        "default": false,
-        "target": { "aarch64-linux-gnu": true }
-      }
-    }
-  ]
-}
-```
-
-`supported_targets` restricts the entire project. Incompatible projects are
-warned about and skipped before their dependencies or child configs are loaded.
-Omit it to allow every target; `[]` disables the project. An explicit package or
-entrypoint selection must still match a build product.
-
-For individual settings, a matching target replaces `default`, including whole
-arrays. Without a match, the default applies; a required setting with neither
-is an error. Names stay fixed. Disabled entrypoints skip their other settings.
-Do not wrap the structural `entrypoints`, `packages`, or `dependencies` arrays.
-
-Targets normalize aliases but retain architecture and ABI distinctions. Setting
-a target-specific value does not itself restrict project support. Legacy
-top-level `target` blocks remain supported but cannot overlap per-setting
-wrappers for the same setting.
-
-### Preparation steps
-
-```json
-{
-  "steps": [
-    {
-      "name": "generate",
-      "command": ["python3", "generate.py", "${SUN_BUILD}/generated.sun"],
-      "inputs": ["generate.py"],
-      "outputs": ["${SUN_BUILD}/generated.sun"]
-    }
-  ],
-  "entrypoints": [
-    { "name": "app", "path": "main.sun", "steps": ["generate"] }
-  ]
-}
-```
-
-Steps run before normal compilation. Sun hashes declared inputs, tools, and
-outputs to skip unchanged steps; missing or changed outputs cause a rerun.
-Outputs must be under `SUN_BUILD`. Commands are argument lists, not shell
-expressions. A step's `requires` lists earlier steps; an entrypoint's `requires`
-lists earlier products.
-
-Use entrypoint `compile_args`, `pkg_config`, and `link_args` for native compiler
-and linker options. For generated C bindings, see
-[C header binding generation](/c-ffi#optional-header-binding-generation).
-
-### Custom build scripts
-
-```json
-{
-  "entrypoints": [
-    { "name": "app", "path": "main.sun", "build": ["scripts/compile.sh"] }
-  ]
-}
-```
-
-```sh filename="scripts/compile.sh"
-#!/bin/sh
-# Compile this product using the settings supplied by Sun.
-set -eu
-"$SUN_EXECUTABLE" build-compile --dynamic -lm
-```
-
-`build` replaces normal compilation. Its executable scripts run in order from
-the config directory on every requested build. Each needs a shebang and must
-manage its own incremental work. A failure preserves the previous installation.
-Do not combine `build` with `steps`, `compile_args`, `pkg_config`, `link_args`,
-or a Git entrypoint.
-
-Scripts receive `SUN_SOURCE`, `SUN_OUTPUT`, `SUN_TEST_OUTPUT`, `SUN_TARGET`,
-`SUN_BUILD`, `SUN_INSTALL`, `SUN_JOBS`, and `SUN_EXECUTABLE`.
-`SUN_BUILD_CONTEXT` names their read-only build settings. `build-compile`
-inherits those settings and accepts extra compiler flags.
-
-```sh
-"$SUN_EXECUTABLE" dependency-path example/shapes
-"$SUN_EXECUTABLE" dependency-path example/tools --host
-```
-
-These commands read already resolved dependencies from the build context;
-they do not download or build. `--host` selects a tool for the build machine.
-
-### Distributions and resources
-
-```json
-{
-  "entrypoints": [
-    { "name": "app", "path": "main.sun", "type": "binary" }
-  ],
-  "packages": [
-    {
-      "name": "app-tools",
-      "entrypoints": ["app"],
-      "resources": [{ "path": "assets", "destination": "share/app/assets" }]
-    }
-  ]
-}
-```
-
-`sun build` creates `packages/app-tools/` and `packages/app-tools.tar.gz` under
-`SUN_BUILD`. The distribution contains `bin/app`, assets, and a `package.json`
-inventory. Libraries go in `lib/`; tests and compiler temporary files stay out.
-This top-level `packages` array defines distributions; a Git dependency's
-`packages` dictionary selects products to consume.
-
-Resource paths are config-relative. Destinations stay inside the distribution;
-Sun rejects missing files, links, and conflicting destinations. Changing only
-resources repackages without recompiling unchanged code.
-
-To copy resources beside one product, add `resources` to its entrypoint:
-
-```json
-{
-  "entrypoints": [
-    {
-      "name": "app",
-      "path": "main.sun",
-      "resources": [{ "path": "assets/icons", "destination": "app.icons" }]
-    }
-  ]
-}
-```
-
-Entrypoint destinations are relative to that product's directory. Package
-resources and config-wide `exports` use package-relative destinations.
-
-### Building only what changed
-
-```sh
-sun build
-sun build                         # Reuse unchanged artifacts
-sun build --force-rebuild
-```
-
-Sun compares inputs, dependencies, target, flags, and compiler. Unchanged outputs
-keep their timestamps. Test-only edits rebuild tests without rebuilding the
-application. `--force-rebuild` bypasses the incremental check.
-
-## Advanced compilation
-
-### Cross-compiling
-
-```sh
-sun build --target aarch64-linux-gnu
-sun --emit-obj --target aarch64-linux-gnu --lib-path vendor/aarch64 main.sun
-```
-
-Use bundles built for the requested target and a compatible compiler. Sun
-rejects wrong-target bundles. Installation directories are searched for target
-subdirectories automatically; custom library paths must name the right directory.
-
-`pkg-config` dependency checks for cross-builds require `PKG_CONFIG_LIBDIR` pointing
-at target metadata. Set `PKG_CONFIG_SYSROOT_DIR` as appropriate. `sun dep install`
-does not install foreign system packages into the host or a target sysroot.
-
-### Exporting complete LLVM IR
-
-```sh
-sun --emit-llvm -O0 -o main.ll main.sun
-```
-
-This emits LLVM IR, including imported code, without linking or running tests.
-Omit `-O0` for optimized output. Use matching LLVM tools to process the result.
-This option accepts a source entrypoint, not a config build.
+The compiler automatically finds the [standard library](/stdlib) and
+[TLS library](/tls); TLS carries its OpenSSL dependency. Keep your own bundles
+beside the project or add their directory with `--lib-path`.

@@ -1123,7 +1123,7 @@ TEST(Modules, config_moon_url_is_fetched_and_imported) {
     out << "{\"root\":true,\"dependencies\":[{\"package\":\"URLLIB\","
            "\"library\":\"urllib\",\"url\":"
            "\"file://"
-        << fs::absolute(moonPath).string() << "\",\"hash\":\""
+        << fs::absolute(moonPath).string() << "\",\"sha256\":\""
         << sun::support::sha256Hex(artifactBytes) << "\"}]}";
   }
 
