@@ -746,6 +746,27 @@ TEST(Modules_SunConfig, package_local_library) {
   EXPECT_EQ(result->moonImports[0].path, output.string());
 }
 
+/** Same-package libraries honor the CLI build directory over config defaults. */
+TEST(Modules_SunConfig, package_local_library_build_override) {
+  const auto dir = freshDir("package_local_library_build_override");
+  writeFile(dir / "sun-config.json",
+            R"({"root":true,"package_id":"example/widgets",
+    "entrypoints":[{"name":"core","path":"core.sun","type":"library"}]})");
+  const auto output = dir / "build/core.moon";
+  writeFile(output, "fixture");
+  writeFile(dir / "main.sun",
+            R"(manifest { libraries: ["example/widgets/core"] })");
+  ManifestProcessor::setPathVariable(
+      "SUN_BUILD", fs::relative(dir / "build", fs::current_path()).string());
+  std::optional<sun::driver::ResolvedManifest> result;
+  EXPECT_NO_THROW(result = ManifestProcessor::fromEntrypointFile(
+                      (dir / "main.sun").string()));
+  ManifestProcessor::clearPathVariables();
+  ASSERT_TRUE(result);
+  ASSERT_EQ(result->moonImports.size(), 1u);
+  EXPECT_EQ(fs::weakly_canonical(result->moonImports[0].path), output);
+}
+
 /** Missing same-package outputs report the prerequisite that must be built. */
 TEST(Modules_SunConfig, package_library_requires_built_output) {
   const auto dir = freshDir("package_library_requires_built_output");
