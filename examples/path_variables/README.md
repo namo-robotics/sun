@@ -46,7 +46,7 @@ which keeps a manifest portable when libraries live in a different place on
 each machine.
 
 The config can also declare build products in an `entrypoints` array. See
-[Sun Config](/#sun-config) for the entry fields and how to build or test a
+[build system](/build-system) for the entry fields and how to build or test a
 whole project.
 
 ## Build and run
