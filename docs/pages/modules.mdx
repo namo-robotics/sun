@@ -1,3 +1,5 @@
+import PathVariables from '../generated/path_variables.mdx'
+
 # Modules and Manifests
 
 A **module** groups names and controls visibility. A **manifest** lists the files
@@ -189,31 +191,7 @@ sun --lib-path /path/to/libraries main.sun
 
 ### Path variables
 
-Define a directory once in the project configuration:
-
-```json filename="sun-config.json"
-{
-  "root": true,
-  "path_variables": { "LIBS": "vendor" }
-}
-```
-
-Then use it in a manifest path:
-
-```sun
-manifest {
-  libraries: ["$LIBS/shapes.moon"]
-}
-```
-
-Variables expand before path resolution; undefined variables are errors.
-Relative config paths resolve against the declaring config. Sun reads configs
-from the entrypoint's directory upward until `root: true`; nearer variable
-definitions win, and nearer search directories are searched first.
-
-Override a value for one invocation with `sun --path-var LIBS=other main.sun`.
-Command-line values override configs, which override editor defaults and the
-environment.
+<PathVariables />
 
 ## Precompiled libraries (.moon)
 
