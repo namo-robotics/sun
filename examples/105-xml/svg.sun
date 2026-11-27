@@ -1,6 +1,6 @@
-using std.xml;
-using std.io;
 using std;
+using std.io;
+using std.xml;
 
 /** Produces a small SVG with namespace declarations and escaped text. */
 function draw(alloc: const ref std.mem.HeapAllocator, output: ref String) void throws {
@@ -44,14 +44,14 @@ function run_main() i32 throws {
   return 0;
 }
 
+/** Runs the example; an uncaught exception produces a failing exit code. */
+function main() i32 throws {
+  return run_main();
+}
+
 /** Uses only the standard library. */
 manifest {
   libraries: [
     "sun/stdlib"
   ]
-}
-
-/** Runs the example; an uncaught exception produces a failing exit code. */
-function main() i32 throws {
-  return run_main();
 }

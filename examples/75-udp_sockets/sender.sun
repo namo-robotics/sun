@@ -1,8 +1,7 @@
-using std.net;
-using std.io;
-
 // Sender: sends one datagram to the receiver
 using std;
+using std.io;
+using std.net;
 
 /** Performs the operation and propagates exceptions. */
 function run() void throws {

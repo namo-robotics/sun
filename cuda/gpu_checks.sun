@@ -1,15 +1,7 @@
-using std.linalg;
-using std.io;
-
-/** Exercises public GPU arithmetic through both the JIT and native compilation. */
-manifest {
-  libraries: [
-    "sun/stdlib",
-    "cuda.moon"
-  ]
-}
-using std;
 using cuda;
+using std;
+using std.io;
+using std.linalg;
 
 /** Compares floating-point results without requiring identical reduction order. */
 function near(actual: f64, expected: f64) void throws {
@@ -211,4 +203,12 @@ function main() i32 {
   } catch {
     return 1;
   }
+}
+
+/** Exercises public GPU arithmetic through both the JIT and native compilation. */
+manifest {
+  libraries: [
+    "sun/stdlib",
+    "cuda.moon"
+  ]
 }

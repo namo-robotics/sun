@@ -1,6 +1,5 @@
-using std.io;
-
 using std;
+using std.io;
 
 /**
  * An interface declares behaviour that classes can implement. Functions can

@@ -1,6 +1,5 @@
-using std.linalg;
-
 using std;
+using std.linalg;
 
 /** Provides owning GPU matrices with explicit transfers and synchronous arithmetic. */
 public module cuda {

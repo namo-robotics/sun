@@ -1,6 +1,5 @@
-using std.io;
-
 using std;
+using std.io;
 
 /**
  * Classes are stack-allocated value types. They are passed by `ref` and

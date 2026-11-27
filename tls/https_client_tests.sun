@@ -1,6 +1,3 @@
-using std.net;
-using std.io;
-
 // tls/https_client_tests.sun - Tests for https_client.sun: response parsing
 // without a network, and the handshake against a local `openssl s_server`
 // serving a throwaway certificate. Listed under test_files: in tls.sun, so
@@ -12,6 +9,8 @@ using std.io;
 // certificate, so this suite runs with --test-sequential.
 
 using std;
+using std.io;
+using std.net;
 using std.process;
 using tls;
 

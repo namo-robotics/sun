@@ -1,13 +1,5 @@
-using std.io;
-
-manifest {
-  libraries: [
-    "sun/stdlib",
-    "$SUN_SERVE/lib/sun_serve.moon"
-  ]
-}
-
 using std;
+using std.io;
 using sun_serve;
 
 /** Checks polling results and HTTP helpers from the imported library. */
@@ -41,4 +33,11 @@ function check_library() i32 throws {
 /** Reports unexpected library failures and returns the integration status. */
 function main() i32 throws {
   return check_library();
+}
+
+manifest {
+  libraries: [
+    "sun/stdlib",
+    "$SUN_SERVE/lib/sun_serve.moon"
+  ]
 }

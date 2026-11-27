@@ -5,14 +5,14 @@
   ],
   "entrypoints": [
     {
+      "name": "life",
       "path": "life.sun",
-      "type": "library",
-      "name": "life"
+      "type": "library"
     },
     {
+      "name": "main",
       "path": "main.sun",
-      "type": "binary",
-      "name": "main"
+      "type": "binary"
     }
   ]
 }

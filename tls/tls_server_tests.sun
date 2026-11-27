@@ -1,5 +1,5 @@
-using std.net;
 using std.io;
+using std.net;
 
 /** Regression coverage for nonblocking server TLS. */
 public module tls {

@@ -1,8 +1,7 @@
-using std.linalg;
-using std.io;
-
 /** Runs preallocated f32 Matrix products using the staged standard library. */
 using std;
+using std.io;
+using std.linalg;
 
 /** Reads and validates the benchmark command-line parameters. */
 extern "C" function bench_configure(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32;

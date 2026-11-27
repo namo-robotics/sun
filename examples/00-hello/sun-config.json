@@ -1,6 +1,6 @@
 {
+  "root": true,
   "sun_path": [
     "../../build"
-  ],
-  "root": true
+  ]
 }

@@ -1,15 +1,7 @@
-using std.linalg;
-using std.io;
-
-/** Measures transfers, allocating products, and repeated output reuse separately. */
-manifest {
-  libraries: [
-    "stdlib.moon",
-    "cuda.moon"
-  ]
-}
-using std;
 using cuda;
+using std;
+using std.io;
+using std.linalg;
 
 /** Runs a synchronous benchmark without imposing a hardware performance threshold. */
 function run() void throws {
@@ -65,4 +57,12 @@ function run() void throws {
 function main() i32 throws {
   run();
   return 0;
+}
+
+/** Measures transfers, allocating products, and repeated output reuse separately. */
+manifest {
+  libraries: [
+    "stdlib.moon",
+    "cuda.moon"
+  ]
 }
