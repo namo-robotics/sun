@@ -98,7 +98,7 @@ const std::string kUsageBody =
     "  --version         Print version, git commit hash, and UTC build time\n"
     "\n"
     "Subcommands:\n"
-    "  fmt [--check] <file.sun|directory>...\n"
+    "  fmt [--check] <file.sun|sun-config.json|directory>...\n"
     "                    Format files in place; directories are searched "
     "recursively\n"
     "                    (--check: exit 1 if formatting would change a file)\n"
@@ -131,7 +131,8 @@ const std::string kUsageBody =
 }  // namespace
 
 const char* const kFmtUsage =
-    "Usage: sun fmt [--check] [--no-ignore] <file.sun|directory>...\n";
+    "Usage: sun fmt [--check] [--no-ignore] "
+    "<file.sun|sun-config.json|directory>...\n";
 
 const char* const kTestUsageFull =
     "Usage: sun test [--test-sequential] "

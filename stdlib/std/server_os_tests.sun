@@ -1,5 +1,5 @@
-using std.net;
 using std;
+using std.net;
 
 /** Portable server primitive regression tests. */
 public module std {

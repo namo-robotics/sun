@@ -1,11 +1,10 @@
-using std.io;
-
 // An HTTPS GET with the tls bundle's HttpsClient.
 //
 // The certificate is verified against the system CA store and checked
 // against the hostname; a bad certificate throws an exception.
 
 using std;
+using std.io;
 using tls;
 
 /** Performs the operation and propagates exceptions. */

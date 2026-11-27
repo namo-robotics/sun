@@ -1,12 +1,9 @@
-using std.io;
-
 /** Compare standard integer interpolation with the small-string benchmark. */
 using std;
-
+using std.io;
 const N: i64 = 100000000;
 const RING_SIZE: i64 = 1024;
 const RUNS: i64 = 5;
-
 /** Create an owned decimal string and replace one ring slot on every iteration. */
 function from_int(buf: ref Vec<String>, n: i64) void throws {
   for (var i: i64 = 0; i < n; i = i + 1) {

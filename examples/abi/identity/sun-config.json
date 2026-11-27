@@ -5,14 +5,14 @@
   ],
   "entrypoints": [
     {
+      "name": "shapes_user",
       "path": "shapes_user.sun",
-      "type": "library",
-      "name": "shapes_user"
+      "type": "library"
     },
     {
+      "name": "revised",
       "path": "main_v1.1.sun",
       "type": "binary",
-      "name": "revised",
       "requires": [
         "shapes_user"
       ]

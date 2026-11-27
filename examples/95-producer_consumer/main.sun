@@ -35,7 +35,6 @@ function produce_items(queue: const ref Shared<WorkQueue>) void throws {
   }
   return;
 }
-
 /** Marks completion after production succeeds or fails, so the consumer can finish. */
 var produce = (queue: Shared<WorkQueue>) => void {
   try {
@@ -47,7 +46,6 @@ var produce = (queue: Shared<WorkQueue>) => void {
   var guard = queue.lock();
   guard.get().done = true;
 };
-
 /** Consumes queued work until the producer has finished and the queue is empty. */
 var consume = (queue: Shared<WorkQueue>) => i32 {
   var total: i64 = 0;
@@ -66,7 +64,6 @@ var consume = (queue: Shared<WorkQueue>) => i32 {
   }
   return _convert<i32>(total);
 };
-
 /** Joins both threads and propagates allocation failures after they have finished. */
 function run() void throws {
   var queue = Shared<WorkQueue>(std.mem.global_allocator, WorkQueue());

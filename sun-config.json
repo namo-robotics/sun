@@ -1,12 +1,6 @@
 {
+  "package_id": "sun",
   "root": true,
-  "sun_fmt": {
-    "ignore": [
-      "/build/",
-      "/third_party/",
-      "/tmp/"
-    ]
-  },
   "path_variables": {
     "SUN_DARWIN_PROCESS_BINDINGS": {
       "default": "stdlib/std/process/bindings/process_darwin_arm64.sun",
@@ -41,28 +35,34 @@
       }
     }
   },
+  "sun_fmt": {
+    "ignore": [
+      "/build/",
+      "/third_party/",
+      "/tmp/"
+    ]
+  },
   "entrypoints": [
     {
+      "name": "stdlib",
       "path": "stdlib/stdlib.sun",
       "type": "library",
-      "name": "stdlib",
       "export": true
     },
     {
+      "name": "tls",
       "path": "tls/tls.sun",
       "type": "library",
-      "name": "tls",
       "export": true,
-      "requires": [
-        "stdlib"
-      ],
       "build": [
         "scripts/build-configured-tls.sh"
+      ],
+      "requires": [
+        "stdlib"
       ]
     },
     {
-      "path": "cuda/cuda.sun",
-      "type": "library",
+      "name": "cuda",
       "enabled": {
         "default": false,
         "target": {
@@ -70,7 +70,8 @@
           "aarch64-linux-gnu": false
         }
       },
-      "name": "cuda",
+      "path": "cuda/cuda.sun",
+      "type": "library",
       "export": true
     }
   ],
@@ -105,6 +106,5 @@
         }
       }
     }
-  },
-  "package_id": "sun"
+  }
 }

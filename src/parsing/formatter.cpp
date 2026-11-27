@@ -46,7 +46,7 @@ class Formatter {
 
   /** Formats a parsed program while preserving its recorded comments. */
   std::string format(const BlockExprAST& program) {
-    printStmts(program.getBody());
+    printGlobalStatements(program);
     flushCommentsBefore(static_cast<int>(src_.size()));
     // Exactly one trailing newline
     while (!out_.empty() && out_.back() == '\n') {
@@ -66,6 +66,83 @@ class Formatter {
   int indent_ = 0;
   int lastLine_ = -1;  // Source end line of the last emitted element; -1
                        // suppresses the blank-line check (start of scope)
+
+  /** Renders global statements with their comments, then applies file ordering.
+   */
+  void printGlobalStatements(const BlockExprAST& program) {
+    // Render in source order first so the comment cursor stays monotonic.
+    const auto& body = program.getBody();
+    std::string header;
+    if (!body.empty() && body.front()) {
+      auto attached = comments_.lower_bound(body.front()->getLocation().offset);
+      int line = body.front()->getLocation().line;
+      while (attached != comments_.begin()) {
+        auto previous = std::prev(attached);
+        if (line - endLineOf(previous->second.span) > 1) {
+          break;
+        }
+        line = previous->second.span.line;
+        attached = previous;
+      }
+      const int boundary = attached == comments_.end()
+                               ? body.front()->getLocation().offset
+                               : attached->first;
+      flushCommentsBefore(boundary);
+      header = std::move(out_);
+      out_.clear();
+    }
+
+    /** A rendered statement with its attached comments and sorting key. */
+    struct Statement {
+      const ExprAST* node;
+      std::string text;
+    };
+
+    std::vector<Statement> statements;
+    for (size_t i = 0; i < body.size(); ++i) {
+      if (!body[i] || body[i]->isPrecompiled()) {
+        continue;
+      }
+      printStmts(body, i, i + 1);
+      statements.push_back({body[i].get(), std::move(out_)});
+      out_.clear();
+    }
+    /** Groups imports before ordinary declarations and manifests after them. */
+    const auto rank = [](const Statement& statement) {
+      if (statement.node->getType() == ASTNodeType::USING) {
+        return 0;
+      }
+      if (statement.node->getType() == ASTNodeType::MANIFEST) {
+        return 2;
+      }
+      return 1;
+    };
+    std::stable_sort(statements.begin(), statements.end(),
+                     [&](const Statement& a, const Statement& b) {
+                       if (rank(a) != rank(b)) {
+                         return rank(a) < rank(b);
+                       }
+                       return rank(a) == 0 &&
+                              a.node->toString() < b.node->toString();
+                     });
+    out_ = std::move(header);
+    const ExprAST* previous = nullptr;
+    for (const auto& statement : statements) {
+      const auto first = statement.text.find_first_not_of('\n');
+      if (first == std::string::npos) {
+        continue;
+      }
+      if (!out_.empty() && ((!previous) || rank(statement) == 2 ||
+                            (previous && isSpacedDeclaration(*statement.node) &&
+                             (previous->getType() == ASTNodeType::USING ||
+                              isSpacedDeclaration(*previous))) ||
+                            (rank(statement) == 1 && first > 0))) {
+        ensureBlankLine();
+      }
+      out_ += statement.text.substr(first);
+      previous = statement.node;
+    }
+  }
 
   // --- small helpers -----------------------------------------------------
 
@@ -111,9 +188,9 @@ class Formatter {
     return false;
   }
 
-  /** Expands manifest blocks and lists without changing literals or comments.
+  /** Tokenizes manifest text with comments retained for each formatting pass.
    */
-  static std::string expandManifestLayout(const std::string& source) {
+  static std::vector<Token> manifestTokens(const std::string& source) {
     std::istringstream input(source);
     Lexer lexer(input);
     lexer.setEmitComments(true);
@@ -122,6 +199,136 @@ class Formatter {
          token = lexer.getNextToken()) {
       tokens.push_back(std::move(token));
     }
+    return tokens;
+  }
+
+  /** Identifies comments that must remain attached to manifest fields. */
+  static bool isComment(const Token& token) {
+    return token.kind == TokenKind::COMMENT ||
+           token.kind == TokenKind::BLOCK_COMMENT;
+  }
+
+  /** Orders manifest sections while retaining their source tokens and comments.
+   * Target names and dependency entries retain their original order. */
+  static std::string orderManifest(const std::string& source) {
+    const auto tokens = manifestTokens(source);
+    /** Rewrites one brace-delimited object, including nested target objects. */
+    const auto object = [&](auto&& self, size_t open, size_t close,
+                            bool sections) -> std::string {
+      /** A section and the source text that moves with it. */
+      struct Field {
+        std::string name;
+        std::string text;
+      };
+      std::vector<Field> fields;
+      std::string footer;
+      size_t cursor = open + 1;
+      while (cursor < close) {
+        const size_t begin = cursor;
+        while (cursor < close && isComment(tokens[cursor])) {
+          ++cursor;
+        }
+        if (cursor == close) {
+          footer = source.substr(
+              tokens[begin].start.offset,
+              tokens[close - 1].end.offset - tokens[begin].start.offset);
+          break;
+        }
+        const auto name = tokens[cursor].getIdentifier();
+        size_t colon = cursor + 1;
+        while (colon < close && isComment(tokens[colon])) {
+          ++colon;
+        }
+        size_t value = colon + 1;
+        while (value < close && isComment(tokens[value])) {
+          ++value;
+        }
+        if (!name || value >= close || tokens[colon].kind != TokenKind::COLON) {
+          return source.substr(
+              tokens[open].start.offset,
+              tokens[close].end.offset - tokens[open].start.offset);
+        }
+        size_t finish = value;
+        int depth = 0;
+        do {
+          auto kind = tokens[finish].kind;
+          if (kind == TokenKind::BRACE_OPEN ||
+              kind == TokenKind::BRACKET_OPEN) {
+            ++depth;
+          }
+          if (kind == TokenKind::BRACE_CLOSE ||
+              kind == TokenKind::BRACKET_CLOSE) {
+            --depth;
+          }
+          ++finish;
+        } while (finish < close && depth > 0);
+        std::string text = source.substr(
+            tokens[begin].start.offset,
+            tokens[value].start.offset - tokens[begin].start.offset);
+        if (tokens[value].kind == TokenKind::BRACE_OPEN) {
+          text += self(self, value, finish - 1, !sections);
+        } else {
+          text += source.substr(
+              tokens[value].start.offset,
+              tokens[finish - 1].end.offset - tokens[value].start.offset);
+        }
+        size_t tail = finish;
+        size_t separator = finish;
+        while (separator < close && isComment(tokens[separator])) {
+          ++separator;
+        }
+        if (separator < close &&
+            (tokens[separator].kind == TokenKind::COMMA ||
+             tokens[separator].kind == TokenKind::SEMI_COLON)) {
+          tail = separator + 1;
+        }
+        while (tail < close && isComment(tokens[tail]) &&
+               tokens[tail].start.line == tokens[tail - 1].end.line) {
+          ++tail;
+        }
+        text += source.substr(
+            tokens[finish - 1].end.offset,
+            tokens[tail - 1].end.offset - tokens[finish - 1].end.offset);
+        fields.push_back({*name, std::move(text)});
+        cursor = tail;
+      }
+      if (sections) {
+        const std::vector<std::string> order = {"source_files", "test_files",
+                                                "libraries",    "protos",
+                                                "archives",     "target"};
+        std::stable_sort(
+            fields.begin(), fields.end(), [&](const Field& a, const Field& b) {
+              return std::find(order.begin(), order.end(), a.name) <
+                     std::find(order.begin(), order.end(), b.name);
+            });
+      }
+      std::string result = "{";
+      for (const auto& field : fields) {
+        result += "\n" + field.text;
+      }
+      if (!footer.empty()) {
+        result += "\n" + footer;
+      }
+      return result + (result == "{" ? "}" : "\n}");
+    };
+    if (tokens.size() < 3) {
+      return source;
+    }
+    size_t open = 1;
+    while (open < tokens.size() && tokens[open].kind != TokenKind::BRACE_OPEN) {
+      ++open;
+    }
+    if (open == tokens.size()) {
+      return source;
+    }
+    return source.substr(0, tokens[open].start.offset) +
+           object(object, open, tokens.size() - 1, true);
+  }
+
+  /** Expands manifest blocks and lists without changing literals or comments.
+   */
+  static std::string expandManifestLayout(const std::string& source) {
+    const auto tokens = manifestTokens(source);
     std::string result;
     std::vector<TokenKind> delimiters;
     size_t end = 0;
@@ -175,15 +382,9 @@ class Formatter {
    * Expands lists and preserves token contents, including multiline literals.
    */
   void printManifest(const Position& location) {
-    const std::string source = expandManifestLayout(slice(location));
-    std::istringstream input(source);
-    Lexer lexer(input);
-    lexer.setEmitComments(true);
-    std::vector<Token> tokens;
-    for (auto token = lexer.getNextToken(); token.kind != TokenKind::TOK_EOF;
-         token = lexer.getNextToken()) {
-      tokens.push_back(std::move(token));
-    }
+    const std::string source =
+        expandManifestLayout(orderManifest(slice(location)));
+    const auto tokens = manifestTokens(source);
     size_t tokenIndex = 0;
     int depth = 0;
     for (size_t start = 0; start < source.size();) {
@@ -305,9 +506,9 @@ class Formatter {
 
   /** Formats statements in order, beginning at the requested index. */
   void printStmts(const std::vector<std::unique_ptr<ExprAST>>& stmts,
-                  size_t start = 0) {
+                  size_t start = 0, size_t end = std::string::npos) {
     bool separateNextDeclaration = false;
-    for (size_t i = start; i < stmts.size(); ++i) {
+    for (size_t i = start; i < std::min(end, stmts.size()); ++i) {
       const auto& stmt = stmts[i];
       if (!stmt || stmt->isPrecompiled()) {
         continue;

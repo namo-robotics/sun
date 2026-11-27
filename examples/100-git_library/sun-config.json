@@ -9,9 +9,9 @@
   },
   "entrypoints": [
     {
+      "name": "git_library",
       "path": "main.sun",
-      "type": "binary",
-      "name": "git_library"
+      "type": "binary"
     }
   ],
   "dependencies": [

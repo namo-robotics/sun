@@ -11,9 +11,7 @@ exception Original extends Failure {
 exception CleanupFailure {
   var code: i32;
 }
-
 var cleaned: i32 = 0;
-
 /** Handles fallible work during exceptional cleanup. */
 class Resource {
   /** Creates an empty resource. */

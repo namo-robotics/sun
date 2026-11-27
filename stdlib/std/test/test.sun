@@ -1,5 +1,5 @@
-using std.json;
 using std.io;
+using std.json;
 
 // stdlib/std/test/test.sun - Unit testing: assertions, test results, and the runner.
 //

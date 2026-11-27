@@ -8,6 +8,7 @@
 #include <string>
 
 #include "cli/fmt_command.h"
+#include "parsing/config_formatter.h"
 #include "parsing/formatter.h"
 #include "support/error.h"
 
@@ -875,6 +876,24 @@ std::string readFile(const std::filesystem::path& p) {
  * Mutates the tree (lowering runs in place); use only when done with it.
  */
 std::string loweredFingerprint(BlockExprAST& ast) {
+  // Normalize only the global ordering that formatting deliberately changes.
+  auto& body = ast.mutableBody();
+  /** Places imports first and manifests last without changing other nodes. */
+  const auto rank = [](const auto& node) {
+    if (node->getType() == sun::ast::ASTNodeType::USING) {
+      return 0;
+    }
+    if (node->getType() == sun::ast::ASTNodeType::MANIFEST) {
+      return 2;
+    }
+    return 1;
+  };
+  std::stable_sort(body.begin(), body.end(), [&](const auto& a, const auto& b) {
+    if (rank(a) != rank(b)) {
+      return rank(a) < rank(b);
+    }
+    return rank(a) == 0 && a->toString() < b->toString();
+  });
   sun::parsing::LoweringPass lowering;
   lowering.run(ast);
   sun::serialization::SerializerConfig config;
@@ -1227,7 +1246,10 @@ class Tooling_FmtIgnore : public ::testing::Test {
   /** Writes a fixture relative to the isolated project. */
   void write(const std::string& path, const std::string& text) {
     std::filesystem::create_directories((dir / path).parent_path());
-    std::ofstream(dir / path) << text;
+    std::ofstream(dir / path)
+        << (std::filesystem::path(path).filename() == "sun-config.json"
+                ? sun::parsing::formatConfig(text)
+                : text);
   }
 
   /** Reads a fixture so tests can verify which files were changed. */
@@ -1349,6 +1371,12 @@ TEST(Tooling_Fmt, ManifestListsAlwaysExpand) {
 }
 )";
   const std::string expected = R"(manifest {
+  source_files: [
+    "process.sun", /* keep [,] */
+    "media.sun",
+    "job.sun"
+  ]
+  test_files: []
   libraries: [
     "stdlib.moon",
     "sun_ui.moon",
@@ -1356,12 +1384,6 @@ TEST(Tooling_Fmt, ManifestListsAlwaysExpand) {
     "sun_gtk.moon",
     "sun_ui_gtk.moon"
   ]
-  source_files: [
-    "process.sun", /* keep [,] */
-    "media.sun",
-    "job.sun"
-  ]
-  test_files: []
 }
 )";
   EXPECT_EQ(fmt(input), expected);
@@ -1446,4 +1468,237 @@ TEST(Tooling_Fmt, ExpandsInlineManifestBraces) {
 }
 )");
   EXPECT_EQ(fmt(nested), nested);
+}
+
+/** Global imports move with documentation; nested imports retain their order.
+ */
+TEST(Tooling_Fmt, OrdersGlobalDeclarations) {
+  const std::string source = R"(// File header.
+
+manifest { libraries: ["std.moon"] }
+/** Runs the program. */
+function main() void {}
+/** Imports z. */
+using z; // z import
+using a;
+using a;
+/** Contains local imports. */
+module local {
+  using z;
+  using a;
+}
+// Footer.
+)";
+  const auto result = fmt(source);
+  EXPECT_EQ(result.find("// File header.\n\nusing a;\nusing a;\n"), 0u);
+  EXPECT_NE(result.find("/** Imports z. */\nusing z;  // z import\n\n/** Runs"),
+            std::string::npos);
+  EXPECT_NE(result.find("  using z;\n  using a;"), std::string::npos);
+  EXPECT_NE(result.find("}\n\nmanifest {"), std::string::npos);
+  EXPECT_EQ(result.substr(result.size() - 13), "}\n// Footer.\n");
+  EXPECT_EQ(fmt(result), result);
+}
+
+/** Manifest sections and target sections share an order without sorting lists.
+ */
+TEST(Tooling_Fmt, OrdersManifestFields) {
+  const std::string source = R"(manifest {
+  target: { linux: { libraries: ["z.moon"] source_files: ["z.sun"] } }
+  archives: ["z.a"]
+  protos: ["z.proto"]
+  // Libraries.
+  libraries: ["z.moon", "a.moon"] // Keep with libraries.
+  test_files: ["test.sun"]
+  /** Sources. */
+  source_files: ["z.sun", "a.sun"]
+  // End of manifest.
+}
+)";
+  const auto result = fmt(source);
+  size_t previous = 0;
+  for (const auto* field : {"source_files:", "test_files:", "libraries:",
+                            "protos:", "archives:", "target:"}) {
+    const auto position = result.find(field);
+    EXPECT_GT(position, previous) << field;
+    previous = position;
+  }
+  EXPECT_NE(result.find("// Libraries.\n  libraries:"), std::string::npos);
+  EXPECT_NE(result.find("] // Keep with libraries.\n  protos:"),
+            std::string::npos);
+  EXPECT_LT(result.find("\"z.sun\""), result.find("\"a.sun\""));
+  const auto target = result.substr(result.find("target:"));
+  EXPECT_LT(target.find("source_files:"), target.find("libraries:"));
+  EXPECT_EQ(fmt(result), result);
+}
+
+/** Manifest-only files do not gain a leading blank line. */
+TEST(Tooling_Fmt, ManifestDocumentationSpacing) {
+  EXPECT_EQ(fmt("/** Dependencies. */\nmanifest {}\nfunction f() void {}"),
+            "function f() void {}\n\n/** Dependencies. */\nmanifest {}\n");
+  EXPECT_EQ(fmt("manifest {}"), "manifest {}\n");
+}
+
+/** Root schema fields are ordered while unknown fields remain intact. */
+TEST(Tooling_FmtConfig, RootOrder) {
+  const auto result = sun::parsing::formatConfig(R"({
+    "steps": [], "dependencies": {}, "entrypoints": [], "root": true,
+    "package_id": "example/library", "custom_z": 1, "custom_a": 2
+  })");
+  EXPECT_EQ(
+      result,
+      "{\n  \"package_id\": \"example/library\",\n  \"root\": true,\n"
+      "  \"entrypoints\": [],\n  \"dependencies\": {},\n  \"steps\": [],\n"
+      "  \"custom_z\": 1,\n  \"custom_a\": 2\n}\n");
+  EXPECT_EQ(sun::parsing::formatConfig(result), result);
+}
+
+/** Nested schemas and target alternatives retain user map and array ordering.
+ */
+TEST(Tooling_FmtConfig, NestedOrder) {
+  const auto result = sun::parsing::formatConfig(R"({
+    "steps": [{"environment":{"Z":"z","A":"a"},"outputs":["z","a"],
+               "command":["tool","--flag"],"enabled":true,"name":"generate"}],
+    "entrypoints": [{"resources":[{"destination":"out","path":"input"}],
+      "path":{"target":{"linux":"z.sun","macos":"a.sun"},"default":"main.sun"},
+      "type":"binary","name":"app"}],
+    "dependencies": {"z":{"sha256":"hash","path":"z.moon","package":"x/z"},
+                     "a":{"target":{"linux":{"version":"v1","git":"repo"}},
+                          "default":{"version":"v2","git":"repo"}}}
+  })");
+  EXPECT_LT(result.find("\"name\": \"app\""), result.find("\"type\""));
+  EXPECT_LT(result.find("\"default\""), result.find("\"target\""));
+  EXPECT_LT(result.find("\"path\": \"input\""), result.find("\"destination\""));
+  EXPECT_LT(result.find("\"z\": {"), result.find("\"a\": {"));
+  EXPECT_LT(result.find("\"package\""), result.find("\"sha256\""));
+  EXPECT_LT(result.find("\"git\""), result.find("\"version\""));
+  EXPECT_LT(result.find("\"enabled\""), result.find("\"command\""));
+  EXPECT_LT(result.find("\"Z\""), result.find("\"A\""));
+  EXPECT_LT(result.find("\"tool\""), result.find("\"--flag\""));
+  EXPECT_EQ(sun::parsing::formatConfig(result), result);
+}
+
+/** Invalid JSON and duplicate keys cannot silently lose configuration data. */
+TEST(Tooling_FmtConfig, RejectsInvalidInput) {
+  for (const auto* source :
+       {"{", "[]", "null", "{\"root\":true,\"root\":false}",
+        "{\"x\":{\"a\":1,\"a\":2}}"}) {
+    SCOPED_TRACE(source);
+    EXPECT_THROW(sun::parsing::formatConfig(source), sun::support::SunError);
+  }
+}
+
+/** Configs participate in recursive checks and rewrites alongside source files.
+ */
+TEST_F(Tooling_FmtIgnore, FormatsConfigs) {
+  const auto path = (dir / "sun-config.json").string();
+  std::ofstream(path) << R"({"steps":[],"root":true,"entrypoints":[]})";
+  write("main.sun", "function f()void{}");
+  EXPECT_EQ(check("."), 1);
+  EXPECT_EQ(read("sun-config.json"),
+            R"({"steps":[],"root":true,"entrypoints":[]})");
+  EXPECT_EQ(sun::cli::runFmtCommand({dir.string()}), 0);
+  EXPECT_EQ(check("."), 0);
+  EXPECT_EQ(read("main.sun"), "function f() void {}\n");
+  std::ofstream(path) << "{broken";
+  EXPECT_EQ(sun::cli::runFmtCommand({"--no-ignore", path}), 2);
+  EXPECT_EQ(read("sun-config.json"), "{broken");
+}
+
+/** Config file exclusions can be bypassed explicitly. */
+TEST_F(Tooling_FmtIgnore, IgnoresConfigFile) {
+  const auto path = (dir / "sun-config.json").string();
+  std::ofstream(path)
+      << R"({"root":true,"sun_fmt":{"ignore":["sun-config.json"]}})";
+  EXPECT_EQ(check("sun-config.json"), 0);
+  EXPECT_EQ(check("sun-config.json", true), 1);
+}
+
+/** Block footer comments remain separate from trailing field comments. */
+TEST(Tooling_Fmt, ManifestFooterComments) {
+  const auto result = fmt(R"(manifest {
+  libraries: [] // Libraries.
+  // Manifest footer.
+})");
+  EXPECT_EQ(result,
+            "manifest {\n  libraries: [] // Libraries.\n"
+            "  // Manifest footer.\n}\n");
+  EXPECT_EQ(fmt(result), result);
+  EXPECT_EQ(fmt("manifest {\n// Empty manifest.\n}"),
+            "manifest {\n  // Empty manifest.\n}\n");
+}
+
+/** Every supported root field has a fixed position. */
+TEST(Tooling_FmtConfig, CompleteRootOrder) {
+  const std::vector<std::string> keys = {
+      "package_id", "root",           "supported_targets",
+      "sun_path",   "path_variables", "exception_trace_depth",
+      "sun_fmt",    "projects",       "entrypoints",
+      "packages",   "exports",        "dependencies",
+      "c_bindings", "target",         "steps"};
+  std::string input = "{";
+  for (auto key = keys.rbegin(); key != keys.rend(); ++key) {
+    if (key != keys.rbegin()) {
+      input += ",";
+    }
+    input += "\"" + *key + "\":null";
+  }
+  const auto result = sun::parsing::formatConfig(input + "}");
+  size_t previous = 0;
+  for (const auto& key : keys) {
+    const auto position = result.find("\"" + key + "\"");
+    EXPECT_GT(position, previous) << key;
+    previous = position;
+  }
+}
+
+/** Default-only objects and path-variable alternatives use their value schemas.
+ */
+TEST(Tooling_FmtConfig, DefaultAndPathVariableSchemas) {
+  const auto result = sun::parsing::formatConfig(R"({
+    "path_variables":{"Z":{"target":{"linux":"linux"},"default":"base"},
+                      "A":"a"},
+    "entrypoints":{"default":[{"type":"binary","path":"main.sun","name":"app"}]},
+    "custom":{"target":{"z":1},"default":2}
+  })");
+  EXPECT_LT(result.find("\"Z\""), result.find("\"A\""));
+  EXPECT_LT(result.find("\"default\""), result.find("\"target\""));
+  EXPECT_LT(result.find("\"name\""), result.find("\"path\""));
+  const auto custom = result.substr(result.find("\"custom\""));
+  EXPECT_LT(custom.find("\"target\""), custom.find("\"default\""));
+  EXPECT_EQ(sun::parsing::formatConfig(result), result);
+}
+
+/** Comments between manifest syntax tokens survive field ordering. */
+TEST(Tooling_Fmt, ManifestInterleavedComments) {
+  const auto result = fmt(R"(manifest /* Dependencies. */ {
+  libraries /* Libraries. */ : /* Paths. */ ["std.moon"]
+  source_files: /* Sources. */ ["main.sun"]
+})");
+  EXPECT_LT(result.find("source_files:"), result.find("libraries"));
+  for (const auto* comment : {"/* Dependencies. */", "/* Libraries. */",
+                              "/* Paths. */", "/* Sources. */"}) {
+    EXPECT_NE(result.find(comment), std::string::npos);
+  }
+  EXPECT_EQ(fmt(result), result);
+}
+
+/** Environment variable names are not target-selection field names. */
+TEST(Tooling_FmtConfig, PreservesEnvironmentMapKeys) {
+  const auto result = sun::parsing::formatConfig(R"({"steps":[{
+    "name":"build","environment":{"target":"linux","default":"release"}
+  }]})");
+  EXPECT_LT(result.find("\"target\""), result.find("\"default\""));
+  EXPECT_EQ(sun::parsing::formatConfig(result), result);
+}
+
+/** Comments before optional section separators do not prevent field ordering.
+ */
+TEST(Tooling_Fmt, ManifestCommentBeforeSeparator) {
+  const auto result = fmt(R"(manifest {
+  libraries: [] /* Libraries. */ ,
+  source_files: []
+})");
+  EXPECT_LT(result.find("source_files:"), result.find("libraries:"));
+  EXPECT_NE(result.find("libraries: [] /* Libraries. */ ,"), std::string::npos);
+  EXPECT_EQ(fmt(result), result);
 }

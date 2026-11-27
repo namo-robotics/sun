@@ -1,5 +1,5 @@
-using std.io;
 using std;
+using std.io;
 
 // The code under test: distance helpers in a module. `half` is private, but
 // privacy is module-scoped, so tests declared inside the module reach it.

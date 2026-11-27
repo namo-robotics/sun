@@ -129,6 +129,27 @@ class DiscoveryProtocolTests(unittest.TestCase):
             "path": entry.name, "name": "suite",
         }]}))
 
+    def test_formatting_orders_global_imports_and_manifest(self):
+        """Editor formatting shares the CLI ordering and is idempotent."""
+        self.source.write_text(
+            'manifest {}\nusing z;\n'
+            '/** Runs the program. */\nfunction main() void {}\nusing a;\n'
+        )
+        self.open_document(self.source)
+        params = {"textDocument": {"uri": self.source.as_uri()},
+                  "options": {"tabSize": 2, "insertSpaces": True}}
+        edits = self.request("textDocument/formatting", params)
+        expected = (
+            'using a;\nusing z;\n\n/** Runs the program. */\n'
+            'function main() void {}\n\nmanifest {}\n'
+        )
+        self.assertEqual(len(edits), 1)
+        self.assertEqual(edits[0]["newText"], expected)
+        self.notify("textDocument/didChange", {"textDocument": {
+            "uri": self.source.as_uri(), "version": 2,
+        }, "contentChanges": [{"text": expected}]})
+        self.assertEqual(self.request("textDocument/formatting", params), [])
+
     def test_open_manifest_becomes_entrypoint_until_closed(self):
         """An open manifest supplies context for itself and its source files."""
         self.open_document(self.source)

@@ -8,14 +8,14 @@
   },
   "entrypoints": [
     {
+      "name": "compatible",
       "path": "library.sun",
-      "type": "library",
-      "name": "compatible"
+      "type": "library"
     },
     {
+      "name": "compatible-app",
       "path": "main.sun",
-      "type": "binary",
-      "name": "compatible-app"
+      "type": "binary"
     }
   ]
 }

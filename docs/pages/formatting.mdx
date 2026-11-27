@@ -6,14 +6,14 @@ configuration options.
 
 ```bash
 sun fmt file.sun other.sun   # rewrite files in place
-sun fmt .                    # format every .sun file in the tree
+sun fmt .                    # format .sun files and sun-config.json in the tree
 sun fmt --check .            # exit 1 if any file would change (for CI)
 ```
 
-Directory arguments are searched recursively for `.sun` files; hidden
-directories (`.git`, `.cache`, …) are skipped. Paths that are not `.sun` files
-are ignored, and files that fail to parse are reported and left untouched
-(exit code 2).
+Directory arguments are searched recursively for `.sun` files and files named
+`sun-config.json`; hidden directories (`.git`, `.cache`, …) are skipped. Other
+file types are ignored, and files that fail to parse are reported and left
+untouched (exit code 2).
 
 ## Ignoring files
 
@@ -62,8 +62,15 @@ not change formatting style or the editor's single-document formatting request.
 
 - 2-space indentation, K&R braces (`function f() i32 {`).
 - One statement per line; a single space around binary operators.
-- Comments are preserved: own-line comments keep their position, trailing
-  comments stay on their line (two spaces before `//`).
+- Global `using` statements move to the top, sorted case-sensitively by imported
+  path. Nested imports retain their positions. Duplicates are preserved.
+- Global manifests move to the bottom with one blank line before their attached
+  comments or the manifest. Fields use this order, including inside targets:
+  `source_files`, `test_files`, `libraries`, `protos`, `archives`, `target`.
+  Dependency lists and target names retain their order.
+- Comments are preserved: adjacent leading comments move with their declaration,
+  and trailing comments stay on their line (two spaces before `//`). Detached
+  file-header and footer comments stay at the file boundaries.
 - Blank lines between statements are preserved, collapsed to at most one.
 - Non-empty modules have one blank line after the opening brace, before any
   leading comments. Empty modules remain `{}`.
@@ -98,3 +105,19 @@ function main() i32 {
 The language server (`sun-lsp`) implements `textDocument/formatting`, so
 "Format Document" and format-on-save work in any LSP-enabled editor. Code
 that does not parse is left unchanged.
+
+## Config formatting
+
+`sun fmt sun-config.json` formats configuration JSON with two-space indentation,
+expanded nonempty arrays and objects, and one final newline. Root fields use:
+
+`package_id`, `root`, `supported_targets`, `sun_path`, `path_variables`,
+`exception_trace_depth`, `sun_fmt`, `projects`, `entrypoints`, `packages`,
+`exports`, `dependencies`, `c_bindings`, `target`, `steps`.
+
+Structured nested objects use schema-specific field ordering. Target-selection
+wrappers place `default` before `target`. Arrays and user-defined maps retain
+their order. Formatting does not resolve dependencies or run build steps.
+Malformed JSON, duplicate keys, and non-object roots are reported without
+rewriting the file. The same selection, ignore, and check-mode rules apply to
+source files and configs.
