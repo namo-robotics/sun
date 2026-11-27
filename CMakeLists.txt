@@ -271,6 +271,7 @@ add_library(sun_lib
     src/parsing/interpolated_string_parser.cpp
     src/parsing/lowering_pass.cpp
     src/parsing/formatter.cpp
+    src/parsing/config_formatter.cpp
     src/parsing/doc_comments.cpp
     # AST
     src/ast/expr_ast.cpp

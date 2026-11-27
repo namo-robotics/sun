@@ -13,6 +13,7 @@
 #include "driver/sun_config.h"
 #include "llvm/Support/GlobPattern.h"
 #include "llvm/Support/raw_ostream.h"
+#include "parsing/config_formatter.h"
 #include "parsing/formatter.h"
 #include "support/display_path.h"
 #include "support/error.h"
@@ -150,12 +151,16 @@ class FormatIgnores {
       configs_;
 };
 
-/**
- * Collect .sun files under a directory, skipping hidden directories
- * (.git, .cache, ...). Sorted so output order is deterministic.
- */
-bool collectSunFiles(const std::string& dir, std::vector<std::string>& out,
-                     FormatIgnores& ignores) {
+/** Identifies the source and configuration files accepted by the formatter. */
+bool isFormattable(const std::filesystem::path& path) {
+  return path.extension() == ".sun" ||
+         path.filename() == sun::driver::SunConfig::kFileName;
+}
+
+/** Collects source and config files recursively, skipping hidden directories.
+ * Sorts new entries so traversal and diagnostics are deterministic. */
+bool collectFormatFiles(const std::string& dir, std::vector<std::string>& out,
+                        FormatIgnores& ignores) {
   std::error_code ec;
   std::filesystem::recursive_directory_iterator it(dir, ec), end;
   if (ec) {
@@ -182,7 +187,7 @@ bool collectSunFiles(const std::string& dir, std::vector<std::string>& out,
     }
     // *.inja.sun files are templates, not Sun programs: their splices
     // cannot parse, so the formatter leaves them alone.
-    if (path.extension() == ".sun" &&
+    if (isFormattable(path) &&
         std::filesystem::path(path.stem()).extension() != ".inja" &&
         !ignores.ignores(path, false)) {
       out.push_back(path.string());
@@ -194,7 +199,7 @@ bool collectSunFiles(const std::string& dir, std::vector<std::string>& out,
 
 /**
  * Turn the inputs into the list of files to format. Directories are
- * expanded; explicitly named non-.sun files are reported (a directory walk
+ * expanded; explicitly named unsupported files are reported (a directory walk
  * filters them silently instead). Returns false when any input could not be
  * read.
  */
@@ -209,16 +214,17 @@ bool expandInputs(const std::vector<std::string>& inputs,
       sun::support::messageStream("info")
           << sun::support::displayPath(input) << ": skipped (sun_fmt.ignore)\n";
     } else if (directory) {
-      if (!collectSunFiles(input, files, ignores)) {
+      if (!collectFormatFiles(input, files, ignores)) {
         ok = false;
       }
     } else if (!std::filesystem::exists(input, ec)) {
       sun::support::messageStream("error") << sun::support::displayPath(input)
                                            << ": no such file or directory\n";
       ok = false;
-    } else if (std::filesystem::path(input).extension() != ".sun") {
-      sun::support::messageStream("warning") << sun::support::displayPath(input)
-                                             << ": skipped (not a .sun file)\n";
+    } else if (!isFormattable(input)) {
+      sun::support::messageStream("warning")
+          << sun::support::displayPath(input)
+          << ": skipped (not a .sun file or sun-config.json)\n";
     } else {
       files.push_back(input);
     }
@@ -271,7 +277,10 @@ FormatOutcome formatFile(const std::string& file, bool checkMode) {
 
   std::string formatted;
   try {
-    formatted = sun::parsing::formatSource(source, file);
+    formatted = std::filesystem::path(file).filename() ==
+                        sun::driver::SunConfig::kFileName
+                    ? sun::parsing::formatConfig(source)
+                    : sun::parsing::formatSource(source, file);
   } catch (const sun::support::SunError& e) {
     sun::support::messageStream("error")
         << sun::support::displayPath(file) << ": " << e.what() << "\n";

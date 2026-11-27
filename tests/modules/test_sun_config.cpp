@@ -746,7 +746,8 @@ TEST(Modules_SunConfig, package_local_library) {
   EXPECT_EQ(result->moonImports[0].path, output.string());
 }
 
-/** Same-package libraries honor the CLI build directory over config defaults. */
+/** Same-package libraries honor the CLI build directory over config defaults.
+ */
 TEST(Modules_SunConfig, package_local_library_build_override) {
   const auto dir = freshDir("package_local_library_build_override");
   writeFile(dir / "sun-config.json",
