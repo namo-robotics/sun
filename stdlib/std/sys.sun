@@ -35,6 +35,45 @@ public module std {
   /** Read metadata for an open descriptor into platform-sized storage. */
   extern "C" function c_fstat(fd: i32, data: raw_ptr<u8>) i32 as "fstat";
 
+  /** Create an anonymous file with the requested native flags. */
+  extern "C" function c_memfd_create(name: raw_ptr<u8>, flags: u32) i32 as "memfd_create";
+
+  /** Map a descriptor into this process. */
+  extern "C" function c_mmap(
+    address: raw_ptr<u8>,
+    length: u64,
+    protection: i32,
+    flags: i32,
+    fd: i32,
+    offset: i64
+  ) raw_ptr<u8> as "mmap";
+
+  /** Release a mapping without affecting other processes. */
+  extern "C" function c_munmap(address: raw_ptr<u8>, length: u64) i32 as "munmap";
+
+  /** Obtain kernel randomness without opening a device. */
+  extern "C" function c_getrandom(data: raw_ptr<u8>, length: u64, flags: u32) i64 as "getrandom";
+
+  /** Bind a native local socket address. */
+  extern "C" function c_bind(fd: i32, address: raw_ptr<u8>, length: u32) i32 as "bind";
+
+  /** Connect a native local socket address. */
+  extern "C" function c_connect(fd: i32, address: raw_ptr<u8>, length: u32) i32 as "connect";
+
+  /** Accept a connection with the requested native flags. */
+  extern "C" function c_accept4(
+    fd: i32,
+    address: raw_ptr<u8>,
+    length: raw_ptr<u32>,
+    flags: i32
+  ) i32 as "accept4";
+
+  /** Send a packet with ancillary descriptors. */
+  extern "C" function c_sendmsg(fd: i32, message: raw_ptr<u8>, flags: i32) i64 as "sendmsg";
+
+  /** Receive a packet and ancillary data with the requested native flags. */
+  extern "C" function c_recvmsg(fd: i32, message: raw_ptr<u8>, flags: i32) i64 as "recvmsg";
+
   // --- file descriptors ----------------------------------------------------
 
   /** Opens a null-terminated path and returns a file descriptor or a failure code. */
