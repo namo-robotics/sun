@@ -1,0 +1,167 @@
+using std;
+
+/** Linux mapping and credential-checked descriptor-transfer regressions. */
+public module std.ipc {
+
+  /** A descriptor transferred over a local connection refers to the same sealed bytes. */
+  test_function local_shared_mapping() {
+    var alloc = std.mem.make_heap_allocator();
+    var first = random_nonce();
+    var second = random_nonce();
+    var listener = LocalSocket();
+    listener.listen(first, second);
+    var client = LocalSocket();
+    client.connect(first, second);
+    var server = match listener.accept() {
+      Option.Some(socket) => socket,
+      _ => {
+        throw Error(1, "local accept did not complete");
+      }
+    };
+    std.test.assert(client.same_user() and server.same_user(), "kernel credentials match");
+    var memory = create_shared_memory(4096);
+    memory.set(8, 71);
+    memory.publish(0, 1);
+    var packet = ContiguousBuffer<u8>(alloc, 1);
+    packet[0] = 42;
+    std.test.assert(client.send(packet, memory.fd()), "descriptor sent");
+    var received = match server.receive(alloc) {
+      Option.Some(value) => value,
+      _ => {
+        throw Error(1, "local packet missing");
+      }
+    };
+    var mapped = map_shared_memory(received.file, 4096, false);
+    std.test.assert_eq(mapped.acquire(0), 1);
+    std.test.assert_eq(mapped.get(8), 71u8);
+    memory.set(8, 72);
+    memory.publish(0, 2);
+    std.test.assert_eq(mapped.acquire(0), 2);
+    std.test.assert_eq(mapped.get(8), 72u8);
+    var rejected = false;
+    try {
+      mapped.set(8, 1);
+    } catch {
+      rejected = true;
+    }
+    std.test.assert(rejected, "read-only mapping rejects writes");
+    std.test.assert(unsafe { c_ftruncate(memory.fd(), 8192); } < 0, "resize seal enforced");
+  }
+
+  /** Mappings reject out-of-range and misaligned atomic accesses. */
+  test_function shared_mapping_bounds() {
+    var memory = create_shared_memory(4096);
+    var errors: i32 = 0;
+    try {
+      memory.get(-1);
+    } catch {
+      errors += 1;
+    }
+    try {
+      memory.set(4096, 1);
+    } catch {
+      errors += 1;
+    }
+    try {
+      memory.publish(1, 1);
+    } catch {
+      errors += 1;
+    }
+    try {
+      memory.acquire(4096);
+    } catch {
+      errors += 1;
+    }
+    std.test.assert_eq(errors, 4);
+  }
+
+  /** A failed seal query on a regular file must never be interpreted as all seals set. */
+  test_function shared_mapping_rejects_regular_file() {
+    var alloc = std.mem.make_heap_allocator();
+    var directory = std.tests.TempDir(alloc, "ipc-unsealed");
+    var path = directory.file("bytes");
+    std.io.write_string(path, String(alloc, "unsealed payload"));
+    var fd = unsafe { c_open(path.c_str(), 524288); };
+    if (fd < 0) {
+      throw Error(errno(), "cannot open fixture file");
+    }
+    var file = adopt_descriptor(fd);
+    var rejected = false;
+    try {
+      map_shared_memory(file, 16, false);
+    } catch {
+      rejected = true;
+    }
+    std.test.assert(rejected, "ordinary files cannot back a stable shared mapping");
+    std.test.assert(
+      unsafe { c_fcntl(fd, 1); } < 0,
+      "failed mapping consumes and closes descriptor"
+    );
+  }
+
+  /** Truncated packets and excess descriptor rights are rejected without poisoning the socket. */
+  test_function local_packet_rejection() {
+    var alloc = std.mem.make_heap_allocator();
+    var first = random_nonce();
+    var second = random_nonce();
+    var listener = LocalSocket();
+    listener.listen(first, second);
+    var client = LocalSocket();
+    client.connect(first, second);
+    var server = match listener.accept() {
+      Option.Some(socket) => socket,
+      _ => {
+        throw Error(1, "local accept did not complete");
+      }
+    };
+    std.test.assert(
+      match server.receive(alloc) {
+        Option.None => true,
+        _ => false
+      },
+      "empty receive does not block"
+    );
+    var memory = create_shared_memory(4096);
+    var bytes = ContiguousBuffer<u8>(alloc, LOCAL_PACKET_LIMIT + 1);
+    for (var i: i64 = 0; i < bytes.size(); i += 1) {
+      bytes[i] = 0;
+    }
+    // Exercise payload truncation, two descriptors in padding, and control truncation.
+    for (var scenario: i64 = 0; scenario < 3; scenario += 1) {
+      var fd = _convert<u64>(memory.fd());
+      var pair = fd | (fd << 32);
+      var control: array<u64, 4> = [scenario == 1 ? 24u64 : 32u64, 4294967297u64, pair, pair];
+      var vector = LocalIovec(unsafe { bytes.raw_data(); }, scenario == 0 ? 257u64 : 1u64);
+      var message = LocalMessage(
+        unsafe { _address_of<LocalIovec>(vector); },
+        unsafe { _bitcast<raw_ptr<u8>>(_address_of<u64>(control[0])); },
+        scenario == 0 ? 0u64 : (scenario == 1 ? 24u64 : 32u64)
+      );
+      std.test.assert(
+        unsafe {
+          c_sendmsg(client.fd(), _bitcast<raw_ptr<u8>>(_address_of<LocalMessage>(message)), 16384);
+        } > 0,
+        "malformed packet sent"
+      );
+      var rejected = false;
+      try {
+        server.receive(alloc);
+      } catch {
+        rejected = true;
+      }
+      std.test.assert(rejected, "truncated or excessive packet rejected");
+    }
+    var packet = ContiguousBuffer<u8>(alloc, 1);
+    packet[0] = 42;
+    std.test.assert(client.send(packet, -1), "valid packet sent after rejection");
+    var received = match server.receive(alloc) {
+      Option.Some(value) => value,
+      _ => {
+        throw Error(1, "valid packet missing after rejection");
+      }
+    };
+    std.test.assert_eq(received.size, 1);
+    std.test.assert_eq(received.bytes[0], 42u8);
+    std.test.assert_eq(received.file.fd(), -1);
+  }
+}

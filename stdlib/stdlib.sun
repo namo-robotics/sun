@@ -104,10 +104,12 @@ manifest {
         "std/terminal/target_linux.sun",
         "std/signal/target_linux.sun",
         "std/io/event_loop_linux.sun",
-        "std/process/process_linux.sun"
+        "std/process/process_linux.sun",
+        "std/ipc/linux.sun"
       ],
       test_files: [
-        "std/process/process_linux_tests.sun"
+        "std/process/process_linux_tests.sun",
+        "std/ipc/linux_tests.sun"
       ]
     },
     macos: {
